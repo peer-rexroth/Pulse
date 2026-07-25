@@ -136,7 +136,8 @@ async function run(argv) {
 ;function resetState(){
   seedDefaults();
   view = 'status'; theme = 'light'; filterWorkstreamId = null;
-  editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null; itemType = 'scope';
+  editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
+  editingMilestones = []; expandedItemIds = new Set();
   normalizeData();
 }
 `;

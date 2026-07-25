@@ -44,22 +44,27 @@ A **workstream**:
 { id: String, name: String, color: String, order: Number }  // color is a name key from WS_COLORS
 ```
 
-An **item** (scope item or milestone — one shape, discriminated by `type`):
+An **item** (a scope item — the only top-level item type; see "Milestones" below):
 ```js
 {
   id: String,
   workstreamId: String,
-  type: 'scope' | 'milestone',
   name: String,
   owner: String,
   notes: String,
   status: 'not-started' | 'green' | 'amber' | 'red' | 'complete',
-  startDate: String,  // 'YYYY-MM-DD', scope items only — absent/undefined on milestones
-  dueDate: String      // 'YYYY-MM-DD' — the single date a milestone renders at
+  startDate: String,   // 'YYYY-MM-DD'
+  dueDate: String,     // 'YYYY-MM-DD'
+  milestones: [Milestone]
 }
 ```
 
-There is deliberately no separate `Milestone` type/array — a milestone is just an item with `type: 'milestone'` and no `startDate`. This keeps one CRUD path (`openItemModal`/`saveItem`/`deleteItem`) for both, with the type toggle in the modal only changing which date field is shown and how the item renders (bar vs. diamond).
+A **milestone** — nested inside its parent item, not a top-level array:
+```js
+{ id: String, name: String, dueDate: String, status: 'not-started' | 'green' | 'amber' | 'red' | 'complete' }
+```
+
+Milestones don't have their own `owner`/`notes`/`startDate` — they're a lightweight checklist against a single date, deliberately kept smaller than the item shape rather than reusing it. There's no independent roll-up: an item's own `status` is set manually, same as before, and is *not* computed from its milestones' statuses — see "Milestone checklist" below for why.
 
 ### RAG status
 
@@ -71,21 +76,33 @@ Direct DOM re-renders (no virtual DOM or framework). `render()` does a full re-r
 
 ### Status board (`renderStatusView`)
 
-One `.ws-section` per visible workstream (filtered by `filterWorkstreamId` via `visibleWorkstreams()`), each showing a RAG count summary (`STATUSES` filtered to non-zero counts) and its items sorted by `dueDate` ascending, scope items and milestones interleaved in the same list (distinguished only by the row's icon and whether it shows a date range or single date).
+One `.ws-section` per visible workstream (filtered by `filterWorkstreamId` via `visibleWorkstreams()`), each showing a RAG count summary (`STATUSES` filtered to non-zero counts) and its items sorted by `dueDate` ascending. `itemRowHtml(it)` renders the item's own row plus, if `expandedItemIds` (a module-level `Set`, UI-only — not persisted, resets on reload) has that item's id, its nested milestone rows (`milestoneRowsHtml`, sorted by `dueDate`) immediately after. An item with `milestones.length === 0` gets no chevron and no count badge — see `tests/cases/views.test.js`'s "no milestones" test. Clicking a milestone's own status badge calls `cycleMilestoneStatus(itemId, milestoneId)`, which steps through `STATUSES` in array order and wraps — a quicker way to update a milestone's RAG than opening the item modal.
 
 ### Timeline (`renderTimelineView`)
 
-One swimlane (`.lane`) per visible workstream. The date axis is computed from the actual data: `minD`/`maxD` span the earliest `startDate`/`dueDate` and latest `dueDate` among *currently visible* items (10 days of padding each side), or the current-plus-next month if there are no items yet — so the timeline always fits what's on screen rather than a fixed window. `PX_PER_DAY` (26) is the single scale constant; `dayOffset(iso)` converts a date to a left-position in pixels relative to `minD`. Scope items render as `.tl-bar` (positioned `left`/`width` from `startDate`→`dueDate`, with a minimum 18px width so a very short or same-day item stays clickable); milestones render as `.tl-milestone` (a 45°-rotated square making a diamond, positioned at `dueDate` only). Each item gets its own `.lane-track` row rather than being packed into shared rows — simpler and always correct, at the cost of a taller lane when a workstream has many overlapping items. A `.today-line` marks the current date across every lane for orientation. Month header segments (`months` array) are computed by walking `minD`→`maxD` one calendar month at a time and clipping the first/last segment to the actual data range.
+One swimlane (`.lane`) per visible workstream, one `.lane-track` per item (not one per item+milestone — a milestone renders inside its parent item's track, not its own). The date axis is computed from the actual data: `minD`/`maxD` span the earliest `startDate`/`dueDate` and latest `dueDate` — including every nested milestone's `dueDate` — among *currently visible* items (10 days of padding each side), or the current-plus-next month if there are no items yet. `PX_PER_DAY` (26) is the single scale constant; `dayOffset(iso)` converts a date to a left-position in pixels relative to `minD`. An item renders as `.tl-bar` (positioned `left`/`width` from `startDate`→`dueDate`, minimum 18px width); each of its milestones renders as a `.tl-milestone` diamond (a 45°-rotated square, positioned at its own `dueDate`) painted into the *same* track, after the bar in markup so it stacks visually on top with no explicit `z-index` needed beyond what's already on `.tl-milestone`. Since the standard milestone set defaults every date to the item's due date, a freshly-created item's six diamonds start stacked at the same x position on the bar's right edge until dates are spread out in the item modal. A `.today-line` marks the current date across every lane. Month header segments (`months` array) are computed by walking `minD`→`maxD` one calendar month at a time and clipping the first/last segment to the actual data range.
 
 Because the visible date range depends on `visibleWorkstreams()`, switching the sidebar filter to one workstream re-scales the whole timeline to that workstream's own items — this is intentional (a workstream with a tight 2-week range shouldn't be squeezed into a full programme's multi-month span), not a bug.
 
+### Milestone checklist
+
+`STANDARD_MILESTONES` (top of the `<script>` block, near `STATUSES`) is the ordered list of six milestone names auto-added to every *new* item: Requirements defined, Design defined, Development completed, Ready for SIT, Ready for UAT, Deployment completed. `openItemModal(id)` seeds `editingMilestones` — a module-level working copy, not committed to `items` until Save — from this list (each dated to whatever the Due date field shows at the moment the modal opens, per-milestone `id` freshly generated) when creating a new item, or from a deep-ish copy of the existing item's `milestones` when editing one already saved. This is why editing never resets an item back to the standard six: `saveItem()` only ever writes whatever is currently in `editingMilestones`, regardless of how it originally got there.
+
+`renderMilestonesEditor()` redraws the modal's milestone rows from `editingMilestones`; each row's `name`/`dueDate`/`status` field writes straight back into `editingMilestones[idx]` via inline `oninput`/`onchange` (no re-render on keystroke, so inputs never lose focus mid-edit) — `saveItem()` reads the array directly rather than re-scraping the DOM. `addMilestoneRow()`/`removeMilestoneRow(idx)` are the only two mutations that re-render the editor, since those are structural (row count changes, so every subsequent row's index shifts). None of this touches `items` until Save is clicked — Cancel (or closing the modal) just discards `editingMilestones`, which `closeItemModal()` also resets to `[]` for hygiene.
+
+There's deliberately no computed roll-up from milestone statuses to the parent item's own status (e.g. "auto-mark the item red if any milestone is red") — the item's status stays a manual field, same as always, so a checklist update never silently overrides a PM's own RAG judgment call on the item.
+
 ### Modals
 
-Two modals share the `.modal-bg` pattern (add `.open` class to show, remove to hide): `wsModalBg` (create/edit a workstream, with a delete button that cascades to that workstream's items) and `itemModalBg` (create/edit a scope item or milestone, with a type toggle that shows/hides the start-date field and relabels "Due date" → "Date" for milestones). Both close on Escape and on a background click (listeners at the bottom of the `<script>` block check `e.target.id`).
+Two modals share the `.modal-bg` pattern (add `.open` class to show, remove to hide): `wsModalBg` (create/edit a workstream, with a delete button that cascades to that workstream's items — and, since milestones live nested inside items, to their milestones too) and `itemModalBg` (create/edit a scope item, `.modal-wide` at 520px to fit the milestones editor — see "Milestone checklist" above). Both close on Escape and on a background click (listeners at the bottom of the `<script>` block check `e.target.id`).
 
 ### Data integrity
 
-`normalizeData()` (called from `load()` and, for tests, from the `resetState()` glue) is the single source of truth for schema defaults: workstream `id`/`color`/`order` backfilled and the array re-sorted by `order`; an item's `id`/`type`/`name`/`owner`/`notes`/`status` backfilled, an orphaned `workstreamId` (pointing at a deleted workstream) reassigned to the first remaining workstream, a scope item missing `startDate` defaulted from `dueDate`, and a stale `filterWorkstreamId` cleared if it no longer resolves. Any future data-loading path (an import feature, a linked-file sync — see below) should route through `normalizeData()` too, same as `load()` does, or it'll reintroduce the class of bug this exists to prevent: a render function assuming a field exists that an older/hand-edited save doesn't have.
+`normalizeData()` (called from `load()` and, for tests, from the `resetState()` glue) is the single source of truth for schema defaults: workstream `id`/`color`/`order` backfilled and the array re-sorted by `order`; an item's `id`/`name`/`owner`/`notes`/`status` backfilled, an orphaned `workstreamId` (pointing at a deleted workstream) reassigned to the first remaining workstream, a missing `startDate` defaulted from `dueDate`, a missing `milestones` defaulted to `[]`, and each milestone's own `id`/`name`/`status` backfilled and a missing `dueDate` defaulted from its *parent item's* `dueDate`. A stale `filterWorkstreamId` is cleared if it no longer resolves.
+
+It also runs a one-time schema migration: a pre-nested-milestones save could have a top-level item with `type: 'milestone'` (milestones used to be their own top-level item, siblings of scope items, before this became a nested checklist). Rather than silently dropping these on first load under the new schema, `normalizeData()` folds each one into its own new single-milestone item (`startDate`/`dueDate` both set to the old milestone's `dueDate`, `milestones: [{ ...that one milestone }]`) and strips the legacy rows out of `items`. `type` itself is `delete`d off every item as part of this pass, since it no longer means anything under the new schema.
+
+Any future data-loading path (an import feature, a linked-file sync — see below) should route through `normalizeData()` too, same as `load()` does, or it'll reintroduce the class of bug this exists to prevent: a render function assuming a field exists that an older/hand-edited save doesn't have.
 
 ## What's deliberately not here (v1 scope)
 

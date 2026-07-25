@@ -35,8 +35,8 @@ test('editing an existing workstream updates it in place, not a new entry', func
 
 test('deleting a workstream also removes its items (cascade)', function () {
   const wsId = workstreams[0].id;
-  items.push({ id: genId(), workstreamId: wsId, type: 'scope', name: 'A', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr() });
-  items.push({ id: genId(), workstreamId: wsId, type: 'milestone', name: 'B', owner: '', notes: '', status: 'green', dueDate: todayStr() });
+  items.push({ id: genId(), workstreamId: wsId, name: 'A', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [] });
+  items.push({ id: genId(), workstreamId: wsId, name: 'B', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [] });
   assertEqual(items.length, 2);
   editingWsId = wsId;
   deleteWorkstreamFromModal();
