@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pulse</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="theme-color" content="#ffffff">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --panel-2: #fafbfc;
+    --border: #e2e5ea;
+    --text: #1c2128;
+    --text-dim: #5b6472;
+    --text-faint: #9aa3b0;
+    --accent: #3b6fe0;
+    --accent-bg: #eaf0fd;
+    --danger: #e5484d;
+    --radius: 10px;
+    --shadow: 0 1px 2px rgba(20,20,30,.04), 0 4px 16px rgba(20,20,30,.06);
+
+    --ws-blue: #3b6fe0;   --ws-blue-bg: #eaf0fd;
+    --ws-teal: #12968c;   --ws-teal-bg: #e3f6f4;
+    --ws-purple: #8354d1; --ws-purple-bg: #f1ebfc;
+    --ws-amber: #b5790a;  --ws-amber-bg: #fbf0dc;
+    --ws-pink: #c23b7a;   --ws-pink-bg: #fbe8f1;
+    --ws-green: #268a5e;  --ws-green-bg: #e4f5ec;
+    --ws-red: #c33a3a;    --ws-red-bg: #fbe9e9;
+    --ws-grey: #5b6472;   --ws-grey-bg: #eceef1;
+
+    --stat-not-started: #8b93a1; --stat-not-started-bg: #eceef1;
+    --stat-green: #1f9d55;       --stat-green-bg: #e1f5e8;
+    --stat-amber: #c07f0a;       --stat-amber-bg: #fcf1da;
+    --stat-red: #d13c3c;         --stat-red-bg: #fbe8e8;
+    --stat-complete: #3457c9;    --stat-complete-bg: #e8edfc;
+  }
+  html[data-theme="dark"] {
+    --bg: #14161a;
+    --panel: #1b1e24;
+    --panel-2: #21242b;
+    --border: #2c3038;
+    --text: #e7e9ec;
+    --text-dim: #9aa1ac;
+    --text-faint: #6b7280;
+    --accent: #6c93f0;
+    --accent-bg: #26314f;
+    --danger: #f28b8b;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.35);
+
+    --ws-blue: #7ea1f5;   --ws-blue-bg: #24314f;
+    --ws-teal: #5cd0c4;   --ws-teal-bg: #16332f;
+    --ws-purple: #b295ec; --ws-purple-bg: #2d2447;
+    --ws-amber: #eabb5d;  --ws-amber-bg: #3a2f16;
+    --ws-pink: #ec8fc0;   --ws-pink-bg: #3a2333;
+    --ws-green: #6fd39a;  --ws-green-bg: #163826;
+    --ws-red: #f28f8f;    --ws-red-bg: #3a2020;
+    --ws-grey: #a7aeb9;   --ws-grey-bg: #2a2d33;
+
+    --stat-not-started: #9aa1ac; --stat-not-started-bg: #2a2d33;
+    --stat-green: #6fd39a;       --stat-green-bg: #163826;
+    --stat-amber: #eabb5d;       --stat-amber-bg: #3a2f16;
+    --stat-red: #f28f8f;         --stat-red-bg: #3a2020;
+    --stat-complete: #8fa8f2;    --stat-complete-bg: #1f2c4d;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  button { font-family: inherit; }
+  button:focus:not(:focus-visible) { outline: none; }
+  input, select, textarea { font-family: inherit; font-size: 14px; }
+
+  /* Topbar */
+  .topbar {
+    height: 54px; flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
+    padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; color: var(--text); }
+  .brand i { color: var(--accent); }
+  .programme-name {
+    border: none; background: transparent; font-size: 14px; font-weight: 600; color: var(--text-dim);
+    padding: 4px 8px; border-radius: 6px; min-width: 120px; max-width: 320px;
+  }
+  .programme-name:hover, .programme-name:focus { background: var(--panel-2); color: var(--text); outline: none; }
+  .view-tabs { display: flex; gap: 2px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+  .view-tab {
+    border: none; background: transparent; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    color: var(--text-dim); font-weight: 600; display: flex; align-items: center; gap: 6px;
+  }
+  .view-tab.active { background: var(--panel); color: var(--accent); box-shadow: var(--shadow); }
+  .topbar-spacer { flex: 1; }
+  .icon-btn {
+    border: 1px solid var(--border); background: var(--panel); color: var(--text-dim); cursor: pointer;
+    width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  }
+  .icon-btn:hover { background: var(--panel-2); color: var(--text); }
+  .btn {
+    border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer;
+    padding: 7px 12px; border-radius: 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { background: var(--panel-2); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-primary:hover { filter: brightness(1.06); }
+  .btn-danger { color: var(--danger); }
+  .btn-sm { padding: 4px 9px; font-size: 12.5px; border-radius: 6px; }
+
+  /* Layout */
+  .body-row { flex: 1; display: flex; min-height: 0; }
+  .sidebar {
+    width: 220px; flex: 0 0 auto; background: var(--panel); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 10px; overflow-y: auto;
+  }
+  .sidebar-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); padding: 8px 8px 4px; }
+  .ws-row {
+    display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px; cursor: pointer;
+    color: var(--text-dim); font-weight: 600; position: relative;
+  }
+  .ws-row:hover { background: var(--panel-2); }
+  .ws-row.active { background: var(--accent-bg); color: var(--accent); }
+  .ws-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+  .ws-row-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-row-count { font-size: 11px; color: var(--text-faint); font-weight: 700; }
+  .ws-row-edit { display: none; border: none; background: transparent; color: var(--text-faint); cursor: pointer; padding: 2px 4px; }
+  .ws-row:hover .ws-row-edit { display: inline-flex; }
+  .ws-row-edit:hover { color: var(--text); }
+  .sidebar-add {
+    display: flex; align-items: center; gap: 6px; padding: 8px; border-radius: 7px; cursor: pointer;
+    color: var(--text-faint); font-weight: 600; border: 1px dashed var(--border); margin-top: 4px; justify-content: center;
+  }
+  .sidebar-add:hover { color: var(--accent); border-color: var(--accent); }
+
+  .main { flex: 1; min-width: 0; overflow: auto; padding: 20px 24px; }
+
+  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-faint); gap: 10px; text-align: center; }
+  .empty-state i { font-size: 34px; opacity: .5; }
+
+  /* Status view */
+  .ws-section { margin-bottom: 22px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .ws-section-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .ws-section-header .ws-dot { width: 10px; height: 10px; }
+  .ws-section-title { font-weight: 700; font-size: 14.5px; flex: 1; }
+  .rag-pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+  .rag-summary { display: flex; gap: 5px; }
+
+  .item-row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border);
+  }
+  .item-row:last-child { border-bottom: none; }
+  .item-row:hover { background: var(--panel-2); }
+  .item-type-icon { width: 20px; text-align: center; color: var(--text-faint); flex: 0 0 auto; }
+  .item-name { font-weight: 600; flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; width: 110px; flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-dates { color: var(--text-dim); font-size: 12.5px; width: 150px; flex: 0 0 auto; }
+  .item-notes { color: var(--text-faint); font-size: 12.5px; flex: 1; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-badge { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; flex: 0 0 auto; cursor: pointer; border: none; }
+  .item-actions { display: none; gap: 2px; flex: 0 0 auto; }
+  .item-row:hover .item-actions { display: flex; }
+  .row-icon-btn { border: none; background: transparent; color: var(--text-faint); cursor: pointer; padding: 4px 6px; border-radius: 5px; }
+  .row-icon-btn:hover { background: var(--border); color: var(--text); }
+  .ws-section-add { padding: 8px 14px; }
+
+  /* Timeline view */
+  .timeline-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .timeline-scroll { overflow-x: auto; }
+  .timeline-inner { position: relative; }
+  .timeline-header { display: flex; position: sticky; top: 0; background: var(--panel); z-index: 3; border-bottom: 1px solid var(--border); }
+  .timeline-header-spacer { width: 160px; flex: 0 0 auto; position: sticky; left: 0; background: var(--panel); z-index: 4; border-right: 1px solid var(--border); }
+  .month-label {
+    flex: 0 0 auto; padding: 8px 10px; font-weight: 700; font-size: 12px; color: var(--text-dim);
+    border-right: 1px solid var(--border);
+  }
+  .lane { display: flex; border-bottom: 1px solid var(--border); min-height: 44px; }
+  .lane:last-child { border-bottom: none; }
+  .lane-label {
+    width: 160px; flex: 0 0 auto; position: sticky; left: 0; background: var(--panel); z-index: 2;
+    border-right: 1px solid var(--border); display: flex; align-items: center; gap: 7px; padding: 8px 10px; font-weight: 700; font-size: 12.5px;
+  }
+  .lane-body { position: relative; flex: 1; }
+  .lane-track { position: relative; height: 30px; margin: 6px 0; }
+  .today-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--danger); opacity: .5; z-index: 1; }
+  .tl-bar {
+    position: absolute; top: 4px; height: 22px; border-radius: 6px; display: flex; align-items: center;
+    padding: 0 8px; font-size: 11.5px; font-weight: 700; white-space: nowrap; overflow: hidden; cursor: pointer;
+    color: #fff; box-shadow: var(--shadow);
+  }
+  .tl-milestone {
+    position: absolute; top: 3px; width: 16px; height: 16px; transform: translateX(-8px) rotate(45deg);
+    cursor: pointer; box-shadow: var(--shadow);
+  }
+  .tl-milestone-label { position: absolute; top: 2px; left: 22px; font-size: 11.5px; font-weight: 700; white-space: nowrap; color: var(--text-dim); }
+
+  /* Modal */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(10,12,16,.4); display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--panel); border-radius: 14px;
+    box-shadow: var(--shadow); padding: 20px;
+  }
+  .modal h3 { margin: 0 0 14px; font-size: 16px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; font-weight: 700; color: var(--text-dim); margin-bottom: 5px; }
+  .field input[type="text"], .field input[type="date"], .field select, .field textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); color: var(--text);
+  }
+  .field textarea { resize: vertical; min-height: 56px; }
+  .field-row { display: flex; gap: 10px; }
+  .field-row .field { flex: 1; }
+  .type-toggle { display: flex; gap: 6px; }
+  .type-toggle button {
+    flex: 1; padding: 7px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim); cursor: pointer; font-weight: 700;
+  }
+  .type-toggle button.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+  .color-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+  .color-swatch { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
+  .color-swatch.selected { border-color: var(--text); }
+  .modal-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
+  .modal-actions-right { display: flex; gap: 8px; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0;
+    background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-weight: 600; font-size: 13px;
+    transition: opacity .2s, transform .2s; pointer-events: none; z-index: 100;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><i class="fa-solid fa-wave-square"></i> Pulse</div>
+  <input id="programmeNameInput" class="programme-name" type="text" oninput="updateProgrammeName(this.value)" />
+  <div class="view-tabs">
+    <button class="view-tab" id="tabStatus" onclick="setView('status')"><i class="fa-solid fa-list-check"></i> Status</button>
+    <button class="view-tab" id="tabTimeline" onclick="setView('timeline')"><i class="fa-solid fa-timeline"></i> Timeline</button>
+  </div>
+  <div class="topbar-spacer"></div>
+  <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-moon"></i></button>
+</div>
+
+<div class="body-row">
+  <div class="sidebar">
+    <div class="sidebar-label">Workstreams</div>
+    <div id="wsList"></div>
+    <div class="sidebar-add" onclick="openWorkstreamModal()"><i class="fa-solid fa-plus"></i> Workstream</div>
+  </div>
+  <div class="main" id="main"></div>
+</div>
+
+<!-- Workstream modal -->
+<div class="modal-bg" id="wsModalBg">
+  <div class="modal">
+    <h3 id="wsModalTitle">New workstream</h3>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="wsNameInput" placeholder="e.g. Data Migration">
+    </div>
+    <div class="field">
+      <label>Color</label>
+      <div class="color-grid" id="wsColorGrid"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="wsDeleteBtn" onclick="deleteWorkstreamFromModal()" style="display:none"><i class="fa-solid fa-trash"></i> Delete</button>
+      <div class="modal-actions-right">
+        <button class="btn" onclick="closeWorkstreamModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveWorkstream()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item modal -->
+<div class="modal-bg" id="itemModalBg">
+  <div class="modal">
+    <h3 id="itemModalTitle">New item</h3>
+    <div class="field">
+      <div class="type-toggle" id="itemTypeToggle">
+        <button id="typeBtnScope" onclick="setItemType('scope')"><i class="fa-solid fa-bars"></i> Scope item</button>
+        <button id="typeBtnMilestone" onclick="setItemType('milestone')"><i class="fa-solid fa-diamond"></i> Milestone</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="itemNameInput" placeholder="e.g. Finalize data schema">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Workstream</label>
+        <select id="itemWorkstreamSelect"></select>
+      </div>
+      <div class="field">
+        <label>Owner</label>
+        <input type="text" id="itemOwnerInput" placeholder="e.g. Jamie">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field" id="itemStartField">
+        <label>Start date</label>
+        <input type="date" id="itemStartInput">
+      </div>
+      <div class="field">
+        <label id="itemDueLabel">Due date</label>
+        <input type="date" id="itemDueInput">
+      </div>
+    </div>
+    <div class="field">
+      <label>Status</label>
+      <select id="itemStatusSelect"></select>
+    </div>
+    <div class="field">
+      <label>Notes</label>
+      <textarea id="itemNotesInput" placeholder="Optional notes"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="itemDeleteBtn" onclick="deleteItemFromModal()" style="display:none"><i class="fa-solid fa-trash"></i> Delete</button>
+      <div class="modal-actions-right">
+        <button class="btn" onclick="closeItemModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveItem()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ---------- Constants ----------
+const STORAGE_KEY = 'pulse-v1';
+
+const STATUSES = [
+  { id: 'not-started', label: 'Not Started' },
+  { id: 'green',       label: 'On Track' },
+  { id: 'amber',       label: 'At Risk' },
+  { id: 'red',         label: 'Off Track' },
+  { id: 'complete',    label: 'Complete' }
+];
+
+const WS_COLORS = ['blue', 'teal', 'purple', 'amber', 'pink', 'green', 'red', 'grey'];
+
+const DAY_MS = 86400000;
+const PX_PER_DAY = 26;
+
+// ---------- State ----------
+let programme = { name: 'New Programme' };
+let workstreams = [];
+let items = [];
+let view = 'status';
+let theme = 'light';
+let filterWorkstreamId = null;
+
+let editingWsId = null;
+let wsColorChoice = WS_COLORS[0];
+let editingItemId = null;
+let itemType = 'scope';
+
+// ---------- Persistence ----------
+function load() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { raw = null; }
+  if (raw) {
+    programme = raw.programme || { name: 'New Programme' };
+    workstreams = raw.workstreams || [];
+    items = raw.items || [];
+    view = raw.view || 'status';
+    theme = raw.theme || 'light';
+    filterWorkstreamId = raw.filterWorkstreamId || null;
+  } else {
+    seedDefaults();
+  }
+  normalizeData();
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    programme, workstreams, items, view, theme, filterWorkstreamId
+  }));
+}
+
+function seedDefaults() {
+  programme = { name: 'New Programme' };
+  const wsId = genId();
+  workstreams = [{ id: wsId, name: 'Workstream 1', color: 'blue', order: 0 }];
+  items = [];
+}
+
+function normalizeData() {
+  workstreams.forEach((w, i) => {
+    if (!w.id) w.id = genId();
+    if (!w.color) w.color = WS_COLORS[i % WS_COLORS.length];
+    if (typeof w.order !== 'number') w.order = i;
+  });
+  workstreams.sort((a, b) => a.order - b.order);
+  const wsIds = new Set(workstreams.map(w => w.id));
+  items.forEach(it => {
+    if (!it.id) it.id = genId();
+    if (it.type !== 'milestone') it.type = 'scope';
+    if (!wsIds.has(it.workstreamId)) it.workstreamId = workstreams[0] ? workstreams[0].id : null;
+    if (!it.name) it.name = 'Untitled';
+    if (!it.owner) it.owner = '';
+    if (!it.notes) it.notes = '';
+    if (!STATUSES.some(s => s.id === it.status)) it.status = 'not-started';
+    if (it.type === 'scope' && !it.startDate) it.startDate = it.dueDate || todayStr();
+    if (!it.dueDate) it.dueDate = todayStr();
+  });
+  if (filterWorkstreamId && !wsIds.has(filterWorkstreamId)) filterWorkstreamId = null;
+}
+
+function genId() { return 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+function statusLabel(id) { const s = STATUSES.find(s => s.id === id); return s ? s.label : id; }
+function wsById(id) { return workstreams.find(w => w.id === id); }
+
+// ---------- Rendering ----------
+function render() {
+  document.getElementById('programmeNameInput').value = programme.name;
+  document.getElementById('tabStatus').classList.toggle('active', view === 'status');
+  document.getElementById('tabTimeline').classList.toggle('active', view === 'timeline');
+  renderSidebar();
+  renderMain();
+}
+
+function renderSidebar() {
+  const el = document.getElementById('wsList');
+  let html = `<div class="ws-row ${filterWorkstreamId === null ? 'active' : ''}" onclick="setFilterWorkstream(null)">
+      <span class="ws-row-name">All workstreams</span>
+      <span class="ws-row-count">${items.length}</span>
+    </div>`;
+  html += workstreams.map(w => {
+    const count = items.filter(it => it.workstreamId === w.id).length;
+    return `<div class="ws-row ${filterWorkstreamId === w.id ? 'active' : ''}" onclick="setFilterWorkstream('${w.id}')">
+        <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
+        <span class="ws-row-name">${esc(w.name)}</span>
+        <span class="ws-row-count">${count}</span>
+        <button class="ws-row-edit" onclick="event.stopPropagation(); openWorkstreamModal('${w.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+      </div>`;
+  }).join('');
+  el.innerHTML = html;
+}
+
+function visibleWorkstreams() {
+  return filterWorkstreamId ? workstreams.filter(w => w.id === filterWorkstreamId) : workstreams;
+}
+
+function renderMain() {
+  const main = document.getElementById('main');
+  if (workstreams.length === 0) {
+    main.innerHTML = `<div class="empty-state"><i class="fa-solid fa-wave-square"></i>
+      <div>No workstreams yet.</div>
+      <button class="btn btn-primary" onclick="openWorkstreamModal()"><i class="fa-solid fa-plus"></i> Add a workstream</button></div>`;
+    return;
+  }
+  if (view === 'timeline') renderTimelineView(main);
+  else renderStatusView(main);
+}
+
+function renderStatusView(main) {
+  const wss = visibleWorkstreams();
+  main.innerHTML = wss.map(w => {
+    const wItems = items.filter(it => it.workstreamId === w.id)
+      .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+    const counts = {};
+    STATUSES.forEach(s => counts[s.id] = 0);
+    wItems.forEach(it => counts[it.status]++);
+    const pills = STATUSES.filter(s => counts[s.id] > 0).map(s =>
+      `<span class="rag-pill" style="background:var(--stat-${s.id}-bg);color:var(--stat-${s.id})">${counts[s.id]} ${esc(s.label)}</span>`
+    ).join('');
+    const rows = wItems.length ? wItems.map(it => itemRowHtml(it)).join('') :
+      `<div class="item-row" style="color:var(--text-faint)">No items yet.</div>`;
+    return `<div class="ws-section">
+        <div class="ws-section-header" style="background:var(--ws-${w.color}-bg)">
+          <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
+          <span class="ws-section-title">${esc(w.name)}</span>
+          <div class="rag-summary">${pills}</div>
+        </div>
+        ${rows}
+        <div class="ws-section-add">
+          <button class="btn btn-sm" onclick="openItemModal(null, '${w.id}')"><i class="fa-solid fa-plus"></i> Add item</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function itemRowHtml(it) {
+  const icon = it.type === 'milestone' ? 'fa-diamond' : 'fa-bars';
+  const dates = it.type === 'milestone'
+    ? fmtDate(it.dueDate)
+    : `${fmtDate(it.startDate)} → ${fmtDate(it.dueDate)}`;
+  return `<div class="item-row">
+      <span class="item-type-icon"><i class="fa-solid ${icon}"></i></span>
+      <span class="item-name">${esc(it.name)}</span>
+      <span class="item-owner">${it.owner ? '<i class="fa-solid fa-user"></i> ' + esc(it.owner) : ''}</span>
+      <span class="item-dates">${dates}</span>
+      <span class="item-notes">${esc(it.notes)}</span>
+      <button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openItemModal('${it.id}')">${esc(statusLabel(it.status))}</button>
+      <span class="item-actions">
+        <button class="row-icon-btn" onclick="openItemModal('${it.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+        <button class="row-icon-btn" onclick="deleteItem('${it.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
+      </span>
+    </div>`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function renderTimelineView(main) {
+  const wss = visibleWorkstreams();
+  const wsIds = new Set(wss.map(w => w.id));
+  const relevant = items.filter(it => wsIds.has(it.workstreamId));
+
+  let minD, maxD;
+  if (relevant.length) {
+    const allDates = [];
+    relevant.forEach(it => { allDates.push(it.dueDate); if (it.startDate) allDates.push(it.startDate); });
+    minD = new Date(Math.min(...allDates.map(d => new Date(d + 'T00:00:00'))) - 10 * DAY_MS);
+    maxD = new Date(Math.max(...allDates.map(d => new Date(d + 'T00:00:00'))) + 10 * DAY_MS);
+  } else {
+    const now = new Date();
+    minD = new Date(now.getFullYear(), now.getMonth(), 1);
+    maxD = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+  }
+  const totalDays = Math.max(1, Math.round((maxD - minD) / DAY_MS));
+  const totalWidth = totalDays * PX_PER_DAY;
+  const dayOffset = (iso) => Math.round((new Date(iso + 'T00:00:00') - minD) / DAY_MS) * PX_PER_DAY;
+  const todayOffset = dayOffset(todayStr());
+
+  // Month header segments
+  let months = [];
+  let cursor = new Date(minD.getFullYear(), minD.getMonth(), 1);
+  while (cursor < maxD) {
+    const segStart = cursor < minD ? minD : cursor;
+    const nextMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    const segEnd = nextMonth < maxD ? nextMonth : maxD;
+    const widthDays = Math.max(1, Math.round((segEnd - segStart) / DAY_MS));
+    months.push({ label: cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }), width: widthDays * PX_PER_DAY });
+    cursor = nextMonth;
+  }
+
+  const laneHtml = wss.map(w => {
+    const wItems = relevant.filter(it => it.workstreamId === w.id)
+      .sort((a, b) => (a.startDate || a.dueDate).localeCompare(b.startDate || b.dueDate));
+    const tracks = wItems.length ? wItems.map(it => {
+      if (it.type === 'milestone') {
+        const x = dayOffset(it.dueDate);
+        return `<div class="lane-track">
+            <div class="tl-milestone" style="left:${x}px;background:var(--stat-${it.status});border:2px solid var(--panel)" onclick="openItemModal('${it.id}')" title="${esc(it.name)}"></div>
+            <div class="tl-milestone-label" style="left:${x + 22}px">${esc(it.name)}</div>
+          </div>`;
+      }
+      const x1 = dayOffset(it.startDate), x2 = dayOffset(it.dueDate);
+      const w2 = Math.max(x2 - x1, 18);
+      return `<div class="lane-track">
+          <div class="tl-bar" style="left:${x1}px;width:${w2}px;background:var(--stat-${it.status})" onclick="openItemModal('${it.id}')" title="${esc(it.name)}">${esc(it.name)}</div>
+        </div>`;
+    }).join('') : `<div class="lane-track"></div>`;
+    return `<div class="lane">
+        <div class="lane-label"><span class="ws-dot" style="background:var(--ws-${w.color})"></span>${esc(w.name)}</div>
+        <div class="lane-body" style="width:${totalWidth}px">
+          <div class="today-line" style="left:${todayOffset}px"></div>
+          ${tracks}
+        </div>
+      </div>`;
+  }).join('');
+
+  main.innerHTML = `<div class="timeline-wrap">
+      <div class="timeline-scroll">
+        <div class="timeline-inner" style="width:${160 + totalWidth}px">
+          <div class="timeline-header">
+            <div class="timeline-header-spacer"></div>
+            ${months.map(m => `<div class="month-label" style="width:${m.width}px">${esc(m.label)}</div>`).join('')}
+          </div>
+          ${laneHtml}
+        </div>
+      </div>
+    </div>`;
+}
+
+// ---------- View / filter / theme ----------
+function setView(v) { view = v; save(); render(); }
+function setFilterWorkstream(id) { filterWorkstreamId = id; save(); render(); }
+function updateProgrammeName(v) { programme.name = v; save(); }
+function toggleTheme() {
+  theme = theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('themeBtn').innerHTML = theme === 'dark' ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+  save();
+}
+
+// ---------- Workstream modal ----------
+function openWorkstreamModal(id) {
+  editingWsId = id || null;
+  const w = id ? wsById(id) : null;
+  document.getElementById('wsModalTitle').textContent = w ? 'Edit workstream' : 'New workstream';
+  document.getElementById('wsNameInput').value = w ? w.name : '';
+  wsColorChoice = w ? w.color : WS_COLORS[workstreams.length % WS_COLORS.length];
+  document.getElementById('wsColorGrid').innerHTML = WS_COLORS.map(c =>
+    `<div class="color-swatch ${c === wsColorChoice ? 'selected' : ''}" style="background:var(--ws-${c})" onclick="pickWsColor('${c}')"></div>`
+  ).join('');
+  document.getElementById('wsDeleteBtn').style.display = w ? 'inline-flex' : 'none';
+  document.getElementById('wsModalBg').classList.add('open');
+  document.getElementById('wsNameInput').focus();
+}
+function pickWsColor(c) {
+  wsColorChoice = c;
+  document.querySelectorAll('#wsColorGrid .color-swatch').forEach(el => el.classList.remove('selected'));
+  event.target.classList.add('selected');
+}
+function closeWorkstreamModal() { document.getElementById('wsModalBg').classList.remove('open'); }
+function saveWorkstream() {
+  const name = document.getElementById('wsNameInput').value.trim();
+  if (!name) { showToast('Name is required', true); return; }
+  if (editingWsId) {
+    const w = wsById(editingWsId);
+    w.name = name; w.color = wsColorChoice;
+  } else {
+    workstreams.push({ id: genId(), name, color: wsColorChoice, order: workstreams.length });
+  }
+  save(); closeWorkstreamModal(); render();
+  showToast('Workstream saved');
+}
+function deleteWorkstreamFromModal() {
+  if (!editingWsId) return;
+  const count = items.filter(it => it.workstreamId === editingWsId).length;
+  const msg = count ? `Delete this workstream and its ${count} item(s)?` : 'Delete this workstream?';
+  if (!confirm(msg)) return;
+  items = items.filter(it => it.workstreamId !== editingWsId);
+  workstreams = workstreams.filter(w => w.id !== editingWsId);
+  if (filterWorkstreamId === editingWsId) filterWorkstreamId = null;
+  save(); closeWorkstreamModal(); render();
+  showToast('Workstream deleted');
+}
+
+// ---------- Item modal ----------
+function populateStatusSelect() {
+  document.getElementById('itemStatusSelect').innerHTML = STATUSES.map(s => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
+}
+function populateWorkstreamSelect(selectedId) {
+  document.getElementById('itemWorkstreamSelect').innerHTML = workstreams.map(w =>
+    `<option value="${w.id}" ${w.id === selectedId ? 'selected' : ''}>${esc(w.name)}</option>`
+  ).join('');
+}
+function setItemType(t) {
+  itemType = t;
+  document.getElementById('typeBtnScope').classList.toggle('active', t === 'scope');
+  document.getElementById('typeBtnMilestone').classList.toggle('active', t === 'milestone');
+  document.getElementById('itemStartField').style.display = t === 'scope' ? 'block' : 'none';
+  document.getElementById('itemDueLabel').textContent = t === 'scope' ? 'Due date' : 'Date';
+}
+function openItemModal(id, presetWorkstreamId) {
+  editingItemId = id || null;
+  const it = id ? items.find(i => i.id === id) : null;
+  document.getElementById('itemModalTitle').textContent = it ? 'Edit item' : 'New item';
+  populateStatusSelect();
+  populateWorkstreamSelect(it ? it.workstreamId : (presetWorkstreamId || (workstreams[0] && workstreams[0].id)));
+  setItemType(it ? it.type : 'scope');
+  document.getElementById('itemNameInput').value = it ? it.name : '';
+  document.getElementById('itemOwnerInput').value = it ? it.owner : '';
+  document.getElementById('itemStartInput').value = it ? (it.startDate || '') : todayStr();
+  document.getElementById('itemDueInput').value = it ? it.dueDate : todayStr();
+  document.getElementById('itemStatusSelect').value = it ? it.status : 'not-started';
+  document.getElementById('itemNotesInput').value = it ? it.notes : '';
+  document.getElementById('itemDeleteBtn').style.display = it ? 'inline-flex' : 'none';
+  document.getElementById('itemModalBg').classList.add('open');
+  document.getElementById('itemNameInput').focus();
+}
+function closeItemModal() { document.getElementById('itemModalBg').classList.remove('open'); }
+function saveItem() {
+  const name = document.getElementById('itemNameInput').value.trim();
+  if (!name) { showToast('Name is required', true); return; }
+  const workstreamId = document.getElementById('itemWorkstreamSelect').value;
+  const owner = document.getElementById('itemOwnerInput').value.trim();
+  const dueDate = document.getElementById('itemDueInput').value || todayStr();
+  const startDate = document.getElementById('itemStartInput').value || dueDate;
+  const status = document.getElementById('itemStatusSelect').value;
+  const notes = document.getElementById('itemNotesInput').value.trim();
+  const data = { workstreamId, name, owner, notes, status, type: itemType, dueDate, startDate: itemType === 'scope' ? startDate : undefined };
+  if (editingItemId) {
+    Object.assign(items.find(i => i.id === editingItemId), data);
+  } else {
+    items.push(Object.assign({ id: genId() }, data));
+  }
+  save(); closeItemModal(); render();
+  showToast('Item saved');
+}
+function deleteItemFromModal() {
+  if (!editingItemId) return;
+  deleteItem(editingItemId);
+  closeItemModal();
+}
+function deleteItem(id) {
+  if (!confirm('Delete this item?')) return;
+  items = items.filter(i => i.id !== id);
+  save(); render();
+  showToast('Item deleted');
+}
+
+// ---------- Toast ----------
+let toastTimer = null;
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = isError ? 'var(--danger)' : 'var(--text)';
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ---------- Modal backdrop click-to-close ----------
+document.getElementById('wsModalBg').addEventListener('click', (e) => { if (e.target.id === 'wsModalBg') closeWorkstreamModal(); });
+document.getElementById('itemModalBg').addEventListener('click', (e) => { if (e.target.id === 'itemModalBg') closeItemModal(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); }
+});
+
+// ---------- Init ----------
+load();
+document.documentElement.setAttribute('data-theme', theme);
+document.getElementById('themeBtn').innerHTML = theme === 'dark' ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+render();
+
+if (location.protocol !== 'file:' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>

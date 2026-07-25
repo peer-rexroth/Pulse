@@ -1,0 +1,25 @@
+{
+  "name": "Pulse",
+  "short_name": "Pulse",
+  "description": "A local-first programme dashboard — workstreams, scope items and milestones tracked with RAG status, timeline and status board views.",
+  "start_url": "./pulse.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#f5f6f8",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+.claude/
+.pulse-server.pid
+.pulse-server.log
+.DS_Store
