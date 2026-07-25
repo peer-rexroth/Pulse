@@ -40,6 +40,7 @@ test('deleting a workstream also removes its items (cascade)', function () {
   assertEqual(items.length, 2);
   editingWsId = wsId;
   deleteWorkstreamFromModal();
+  confirmModalAction(); // simulate clicking "Delete" in the confirm modal
   assertEqual(workstreams.length, 0);
   assertEqual(items.length, 0);
 });
@@ -49,5 +50,6 @@ test('deleting the currently-filtered workstream clears the filter', function ()
   filterWorkstreamId = wsId;
   editingWsId = wsId;
   deleteWorkstreamFromModal();
+  confirmModalAction();
   assertEqual(filterWorkstreamId, null);
 });

@@ -243,13 +243,52 @@
   .modal-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
   .modal-actions-right { display: flex; gap: 8px; }
 
+  .modal p { font-size: 13px; color: var(--text-dim); line-height: 1.5; margin: 0 0 14px; }
+
   /* Toast */
   .toast {
     position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0;
     background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-weight: 600; font-size: 13px;
+    display: flex; align-items: center; gap: 10px;
     transition: opacity .2s, transform .2s; pointer-events: none; z-index: 100;
   }
-  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+  .toast-undo { background: none; border: none; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0; }
+
+  /* Data dropdown */
+  .topbar-divider { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
+  .data-dropdown { position: relative; display: inline-flex; }
+  .dropdown-menu {
+    display: none; position: absolute; top: calc(100% + 6px); right: 0; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow); min-width: 220px; z-index: 60; overflow: hidden;
+  }
+  .dropdown-menu.open { display: block; }
+  .dropdown-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 13px; cursor: pointer; color: var(--text); }
+  .dropdown-item:hover { background: var(--panel-2); }
+  .dropdown-item + .dropdown-item { border-top: 1px solid var(--border); }
+  .dropdown-item-icon { flex: 0 0 auto; width: 14px; margin-top: 1px; color: var(--text-faint); font-size: 12px; }
+  .dropdown-item-label { font-size: 12.5px; font-weight: 700; }
+  .dropdown-item-desc { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+
+  /* File sync indicator */
+  #fileSyncIndicator:not(:empty) { display: flex; align-items: center; gap: 6px; }
+  .sync-linked { font-size: 12px; color: var(--stat-green); display: flex; align-items: center; gap: 5px; max-width: 150px; }
+  .sync-linked span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sync-reconnect { color: var(--stat-amber) !important; border-color: var(--stat-amber) !important; }
+
+  /* Import options (file sync onboarding modal) */
+  .import-options { display: flex; flex-direction: column; gap: 8px; }
+  .import-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+  .import-option:hover { background: var(--panel-2); }
+  .import-option-text strong { display: block; font-size: 13px; font-weight: 700; }
+  .import-option-text span { font-size: 12px; color: var(--text-faint); }
+
+  /* Backups modal */
+  .backups-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+  .backups-empty { font-size: 13px; color: var(--text-faint); padding: 8px 2px; line-height: 1.5; }
+  .backup-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); }
+  .backup-row-date { font-size: 13px; font-weight: 700; }
+  .backup-row-desc { font-size: 12px; color: var(--text-faint); margin-top: 1px; }
 </style>
 </head>
 <body>
@@ -262,6 +301,29 @@
     <button class="view-tab" id="tabTimeline" onclick="setView('timeline')"><i class="fa-solid fa-timeline"></i> Timeline</button>
   </div>
   <div class="topbar-spacer"></div>
+  <span id="fileSyncIndicator"></span>
+  <div class="data-dropdown" id="dataDropdown">
+    <button class="btn btn-sm" onclick="event.stopPropagation();toggleDataMenu()"><i class="fa-solid fa-database"></i> Data <i class="fa-solid fa-chevron-down" style="font-size:9px"></i></button>
+    <div class="dropdown-menu" id="dataMenu">
+      <div class="dropdown-item" onclick="exportProgramme();closeDataMenu()">
+        <i class="fa-solid fa-download dropdown-item-icon"></i>
+        <div><div class="dropdown-item-label">Export</div><div class="dropdown-item-desc">Download data as .json</div></div>
+      </div>
+      <div class="dropdown-item" onclick="triggerImport();closeDataMenu()">
+        <i class="fa-solid fa-upload dropdown-item-icon"></i>
+        <div><div class="dropdown-item-label">Import</div><div class="dropdown-item-desc">Load a .json data file</div></div>
+      </div>
+      <div class="dropdown-item" onclick="openBackupsModal();closeDataMenu()">
+        <i class="fa-solid fa-clock-rotate-left dropdown-item-icon"></i>
+        <div><div class="dropdown-item-label">Backups</div><div class="dropdown-item-desc">Restore an automatic daily snapshot</div></div>
+      </div>
+      <div class="dropdown-item" onclick="openFileSyncModal();closeDataMenu()">
+        <i class="fa-solid fa-link dropdown-item-icon"></i>
+        <div><div class="dropdown-item-label">File sync</div><div class="dropdown-item-desc">Link a .json file for auto-save</div></div>
+      </div>
+    </div>
+  </div>
+  <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileImport(event)">
   <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-moon"></i></button>
 </div>
 
@@ -347,11 +409,89 @@
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<!-- Confirm modal -->
+<div class="modal-bg" id="confirmModalBg">
+  <div class="modal">
+    <h3 id="confirmModalTitle">Delete?</h3>
+    <p id="confirmModalBody"></p>
+    <div class="modal-actions" style="justify-content:flex-end">
+      <button class="btn" onclick="closeConfirmModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmModalAction()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import modal -->
+<div class="modal-bg" id="importModalBg">
+  <div class="modal">
+    <h3>Import data</h3>
+    <p>Merge the imported file into your current workstreams and items, or replace everything with the file's contents? Replacing automatically downloads a backup of your current data first.</p>
+    <div class="modal-actions" style="justify-content:flex-end">
+      <button class="btn" onclick="closeImportModal()">Cancel</button>
+      <button class="btn" onclick="applyImport('merge')">Merge</button>
+      <button class="btn btn-danger" onclick="applyImport('replace')">Replace</button>
+    </div>
+  </div>
+</div>
+
+<!-- Backups modal -->
+<div class="modal-bg" id="backupsModalBg">
+  <div class="modal" style="width:420px">
+    <h3>Backups</h3>
+    <div class="backups-list" id="backupsList"></div>
+    <div class="modal-actions" style="justify-content:flex-end"><button class="btn btn-primary" onclick="closeBackupsModal()">Done</button></div>
+  </div>
+</div>
+
+<!-- File sync onboarding modal -->
+<div class="modal-bg" id="fileSyncModalBg">
+  <div class="modal" style="width:400px">
+    <h3>Sync to a file</h3>
+    <p>Back up and auto-save this programme to a real file on disk.</p>
+    <div class="import-options">
+      <div id="fileSyncReconnectOption" class="import-option" style="display:none" onclick="closeFileSyncModal();reconnectFile()">
+        <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-teal-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fa-solid fa-rotate-right" style="color:var(--ws-teal);font-size:15px"></i>
+        </div>
+        <div class="import-option-text">
+          <strong id="fileSyncReconnectLabel">Resume sync</strong>
+          <span>Reconnect to restore auto-saving</span>
+        </div>
+      </div>
+      <div class="import-option" onclick="closeFileSyncModal();linkFile()">
+        <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-blue-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fa-solid fa-folder-open" style="color:var(--ws-blue);font-size:15px"></i>
+        </div>
+        <div class="import-option-text">
+          <strong>Link existing file</strong>
+          <span>Open a .json data file and sync to it</span>
+        </div>
+      </div>
+      <div class="import-option" onclick="closeFileSyncModal();createNewLinkedFile()">
+        <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-green-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fa-solid fa-file-circle-plus" style="color:var(--ws-green);font-size:15px"></i>
+        </div>
+        <div class="import-option-text">
+          <strong>Create new file</strong>
+          <span>Save this programme to a new .json file</span>
+        </div>
+      </div>
+    </div>
+    <div id="fileSyncWarning" style="display:flex;align-items:flex-start;gap:8px;background:var(--stat-amber-bg);border-radius:10px;padding:10px 12px;margin-top:4px">
+      <i class="fa-solid fa-triangle-exclamation" style="color:var(--stat-amber);font-size:13px;margin-top:2px;flex-shrink:0"></i>
+      <span style="font-size:12px;color:var(--stat-amber);line-height:1.55">Without a linked file, your programme is stored in browser storage and <strong>will be lost if you clear browsing data</strong>.</span>
+    </div>
+    <div class="modal-actions" style="justify-content:flex-end"><button class="btn" onclick="closeFileSyncModal()">Not now</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span id="toastMsg"></span><button class="toast-undo" id="toastUndoBtn" style="display:none" onclick="triggerToastUndo()">Undo</button></div>
 
 <script>
 // ---------- Constants ----------
 const STORAGE_KEY = 'pulse-v1';
+const BACKUPS_KEY = 'pulse-backups';
+const MAX_BACKUPS = 7;
 
 const STATUSES = [
   { id: 'not-started', label: 'Not Started' },
@@ -392,6 +532,14 @@ let editingMilestones = [];
 // Which item rows currently show their nested milestones — UI-only, not persisted.
 let expandedItemIds = new Set();
 
+// Deletion tombstones: {id, deletedAt}[] — records "this id used to exist and
+// was intentionally removed" so a merge (import, file sync) can tell that
+// apart from "never seen this id" and not silently resurrect it.
+let deletedWorkstreamIds = [];
+let deletedItemIds = [];
+let pendingImportData = null;
+let modalTarget = null;
+
 // ---------- Persistence ----------
 function load() {
   let raw = null;
@@ -403,6 +551,8 @@ function load() {
     view = raw.view || 'status';
     theme = raw.theme || 'light';
     filterWorkstreamId = raw.filterWorkstreamId || null;
+    deletedWorkstreamIds = raw.deletedWorkstreamIds || [];
+    deletedItemIds = raw.deletedItemIds || [];
   } else {
     seedDefaults();
   }
@@ -410,9 +560,10 @@ function load() {
 }
 
 function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    programme, workstreams, items, view, theme, filterWorkstreamId
-  }));
+  const data = { programme, workstreams, items, view, theme, filterWorkstreamId, deletedWorkstreamIds, deletedItemIds };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  if (fileHandle) fileSyncWrite(data).catch(() => {});
+  maybeSnapshotBackup();
 }
 
 function seedDefaults() {
@@ -420,11 +571,37 @@ function seedDefaults() {
   const wsId = genId();
   workstreams = [{ id: wsId, name: 'Workstream 1', color: 'blue', order: 0 }];
   items = [];
+  deletedWorkstreamIds = [];
+  deletedItemIds = [];
+}
+
+// Takes at most one rolling snapshot per calendar day, keeping the last
+// MAX_BACKUPS days — a local safety net distinct from the linked-file sync,
+// which mirrors live state rather than preserving history. Never lets a
+// storage error (e.g. quota) interrupt the actual save.
+function maybeSnapshotBackup() {
+  try {
+    const backups = getBackups();
+    const today = todayStr();
+    if (backups.length && backups[backups.length - 1].date === today) return;
+    backups.push({ date: today, savedAt: Date.now(), programme, workstreams, items });
+    while (backups.length > MAX_BACKUPS) backups.shift();
+    localStorage.setItem(BACKUPS_KEY, JSON.stringify(backups));
+  } catch (e) { /* backups are a bonus, not a requirement for save() to succeed */ }
+}
+function getBackups() {
+  try { return JSON.parse(localStorage.getItem(BACKUPS_KEY)) || []; }
+  catch (e) { return []; }
 }
 
 function normalizeData() {
+  if (!Array.isArray(deletedWorkstreamIds)) deletedWorkstreamIds = [];
+  if (!Array.isArray(deletedItemIds)) deletedItemIds = [];
+  deletedWorkstreamIds = deletedWorkstreamIds.filter(x => x && x.id);
+  deletedItemIds = deletedItemIds.filter(x => x && x.id);
+
   workstreams.forEach((w, i) => {
-    if (!w.id) w.id = genId();
+    if (!isSafeId(w.id)) w.id = genId();
     if (!w.color) w.color = WS_COLORS[i % WS_COLORS.length];
     if (typeof w.order !== 'number') w.order = i;
   });
@@ -450,7 +627,7 @@ function normalizeData() {
 
   items.forEach(it => {
     delete it.type;
-    if (!it.id) it.id = genId();
+    if (!isSafeId(it.id)) it.id = genId();
     if (!wsIds.has(it.workstreamId)) it.workstreamId = workstreams[0] ? workstreams[0].id : null;
     if (!it.name) it.name = 'Untitled';
     if (!it.owner) it.owner = '';
@@ -458,9 +635,10 @@ function normalizeData() {
     if (!STATUSES.some(s => s.id === it.status)) it.status = 'not-started';
     if (!it.dueDate) it.dueDate = todayStr();
     if (!it.startDate) it.startDate = it.dueDate;
+    if (typeof it.updatedAt !== 'number') it.updatedAt = Date.now();
     if (!Array.isArray(it.milestones)) it.milestones = [];
     it.milestones.forEach(m => {
-      if (!m.id) m.id = genId();
+      if (!isSafeId(m.id)) m.id = genId();
       if (!m.name) m.name = 'Untitled milestone';
       if (!m.dueDate) m.dueDate = it.dueDate;
       if (!STATUSES.some(s => s.id === m.status)) m.status = 'not-started';
@@ -470,6 +648,25 @@ function normalizeData() {
 }
 
 function genId() { return 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+// Every id is interpolated unescaped into onclick/data-id HTML attributes at
+// render time — genId()'s output is always plain alphanumeric, so this is
+// never a problem for locally-created data. But mergeData()/applyImport
+// ('replace') trust ids from an external .json file as-is; a crafted id
+// containing a quote could break out of an attribute and inject markup the
+// moment it renders. normalizeData() calls this on every workstream/item/
+// milestone id to regenerate anything that couldn't have come from genId(),
+// closing that off at the one place every external-data path already routes
+// through, rather than escaping every interpolation site individually.
+function isSafeId(id) { return typeof id === 'string' && /^[a-zA-Z0-9_-]+$/.test(id); }
+function tombstone(list, id) {
+  const existing = list.find(x => x.id === id);
+  if (existing) existing.deletedAt = Date.now();
+  else list.push({ id, deletedAt: Date.now() });
+}
+function untombstone(list, id) {
+  const idx = list.findIndex(x => x.id === id);
+  if (idx !== -1) list.splice(idx, 1);
+}
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -593,6 +790,7 @@ function cycleMilestoneStatus(itemId, milestoneId) {
   if (!m) return;
   const idx = STATUSES.findIndex(s => s.id === m.status);
   m.status = STATUSES[(idx + 1) % STATUSES.length].id;
+  it.updatedAt = Date.now();
   save(); renderMain();
 }
 
@@ -721,14 +919,36 @@ function saveWorkstream() {
 }
 function deleteWorkstreamFromModal() {
   if (!editingWsId) return;
-  const count = items.filter(it => it.workstreamId === editingWsId).length;
-  const msg = count ? `Delete this workstream and its ${count} item(s)?` : 'Delete this workstream?';
-  if (!confirm(msg)) return;
-  items = items.filter(it => it.workstreamId !== editingWsId);
-  workstreams = workstreams.filter(w => w.id !== editingWsId);
-  if (filterWorkstreamId === editingWsId) filterWorkstreamId = null;
-  save(); closeWorkstreamModal(); render();
-  showToast('Workstream deleted');
+  const wsId = editingWsId;
+  const w = wsById(wsId);
+  if (!w) return;
+  closeWorkstreamModal();
+  const count = items.filter(it => it.workstreamId === wsId).length;
+  const body = (count ? `${count} item${count === 1 ? '' : 's'} — and their milestones — will be deleted too. ` : '') + 'You can undo this from the toast right after deleting.';
+  openConfirmModal({
+    title: `Delete "${w.name}"?`,
+    body,
+    action: () => {
+      const wsIdx = workstreams.findIndex(x => x.id === wsId);
+      if (wsIdx === -1) return;
+      const itemsSnapshot = items.slice();
+      const [removedWs] = workstreams.splice(wsIdx, 1);
+      const removedItemIds = items.filter(it => it.workstreamId === wsId).map(it => it.id);
+      items = items.filter(it => it.workstreamId !== wsId);
+      tombstone(deletedWorkstreamIds, wsId);
+      removedItemIds.forEach(id => tombstone(deletedItemIds, id));
+      if (filterWorkstreamId === wsId) filterWorkstreamId = null;
+      save(); render();
+      showToast('Workstream deleted', false, () => {
+        untombstone(deletedWorkstreamIds, wsId);
+        removedItemIds.forEach(id => untombstone(deletedItemIds, id));
+        workstreams.splice(wsIdx, 0, removedWs);
+        items = itemsSnapshot;
+        save(); render();
+        showToast('Workstream restored');
+      });
+    }
+  });
 }
 
 // ---------- Item modal ----------
@@ -795,7 +1015,7 @@ function saveItem() {
   const milestones = editingMilestones.map(m => ({
     id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: m.dueDate || dueDate, status: m.status
   }));
-  const data = { workstreamId, name, owner, notes, status, startDate, dueDate, milestones };
+  const data = { workstreamId, name, owner, notes, status, startDate, dueDate, milestones, updatedAt: Date.now() };
   if (editingItemId) {
     Object.assign(items.find(i => i.id === editingItemId), data);
   } else {
@@ -806,32 +1026,426 @@ function saveItem() {
 }
 function deleteItemFromModal() {
   if (!editingItemId) return;
-  deleteItem(editingItemId);
+  const id = editingItemId;
   closeItemModal();
+  deleteItem(id);
 }
 function deleteItem(id) {
-  if (!confirm('Delete this item?')) return;
-  items = items.filter(i => i.id !== id);
-  save(); render();
-  showToast('Item deleted');
+  const it = items.find(i => i.id === id);
+  if (!it) return;
+  openConfirmModal({
+    title: `Delete "${it.name}"?`,
+    body: 'You can undo this from the toast right after deleting.',
+    action: () => {
+      const idx = items.findIndex(i => i.id === id);
+      if (idx === -1) return;
+      const [removed] = items.splice(idx, 1);
+      tombstone(deletedItemIds, id);
+      save(); render();
+      showToast('Item deleted', false, () => {
+        untombstone(deletedItemIds, id);
+        items.splice(idx, 0, removed);
+        save(); render();
+        showToast('Item restored');
+      });
+    }
+  });
 }
 
 // ---------- Toast ----------
 let toastTimer = null;
-function showToast(msg, isError) {
+let toastUndoAction = null;
+function showToast(msg, isError, undoAction) {
   const t = document.getElementById('toast');
-  t.textContent = msg;
+  document.getElementById('toastMsg').textContent = msg;
   t.style.background = isError ? 'var(--danger)' : 'var(--text)';
+  toastUndoAction = undoAction || null;
+  document.getElementById('toastUndoBtn').style.display = undoAction ? 'inline' : 'none';
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+  toastTimer = setTimeout(() => { t.classList.remove('show'); toastUndoAction = null; }, undoAction ? 6000 : 2000);
 }
+function triggerToastUndo() {
+  if (toastUndoAction) toastUndoAction();
+  toastUndoAction = null;
+  clearTimeout(toastTimer);
+  document.getElementById('toast').classList.remove('show');
+}
+
+// ---------- Confirm modal (generic — replaces native confirm() so deletes can offer undo) ----------
+function openConfirmModal({ title, body, action }) {
+  document.getElementById('confirmModalTitle').textContent = title;
+  document.getElementById('confirmModalBody').textContent = body;
+  modalTarget = { action };
+  document.getElementById('confirmModalBg').classList.add('open');
+}
+function closeConfirmModal() {
+  document.getElementById('confirmModalBg').classList.remove('open');
+  modalTarget = null;
+}
+function confirmModalAction() {
+  if (modalTarget && modalTarget.action) modalTarget.action();
+  closeConfirmModal();
+}
+
+// ---------- Export / Import ----------
+function downloadData(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  a.click(); URL.revokeObjectURL(url);
+}
+function currentExportPayload() {
+  return { version: 1, exported: new Date().toISOString(), programme, workstreams, items };
+}
+function exportProgramme() {
+  downloadData(currentExportPayload(), `pulse-${todayStr()}.json`);
+}
+function triggerImport() { document.getElementById('fileInput').click(); }
+function handleFileImport(event) {
+  const file = event.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.workstreams || !data.items) throw new Error('bad');
+      pendingImportData = data;
+      document.getElementById('importModalBg').classList.add('open');
+    } catch (err) { showToast('Invalid Pulse file', true); }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+function closeImportModal() {
+  document.getElementById('importModalBg').classList.remove('open');
+  pendingImportData = null;
+}
+// Additive merge used by every "read data from outside localStorage" path
+// (linkFile, reconnectFile, initFileSync, fileSyncWrite's cross-tab merge,
+// and applyImport's merge mode). Tombstones are what let this tell "never
+// seen this id" apart from "saw it, user deleted it" — without them, an id
+// merely absent from the local array looks new either way, so a stale copy
+// from an old linked file or another device gets silently re-added.
+// Incoming tombstones are merged in the same pass so a deletion recorded on
+// one device/file propagates to whichever side is doing the reading.
+//
+// opts.respectTombstones (default true) is set to false only by
+// applyImport()'s merge mode — see the comment on that call for why manual
+// import is exempt. Workstreams merge silently (mirroring how mytasks merges
+// projects); only items are counted in the returned {added, updated}.
+function mergeData(data, opts) {
+  const respectTombstones = !opts || opts.respectTombstones !== false;
+  (data.deletedWorkstreamIds || []).forEach(dw => {
+    const existing = deletedWorkstreamIds.find(x => x.id === dw.id);
+    if (!existing) deletedWorkstreamIds.push({ id: dw.id, deletedAt: dw.deletedAt || Date.now() });
+    else if ((dw.deletedAt || 0) > existing.deletedAt) existing.deletedAt = dw.deletedAt;
+  });
+  (data.deletedItemIds || []).forEach(di => {
+    const existing = deletedItemIds.find(x => x.id === di.id);
+    if (!existing) deletedItemIds.push({ id: di.id, deletedAt: di.deletedAt || Date.now() });
+    else if ((di.deletedAt || 0) > existing.deletedAt) existing.deletedAt = di.deletedAt;
+  });
+  (data.workstreams || []).forEach(iw => {
+    if (workstreams.find(w => w.id === iw.id || w.name.toLowerCase() === iw.name.toLowerCase())) return;
+    if (respectTombstones && deletedWorkstreamIds.some(x => x.id === iw.id)) return;
+    if (!respectTombstones) untombstone(deletedWorkstreamIds, iw.id);
+    workstreams.push(iw);
+  });
+  let added = 0, updated = 0;
+  (data.items || []).forEach(ii => {
+    const existing = items.find(i => i.id === ii.id);
+    if (existing) {
+      if ((ii.updatedAt || 0) > (existing.updatedAt || 0)) { Object.assign(existing, ii); updated++; }
+      return;
+    }
+    const tomb = deletedItemIds.find(x => x.id === ii.id);
+    if (respectTombstones && tomb && tomb.deletedAt >= (ii.updatedAt || 0)) return; // stays deleted — the incoming copy is stale
+    if (tomb) untombstone(deletedItemIds, ii.id); // incoming edit is newer than our deletion (or tombstones are being ignored) — let it back in
+    items.push(ii); added++;
+  });
+  return { added, updated };
+}
+function applyImport(mode) {
+  if (!pendingImportData) return;
+  if (mode === 'replace') {
+    downloadData(currentExportPayload(), `pulse-backup-before-replace-${todayStr()}.json`);
+    programme = pendingImportData.programme || { name: 'New Programme' };
+    workstreams = pendingImportData.workstreams || [];
+    items = pendingImportData.items || [];
+    normalizeData();
+    showToast('Backed up previous data, then replaced');
+  } else {
+    // A manual import is a deliberate, user-picked action — unlike an
+    // automatic file-sync merge, it should bring back a workstream/item
+    // previously deleted here rather than silently honoring that old
+    // tombstone (see mergeData()'s opts.respectTombstones).
+    const { added, updated } = mergeData(pendingImportData, { respectTombstones: false });
+    normalizeData();
+    showToast(`Merged — ${added} added, ${updated} updated`);
+  }
+  closeImportModal();
+  save(); render();
+}
+
+// ---------- Local backups ----------
+function openBackupsModal() { renderBackupsModal(); document.getElementById('backupsModalBg').classList.add('open'); }
+function closeBackupsModal() { document.getElementById('backupsModalBg').classList.remove('open'); }
+function renderBackupsModal() {
+  const backups = getBackups();
+  const el = document.getElementById('backupsList');
+  if (backups.length === 0) {
+    el.innerHTML = `<div class="backups-empty">No backups yet — one is taken automatically the first time you save each day, kept for the last ${MAX_BACKUPS} days.</div>`;
+    return;
+  }
+  el.innerHTML = backups.slice().reverse().map(b => `
+    <div class="backup-row">
+      <div class="backup-row-info">
+        <div class="backup-row-date">${fmtDate(b.date)}</div>
+        <div class="backup-row-desc">${(b.items || []).length} item${(b.items || []).length === 1 ? '' : 's'}</div>
+      </div>
+      <button class="btn btn-sm" onclick="restoreBackup('${b.date}')">Restore</button>
+    </div>
+  `).join('');
+}
+function restoreBackup(date) {
+  const backups = getBackups();
+  const b = backups.find(x => x.date === date);
+  if (!b) return;
+  closeBackupsModal();
+  openConfirmModal({
+    title: 'Restore this backup?',
+    body: `This replaces your current data with the snapshot from ${fmtDate(date)}. Your current data will be backed up to a file first.`,
+    action: () => {
+      downloadData(currentExportPayload(), `pulse-backup-before-restore-${todayStr()}.json`);
+      programme = b.programme || { name: 'New Programme' };
+      workstreams = b.workstreams || [];
+      items = b.items || [];
+      normalizeData();
+      save(); render();
+      showToast(`Restored backup from ${fmtDate(date)}`);
+    }
+  });
+}
+
+// ---------- File System Access API ----------
+let fileHandle = null;
+const _FS = { db: 'pulse-fs', store: 'handles', key: 'linked-file' };
+function _fsIdb(mode, fn) {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(_FS.db, 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(_FS.store);
+    req.onsuccess = e => {
+      try { fn(e.target.result.transaction(_FS.store, mode).objectStore(_FS.store), res, rej); }
+      catch (err) { rej(err); }
+    };
+    req.onerror = () => rej(req.error);
+  });
+}
+const _fsGet = () => _fsIdb('readonly', (s, r, j) => { const q = s.get(_FS.key); q.onsuccess = () => r(q.result); q.onerror = () => j(q.error); });
+const _fsPut = h => _fsIdb('readwrite', (s, r, j) => { const q = s.put(h, _FS.key); q.onsuccess = () => r(); q.onerror = () => j(q.error); });
+const _fsDel = () => _fsIdb('readwrite', (s, r, j) => { const q = s.delete(_FS.key); q.onsuccess = () => r(); q.onerror = () => j(q.error); });
+
+let lastSyncedSnapshot = null;
+async function fileSyncWrite(data) {
+  if (!fileHandle) return;
+  try {
+    const perm = await fileHandle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') { await _clearFileLink(); return; }
+    let payload = data;
+    if (lastSyncedSnapshot !== null) {
+      let currentText = '';
+      try { currentText = await (await fileHandle.getFile()).text(); } catch (_) {}
+      if (currentText.trim() && currentText !== lastSyncedSnapshot) {
+        let externalData; try { externalData = JSON.parse(currentText); } catch (_) { externalData = null; }
+        if (externalData && externalData.workstreams && externalData.items) {
+          const { added, updated } = mergeData(externalData);
+          if (added || updated) {
+            normalizeData();
+            payload = { ...data, workstreams, items };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+            render();
+            showToast(`Synced changes from another tab/device (${added} added, ${updated} updated)`);
+          }
+        }
+      }
+    }
+    const w = await fileHandle.createWritable();
+    const text = JSON.stringify(payload, null, 2);
+    await w.write(text);
+    await w.close();
+    lastSyncedSnapshot = text;
+    updateFileSyncUI();
+  } catch (e) { /* localStorage remains the authoritative fallback */ }
+}
+async function _clearFileLink() {
+  fileHandle = null;
+  lastSyncedSnapshot = null;
+  await _fsDel().catch(() => {});
+  updateFileSyncUI();
+}
+async function createNewLinkedFile() {
+  if (!window.showSaveFilePicker) { showToast('File linking requires Chrome or Edge', true); return; }
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: 'pulse-data.json',
+      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+    });
+    fileHandle = handle;
+    try { await _fsPut(handle); } catch (_) {}
+    await fileSyncWrite({ programme, workstreams, items, view, theme, filterWorkstreamId, deletedWorkstreamIds, deletedItemIds });
+    updateFileSyncUI();
+    showToast(`Linked — auto-saving to ${handle.name}`);
+  } catch (e) { if (e.name !== 'AbortError') showToast('Could not create file', true); }
+}
+async function linkFile() {
+  if (!window.showOpenFilePicker) { showToast('File linking requires Chrome or Edge', true); return; }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+      multiple: false
+    });
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') { showToast('Write permission denied', true); return; }
+    fileHandle = handle;
+    try { await _fsPut(handle); } catch (_) {}
+    let existingText = '';
+    try { existingText = await (await handle.getFile()).text(); } catch (_) {}
+    if (existingText.trim()) {
+      let data; try { data = JSON.parse(existingText); } catch (_) {}
+      if (data && data.workstreams && data.items) {
+        const { added, updated } = mergeData(data);
+        normalizeData();
+        save(); render(); updateFileSyncUI();
+        const parts = []; if (added) parts.push(`${added} added`); if (updated) parts.push(`${updated} updated`);
+        showToast(`Merged from ${handle.name} — ${parts.length ? parts.join(', ') : 'nothing new'} — auto-saving enabled`);
+      } else {
+        fileHandle = null;
+        showToast(`${handle.name} is not a Pulse data file — unlinked`, true);
+      }
+      return;
+    }
+    await fileSyncWrite({ programme, workstreams, items, view, theme, filterWorkstreamId, deletedWorkstreamIds, deletedItemIds });
+    updateFileSyncUI();
+    showToast(`Linked — auto-saving to ${handle.name}`);
+  } catch (e) { if (e.name !== 'AbortError') showToast('Could not link file', true); }
+}
+async function unlinkFile() {
+  await _clearFileLink();
+  showToast('File unlinked — saving to browser storage only');
+}
+async function reconnectFile() {
+  if (!fileHandle) return;
+  try {
+    const perm = await fileHandle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') { showToast('Permission denied', true); return; }
+    const text = await (await fileHandle.getFile()).text();
+    const data = JSON.parse(text);
+    if (data.workstreams && data.items) {
+      const { added, updated } = mergeData(data);
+      normalizeData();
+      lastSyncedSnapshot = text;
+      save(); render();
+      updateFileSyncUI();
+      const parts = []; if (added) parts.push(`${added} added`); if (updated) parts.push(`${updated} updated`);
+      showToast(`Reconnected to ${fileHandle.name}${parts.length ? ` — ${parts.join(', ')}` : ''}`);
+      return;
+    }
+    updateFileSyncUI();
+    showToast(`Reconnected to ${fileHandle.name}`);
+  } catch (e) { showToast('Could not reconnect', true); }
+}
+function fadeSwapHTML(el, html) {
+  if (!el) return;
+  if (el.innerHTML === html) return;
+  el.style.transition = 'opacity .12s ease';
+  el.style.opacity = '0';
+  setTimeout(() => {
+    el.innerHTML = html;
+    requestAnimationFrame(() => { el.style.opacity = '1'; });
+  }, 120);
+}
+function updateFileSyncUI() {
+  const el = document.getElementById('fileSyncIndicator');
+  if (!el) return;
+  if (!window.showOpenFilePicker) { el.style.display = 'none'; return; }
+  if (!fileHandle) { fadeSwapHTML(el, `<button class="btn btn-sm" onclick="openFileSyncModal()" title="Link a .json data file for auto-save"><i class="fa-solid fa-link"></i> Link file</button>`); return; }
+  fileHandle.queryPermission({ mode: 'readwrite' }).then(perm => {
+    if (!el) return;
+    if (perm === 'granted') {
+      fadeSwapHTML(el, `
+        <span class="sync-linked">
+          <i class="fa-solid fa-file-circle-check"></i>
+          <span title="${esc(fileHandle.name)}">${esc(fileHandle.name)}</span>
+        </span>
+        <button class="btn btn-sm" onclick="unlinkFile()" title="Unlink file" style="padding:4px 8px;line-height:1"><i class="fa-solid fa-link-slash"></i></button>`);
+    } else {
+      fadeSwapHTML(el, `<button class="btn btn-sm sync-reconnect" onclick="reconnectFile()" title="Reconnect to ${esc(fileHandle.name)}"><i class="fa-solid fa-triangle-exclamation"></i> Reconnect</button>`);
+    }
+  }).catch(() => { if (el) fadeSwapHTML(el, `<button class="btn btn-sm" onclick="openFileSyncModal()"><i class="fa-solid fa-link"></i> Link file</button>`); });
+}
+async function initFileSync() {
+  if (!window.showOpenFilePicker) return;
+  updateFileSyncUI();
+  try {
+    const handle = await _fsGet();
+    if (!handle) { openFileSyncModal(); return; }
+    fileHandle = handle;
+    const perm = await handle.queryPermission({ mode: 'readwrite' });
+    if (perm === 'granted') {
+      try {
+        const text = await (await handle.getFile()).text();
+        const data = JSON.parse(text);
+        if (data.workstreams && data.items) {
+          mergeData(data);
+          normalizeData();
+          lastSyncedSnapshot = text;
+          save(); render();
+        }
+      } catch (_) { /* read failed — keep localStorage data */ }
+    } else {
+      openFileSyncModal(handle);
+    }
+    updateFileSyncUI();
+  } catch (e) {
+    fileHandle = null;
+    _fsDel().catch(() => {});
+    updateFileSyncUI();
+    openFileSyncModal();
+  }
+}
+function openFileSyncModal(reconnectHandle) {
+  const ro = document.getElementById('fileSyncReconnectOption');
+  const rl = document.getElementById('fileSyncReconnectLabel');
+  const warn = document.getElementById('fileSyncWarning');
+  if (reconnectHandle) {
+    ro.style.display = 'flex';
+    rl.textContent = `Resume sync with ${reconnectHandle.name}`;
+    warn.style.display = 'none';
+  } else {
+    ro.style.display = 'none';
+    warn.style.display = 'flex';
+  }
+  document.getElementById('fileSyncModalBg').classList.add('open');
+}
+function closeFileSyncModal() { document.getElementById('fileSyncModalBg')?.classList.remove('open'); }
+
+// ---------- Data dropdown menu ----------
+function toggleDataMenu() { document.getElementById('dataMenu')?.classList.toggle('open'); }
+function closeDataMenu() { document.getElementById('dataMenu')?.classList.remove('open'); }
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#dataDropdown')) closeDataMenu();
+});
 
 // ---------- Modal backdrop click-to-close ----------
 document.getElementById('wsModalBg').addEventListener('click', (e) => { if (e.target.id === 'wsModalBg') closeWorkstreamModal(); });
 document.getElementById('itemModalBg').addEventListener('click', (e) => { if (e.target.id === 'itemModalBg') closeItemModal(); });
+document.getElementById('confirmModalBg').addEventListener('click', (e) => { if (e.target.id === 'confirmModalBg') closeConfirmModal(); });
+document.getElementById('importModalBg').addEventListener('click', (e) => { if (e.target.id === 'importModalBg') closeImportModal(); });
+document.getElementById('backupsModalBg').addEventListener('click', (e) => { if (e.target.id === 'backupsModalBg') closeBackupsModal(); });
+document.getElementById('fileSyncModalBg').addEventListener('click', (e) => { if (e.target.id === 'fileSyncModalBg') closeFileSyncModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeFileSyncModal(); }
 });
 
 // ---------- Init ----------
@@ -839,6 +1453,7 @@ load();
 document.documentElement.setAttribute('data-theme', theme);
 document.getElementById('themeBtn').innerHTML = theme === 'dark' ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
 render();
+initFileSync();
 
 if (location.protocol !== 'file:' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {

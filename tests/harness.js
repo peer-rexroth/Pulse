@@ -110,6 +110,8 @@ async function run(argv) {
   globalThis.setTimeout = function () { return 0; };
   globalThis.clearTimeout = function () {};
   globalThis.confirm = function () { return true; };
+  globalThis.Blob = function (parts, opts) { this.parts = parts; this.opts = opts; globalThis.__lastBlob = this; };
+  globalThis.URL = { createObjectURL() { return 'blob:mock'; }, revokeObjectURL() {} };
 
   // ---- test registration + assertions (real globals, visible from the eval'd code too) ----
   globalThis.__TESTS__ = [];
@@ -138,6 +140,8 @@ async function run(argv) {
   view = 'status'; theme = 'light'; filterWorkstreamId = null;
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
   editingMilestones = []; expandedItemIds = new Set();
+  pendingImportData = null; modalTarget = null; toastUndoAction = null;
+  fileHandle = null; lastSyncedSnapshot = null;
   normalizeData();
 }
 `;

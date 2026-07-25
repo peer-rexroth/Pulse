@@ -114,6 +114,7 @@ test('deleteItemFromModal removes the item and all its nested milestones', funct
   saveItem();
   editingItemId = items[0].id;
   deleteItemFromModal();
+  confirmModalAction(); // simulate clicking "Delete" in the confirm modal
   assertEqual(items.length, 0);
 });
 
