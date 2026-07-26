@@ -369,9 +369,15 @@
      overflow:auto, never silently clipped — see "Status board" in CLAUDE.md). */
   .review-checklist { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; }
   .item-row.review-confirmed, .milestone-sub-row.review-confirmed { background: var(--stat-green-bg); }
-  .review-confirm-btn { border: 1px solid var(--border); background: var(--panel); color: var(--text-dim); cursor: pointer; padding: 5px 11px; border-radius: 7px; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; justify-self: start; }
-  .review-confirm-btn.confirmed { background: var(--stat-green); border-color: var(--stat-green); color: #fff; }
-  .review-confirm-btn.sm { padding: 5px 8px; }
+  /* Icon-only confirm toggle — no button box, just the icon itself changes
+     from an outline circle (unconfirmed) to a filled green circle-check
+     (confirmed). Used both for a single milestone and for an item's
+     "confirm all" control (.item-level, just larger) — see itemRowHtml()/
+     milestoneRowsHtml()'s reviewCycle handling. */
+  .review-confirm-toggle { border: none; background: transparent; cursor: pointer; color: var(--text-faint); display: inline-flex; align-items: center; justify-content: center; padding: 4px; font-size: 15px; line-height: 1; justify-self: start; }
+  .review-confirm-toggle:hover { color: var(--text-dim); }
+  .review-confirm-toggle.confirmed { color: var(--stat-green); }
+  .review-confirm-toggle.item-level { font-size: 19px; }
   .review-history-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
   .review-history-row:last-child { border-bottom: none; }
   .review-change-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 12px 6px 34px; font-size: 12px; color: var(--text-dim); background: var(--panel-2); border-bottom: 1px solid var(--border); }
@@ -689,6 +695,11 @@ const STATUS_SEVERITY = { red: 0, amber: 1, green: 2, 'not-started': 3, complete
 // "complete" concept, just Green/Amber/Red, cycled by clicking the badge.
 const ITEM_TAG_FIELDS = ['itStatus', 'businessStatus', 'budgetStatus'];
 const RAG3 = ['green', 'amber', 'red'];
+const TAG_FIELD_LABELS = { itStatus: 'IT', businessStatus: 'Business', budgetStatus: 'Budget' };
+// Each tag field's own icon — distinct shapes so a colored icon alone (no
+// text) still identifies which of the three it is, both in the row itself
+// (itemRowHtml()'s tagsHtml) and in a review's change log (reviewHistoryRowHtml()).
+const TAG_FIELD_ICONS = { itStatus: 'fa-laptop-code', businessStatus: 'fa-briefcase', budgetStatus: 'fa-euro-sign' };
 
 const WS_COLORS = ['blue', 'teal', 'purple', 'amber', 'pink', 'green', 'red', 'grey'];
 
@@ -1115,9 +1126,7 @@ function itemRowHtml(it, reviewCycle) {
   // (see --item-grid-cols) — since tags are item-only and that column is
   // otherwise blank on the item's own row.
   const tagsHtml = `<span class="item-tags">
-      <button class="tag-badge" style="background:var(--stat-${it.itStatus}-bg);color:var(--stat-${it.itStatus})" onclick="cycleItemAttr('${it.id}','itStatus')" title="IT"><i class="fa-solid fa-laptop-code"></i></button>
-      <button class="tag-badge" style="background:var(--stat-${it.businessStatus}-bg);color:var(--stat-${it.businessStatus})" onclick="cycleItemAttr('${it.id}','businessStatus')" title="Business"><i class="fa-solid fa-briefcase"></i></button>
-      <button class="tag-badge" style="background:var(--stat-${it.budgetStatus}-bg);color:var(--stat-${it.budgetStatus})" onclick="cycleItemAttr('${it.id}','budgetStatus')" title="Budget"><i class="fa-solid fa-euro-sign"></i></button>
+      ${ITEM_TAG_FIELDS.map(f => `<button class="tag-badge" style="background:var(--stat-${it[f]}-bg);color:var(--stat-${it[f]})" onclick="cycleItemAttr('${it.id}','${f}')" title="${TAG_FIELD_LABELS[f]}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></button>`).join('')}
     </span>`;
   // Review-only trailing cell — an implicit 12th grid column (explicit
   // grid-column:12), deliberately outside --item-grid-cols so Planning's own
@@ -1131,13 +1140,15 @@ function itemRowHtml(it, reviewCycle) {
   let confirmedForReview = false;
   if (reviewCycle) {
     confirmedForReview = isItemConfirmedInCycle(reviewCycle, it);
-    reviewCellHtml = total
-      ? `<button class="review-confirm-btn ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleConfirmAllMilestones('${reviewCycle.id}','${it.id}')" title="Confirm every milestone on this item">
-          <i class="fa-solid ${confirmedForReview ? 'fa-check' : 'fa-square'}"></i> ${confirmedForReview ? 'Confirmed' : 'Confirm all'}
-        </button>`
-      : `<button class="review-confirm-btn ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleReviewConfirm('${reviewCycle.id}','${it.id}')">
-          <i class="fa-solid ${confirmedForReview ? 'fa-check' : 'fa-square'}"></i> ${confirmedForReview ? 'Confirmed' : 'Confirm'}
-        </button>`;
+    const onClickAttr = total
+      ? `toggleConfirmAllMilestones('${reviewCycle.id}','${it.id}')`
+      : `toggleReviewConfirm('${reviewCycle.id}','${it.id}')`;
+    const titleAttr = total
+      ? (confirmedForReview ? 'All milestones confirmed — click to unconfirm all' : 'Confirm every milestone on this item')
+      : (confirmedForReview ? 'Confirmed — click to unconfirm' : 'Confirm this item');
+    reviewCellHtml = `<button class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:12" onclick="${onClickAttr}" title="${titleAttr}">
+        <i class="fa-${confirmedForReview ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
+      </button>`;
   }
   const subRows = (expanded && total) ? milestoneHeaderHtml(reviewCycle) + milestoneRowsHtml(it, reviewCycle) : '';
   return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''}">
@@ -1204,8 +1215,8 @@ function milestoneRowsHtml(it, reviewCycle) {
     let mConfirmed = false;
     if (reviewCycle) {
       mConfirmed = isMilestoneConfirmedInCycle(reviewCycle, m.id);
-      reviewCellHtml = `<button class="review-confirm-btn sm ${mConfirmed ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleMilestoneConfirm('${reviewCycle.id}','${m.id}')" title="${mConfirmed ? 'Confirmed' : 'Confirm this milestone'}">
-          <i class="fa-solid ${mConfirmed ? 'fa-check' : 'fa-square'}"></i>
+      reviewCellHtml = `<button class="review-confirm-toggle ${mConfirmed ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleMilestoneConfirm('${reviewCycle.id}','${m.id}')" title="${mConfirmed ? 'Confirmed — click to unconfirm' : 'Confirm this milestone'}">
+          <i class="fa-${mConfirmed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
         </button>`;
     }
     // Due is part of the plan — locked read-only during a review, same as
@@ -1261,14 +1272,16 @@ function cycleMilestoneStatus(itemId, milestoneId) {
 // The IT/Business/Budget tags are item-level only (see ITEM_TAG_FIELDS/RAG3
 // above) — a plain 3-state click-to-cycle, independent of the main status
 // and milestone roll-up.
-const TAG_FIELD_LABELS = { itStatus: 'IT', businessStatus: 'Business', budgetStatus: 'Budget' };
 function cycleItemAttr(itemId, field) {
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   const idx = RAG3.indexOf(it[field]);
   it[field] = RAG3[(idx + 1) % RAG3.length];
   it.updatedAt = Date.now();
-  logReviewChange(it.workstreamId, it.name, null, `${TAG_FIELD_LABELS[field]} changed to ${statusLabel(it[field])}`);
+  // tagField/tagValue let reviewHistoryRowHtml() render the same colored
+  // icon badge the row itself uses instead of plain text — change is still
+  // set as a plain-text fallback (used for the badge's title tooltip).
+  logReviewChange(it.workstreamId, it.name, null, `${TAG_FIELD_LABELS[field]} changed to ${statusLabel(it[field])}`, { tagField: field, tagValue: it[field] });
   save(); render();
 }
 // Inline date editing directly on the status board — an alternative to
@@ -1288,15 +1301,24 @@ function updateMilestoneDateField(itemId, milestoneId, field, value) {
   const m = it.milestones.find(x => x.id === milestoneId);
   if (!m) return;
   it.updatedAt = Date.now();
+  const oldDue = m.dueDate;
+  const oldActual = m.actualDate;
   m[field] = value;
   // A milestone's due/actual date is one of the inputs to the item's own
   // computed plan date range — keep it in sync immediately, same as
   // cycleMilestoneStatus() does for the computed status.
   const range = computedDateRangeFromMilestones(it.milestones);
   if (range) { it.startDate = range.startDate; it.dueDate = range.dueDate; }
-  const changeText = field === 'actualDate'
-    ? (value ? `Changed actual date to ${fmtDate(value)}` : 'Cleared actual date')
-    : `Changed due date to ${fmtDate(value)}`;
+  // For an actual date, "former" is whatever actual date was already there,
+  // or — if this is the first one — the milestone's own plan (due) date, so
+  // the log always reads as a real before→after transition rather than just
+  // "set to X" with no reference point.
+  let changeText;
+  if (field === 'actualDate') {
+    changeText = value ? `Actual: ${fmtDate(oldActual || oldDue)} → ${fmtDate(value)}` : 'Cleared actual date';
+  } else {
+    changeText = `Due: ${fmtDate(oldDue)} → ${fmtDate(value)}`;
+  }
   logReviewChange(it.workstreamId, it.name, m.name, changeText);
   save(); render();
 }
@@ -1699,11 +1721,11 @@ function activeReviewCycle(wsId) {
 // Review's own rows: the point is a record of what changed *while this
 // workstream was under review*, not just edits made through the Review
 // screen specifically. See reviewHistoryRowHtml() for where this is shown.
-function logReviewChange(workstreamId, itemName, milestoneName, changeText) {
+function logReviewChange(workstreamId, itemName, milestoneName, changeText, extra) {
   const cycle = activeReviewCycle(workstreamId);
   if (!cycle) return;
   if (!Array.isArray(cycle.changeLog)) cycle.changeLog = [];
-  cycle.changeLog.push({ itemName, milestoneName: milestoneName || null, change: changeText, changedAt: Date.now() });
+  cycle.changeLog.push(Object.assign({ itemName, milestoneName: milestoneName || null, change: changeText, changedAt: Date.now() }, extra));
 }
 function reviewCyclesForWs(wsId) {
   return reviewCycles.filter(c => c.workstreamId === wsId);
@@ -1836,11 +1858,21 @@ function reviewHistoryRowHtml(c) {
   const chevron = hasLog
     ? `<span class="item-chevron" onclick="toggleHistoryExpanded('${c.id}')"><i class="fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
     : `<span class="item-chevron"></span>`;
+  // A tag change (IT/Business/Budget) renders as the same colored icon badge
+  // the row itself uses (tagField/tagValue set by cycleItemAttr()) rather
+  // than plain text — the icon's shape identifies which of the three
+  // changed, its color the new value; e.change is kept as the title tooltip
+  // fallback for anyone hovering (or a screen reader).
   const changeRows = (hasLog && expanded)
-    ? c.changeLog.map(e => `<div class="review-change-row">
+    ? c.changeLog.map(e => {
+        const valueHtml = e.tagField
+          ? `<span class="tag-badge" style="background:var(--stat-${e.tagValue}-bg);color:var(--stat-${e.tagValue})" title="${esc(e.change)}"><i class="fa-solid ${TAG_FIELD_ICONS[e.tagField]}"></i></span>`
+          : esc(e.change);
+        return `<div class="review-change-row">
         <span class="review-change-label">${esc(e.milestoneName || e.itemName)}</span>
-        <span>${esc(e.change)}</span>
-      </div>`).join('')
+        <span>${valueHtml}</span>
+      </div>`;
+      }).join('')
     : '';
   return `<div class="review-history-row">
       ${chevron}

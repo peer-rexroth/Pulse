@@ -227,17 +227,26 @@ test('a cancelled cycle\'s confirmed-count snapshot stays accurate even if a mil
 
 // ---------- Change log: what actually changed during a review ----------
 
-test('updateMilestoneDateField logs a change against the active cycle when setting an actual date', function () {
+test('updateMilestoneDateField logs a before-→after change, falling back to the plan (due) date when there was no prior actual date', function () {
   const it = addReviewItem({
-    milestones: [{ id: genId(), name: 'Development completed', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+    milestones: [{ id: genId(), name: 'Development completed', dueDate: '2026-06-01', status: 'not-started', actualDate: null }]
   });
   startReviewCycle(workstreams[0].id);
-  const cycle = activeReviewCycle(workstreams[0].id);
   updateMilestoneDateField(it.id, it.milestones[0].id, 'actualDate', '2026-07-26');
   assertEqual(reviewCycles[0].changeLog.length, 1);
   const entry = reviewCycles[0].changeLog[0];
   assertEqual(entry.milestoneName, 'Development completed');
-  assertIncludes(entry.change, 'Changed actual date to');
+  assertEqual(entry.change, `Actual: ${fmtDate('2026-06-01')} → ${fmtDate('2026-07-26')}`, 'with no prior actual date, the former side should fall back to the milestone\'s plan (due) date');
+});
+
+test('a second actual-date change uses the previous actual date as the former value, not the plan date', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'M', dueDate: '2026-06-01', status: 'not-started', actualDate: '2026-07-01' }]
+  });
+  startReviewCycle(workstreams[0].id);
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'actualDate', '2026-07-15');
+  const entry = activeReviewCycle(workstreams[0].id).changeLog[0];
+  assertEqual(entry.change, `Actual: ${fmtDate('2026-07-01')} → ${fmtDate('2026-07-15')}`);
 });
 
 test('updateMilestoneDateField logs "Cleared actual date" when the value is unset', function () {
@@ -260,14 +269,33 @@ test('cycleMilestoneStatus logs the new status against the active cycle', functi
   assertEqual(entry.change, 'Status changed to On Track');
 });
 
-test('cycleItemAttr logs an item-level change (no milestoneName) against the active cycle', function () {
+test('cycleItemAttr logs an item-level change (no milestoneName) with tagField/tagValue for the icon badge', function () {
   const it = addReviewItem({ name: 'Call Money', itStatus: 'green' });
   startReviewCycle(workstreams[0].id);
   cycleItemAttr(it.id, 'itStatus');
   const entry = activeReviewCycle(workstreams[0].id).changeLog[0];
   assertEqual(entry.itemName, 'Call Money');
   assertEqual(entry.milestoneName, null);
-  assertEqual(entry.change, 'IT changed to At Risk');
+  assertEqual(entry.tagField, 'itStatus');
+  assertEqual(entry.tagValue, 'amber');
+  assertEqual(entry.change, 'IT changed to At Risk', 'kept as a plain-text fallback for the badge\'s tooltip');
+});
+
+test('renderReview shows a tag change in history as the colored icon badge, not plain text', function () {
+  const it = addReviewItem({ name: 'Call Money', itStatus: 'green' });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  cycleItemAttr(it.id, 'itStatus');
+  toggleReviewConfirm(cycle.id, it.id);
+  completeReviewCycle(cycle.id);
+  toggleHistoryExpanded(cycle.id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'fa-laptop-code', 'the IT tag\'s own icon should render, not a text label');
+  assertIncludes(html, 'var(--stat-amber)', 'colored by the new value');
+  assertNotIncludes(html, 'IT changed to At Risk</span>', 'the plain-text form should only be in the title tooltip, not visible text');
 });
 
 test('nothing is logged when no review cycle is active for the item\'s workstream', function () {
@@ -305,14 +333,14 @@ test('renderReview shows a collapsed history entry with a chevron, expanding to 
   completeReviewCycle(cycle.id);
   renderReview();
   let html = document.getElementById('main').innerHTML;
-  assertNotIncludes(html, 'Development completed: Changed actual date', 'collapsed by default');
+  assertNotIncludes(html, 'review-change-row', 'collapsed by default');
   assertIncludes(html, 'review-history-row');
   toggleHistoryExpanded(cycle.id);
   renderReview();
   html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'review-change-row');
   assertIncludes(html, 'Development completed');
-  assertIncludes(html, 'Changed actual date to');
+  assertIncludes(html, 'Actual:');
 });
 
 // ---------- Milestone-level confirmation ----------
@@ -410,7 +438,7 @@ test('renderReview shows individual and confirm-all milestone controls once an i
   toggleItemExpanded(it.id);
   renderReview();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'Confirm all');
+  assertIncludes(html, 'review-confirm-toggle item-level', 'the icon-only confirm-all control');
   assertIncludes(html, `toggleConfirmAllMilestones('${cycle.id}','${it.id}')`);
   assertIncludes(html, `toggleMilestoneConfirm('${cycle.id}','${it.milestones[0].id}')`);
   assertIncludes(html, `toggleMilestoneConfirm('${cycle.id}','${it.milestones[1].id}')`);
@@ -469,7 +497,7 @@ test('expanding an item mid-review keeps showing the Review checklist, not Plann
   toggleItemExpanded(it.id);
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'review-checklist', 'toggling expand mid-review must not swap in Planning\'s rendering');
-  assertIncludes(html, 'Confirm all', 'the review-only confirm control should still be there');
+  assertIncludes(html, 'review-confirm-toggle item-level', 'the review-only confirm control should still be there');
 });
 
 test('cycling a milestone\'s status mid-review keeps showing the Review checklist', function () {
