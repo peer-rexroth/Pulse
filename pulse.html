@@ -22,6 +22,11 @@
     --danger: #e5484d;
     --radius: 10px;
     --shadow: 0 1px 2px rgba(20,20,30,.04), 0 4px 16px rgba(20,20,30,.06);
+    /* Shared column layout for the status board: header row, item rows, and
+       nested milestone rows all use this so cells line up across all three —
+       see "Status board" in CLAUDE.md. Chevron | Name | Owner | Plan dates |
+       Actual | Milestones | Notes | Status | Actions. */
+    --item-grid-cols: 20px minmax(140px,1.3fr) 100px 210px 130px 100px minmax(90px,1fr) 90px 56px;
 
     --ws-blue: #3b6fe0;   --ws-blue-bg: #eaf0fd;
     --ws-teal: #12968c;   --ws-teal-bg: #e3f6f4;
@@ -159,17 +164,20 @@
   .rag-pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
   .rag-summary { display: flex; gap: 5px; }
 
+  /* Item rows and their nested milestone rows share --item-grid-cols so
+     every cell lines up vertically regardless of which optional content
+     (owner, milestones, notes) a given row has. */
   .item-row {
-    display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border);
   }
   .item-row:last-child { border-bottom: none; }
   .item-row:hover { background: var(--panel-2); }
-  .item-chevron { width: 16px; text-align: center; color: var(--text-faint); flex: 0 0 auto; cursor: pointer; }
-  .item-name { font-weight: 600; flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; width: 110px; flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-chevron { text-align: center; color: var(--text-faint); cursor: pointer; }
+  .item-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-dates { color: var(--text-dim); font-size: 12.5px; width: 150px; flex: 0 0 auto; }
-  .milestone-count-badge { font-size: 11px; color: var(--text-faint); font-weight: 700; flex: 0 0 auto; white-space: nowrap; }
-  .item-notes { color: var(--text-faint); font-size: 12.5px; flex: 1; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .milestone-count-badge { font-size: 11px; color: var(--text-faint); font-weight: 700; white-space: nowrap; }
+  .item-notes { color: var(--text-faint); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Inline date editing — Plan (start/due) and Actual dates, editable directly
      on the status board as an alternative to opening the item modal. */
@@ -178,22 +186,31 @@
     font-size: 12px; padding: 2px 3px; border-radius: 5px; cursor: pointer; color-scheme: light dark;
   }
   .inline-date-input:hover, .inline-date-input:focus { border-color: var(--border); background: var(--panel-2); outline: none; cursor: text; }
-  .item-dates-inline { display: flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+  .item-dates-inline { display: flex; align-items: center; gap: 3px; }
   .item-dates-arrow { color: var(--text-faint); font-size: 11px; }
-  .item-actual-inline, .milestone-sub-actual-inline { display: flex; align-items: center; gap: 4px; color: var(--stat-complete); flex: 0 0 auto; }
+  .item-actual-inline, .milestone-sub-actual-inline { display: flex; align-items: center; gap: 4px; color: var(--stat-complete); }
   .item-actual-inline .inline-date-input, .milestone-sub-actual-inline .inline-date-input { color: var(--stat-complete); }
-  .status-badge { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; flex: 0 0 auto; cursor: pointer; border: none; }
-  .item-actions { display: none; gap: 2px; flex: 0 0 auto; }
+  .status-badge { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; cursor: pointer; border: none; justify-self: start; }
+  .item-actions { display: none; gap: 2px; }
   .item-row:hover .item-actions { display: flex; }
   .row-icon-btn { border: none; background: transparent; color: var(--text-faint); cursor: pointer; padding: 4px 6px; border-radius: 5px; }
   .row-icon-btn:hover { background: var(--border); color: var(--text); }
   .ws-section-add { padding: 8px 14px; }
 
+  /* Shown only above an expanded item's own milestone rows (see
+     milestoneHeaderHtml()) — scoped to that one item, not a page-wide
+     header, since only 4 of the 9 shared columns mean anything for a
+     milestone. */
+  .milestone-header {
+    display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px;
+    padding: 5px 14px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--text-faint); background: var(--panel-2); border-bottom: 1px solid var(--border);
+  }
   .milestone-sub-row {
-    display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 44px; border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px; padding: 7px 14px; border-bottom: 1px solid var(--border);
     font-size: 12.5px; background: var(--panel-2);
   }
-  .milestone-sub-name { flex: 1; font-weight: 600; color: var(--text-dim); }
+  .milestone-sub-name { font-weight: 600; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Timeline view */
   .timeline-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
@@ -543,7 +560,7 @@
     <p id="confirmModalBody"></p>
     <div class="modal-actions" style="justify-content:flex-end">
       <button class="btn" onclick="closeConfirmModal()">Cancel</button>
-      <button class="btn btn-danger" onclick="confirmModalAction()">Delete</button>
+      <button class="btn btn-danger" id="confirmModalActionBtn" onclick="confirmModalAction()">Delete</button>
     </div>
   </div>
 </div>
@@ -955,7 +972,7 @@ function renderMain() {
 
 function renderStatusView(main) {
   const wss = visibleWorkstreams();
-  main.innerHTML = wss.map(w => {
+  const sections = wss.map(w => {
     const wItems = items.filter(it => it.workstreamId === w.id)
       .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
     const counts = {};
@@ -965,7 +982,7 @@ function renderStatusView(main) {
       `<span class="rag-pill" style="background:var(--stat-${s.id}-bg);color:var(--stat-${s.id})">${counts[s.id]} ${esc(s.label)}</span>`
     ).join('');
     const rows = wItems.length ? wItems.map(it => itemRowHtml(it)).join('') :
-      `<div class="item-row" style="color:var(--text-faint)">No items yet.</div>`;
+      `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No items yet.</div>`;
     return `<div class="ws-section">
         <div class="ws-section-header" style="background:var(--ws-${w.color}-bg)">
           <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
@@ -978,6 +995,7 @@ function renderStatusView(main) {
         </div>
       </div>`;
   }).join('');
+  main.innerHTML = sections;
 }
 
 function itemRowHtml(it) {
@@ -987,7 +1005,10 @@ function itemRowHtml(it) {
   const chevron = total
     ? `<span class="item-chevron" onclick="toggleItemExpanded('${it.id}')"><i class="fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
     : `<span class="item-chevron"></span>`;
-  const milestoneBadge = total ? `<span class="milestone-count-badge">${done}/${total} milestones</span>` : '';
+  // Always a real element, never an empty string — an absent grid item would
+  // collapse its column and misalign every cell after it for rows that don't
+  // have milestones (see "Status board" in CLAUDE.md).
+  const milestoneBadge = `<span class="milestone-count-badge">${total ? `${done}/${total} milestones` : ''}</span>`;
   const planDatesHtml = `<span class="item-dates-inline">
       <input type="date" class="inline-date-input" value="${it.startDate}" title="Start date" onchange="updateItemDateField('${it.id}','startDate',this.value)">
       <span class="item-dates-arrow">→</span>
@@ -997,7 +1018,7 @@ function itemRowHtml(it) {
       <i class="fa-solid fa-circle-check"></i>
       <input type="date" class="inline-date-input" value="${it.actualDate || ''}" onchange="updateItemDateField('${it.id}','actualDate',this.value || null)">
     </span>`;
-  const subRows = (expanded && total) ? milestoneRowsHtml(it) : '';
+  const subRows = (expanded && total) ? milestoneHeaderHtml() + milestoneRowsHtml(it) : '';
   return `<div class="item-row">
       ${chevron}
       <span class="item-name">${esc(it.name)}</span>
@@ -1014,17 +1035,39 @@ function itemRowHtml(it) {
     </div>${subRows}`;
 }
 
+// A small column-label row shown only for an *expanded* item's own milestone
+// list — right above its milestone rows, not a page-wide header — since
+// milestones only ever use 4 of the 9 shared columns (Milestone/Due/Actual/
+// Status); labeling all 9 globally implied columns like Owner/Notes applied
+// to milestones too, which they don't.
+function milestoneHeaderHtml() {
+  return `<div class="milestone-header">
+      <span></span><span>Milestone</span><span></span><span>Due</span><span>Actual</span><span></span><span></span><span>Status</span><span></span>
+    </div>`;
+}
+// Emits the same 9 grid cells itemRowHtml() does (chevron|name|owner|dates|
+// actual|milestones|notes|status|actions), so a milestone row's Due/Actual/
+// Status line up directly under its parent item's columns — cells that
+// don't apply to a milestone (owner, the milestones-count badge, notes,
+// actions) are still real (empty) elements, not omitted, for the same
+// column-collapse reason documented on itemRowHtml()'s milestoneBadge.
 function milestoneRowsHtml(it) {
   return it.milestones.slice().sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '')).map(m => `
     <div class="milestone-sub-row">
-      <i class="fa-solid fa-diamond" style="font-size:9px;color:var(--text-faint)"></i>
+      <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
       <span class="milestone-sub-name">${esc(m.name)}</span>
-      <input type="date" class="inline-date-input" value="${m.dueDate}" title="Due date" onchange="updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)">
+      <span></span>
+      <span class="item-dates-inline">
+        <input type="date" class="inline-date-input" value="${m.dueDate}" title="Due date" onchange="updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)">
+      </span>
       <span class="milestone-sub-actual-inline" title="Actual completion date">
         <i class="fa-solid fa-circle-check"></i>
         <input type="date" class="inline-date-input" value="${m.actualDate || ''}" onchange="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)">
       </span>
+      <span></span>
+      <span></span>
       <button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(statusLabel(m.status))}</button>
+      <span></span>
     </div>`).join('');
 }
 
@@ -1461,6 +1504,7 @@ function cancelReviewCycle(cycleId) {
   openConfirmModal({
     title: 'Cancel this review cycle?',
     body: 'It stays in history marked as cancelled. This cannot be undone.',
+    confirmLabel: 'Cancel Review',
     action: () => {
       cycle.cancelledAt = Date.now();
       save(); render();
@@ -1742,6 +1786,7 @@ function saveCategory() {
       openConfirmModal({
         title: 'Apply these changes to existing items?',
         body,
+        confirmLabel: 'Apply Changes',
         action: () => {
           c.name = name; c.milestones = milestones;
           applyCategoryMilestoneSync(catId, added, removed);
@@ -1801,9 +1846,14 @@ function triggerToastUndo() {
 }
 
 // ---------- Confirm modal (generic — replaces native confirm() so deletes can offer undo) ----------
-function openConfirmModal({ title, body, action }) {
+// confirmLabel defaults to "Delete" since that's the majority of callers —
+// pass it explicitly for anything that isn't literally a delete (e.g.
+// "Apply Changes", "Restore", "Cancel Review"), or the button ends up
+// telling the user they're about to delete something they aren't.
+function openConfirmModal({ title, body, action, confirmLabel }) {
   document.getElementById('confirmModalTitle').textContent = title;
   document.getElementById('confirmModalBody').textContent = body;
+  document.getElementById('confirmModalActionBtn').textContent = confirmLabel || 'Delete';
   modalTarget = { action };
   document.getElementById('confirmModalBg').classList.add('open');
 }
@@ -1958,6 +2008,7 @@ function restoreBackup(date) {
   openConfirmModal({
     title: 'Restore this backup?',
     body: `This replaces your current data with the snapshot from ${fmtDate(date)}. Your current data will be backed up to a file first.`,
+    confirmLabel: 'Restore',
     action: () => {
       downloadData(currentExportPayload(), `pulse-backup-before-restore-${todayStr()}.json`);
       programme = b.programme || { name: 'New Programme' };

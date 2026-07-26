@@ -90,6 +90,7 @@ test('cancelReviewCycle marks the cycle cancelled and frees the workstream for a
   startReviewCycle(workstreams[0].id);
   const cycle = activeReviewCycle(workstreams[0].id);
   cancelReviewCycle(cycle.id);
+  assertEqual(document.getElementById('confirmModalActionBtn').textContent, 'Cancel Review', 'the button must not say "Delete" for a non-delete action');
   confirmModalAction();
   assertTrue(!!reviewCycles[0].cancelledAt);
   assertEqual(activeReviewCycle(workstreams[0].id), undefined);

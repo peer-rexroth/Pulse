@@ -188,6 +188,7 @@ test('restoreBackup replaces current data with the snapshot after confirmation',
     { date: '2026-01-01', savedAt: 1, programme: { name: 'Old Programme' }, workstreams: [{ id: 'w-old', name: 'Old Stream', color: 'grey', order: 0 }], items: [] }
   ]));
   restoreBackup('2026-01-01');
+  assertEqual(document.getElementById('confirmModalActionBtn').textContent, 'Restore');
   confirmModalAction();
   assertEqual(programme.name, 'Old Programme');
   assertEqual(workstreams.length, 1);

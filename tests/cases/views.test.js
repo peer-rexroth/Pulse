@@ -129,3 +129,58 @@ test('updateMilestoneDateField updates a single date field on one milestone only
   assertEqual(items[0].milestones[0].actualDate, '2026-09-01');
   assertEqual(items[0].milestones[1].actualDate, null, 'the other milestone should be untouched');
 });
+
+// ---------- Status board column alignment (grid) ----------
+
+test('the milestone column header only appears once an item with milestones is expanded, not page-wide', function () {
+  const it = addItem({
+    name: 'X',
+    milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  renderMain();
+  let html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'milestone-header', 'collapsed by default — no header should show yet');
+  toggleItemExpanded(it.id);
+  renderMain();
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'milestone-header');
+  ['Milestone', 'Due', 'Actual', 'Status'].forEach(label => assertIncludes(html, label));
+});
+
+test('an item with no milestones never shows a milestone header, even if toggled', function () {
+  const it = addItem({ name: 'No milestones', milestones: [] });
+  toggleItemExpanded(it.id); // has no effect — itemRowHtml only expands items that actually have milestones
+  renderMain();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'milestone-header');
+});
+
+test('an item with no milestones still renders the milestone-count-badge element (empty), so its column never collapses', function () {
+  addItem({ name: 'No milestones here', milestones: [] });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'class="milestone-count-badge"></span>', 'the badge cell must exist even when blank, or every later column shifts left');
+});
+
+test('an item with milestones still renders exactly one milestone-count-badge with the count inside it', function () {
+  addItem({
+    name: 'Has milestones',
+    milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'complete', actualDate: null }]
+  });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '1/1 milestones');
+});
+
+test('a milestone sub-row reuses the item-chevron column slot (in place of the chevron) so it lines up under the parent\'s first column', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Child milestone', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  // itemRowHtml's own chevron plus the milestone row's diamond-in-chevron-slot
+  // means "item-chevron" should appear (at least) twice once expanded.
+  const count = (html.match(/class="item-chevron"/g) || []).length;
+  assertTrue(count >= 2, 'both the item\'s chevron and the milestone\'s diamond should use the shared column class');
+});

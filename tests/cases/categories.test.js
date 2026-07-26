@@ -175,6 +175,7 @@ test('adding a milestone to a category template prompts for confirmation, then a
   saveCategory();
   assertTrue(!!modalTarget, 'a confirm modal should be armed rather than saving immediately');
   assertEqual(categories[0].milestones.includes('Go-live approved'), false, 'not applied until confirmed');
+  assertEqual(document.getElementById('confirmModalActionBtn').textContent, 'Apply Changes', 'this is not a delete action, the button must say so');
   confirmModalAction();
   assertTrue(categories[0].milestones.includes('Go-live approved'));
   assertTrue(items[0].milestones.some(m => m.name === 'Go-live approved' && m.status === 'not-started'));
