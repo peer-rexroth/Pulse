@@ -216,17 +216,15 @@
   .date-pill:hover { background: var(--border); }
   .date-pill i { font-size: 10px; color: var(--text-faint); cursor: pointer; }
   .inline-date-input {
+    -webkit-appearance: none; appearance: none;
     border: none; background: transparent; color: inherit; font-family: inherit;
-    font-size: 12px; padding: 0; margin: 0; cursor: text; width: 96px;
-    /* A native <input type="date">'s own default intrinsic width is fixed by
-       the browser for its *type*, not computed from its rendered shadow-DOM
-       content — hiding the picker-indicator/clear-button below doesn't make
-       Chrome recompute that default down, so width:auto left the same
-       oversized box with empty trailing space. An explicit width is the only
-       thing that actually shrinks it. Kept generous (not shrink-wrapped
-       exactly to a DD.MM.YYYY value's text metrics) since the browser's own
-       per-segment (day/month/year) click targets need a bit of headroom
-       beyond the bare text width to stay reliably clickable/typeable. */
+    font-size: 12px; padding: 0; margin: 0; cursor: text; width: 74px;
+    /* -webkit-appearance:none on the control itself (not just its sub-parts
+       below) is what actually drops Chrome's default reserved layout box for
+       a date input — without it, the field keeps its full native padding/
+       min-width regardless of an explicit width. With appearance reset, the
+       box shrinks to fit its text content and an explicit width can track
+       the real DD.MM.YY metrics instead of masking leftover native padding. */
   }
   .inline-date-input::-webkit-calendar-picker-indicator,
   .inline-date-input::-webkit-clear-button,
@@ -234,6 +232,7 @@
     display: none; -webkit-appearance: none; width: 0; height: 0; padding: 0; margin: 0; opacity: 0;
   }
   .inline-date-input::-webkit-datetime-edit { padding: 0; }
+  .inline-date-input::-webkit-datetime-edit-fields-wrapper { padding: 0; margin: 0; }
   .inline-date-input:disabled { opacity: .8; cursor: default; }
   .item-dates-inline { display: flex; align-items: center; gap: 5px; }
   .item-dates-computed { color: var(--text-dim); font-size: 12.5px; }
