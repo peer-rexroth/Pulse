@@ -1,7 +1,7 @@
 function fillItemForm(overrides) {
   const f = Object.assign({
     name: 'Ship schema v1', owner: 'Jamie', start: '2026-08-01', due: '2026-08-15', actual: '',
-    status: 'amber', notes: 'depends on review'
+    status: 'amber'
   }, overrides || {});
   document.getElementById('itemNameInput').value = f.name;
   document.getElementById('itemOwnerInput').value = f.owner;
@@ -9,7 +9,6 @@ function fillItemForm(overrides) {
   document.getElementById('itemDueInput').value = f.due;
   document.getElementById('itemActualInput').value = f.actual;
   document.getElementById('itemStatusSelect').value = f.status;
-  document.getElementById('itemNotesInput').value = f.notes;
   document.getElementById('itemWorkstreamSelect').value = f.workstreamId || workstreams[0].id;
 }
 

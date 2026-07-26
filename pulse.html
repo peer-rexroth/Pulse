@@ -28,19 +28,20 @@
        Milestones/Owner/Plan-dates (on a milestone row these 4 are merged into
        one wide Name cell instead — see milestoneRowsHtml()), 6 Actual
        (always blank on both row types — see itemRowHtml()'s actualDateHtml —
-       so it's just a thin spacer, not a real content column), 7 Notes, 8
-       blank (same — always empty on both row types, thin spacer), 9
-       Milestone Due (blank on the item's own row), 10 Tags (IT/Business/
-       Budget) on the item row / Milestone Actual on a milestone row, 11
-       Status, 12 Actions. Columns 9-10 are placed right next to Status so a
-       milestone's own dates sit beside its own status badge. Columns 6 and 8
-       are kept deliberately narrow (not 0) — every row this wide needs the
-       overall total to stay under typical viewport widths so .main's
-       overflow:auto never has to kick in for a normal window size; see the
-       "Status board" section in CLAUDE.md for the incident where these two
-       columns being needlessly wide, combined with the Due/Actual columns
-       added for milestones, pushed Status/Actions off-screen. */
-    --item-grid-cols: 20px minmax(140px,1.3fr) 90px 160px 190px 20px minmax(90px,1fr) 20px 115px 100px 90px 56px;
+       so it's just a thin spacer, not a real content column), 7 blank (same
+       — always empty on both row types, thin spacer; this used to be Notes,
+       removed along with the item.notes field entirely), 8 Milestone Due
+       (blank on the item's own row), 9 Tags (IT/Business/Budget) on the item
+       row / Milestone Actual on a milestone row, 10 Status, 11 Actions.
+       Columns 8-9 are placed right next to Status so a milestone's own dates
+       sit beside its own status badge. Columns 6 and 7 are kept deliberately
+       narrow (not 0) — every row this wide needs the overall total to stay
+       under typical viewport widths so .main's overflow:auto never has to
+       kick in for a normal window size; see the "Status board" section in
+       CLAUDE.md for the incident where wide unused columns, combined with
+       the Due/Actual columns added for milestones, pushed Status/Actions
+       off-screen. */
+    --item-grid-cols: 20px minmax(140px,1.3fr) 90px 160px 190px 20px 20px 115px 100px 90px 56px;
 
     --ws-blue: #3b6fe0;   --ws-blue-bg: #eaf0fd;
     --ws-teal: #12968c;   --ws-teal-bg: #e3f6f4;
@@ -186,7 +187,7 @@
 
   /* Item rows and their nested milestone rows share --item-grid-cols so
      every cell lines up vertically regardless of which optional content
-     (owner, milestones, notes) a given row has. */
+     (owner, milestones) a given row has. */
   .item-row {
     display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border);
   }
@@ -197,7 +198,6 @@
   .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-dates { color: var(--text-dim); font-size: 12.5px; width: 150px; flex: 0 0 auto; }
   .milestone-count-badge { font-size: 11px; color: var(--text-faint); font-weight: 700; white-space: nowrap; }
-  .item-notes { color: var(--text-faint); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Inline date editing — Plan (start/due) and Actual dates, editable directly
      on the status board as an alternative to opening the item modal. */
@@ -563,10 +563,6 @@
       </div>
     </div>
     <div class="field">
-      <label>Notes</label>
-      <textarea id="itemNotesInput" placeholder="Optional notes"></textarea>
-    </div>
-    <div class="field">
       <label>Milestones</label>
       <div id="milestonesEditor"></div>
       <button class="btn btn-sm" style="margin-top:8px" onclick="addMilestoneRow()"><i class="fa-solid fa-plus"></i> Add milestone</button>
@@ -851,7 +847,7 @@ function normalizeData() {
       const d = m.dueDate || todayStr();
       items.push({
         id: genId(), workstreamId: m.workstreamId, name: m.name || 'Untitled',
-        owner: m.owner || '', notes: m.notes || '', status: 'not-started',
+        owner: m.owner || '', status: 'not-started',
         startDate: d, dueDate: d,
         milestones: [{ id: m.id || genId(), name: m.name || 'Untitled', dueDate: d, status: m.status || 'not-started' }]
       });
@@ -866,7 +862,6 @@ function normalizeData() {
     if (!catIds.has(it.categoryId)) it.categoryId = categories[0].id;
     if (!it.name) it.name = 'Untitled';
     if (!it.owner) it.owner = '';
-    if (!it.notes) it.notes = '';
     if (!STATUSES.some(s => s.id === it.status)) it.status = 'not-started';
     if (!it.dueDate) it.dueDate = todayStr();
     if (!it.startDate) it.startDate = it.dueDate;
@@ -1102,7 +1097,6 @@ function itemRowHtml(it) {
       <span class="item-owner">${it.owner ? '<i class="fa-solid fa-user"></i> ' + esc(it.owner) : ''}</span>
       ${planDatesHtml}
       ${actualDateHtml}
-      <span class="item-notes">${esc(it.notes)}</span>
       <span></span>
       <span></span>
       ${tagsHtml}
@@ -1116,35 +1110,34 @@ function itemRowHtml(it) {
 
 // A small column-label row shown only for an *expanded* item's own milestone
 // list — right above its milestone rows, not a page-wide header — since
-// milestones only ever use 4 of the 12 shared columns (Milestone/Due/Actual/
-// Status); labeling all 12 globally implied columns like Owner/Notes/Tags
-// applied to milestones too, which they don't. Due/Actual sit in the two
-// dedicated columns right before Status (see --item-grid-cols), not under
-// the item's own Owner/Plan-dates columns — so a milestone's own dates read
-// right next to its own status badge.
+// milestones only ever use 4 of the 11 shared columns (Milestone/Due/Actual/
+// Status); labeling all 11 globally implied columns like Owner/Tags applied
+// to milestones too, which they don't. Due/Actual sit in the two dedicated
+// columns right before Status (see --item-grid-cols), not under the item's
+// own Owner/Plan-dates columns — so a milestone's own dates read right next
+// to its own status badge.
 function milestoneHeaderHtml() {
   return `<div class="milestone-header">
-      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span>Status</span><span></span>
+      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span>Status</span><span></span>
     </div>`;
 }
-// Emits the same 12 grid cells itemRowHtml() does (chevron|name|milestones|
-// owner|dates|actual|notes|blank|milestone-due|milestone-actual(item:tags)|
-// status|actions), so a milestone row's Due/Actual/Status line up directly
-// under its parent item's columns — cells that don't apply to a milestone
-// (the milestones-count badge, owner, dates, actual-placeholder, notes,
-// tags) are still real (empty) elements, not omitted, for the same
-// column-collapse reason documented on itemRowHtml()'s milestoneBadge. The
-// one exception: milestone-sub-name explicitly spans columns 2-5 (name +
-// milestones-badge + owner + dates, none of which apply to a milestone)
-// instead of rendering 3 separate blank cells there, since a milestone's
-// name has nothing else competing for that space and was truncating too
-// eagerly at a single column's width.
+// Emits the same 11 grid cells itemRowHtml() does (chevron|name|milestones|
+// owner|dates|actual|blank|milestone-due|milestone-actual(item:tags)|status|
+// actions), so a milestone row's Due/Actual/Status line up directly under
+// its parent item's columns — cells that don't apply to a milestone (the
+// milestones-count badge, owner, dates, actual-placeholder, tags) are still
+// real (empty) elements, not omitted, for the same column-collapse reason
+// documented on itemRowHtml()'s milestoneBadge. The one exception:
+// milestone-sub-name explicitly spans columns 2-5 (name + milestones-badge +
+// owner + dates, none of which apply to a milestone) instead of rendering 3
+// separate blank cells there, since a milestone's name has nothing else
+// competing for that space and was truncating too eagerly at a single
+// column's width.
 function milestoneRowsHtml(it) {
   return it.milestones.slice().sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '')).map(m => `
     <div class="milestone-sub-row">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
       <span class="milestone-sub-name" style="grid-column: 2 / 6">${esc(m.name)}</span>
-      <span></span>
       <span></span>
       <span></span>
       <span class="item-dates-inline">
@@ -1453,7 +1446,6 @@ function openItemModal(id, presetWorkstreamId) {
   document.getElementById('itemDueInput').value = it ? it.dueDate : todayStr();
   document.getElementById('itemActualInput').value = it ? (it.actualDate || '') : '';
   document.getElementById('itemStatusSelect').value = it ? it.status : 'not-started';
-  document.getElementById('itemNotesInput').value = it ? it.notes : '';
   editingMilestones = it
     ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null }))
     : milestonesForCategory(categories[0].id, document.getElementById('itemDueInput').value);
@@ -1526,7 +1518,6 @@ function saveItem() {
   const manualDueDate = document.getElementById('itemDueInput').value || todayStr();
   const manualStartDate = document.getElementById('itemStartInput').value || manualDueDate;
   const actualDate = document.getElementById('itemActualInput').value || null;
-  const notes = document.getElementById('itemNotesInput').value.trim();
   const milestones = editingMilestones.map(m => ({
     id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: m.dueDate || manualDueDate, status: m.status, actualDate: m.actualDate || null
   }));
@@ -1539,7 +1530,7 @@ function saveItem() {
   const range = milestones.length ? computedDateRangeFromMilestones(milestones) : null;
   const startDate = range ? range.startDate : manualStartDate;
   const dueDate = range ? range.dueDate : manualDueDate;
-  const data = { workstreamId, categoryId, name, owner, notes, status, startDate, dueDate, actualDate, milestones, updatedAt: Date.now() };
+  const data = { workstreamId, categoryId, name, owner, status, startDate, dueDate, actualDate, milestones, updatedAt: Date.now() };
   if (editingItemId) {
     Object.assign(items.find(i => i.id === editingItemId), data);
   } else {
