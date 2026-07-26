@@ -380,12 +380,14 @@
   .review-confirm-toggle.item-level { font-size: 19px; }
   .review-history-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
   .review-history-row:last-child { border-bottom: none; }
-  .review-change-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 12px 6px 34px; font-size: 12px; color: var(--text-dim); background: var(--panel-2); border-bottom: 1px solid var(--border); }
+  .review-change-row { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 34px; font-size: 12px; color: var(--text-dim); background: var(--panel-2); border-bottom: 1px solid var(--border); }
   .review-change-row:last-child { border-bottom: none; }
   .review-change-label { font-weight: 700; color: var(--text); flex: 0 0 auto; }
+  .review-change-value { display: flex; align-items: center; gap: 6px; }
+  .review-change-value .inline-date-input:disabled { opacity: .8; cursor: default; }
+  .review-change-arrow { color: var(--text-faint); font-size: 11px; flex: 0 0 auto; }
   .review-cycle-badge { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; flex: 0 0 auto; }
   .review-cycle-badge.completed { background: var(--stat-green-bg); color: var(--stat-green); }
-  .review-cycle-badge.cancelled { background: var(--stat-not-started-bg); color: var(--stat-not-started); }
   .section-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin: 20px 0 8px; }
   .section-label:first-child { margin-top: 0; }
 
@@ -751,6 +753,10 @@ let editingCategoryOriginalMilestones = [];
 let expandedItemIds = new Set();
 // Which review-history entries currently show their change log — UI-only, not persisted.
 let expandedHistoryIds = new Set();
+// Which workstreams currently show their full review history instead of just
+// the most recent HISTORY_PAGE_SIZE — UI-only, not persisted.
+let historyShowAllWs = new Set();
+const HISTORY_PAGE_SIZE = 5;
 
 // Deletion tombstones: {id, deletedAt}[] — records "this id used to exist and
 // was intentionally removed" so a merge (import, file sync) can tell that
@@ -1262,11 +1268,15 @@ function cycleMilestoneStatus(itemId, milestoneId) {
   if (!it) return;
   const m = it.milestones.find(m => m.id === milestoneId);
   if (!m) return;
+  const oldValue = m.status;
   const idx = STATUSES.findIndex(s => s.id === m.status);
   m.status = STATUSES[(idx + 1) % STATUSES.length].id;
   it.status = computedStatusFromMilestones(it.milestones);
   it.updatedAt = Date.now();
-  logReviewChange(it.workstreamId, it.name, m.name, `Status changed to ${statusLabel(m.status)}`);
+  // statusChange lets reviewHistoryRowHtml() render the same colored
+  // .status-badge pill shown in the row itself, twice — old value, then new
+  // — instead of plain text.
+  logReviewChange(it.workstreamId, it.name, m.name, `Status changed to ${statusLabel(m.status)}`, { statusChange: { oldValue, newValue: m.status } });
   save(); render();
 }
 // The IT/Business/Budget tags are item-level only (see ITEM_TAG_FIELDS/RAG3
@@ -1275,13 +1285,15 @@ function cycleMilestoneStatus(itemId, milestoneId) {
 function cycleItemAttr(itemId, field) {
   const it = items.find(i => i.id === itemId);
   if (!it) return;
+  const oldValue = it[field];
   const idx = RAG3.indexOf(it[field]);
   it[field] = RAG3[(idx + 1) % RAG3.length];
   it.updatedAt = Date.now();
-  // tagField/tagValue let reviewHistoryRowHtml() render the same colored
-  // icon badge the row itself uses instead of plain text — change is still
-  // set as a plain-text fallback (used for the badge's title tooltip).
-  logReviewChange(it.workstreamId, it.name, null, `${TAG_FIELD_LABELS[field]} changed to ${statusLabel(it[field])}`, { tagField: field, tagValue: it[field] });
+  // tagChange lets reviewHistoryRowHtml() render the same icon the row
+  // itself uses, twice — once colored by the old value, once by the new —
+  // instead of plain text; change is still set as a plain-text fallback
+  // (used as the row's title tooltip).
+  logReviewChange(it.workstreamId, it.name, null, `${TAG_FIELD_LABELS[field]} changed to ${statusLabel(it[field])}`, { tagChange: { field, oldValue, newValue: it[field] } });
   save(); render();
 }
 // Inline date editing directly on the status board — an alternative to
@@ -1290,9 +1302,11 @@ function cycleItemAttr(itemId, field) {
 function updateItemDateField(itemId, field, value) {
   const it = items.find(i => i.id === itemId);
   if (!it) return;
+  const oldValue = it[field];
   it[field] = value;
   it.updatedAt = Date.now();
-  logReviewChange(it.workstreamId, it.name, null, `Changed ${field === 'startDate' ? 'start' : 'due'} date to ${fmtDate(value)}`);
+  const label = field === 'startDate' ? 'Start' : 'Due';
+  logReviewChange(it.workstreamId, it.name, null, `Changed ${label.toLowerCase()} date to ${fmtDate(value)}`, { dateChange: { label, oldValue, newValue: value } });
   save(); render();
 }
 function updateMilestoneDateField(itemId, milestoneId, field, value) {
@@ -1312,14 +1326,19 @@ function updateMilestoneDateField(itemId, milestoneId, field, value) {
   // For an actual date, "former" is whatever actual date was already there,
   // or — if this is the first one — the milestone's own plan (due) date, so
   // the log always reads as a real before→after transition rather than just
-  // "set to X" with no reference point.
-  let changeText;
+  // "set to X" with no reference point. dateChange carries the raw ISO
+  // values (not pre-formatted text) so reviewHistoryRowHtml() can render
+  // them as real, disabled <input type="date"> fields rather than text.
+  let changeText, dateChange;
   if (field === 'actualDate') {
-    changeText = value ? `Actual: ${fmtDate(oldActual || oldDue)} → ${fmtDate(value)}` : 'Cleared actual date';
+    const former = oldActual || oldDue;
+    changeText = value ? `Actual: ${fmtDate(former)} → ${fmtDate(value)}` : 'Cleared actual date';
+    dateChange = { label: 'Actual', oldValue: former, newValue: value };
   } else {
     changeText = `Due: ${fmtDate(oldDue)} → ${fmtDate(value)}`;
+    dateChange = { label: 'Due', oldValue: oldDue, newValue: value };
   }
-  logReviewChange(it.workstreamId, it.name, m.name, changeText);
+  logReviewChange(it.workstreamId, it.name, m.name, changeText, { dateChange });
   save(); render();
 }
 
@@ -1796,8 +1815,9 @@ function canCompleteReviewCycle(cycle) {
   return wItems.every(it => isItemConfirmedInCycle(cycle, it));
 }
 // Freezes how many items (of the workstream's current total) were confirmed
-// at the moment a cycle closes — called right before completedAt/cancelledAt
-// is set. This can't be recomputed later from live data: an item's
+// at the moment a cycle closes — called right before completedAt is set (a
+// cancelled cycle is deleted outright, not snapshotted — see
+// cancelReviewCycle()). This can't be recomputed later from live data: an item's
 // confirmed-ness is derived from its *current* milestones (see
 // isItemConfirmedInCycle()), so a milestone added to an item long after this
 // cycle closed would otherwise make history retroactively — and wrongly —
@@ -1818,16 +1838,26 @@ function completeReviewCycle(cycleId) {
   save(); render();
   showToast('Review cycle completed');
 }
+// A cancelled cycle isn't tracked at all — it's removed from reviewCycles
+// entirely rather than marked cancelledAt and kept in history, since a
+// review that got abandoned isn't a record worth keeping (unlike a
+// completed one). This also frees the workstream for a new cycle exactly
+// the same way marking it used to (activeReviewCycle() just no longer finds
+// it, because it's gone). cancelledAt still exists as a field on the cycle
+// object (and normalizeData() still backfills it) purely so an
+// already-cancelled cycle saved before this change — from an older
+// pulse-data.json — is still correctly excluded from history and from ever
+// re-activating; nothing new ever sets it again.
 function cancelReviewCycle(cycleId) {
   const cycle = reviewCycles.find(c => c.id === cycleId);
   if (!cycle) return;
   openConfirmModal({
     title: 'Cancel this review cycle?',
-    body: 'It stays in history marked as cancelled. This cannot be undone.',
+    body: 'This cannot be undone, and the cycle will not be kept in history.',
     confirmLabel: 'Cancel Review',
     action: () => {
-      snapshotReviewCycleCounts(cycle);
-      cycle.cancelledAt = Date.now();
+      const idx = reviewCycles.findIndex(c => c.id === cycleId);
+      if (idx !== -1) reviewCycles.splice(idx, 1);
       save(); render();
       showToast('Review cycle cancelled');
     }
@@ -1837,15 +1867,19 @@ function toggleHistoryExpanded(cycleId) {
   if (expandedHistoryIds.has(cycleId)) expandedHistoryIds.delete(cycleId); else expandedHistoryIds.add(cycleId);
   render();
 }
+function toggleHistoryShowAll(wsId) {
+  if (historyShowAllWs.has(wsId)) historyShowAllWs.delete(wsId); else historyShowAllWs.add(wsId);
+  render();
+}
 // changeLog entries (see logReviewChange()) are what let a history entry
 // show the actual changes made while that cycle was active — "Development
 // completed: Changed actual date to 26 Jul 2026" — not just a confirmed
 // count. Collapsed by default (a cycle can accumulate a lot of these) behind
 // a chevron, same expand/collapse pattern as an item's milestone list.
+// Only ever called with a completed cycle — a cancelled one is deleted
+// outright (see cancelReviewCycle()) rather than kept and filtered here.
 function reviewHistoryRowHtml(c) {
-  const badge = c.completedAt
-    ? `<span class="review-cycle-badge completed">Completed</span>`
-    : `<span class="review-cycle-badge cancelled">Cancelled</span>`;
+  const badge = `<span class="review-cycle-badge completed">Completed</span>`;
   // itemCountAtClose is null for a cycle closed before this snapshot existed
   // (backfilled by normalizeData()) — there's no way to know in hindsight
   // what it would have shown, so the summary is simply omitted rather than
@@ -1858,19 +1892,48 @@ function reviewHistoryRowHtml(c) {
   const chevron = hasLog
     ? `<span class="item-chevron" onclick="toggleHistoryExpanded('${c.id}')"><i class="fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
     : `<span class="item-chevron"></span>`;
-  // A tag change (IT/Business/Budget) renders as the same colored icon badge
-  // the row itself uses (tagField/tagValue set by cycleItemAttr()) rather
-  // than plain text — the icon's shape identifies which of the three
-  // changed, its color the new value; e.change is kept as the title tooltip
-  // fallback for anyone hovering (or a screen reader).
+  // A tag change (IT/Business/Budget) renders as the row's own icon shown
+  // twice — old value's color, then new value's color — instead of plain
+  // text, so the shift is visible at a glance the same way a colored badge
+  // reads faster than a word. A status change renders the same way but with
+  // the row's own .status-badge pill (label + color) instead of an icon. A
+  // date change (Due/Actual) renders as two real, disabled
+  // <input type="date"> fields rather than formatted text, matching the
+  // same date-field look used everywhere else in the app — "disabled" is
+  // what "no editable" means here: a genuine date field the browser itself
+  // refuses to let you change. All three fall back to plain text (e.change)
+  // for anything without a structured shape, and e.change is kept on every
+  // entry regardless as the row's title tooltip.
   const changeRows = (hasLog && expanded)
     ? c.changeLog.map(e => {
-        const valueHtml = e.tagField
-          ? `<span class="tag-badge" style="background:var(--stat-${e.tagValue}-bg);color:var(--stat-${e.tagValue})" title="${esc(e.change)}"><i class="fa-solid ${TAG_FIELD_ICONS[e.tagField]}"></i></span>`
-          : esc(e.change);
-        return `<div class="review-change-row">
-        <span class="review-change-label">${esc(e.milestoneName || e.itemName)}</span>
-        <span>${valueHtml}</span>
+        let valueHtml;
+        if (e.tagChange) {
+          const { field, oldValue, newValue } = e.tagChange;
+          const icon = `<i class="fa-solid ${TAG_FIELD_ICONS[field]}"></i>`;
+          valueHtml = `<span class="tag-badge" style="background:var(--stat-${oldValue}-bg);color:var(--stat-${oldValue})">${icon}</span>
+            <span class="review-change-arrow">→</span>
+            <span class="tag-badge" style="background:var(--stat-${newValue}-bg);color:var(--stat-${newValue})">${icon}</span>`;
+        } else if (e.statusChange) {
+          const { oldValue, newValue } = e.statusChange;
+          valueHtml = `<span class="status-badge" style="background:var(--stat-${oldValue}-bg);color:var(--stat-${oldValue});cursor:default">${esc(statusLabel(oldValue))}</span>
+            <span class="review-change-arrow">→</span>
+            <span class="status-badge" style="background:var(--stat-${newValue}-bg);color:var(--stat-${newValue});cursor:default">${esc(statusLabel(newValue))}</span>`;
+        } else if (e.dateChange) {
+          const { oldValue, newValue } = e.dateChange;
+          valueHtml = `<input type="date" class="inline-date-input" value="${oldValue || ''}" disabled>
+            <span class="review-change-arrow">→</span>
+            <input type="date" class="inline-date-input" value="${newValue || ''}" disabled>`;
+        } else {
+          valueHtml = esc(e.change);
+        }
+        // Same "<item> — <milestone>" convention Dashboard's attention feed
+        // uses, so a milestone-level change is never ambiguous about which
+        // scope item it belongs to; an item-level change (tag, item date)
+        // has no milestoneName and just shows the item name alone.
+        const label = e.milestoneName ? `${e.itemName} — ${e.milestoneName}` : e.itemName;
+        return `<div class="review-change-row" title="${esc(e.change)}">
+        <span class="review-change-label">${esc(label)}</span>
+        <span class="review-change-value">${valueHtml}</span>
       </div>`;
       }).join('')
     : '';
@@ -1879,7 +1942,7 @@ function reviewHistoryRowHtml(c) {
       <span style="flex:1">Started ${fmtDate(dateStrFromTs(c.startedAt))}</span>
       ${summary}
       ${badge}
-      <span style="color:var(--text-faint)">${fmtDate(dateStrFromTs(c.completedAt || c.cancelledAt))}</span>
+      <span style="color:var(--text-faint)">${fmtDate(dateStrFromTs(c.completedAt))}</span>
     </div>${changeRows}`;
 }
 // Review has no workstream picker of its own any more — it reads the same
@@ -1926,11 +1989,26 @@ function renderReview() {
         <button class="btn btn-danger" onclick="cancelReviewCycle('${cycle.id}')">Cancel review</button>
       </div>`;
   }
-  const history = reviewCyclesForWs(filterWorkstreamId).filter(c => c.completedAt || c.cancelledAt).sort((a, b) => b.startedAt - a.startedAt);
+  // Cancelled cycles are never in reviewCycles at all (see
+  // cancelReviewCycle()) — this filter is only a defensive backstop for a
+  // cancelledAt-marked cycle saved before that change, from an older
+  // pulse-data.json.
+  const history = reviewCyclesForWs(filterWorkstreamId).filter(c => c.completedAt).sort((a, b) => b.startedAt - a.startedAt);
+  const showAllHistory = historyShowAllWs.has(filterWorkstreamId);
+  const visibleHistory = showAllHistory ? history : history.slice(0, HISTORY_PAGE_SIZE);
+  const hiddenCount = history.length - visibleHistory.length;
   html += `<div class="section-label">History</div>`;
   html += history.length
-    ? `<div class="review-list">${history.map(reviewHistoryRowHtml).join('')}</div>`
+    ? `<div class="review-list">${visibleHistory.map(reviewHistoryRowHtml).join('')}</div>`
     : `<div class="attention-empty">No past review cycles yet.</div>`;
+  // The oldest entries are the ones hidden by default (history is sorted
+  // newest-first, and slice(0, HISTORY_PAGE_SIZE) keeps the front of that
+  // list) — "Show more" reveals them without needing a separate query.
+  if (hiddenCount > 0) {
+    html += `<button class="btn btn-sm" style="margin-top:8px" onclick="toggleHistoryShowAll('${filterWorkstreamId}')">Show ${hiddenCount} more</button>`;
+  } else if (showAllHistory && history.length > HISTORY_PAGE_SIZE) {
+    html += `<button class="btn btn-sm" style="margin-top:8px" onclick="toggleHistoryShowAll('${filterWorkstreamId}')">Show less</button>`;
+  }
   el.innerHTML = html;
 }
 

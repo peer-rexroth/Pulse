@@ -86,19 +86,19 @@ test('completing a review cycle updates lastCompletedReview / isReviewOverdue fo
   assertTrue(lastCompletedReview(workstreams[0].id) > 0);
 });
 
-test('cancelReviewCycle marks the cycle cancelled and frees the workstream for a new cycle', function () {
+test('cancelReviewCycle removes the cycle entirely (not tracked) and frees the workstream for a new cycle', function () {
   startReviewCycle(workstreams[0].id);
   const cycle = activeReviewCycle(workstreams[0].id);
   cancelReviewCycle(cycle.id);
   assertEqual(document.getElementById('confirmModalActionBtn').textContent, 'Cancel Review', 'the button must not say "Delete" for a non-delete action');
   confirmModalAction();
-  assertTrue(!!reviewCycles[0].cancelledAt);
+  assertEqual(reviewCycles.length, 0, 'a cancelled cycle is not kept around at all');
   assertEqual(activeReviewCycle(workstreams[0].id), undefined);
   startReviewCycle(workstreams[0].id);
-  assertEqual(reviewCycles.length, 2, 'a new cycle can start once the old one is cancelled');
+  assertEqual(reviewCycles.length, 1, 'a new cycle can start once the old one is cancelled');
 });
 
-test('reviewCyclesForWs returns every cycle (active, completed, cancelled) for that workstream only', function () {
+test('reviewCyclesForWs returns every cycle (active and completed) for that workstream only', function () {
   document.getElementById('wsNameInput').value = 'Second';
   wsColorChoice = 'teal';
   saveWorkstream();
@@ -168,7 +168,7 @@ test('the Complete review button is disabled with an explanatory tooltip until e
   assertIncludes(html, 'Mark this review cycle as completed');
 });
 
-test('renderReview lists completed and cancelled cycles in history', function () {
+test('renderReview lists completed cycles in history', function () {
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
   startReviewCycle(workstreams[0].id);
@@ -177,6 +177,41 @@ test('renderReview lists completed and cancelled cycles in history', function ()
   renderReview();
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Completed');
+});
+
+test('renderReview only shows the 5 most recent history entries by default, with a Show more button for the rest', function () {
+  const wsId = workstreams[0].id;
+  setFilterWorkstream(wsId);
+  setMode('review');
+  for (let i = 0; i < 7; i++) {
+    startReviewCycle(wsId);
+    completeReviewCycle(activeReviewCycle(wsId).id);
+  }
+  renderReview();
+  let html = document.getElementById('main').innerHTML;
+  const rowCount = (html.match(/class="review-history-row"/g) || []).length;
+  assertEqual(rowCount, 5, 'only the 5 most recent completed cycles should show by default');
+  assertIncludes(html, 'Show 2 more', 'the button should say how many older entries are hidden');
+
+  toggleHistoryShowAll(wsId);
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  const expandedRowCount = (html.match(/class="review-history-row"/g) || []).length;
+  assertEqual(expandedRowCount, 7, 'clicking Show more should reveal every entry, including the oldest');
+  assertIncludes(html, 'Show less');
+});
+
+test('renderReview shows no Show-more button when there are 5 or fewer history entries', function () {
+  const wsId = workstreams[0].id;
+  setFilterWorkstream(wsId);
+  setMode('review');
+  for (let i = 0; i < 3; i++) {
+    startReviewCycle(wsId);
+    completeReviewCycle(activeReviewCycle(wsId).id);
+  }
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'Show', 'no pagination control is needed when everything already fits');
 });
 
 test('a completed cycle\'s history entry shows how many items were confirmed', function () {
@@ -195,7 +230,7 @@ test('a completed cycle\'s history entry shows how many items were confirmed', f
   assertIncludes(html, '2 of 2 confirmed');
 });
 
-test('a cancelled cycle\'s history entry shows partial confirmation progress at the moment it was cancelled', function () {
+test('a cancelled review cycle is not tracked — it never appears in history at all', function () {
   addReviewItem({ name: 'A' });
   addReviewItem({ name: 'B' });
   setFilterWorkstream(workstreams[0].id);
@@ -205,20 +240,18 @@ test('a cancelled cycle\'s history entry shows partial confirmation progress at 
   toggleReviewConfirm(cycle.id, items[0].id);
   cancelReviewCycle(cycle.id);
   confirmModalAction();
-  assertEqual(reviewCycles[0].itemCountAtClose, 2);
-  assertEqual(reviewCycles[0].confirmedCountAtClose, 1);
+  assertEqual(reviewCycles.length, 0, 'the cancelled cycle should not be kept at all');
   renderReview();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, '1 of 2 confirmed');
+  assertIncludes(html, 'No past review cycles yet.');
 });
 
-test('a cancelled cycle\'s confirmed-count snapshot stays accurate even if a milestone is later added to a confirmed item', function () {
+test('a completed cycle\'s confirmed-count snapshot stays accurate even if a milestone is later added to a confirmed item', function () {
   const it = addReviewItem({ name: 'A' });
   startReviewCycle(workstreams[0].id);
   const cycle = activeReviewCycle(workstreams[0].id);
   toggleReviewConfirm(cycle.id, it.id);
-  cancelReviewCycle(cycle.id);
-  confirmModalAction();
+  completeReviewCycle(cycle.id);
   assertEqual(reviewCycles[0].confirmedCountAtClose, 1, 'the snapshot should reflect confirmation state at close time');
   it.milestones.push({ id: genId(), name: 'New milestone', dueDate: todayStr(), status: 'not-started', actualDate: null });
   assertFalse(isItemConfirmedInCycle(cycle, it), 'the item is no longer confirmed by live re-derivation now that it has an unconfirmed milestone');
@@ -269,19 +302,20 @@ test('cycleMilestoneStatus logs the new status against the active cycle', functi
   assertEqual(entry.change, 'Status changed to On Track');
 });
 
-test('cycleItemAttr logs an item-level change (no milestoneName) with tagField/tagValue for the icon badge', function () {
+test('cycleItemAttr logs an item-level change (no milestoneName) with tagChange for the old-icon/new-icon badges', function () {
   const it = addReviewItem({ name: 'Call Money', itStatus: 'green' });
   startReviewCycle(workstreams[0].id);
   cycleItemAttr(it.id, 'itStatus');
   const entry = activeReviewCycle(workstreams[0].id).changeLog[0];
   assertEqual(entry.itemName, 'Call Money');
   assertEqual(entry.milestoneName, null);
-  assertEqual(entry.tagField, 'itStatus');
-  assertEqual(entry.tagValue, 'amber');
-  assertEqual(entry.change, 'IT changed to At Risk', 'kept as a plain-text fallback for the badge\'s tooltip');
+  assertEqual(entry.tagChange.field, 'itStatus');
+  assertEqual(entry.tagChange.oldValue, 'green');
+  assertEqual(entry.tagChange.newValue, 'amber');
+  assertEqual(entry.change, 'IT changed to At Risk', 'kept as a plain-text fallback for the row\'s tooltip');
 });
 
-test('renderReview shows a tag change in history as the colored icon badge, not plain text', function () {
+test('renderReview shows a tag change in history as old icon -> new icon, not plain text', function () {
   const it = addReviewItem({ name: 'Call Money', itStatus: 'green' });
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
@@ -293,9 +327,57 @@ test('renderReview shows a tag change in history as the colored icon badge, not 
   toggleHistoryExpanded(cycle.id);
   renderReview();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'fa-laptop-code', 'the IT tag\'s own icon should render, not a text label');
+  const iconCount = (html.match(/fa-laptop-code/g) || []).length;
+  assertEqual(iconCount, 2, 'the IT icon should render twice — old value, then new value');
+  assertIncludes(html, 'var(--stat-green)', 'the old (green) value should still render');
   assertIncludes(html, 'var(--stat-amber)', 'colored by the new value');
+  assertIncludes(html, 'review-change-arrow');
+  assertIncludes(html, `<span class="review-change-label">Call Money</span>`, 'an item-level change has no milestone, so the label is just the item name, no dash');
   assertNotIncludes(html, 'IT changed to At Risk</span>', 'the plain-text form should only be in the title tooltip, not visible text');
+});
+
+test('renderReview shows a milestone date change in history as two disabled date fields, not text', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'Development completed', dueDate: '2026-06-01', status: 'not-started', actualDate: null }]
+  });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'actualDate', '2026-07-26');
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  completeReviewCycle(cycle.id);
+  toggleHistoryExpanded(cycle.id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `value="2026-06-01" disabled`, 'the former date should render as a disabled date field, not text');
+  assertIncludes(html, `value="2026-07-26" disabled`, 'the new date should render as a disabled date field, not text');
+  assertIncludes(html, 'review-change-arrow');
+});
+
+test('cycleMilestoneStatus logs a statusChange {oldValue, newValue}, rendered as old badge -> new badge', function () {
+  const it = addReviewItem({
+    name: 'Call Money',
+    milestones: [{ id: genId(), name: 'Design defined', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  cycleMilestoneStatus(it.id, it.milestones[0].id);
+  const entry = cycle.changeLog[0];
+  assertEqual(entry.statusChange.oldValue, 'not-started');
+  assertEqual(entry.statusChange.newValue, 'green');
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  completeReviewCycle(cycle.id);
+  toggleHistoryExpanded(cycle.id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'var(--stat-not-started)', 'the old status should render as a colored badge');
+  assertIncludes(html, 'var(--stat-green)', 'the new status should render as a colored badge');
+  assertIncludes(html, 'Not Started');
+  assertIncludes(html, '>On Track<');
+  assertIncludes(html, 'Call Money — Design defined');
 });
 
 test('nothing is logged when no review cycle is active for the item\'s workstream', function () {
@@ -322,6 +404,7 @@ test('nothing is logged against a cycle once it has closed', function () {
 
 test('renderReview shows a collapsed history entry with a chevron, expanding to reveal the actual changes', function () {
   const it = addReviewItem({
+    name: 'Call Money',
     milestones: [{ id: genId(), name: 'Development completed', dueDate: todayStr(), status: 'not-started', actualDate: null }]
   });
   setFilterWorkstream(workstreams[0].id);
@@ -339,7 +422,7 @@ test('renderReview shows a collapsed history entry with a chevron, expanding to 
   renderReview();
   html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'review-change-row');
-  assertIncludes(html, 'Development completed');
+  assertIncludes(html, 'Call Money — Development completed', 'a milestone-level change should be labeled with its scope item name first');
   assertIncludes(html, 'Actual:');
 });
 
