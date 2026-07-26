@@ -1419,10 +1419,11 @@ function fmtDate(iso) {
 // string of whatever additional attributes that call site needs (onchange,
 // title, disabled, …). Only the icon opens the calendar popup
 // (`showPicker()`, guarded since it's not universally supported and a
-// disabled input has nothing to open) — clicking the input itself still
-// just focuses it for typing, the normal native behavior.
+// disabled input has nothing to open) — clicking anywhere else in the pill
+// (its padding/gap, not just the narrow input itself) focuses the input so
+// typing works immediately, without also popping the calendar.
 function dateInputHtml(value, attrs) {
-  return `<span class="date-pill">
+  return `<span class="date-pill" onclick="if(event.target.tagName!=='INPUT' && event.target.tagName!=='I'){ const inp=this.querySelector('input'); if(!inp.disabled) inp.focus(); }">
       <i class="fa-solid fa-calendar" onclick="const inp=this.nextElementSibling; if(inp.showPicker && !inp.disabled) inp.showPicker();"></i>
       <input type="date" class="inline-date-input" value="${value || ''}" ${attrs || ''}>
     </span>`;
