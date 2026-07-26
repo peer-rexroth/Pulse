@@ -957,11 +957,15 @@ function categoryById(id) { return categories.find(c => c.id === id); }
 
 // ---------- Rendering ----------
 // render() is the single top-level dispatcher: every mutation should call
-// this (or, for a same-mode-only optimization, the narrower render function
-// for whichever mode is guaranteed to be showing — see e.g. cycleMilestoneStatus's
-// renderMain() call, safe because milestone status badges only exist in
-// Planning's status board). Calling a narrower function from code reachable
-// in more than one mode would leave a stale view on screen after switching.
+// this, not a mode-specific render function, unless the call site is only
+// ever reachable while that mode is already showing. Row-level mutations
+// (toggleItemExpanded, cycleMilestoneStatus, cycleItemAttr,
+// updateItemDateField, updateMilestoneDateField) all call the general
+// render() specifically because Review reuses Planning's own row markup
+// (see itemRowHtml()'s reviewCycle param) — calling the narrower
+// renderMain() from any of them used to silently replace Review's checklist
+// with Planning's status view the moment one was triggered mid-review (e.g.
+// expanding an item to see its milestones).
 function render() {
   document.getElementById('programmeNameDisplay').textContent = programme.name;
   MODES.forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
@@ -1058,10 +1062,14 @@ function renderStatusView(main) {
 
 // reviewCycle is optional — passed only when this row is rendered inside
 // Review mode (renderReview()), which reuses this exact same row markup
-// ("same view as Planning") with two differences: Plan dates are always
+// ("same view as Planning") with a few differences: Plan dates are always
 // read-only (even for a zero-milestone item, which Planning would otherwise
-// let you hand-edit inline — Review is a confirmation pass, not a place to
-// edit the plan), and a trailing Confirm control is appended. See
+// let you hand-edit inline — see also milestoneRowsHtml()'s dueHtml, which
+// locks each milestone's own Due the same way; only Actual dates stay
+// editable, since recording when something actually finished is exactly
+// what a review is for); the Edit/Delete actions are hidden (a review is
+// for confirming, not restructuring items — see below); and a trailing
+// Confirm control is appended. See
 // isItemConfirmedInCycle()/toggleConfirmAllMilestones()/toggleReviewConfirm()
 // above.
 function itemRowHtml(it, reviewCycle) {
@@ -1136,10 +1144,12 @@ function itemRowHtml(it, reviewCycle) {
       <span></span>
       ${tagsHtml}
       <button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openItemModal('${it.id}')">${esc(statusLabel(it.status))}</button>
-      <span class="item-actions">
+      ${reviewCycle
+        ? `<span class="item-actions"></span>` // Edit/Delete are hidden during a review — still a real (empty) element for the usual column-collapse reason (see "Status board" in CLAUDE.md).
+        : `<span class="item-actions">
         <button class="row-icon-btn" onclick="openItemModal('${it.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
         <button class="row-icon-btn" onclick="deleteItem('${it.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
-      </span>
+      </span>`}
       ${reviewCellHtml}
     </div>${subRows}`;
 }
@@ -1191,15 +1201,22 @@ function milestoneRowsHtml(it, reviewCycle) {
           <i class="fa-solid ${mConfirmed ? 'fa-check' : 'fa-square'}"></i>
         </button>`;
     }
+    // Due is part of the plan — locked read-only during a review, same as
+    // the item's own Plan dates above. Actual stays editable regardless:
+    // recording when something actually finished is exactly what a review
+    // pass is for.
+    const dueHtml = reviewCycle
+      ? `<span class="item-dates-computed" title="Not editable during a review">${fmtDate(m.dueDate)}</span>`
+      : `<span class="item-dates-inline">
+        <input type="date" class="inline-date-input" value="${m.dueDate}" title="Due date" onchange="updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)">
+      </span>`;
     return `
     <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''}">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
       <span class="milestone-sub-name" style="grid-column: 2 / 6">${esc(m.name)}</span>
       <span></span>
       <span></span>
-      <span class="item-dates-inline">
-        <input type="date" class="inline-date-input" value="${m.dueDate}" title="Due date" onchange="updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)">
-      </span>
+      ${dueHtml}
       <span class="milestone-sub-actual-inline" title="Actual completion date">
         <input type="date" class="inline-date-input" value="${m.actualDate || ''}" onchange="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)">
       </span>
@@ -1210,9 +1227,16 @@ function milestoneRowsHtml(it, reviewCycle) {
   }).join('');
 }
 
+// Calls the general render(), not the narrower renderMain(), even though
+// this used to only ever be reachable from Planning's status board — Review
+// now renders these same rows too (see itemRowHtml()'s reviewCycle param),
+// so a mode-specific render function would silently replace Review's
+// checklist with Planning's status view when expanding an item mid-review.
+// Same reasoning applies to cycleMilestoneStatus()/cycleItemAttr()/
+// updateItemDateField()/updateMilestoneDateField() below.
 function toggleItemExpanded(id) {
   if (expandedItemIds.has(id)) expandedItemIds.delete(id); else expandedItemIds.add(id);
-  renderMain();
+  render();
 }
 
 function cycleMilestoneStatus(itemId, milestoneId) {
@@ -1224,7 +1248,7 @@ function cycleMilestoneStatus(itemId, milestoneId) {
   m.status = STATUSES[(idx + 1) % STATUSES.length].id;
   it.status = computedStatusFromMilestones(it.milestones);
   it.updatedAt = Date.now();
-  save(); renderMain();
+  save(); render();
 }
 // The IT/Business/Budget tags are item-level only (see ITEM_TAG_FIELDS/RAG3
 // above) — a plain 3-state click-to-cycle, independent of the main status
@@ -1235,7 +1259,7 @@ function cycleItemAttr(itemId, field) {
   const idx = RAG3.indexOf(it[field]);
   it[field] = RAG3[(idx + 1) % RAG3.length];
   it.updatedAt = Date.now();
-  save(); renderMain();
+  save(); render();
 }
 // Inline date editing directly on the status board — an alternative to
 // opening the item modal, not a replacement for it. Dates don't factor into
@@ -1245,7 +1269,7 @@ function updateItemDateField(itemId, field, value) {
   if (!it) return;
   it[field] = value;
   it.updatedAt = Date.now();
-  save(); renderMain();
+  save(); render();
 }
 function updateMilestoneDateField(itemId, milestoneId, field, value) {
   const it = items.find(i => i.id === itemId);
@@ -1259,7 +1283,7 @@ function updateMilestoneDateField(itemId, milestoneId, field, value) {
   // cycleMilestoneStatus() does for the computed status.
   const range = computedDateRangeFromMilestones(it.milestones);
   if (range) { it.startDate = range.startDate; it.dueDate = range.dueDate; }
-  save(); renderMain();
+  save(); render();
 }
 
 function fmtDate(iso) {

@@ -261,3 +261,91 @@ test('renderReview shows individual and confirm-all milestone controls once an i
   assertIncludes(html, `toggleMilestoneConfirm('${cycle.id}','${it.milestones[0].id}')`);
   assertIncludes(html, `toggleMilestoneConfirm('${cycle.id}','${it.milestones[1].id}')`);
 });
+
+test('renderReview hides the Edit/Delete actions on the item row', function () {
+  const it = addReviewItem({ name: 'No editing here' });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'item-actions', 'the column should still be a real (empty) element');
+  assertNotIncludes(html, `onclick="deleteItem('${it.id}')"`, 'Delete must not be reachable from the row during a review');
+  assertNotIncludes(html, `onclick="openItemModal('${it.id}')" title="Edit"`, 'Edit must not be reachable from the row during a review');
+});
+
+test('renderReview locks each milestone\'s own Due date too, leaving only Actual editable', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  toggleItemExpanded(it.id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'milestone-sub-actual-inline', 'Actual should still be a real, editable input');
+  assertNotIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','dueDate'`, 'Due must not be editable inline during a review');
+  assertIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','actualDate'`, 'Actual must still be editable inline during a review');
+});
+
+test('the same item still shows its Edit/Delete actions and editable milestone Due dates back in Planning', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `onclick="deleteItem('${it.id}')"`);
+  assertIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','dueDate'`);
+});
+
+// ---------- Row mutations re-render whichever mode is actually showing ----------
+// Regression coverage for a real bug: these row-level mutation handlers are
+// now reachable from both Planning and Review (Review reuses Planning's own
+// row markup — see itemRowHtml()'s reviewCycle param), but several of them
+// used to call the Planning-only renderMain() directly. That silently
+// replaced Review's checklist with Planning's status view the moment one
+// fired while reviewing — e.g. clicking the chevron to expand an item's
+// milestones. Deliberately does NOT call renderReview() again after the
+// mutation in any of these — that would mask the bug by re-rendering over
+// whatever the mutation itself produced.
+
+test('expanding an item mid-review keeps showing the Review checklist, not Planning\'s status view', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  toggleItemExpanded(it.id);
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'review-checklist', 'toggling expand mid-review must not swap in Planning\'s rendering');
+  assertIncludes(html, 'Confirm all', 'the review-only confirm control should still be there');
+});
+
+test('cycling a milestone\'s status mid-review keeps showing the Review checklist', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  toggleItemExpanded(it.id);
+  cycleMilestoneStatus(it.id, it.milestones[0].id);
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'review-checklist');
+});
+
+test('cycling an IT/Business/Budget tag mid-review keeps showing the Review checklist', function () {
+  const it = addReviewItem({});
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  cycleItemAttr(it.id, 'itStatus');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'review-checklist');
+});
+
+test('editing a milestone\'s Actual date mid-review keeps showing the Review checklist', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  toggleItemExpanded(it.id);
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'actualDate', '2026-09-01');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'review-checklist');
+});
