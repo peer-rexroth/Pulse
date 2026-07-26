@@ -24,9 +24,23 @@
     --shadow: 0 1px 2px rgba(20,20,30,.04), 0 4px 16px rgba(20,20,30,.06);
     /* Shared column layout for the status board: header row, item rows, and
        nested milestone rows all use this so cells line up across all three —
-       see "Status board" in CLAUDE.md. Chevron | Name | Owner | Plan dates |
-       Actual | Milestones | Notes | Status | Actions. */
-    --item-grid-cols: 20px minmax(140px,1.3fr) 100px 210px 130px 100px minmax(90px,1fr) 90px 56px;
+       see "Status board" in CLAUDE.md. Columns: 1 Chevron, 2-5 Name/
+       Milestones/Owner/Plan-dates (on a milestone row these 4 are merged into
+       one wide Name cell instead — see milestoneRowsHtml()), 6 Actual
+       (always blank on both row types — see itemRowHtml()'s actualDateHtml —
+       so it's just a thin spacer, not a real content column), 7 Notes, 8
+       blank (same — always empty on both row types, thin spacer), 9
+       Milestone Due (blank on the item's own row), 10 Tags (IT/Business/
+       Budget) on the item row / Milestone Actual on a milestone row, 11
+       Status, 12 Actions. Columns 9-10 are placed right next to Status so a
+       milestone's own dates sit beside its own status badge. Columns 6 and 8
+       are kept deliberately narrow (not 0) — every row this wide needs the
+       overall total to stay under typical viewport widths so .main's
+       overflow:auto never has to kick in for a normal window size; see the
+       "Status board" section in CLAUDE.md for the incident where these two
+       columns being needlessly wide, combined with the Due/Actual columns
+       added for milestones, pushed Status/Actions off-screen. */
+    --item-grid-cols: 20px minmax(140px,1.3fr) 90px 160px 190px 20px minmax(90px,1fr) 20px 115px 100px 90px 56px;
 
     --ws-blue: #3b6fe0;   --ws-blue-bg: #eaf0fd;
     --ws-teal: #12968c;   --ws-teal-bg: #e3f6f4;
@@ -157,8 +171,14 @@
   .empty-state i { font-size: 34px; opacity: .5; }
 
   /* Status view */
-  .ws-section { margin-bottom: 22px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .ws-section-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  /* No overflow:hidden here on purpose — a row wider than the section (more
+     columns than fit at the current window width) must stay reachable via
+     horizontal scroll on .main, never silently clipped off. The rounded-card
+     look is achieved by rounding the header's top corners and the trailing
+     "Add item" row's bottom corners directly instead of clipping at the
+     section boundary. */
+  .ws-section { margin-bottom: 22px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  .ws-section-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; }
   .ws-section-header .ws-dot { width: 10px; height: 10px; }
   .ws-section-title { font-weight: 700; font-size: 14.5px; flex: 1; }
   .rag-pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
@@ -189,14 +209,16 @@
   .item-dates-inline { display: flex; align-items: center; gap: 3px; }
   .item-dates-computed { color: var(--text-dim); font-size: 12.5px; }
   .item-dates-arrow { color: var(--text-faint); font-size: 11px; }
-  .item-actual-inline, .milestone-sub-actual-inline { display: flex; align-items: center; gap: 4px; color: var(--stat-complete); }
-  .item-actual-inline .inline-date-input, .milestone-sub-actual-inline .inline-date-input { color: var(--stat-complete); }
+  .milestone-sub-actual-inline { display: flex; align-items: center; color: var(--stat-complete); }
+  .milestone-sub-actual-inline .inline-date-input { color: var(--stat-complete); }
   .status-badge { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; cursor: pointer; border: none; justify-self: start; }
+  .item-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tag-badge { font-size: 11px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; padding: 0; border-radius: 6px; cursor: pointer; border: none; line-height: 1; }
   .item-actions { display: none; gap: 2px; }
   .item-row:hover .item-actions { display: flex; }
   .row-icon-btn { border: none; background: transparent; color: var(--text-faint); cursor: pointer; padding: 4px 6px; border-radius: 5px; }
   .row-icon-btn:hover { background: var(--border); color: var(--text); }
-  .ws-section-add { padding: 8px 14px; }
+  .ws-section-add { padding: 8px 14px; border-radius: 0 0 var(--radius) var(--radius); }
 
   /* Shown only above an expanded item's own milestone rows (see
      milestoneHeaderHtml()) — scoped to that one item, not a page-wide
@@ -657,6 +679,12 @@ const STATUSES = [
 // computedStatusFromMilestones() and "Milestone checklist" in CLAUDE.md.
 const STATUS_SEVERITY = { red: 0, amber: 1, green: 2, 'not-started': 3, complete: 4 };
 
+// The 3 item-level attribute flags (IT/Business/Budget) are simple RAG tags,
+// distinct from the main status/milestone status — no "not started" or
+// "complete" concept, just Green/Amber/Red, cycled by clicking the badge.
+const ITEM_TAG_FIELDS = ['itStatus', 'businessStatus', 'budgetStatus'];
+const RAG3 = ['green', 'amber', 'red'];
+
 const WS_COLORS = ['blue', 'teal', 'purple', 'amber', 'pink', 'green', 'red', 'grey'];
 
 // Seeds the one default category ("Development") the first time a programme
@@ -844,6 +872,7 @@ function normalizeData() {
     if (!it.startDate) it.startDate = it.dueDate;
     if (typeof it.updatedAt !== 'number') it.updatedAt = Date.now();
     if (typeof it.actualDate !== 'string') it.actualDate = null;
+    ITEM_TAG_FIELDS.forEach(f => { if (!RAG3.includes(it[f])) it[f] = 'green'; });
     if (!Array.isArray(it.milestones)) it.milestones = [];
     it.milestones.forEach(m => {
       if (!isSafeId(m.id)) m.id = genId();
@@ -1042,7 +1071,7 @@ function itemRowHtml(it) {
   // here rather than editable inputs; only an item with zero milestones has
   // a plan range worth hand-editing directly on the row.
   const planDatesHtml = total
-    ? `<span class="item-dates-computed" title="Computed from the earliest and latest milestone date (due or actual)">${fmtDate(it.startDate)} → ${fmtDate(it.dueDate)}</span>`
+    ? `<span class="item-dates-computed" title="Computed from the earliest and latest milestone date (due or actual)">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>`
     : `<span class="item-dates-inline">
       <input type="date" class="inline-date-input" value="${it.startDate}" title="Start date" onchange="updateItemDateField('${it.id}','startDate',this.value)">
       <span class="item-dates-arrow">→</span>
@@ -1054,15 +1083,29 @@ function itemRowHtml(it) {
   // real (empty) element, not an omitted one, for the usual column-collapse
   // reason (see "Status board" in CLAUDE.md).
   const actualDateHtml = `<span></span>`;
+  // IT/Business/Budget — item-level-only RAG tags, cycled by clicking. See
+  // ITEM_TAG_FIELDS/RAG3/cycleItemAttr() above. Icon-only (no text label) —
+  // title attr carries the full name for a hover tooltip. Rendered in column
+  // 10 — the same column a milestone row uses for its own Actual date input
+  // (see --item-grid-cols) — since tags are item-only and that column is
+  // otherwise blank on the item's own row.
+  const tagsHtml = `<span class="item-tags">
+      <button class="tag-badge" style="background:var(--stat-${it.itStatus}-bg);color:var(--stat-${it.itStatus})" onclick="cycleItemAttr('${it.id}','itStatus')" title="IT"><i class="fa-solid fa-laptop-code"></i></button>
+      <button class="tag-badge" style="background:var(--stat-${it.businessStatus}-bg);color:var(--stat-${it.businessStatus})" onclick="cycleItemAttr('${it.id}','businessStatus')" title="Business"><i class="fa-solid fa-briefcase"></i></button>
+      <button class="tag-badge" style="background:var(--stat-${it.budgetStatus}-bg);color:var(--stat-${it.budgetStatus})" onclick="cycleItemAttr('${it.id}','budgetStatus')" title="Budget"><i class="fa-solid fa-euro-sign"></i></button>
+    </span>`;
   const subRows = (expanded && total) ? milestoneHeaderHtml() + milestoneRowsHtml(it) : '';
   return `<div class="item-row">
       ${chevron}
       <span class="item-name">${esc(it.name)}</span>
+      ${milestoneBadge}
       <span class="item-owner">${it.owner ? '<i class="fa-solid fa-user"></i> ' + esc(it.owner) : ''}</span>
       ${planDatesHtml}
       ${actualDateHtml}
-      ${milestoneBadge}
       <span class="item-notes">${esc(it.notes)}</span>
+      <span></span>
+      <span></span>
+      ${tagsHtml}
       <button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openItemModal('${it.id}')">${esc(statusLabel(it.status))}</button>
       <span class="item-actions">
         <button class="row-icon-btn" onclick="openItemModal('${it.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
@@ -1073,35 +1116,43 @@ function itemRowHtml(it) {
 
 // A small column-label row shown only for an *expanded* item's own milestone
 // list — right above its milestone rows, not a page-wide header — since
-// milestones only ever use 4 of the 9 shared columns (Milestone/Due/Actual/
-// Status); labeling all 9 globally implied columns like Owner/Notes applied
-// to milestones too, which they don't.
+// milestones only ever use 4 of the 12 shared columns (Milestone/Due/Actual/
+// Status); labeling all 12 globally implied columns like Owner/Notes/Tags
+// applied to milestones too, which they don't. Due/Actual sit in the two
+// dedicated columns right before Status (see --item-grid-cols), not under
+// the item's own Owner/Plan-dates columns — so a milestone's own dates read
+// right next to its own status badge.
 function milestoneHeaderHtml() {
   return `<div class="milestone-header">
-      <span></span><span>Milestone</span><span></span><span>Due</span><span>Actual</span><span></span><span></span><span>Status</span><span></span>
+      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span>Status</span><span></span>
     </div>`;
 }
-// Emits the same 9 grid cells itemRowHtml() does (chevron|name|owner|dates|
-// actual|milestones|notes|status|actions), so a milestone row's Due/Actual/
-// Status line up directly under its parent item's columns — cells that
-// don't apply to a milestone (owner, the milestones-count badge, notes,
-// actions) are still real (empty) elements, not omitted, for the same
-// column-collapse reason documented on itemRowHtml()'s milestoneBadge.
+// Emits the same 12 grid cells itemRowHtml() does (chevron|name|milestones|
+// owner|dates|actual|notes|blank|milestone-due|milestone-actual(item:tags)|
+// status|actions), so a milestone row's Due/Actual/Status line up directly
+// under its parent item's columns — cells that don't apply to a milestone
+// (the milestones-count badge, owner, dates, actual-placeholder, notes,
+// tags) are still real (empty) elements, not omitted, for the same
+// column-collapse reason documented on itemRowHtml()'s milestoneBadge. The
+// one exception: milestone-sub-name explicitly spans columns 2-5 (name +
+// milestones-badge + owner + dates, none of which apply to a milestone)
+// instead of rendering 3 separate blank cells there, since a milestone's
+// name has nothing else competing for that space and was truncating too
+// eagerly at a single column's width.
 function milestoneRowsHtml(it) {
   return it.milestones.slice().sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '')).map(m => `
     <div class="milestone-sub-row">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
-      <span class="milestone-sub-name">${esc(m.name)}</span>
+      <span class="milestone-sub-name" style="grid-column: 2 / 6">${esc(m.name)}</span>
+      <span></span>
+      <span></span>
       <span></span>
       <span class="item-dates-inline">
         <input type="date" class="inline-date-input" value="${m.dueDate}" title="Due date" onchange="updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)">
       </span>
       <span class="milestone-sub-actual-inline" title="Actual completion date">
-        <i class="fa-solid fa-circle-check"></i>
         <input type="date" class="inline-date-input" value="${m.actualDate || ''}" onchange="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)">
       </span>
-      <span></span>
-      <span></span>
       <button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(statusLabel(m.status))}</button>
       <span></span>
     </div>`).join('');
@@ -1120,6 +1171,17 @@ function cycleMilestoneStatus(itemId, milestoneId) {
   const idx = STATUSES.findIndex(s => s.id === m.status);
   m.status = STATUSES[(idx + 1) % STATUSES.length].id;
   it.status = computedStatusFromMilestones(it.milestones);
+  it.updatedAt = Date.now();
+  save(); renderMain();
+}
+// The IT/Business/Budget tags are item-level only (see ITEM_TAG_FIELDS/RAG3
+// above) — a plain 3-state click-to-cycle, independent of the main status
+// and milestone roll-up.
+function cycleItemAttr(itemId, field) {
+  const it = items.find(i => i.id === itemId);
+  if (!it) return;
+  const idx = RAG3.indexOf(it[field]);
+  it[field] = RAG3[(idx + 1) % RAG3.length];
   it.updatedAt = Date.now();
   save(); renderMain();
 }
@@ -1152,6 +1214,14 @@ function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso + 'T00:00:00');
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// Plan date ranges (scope-item row and item modal) always include the year,
+// since Start/Due can legitimately span across years.
+function fmtDateY(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function renderTimelineView(main) {
@@ -1433,7 +1503,7 @@ function updateItemStatusFieldMode() {
 
     const range = computedDateRangeFromMilestones(editingMilestones);
     if (range) {
-      document.getElementById('itemDatesComputedBadge').textContent = `${fmtDate(range.startDate)} → ${fmtDate(range.dueDate)}`;
+      document.getElementById('itemDatesComputedBadge').textContent = `${fmtDateY(range.startDate)} → ${fmtDateY(range.dueDate)}`;
       document.getElementById('itemStartInput').value = range.startDate;
       document.getElementById('itemDueInput').value = range.dueDate;
     }
@@ -1473,7 +1543,11 @@ function saveItem() {
   if (editingItemId) {
     Object.assign(items.find(i => i.id === editingItemId), data);
   } else {
-    items.push(Object.assign({ id: genId() }, data));
+    // itStatus/businessStatus/budgetStatus aren't part of `data` — they're
+    // never edited via this modal, only cycled inline on the row (see
+    // cycleItemAttr()) — so a brand-new item needs its own defaults here,
+    // and editing an existing one never resets them back to green.
+    items.push(Object.assign({ id: genId(), itStatus: 'green', businessStatus: 'green', budgetStatus: 'green' }, data));
   }
   save(); closeItemModal(); render();
   showToast('Item saved');
@@ -1575,7 +1649,7 @@ function reviewItemRowHtml(cycle, it) {
   const confirmed = cycle.confirmations.some(c => c.itemId === it.id);
   return `<div class="review-item-row ${confirmed ? 'confirmed' : ''}">
       <span class="item-name">${esc(it.name)}</span>
-      <span class="item-dates">${fmtDate(it.startDate)} → ${fmtDate(it.dueDate)}</span>
+      <span class="item-dates">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>
       <button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openItemModal('${it.id}')">${esc(statusLabel(it.status))}</button>
       <button class="review-confirm-btn ${confirmed ? 'confirmed' : ''}" onclick="toggleReviewConfirm('${cycle.id}','${it.id}')">
         <i class="fa-solid ${confirmed ? 'fa-check' : 'fa-square'}"></i> ${confirmed ? 'Confirmed' : 'Confirm'}

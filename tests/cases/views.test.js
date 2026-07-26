@@ -129,6 +129,29 @@ test('updateMilestoneDateField updates a single date field on one milestone only
   assertEqual(items[0].milestones[1].actualDate, null, 'the other milestone should be untouched');
 });
 
+test('an item row shows IT/Business/Budget tag badges colored by their current value', function () {
+  const it = addItem({ name: 'Tagged', itStatus: 'red', businessStatus: 'amber', budgetStatus: 'green' });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'item-tags');
+  assertIncludes(html, `cycleItemAttr('${it.id}','itStatus')`);
+  assertIncludes(html, `cycleItemAttr('${it.id}','businessStatus')`);
+  assertIncludes(html, `cycleItemAttr('${it.id}','budgetStatus')`);
+  assertIncludes(html, 'var(--stat-red)', 'itStatus red should color its badge');
+});
+
+test('a milestone sub-row never renders a tag badge — tags are item-level only', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  const count = (html.match(/class="item-tags"/g) || []).length;
+  assertEqual(count, 1, 'exactly one item-tags block should appear — the item row\'s own, not one per milestone');
+});
+
 // ---------- Status board column alignment (grid) ----------
 
 test('the milestone column header only appears once an item with milestones is expanded, not page-wide', function () {

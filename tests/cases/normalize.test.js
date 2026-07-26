@@ -130,6 +130,29 @@ test('normalizeData leaves the plan date range as manually set on an item with n
   assertEqual(items[0].dueDate, '2026-03-15');
 });
 
+test('normalizeData backfills missing IT/Business/Budget tags to green, and rejects an invalid value', function () {
+  items.push({
+    id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X',
+    dueDate: todayStr(), startDate: todayStr(), milestones: [], itStatus: 'not-a-color'
+  });
+  normalizeData();
+  assertEqual(items[0].itStatus, 'green');
+  assertEqual(items[0].businessStatus, 'green');
+  assertEqual(items[0].budgetStatus, 'green');
+});
+
+test('normalizeData leaves an existing valid IT/Business/Budget tag alone', function () {
+  items.push({
+    id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X',
+    dueDate: todayStr(), startDate: todayStr(), milestones: [],
+    itStatus: 'red', businessStatus: 'amber', budgetStatus: 'green'
+  });
+  normalizeData();
+  assertEqual(items[0].itStatus, 'red');
+  assertEqual(items[0].businessStatus, 'amber');
+  assertEqual(items[0].budgetStatus, 'green');
+});
+
 test('normalizeData leaves a manual status alone on an item with no milestones', function () {
   items.push({
     id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X',

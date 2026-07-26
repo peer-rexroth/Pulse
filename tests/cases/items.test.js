@@ -325,3 +325,41 @@ test('the computed date range preview updates live when a milestone\'s date chan
   assertIncludes(document.getElementById('itemDatesComputedBadge').textContent, '→');
   assertEqual(document.getElementById('itemDueInput').value, editingMilestones.reduce((max, m) => m.dueDate > max ? m.dueDate : max, editingMilestones[0].dueDate));
 });
+
+// ---------- IT/Business/Budget tags ----------
+
+test('a new item defaults its IT/Business/Budget tags to green', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  assertEqual(items[0].itStatus, 'green');
+  assertEqual(items[0].businessStatus, 'green');
+  assertEqual(items[0].budgetStatus, 'green');
+});
+
+test('cycleItemAttr advances a single tag field through green -> amber -> red -> green, leaving the others untouched', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  cycleItemAttr(it.id, 'itStatus');
+  assertEqual(items[0].itStatus, 'amber');
+  assertEqual(items[0].businessStatus, 'green', 'businessStatus should be untouched by cycling itStatus');
+  cycleItemAttr(it.id, 'itStatus');
+  assertEqual(items[0].itStatus, 'red');
+  cycleItemAttr(it.id, 'itStatus');
+  assertEqual(items[0].itStatus, 'green', 'cycling should wrap back around to green');
+});
+
+test('editing an existing item via the modal does not reset its IT/Business/Budget tags', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  cycleItemAttr(it.id, 'budgetStatus');
+  assertEqual(items[0].budgetStatus, 'amber');
+  openItemModal(it.id);
+  fillItemForm({ name: 'Renamed' });
+  saveItem();
+  assertEqual(items[0].budgetStatus, 'amber', 'saving the modal again should not clobber a tag it never edits');
+});
