@@ -100,6 +100,8 @@
     color: var(--text-dim); font-weight: 600; display: flex; align-items: center; gap: 6px;
   }
   .view-tab.active { background: var(--panel); color: var(--accent); box-shadow: var(--shadow); }
+  .view-tab.disabled { opacity: .4; cursor: not-allowed; }
+  #tabAdmin.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
   .topbar-spacer { flex: 1; }
   .icon-btn {
     border: 1px solid var(--border); background: var(--panel); color: var(--text-dim); cursor: pointer;
@@ -167,6 +169,7 @@
   .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; width: 110px; flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-dates { color: var(--text-dim); font-size: 12.5px; width: 150px; flex: 0 0 auto; }
   .milestone-count-badge { font-size: 11px; color: var(--text-faint); font-weight: 700; flex: 0 0 auto; white-space: nowrap; }
+  .item-actual-badge { font-size: 11.5px; color: var(--stat-complete); font-weight: 700; flex: 0 0 auto; white-space: nowrap; }
   .item-notes { color: var(--text-faint); font-size: 12.5px; flex: 1; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .status-badge { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; flex: 0 0 auto; cursor: pointer; border: none; }
   .item-actions { display: none; gap: 2px; flex: 0 0 auto; }
@@ -181,6 +184,7 @@
   }
   .milestone-sub-name { flex: 1; font-weight: 600; color: var(--text-dim); }
   .milestone-sub-date { width: 90px; flex: 0 0 auto; color: var(--text-faint); }
+  .milestone-sub-actual { font-size: 11px; color: var(--stat-complete); flex: 0 0 auto; white-space: nowrap; }
 
   /* Timeline view */
   .timeline-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
@@ -229,17 +233,17 @@
   .field textarea { resize: vertical; min-height: 56px; }
   .field-row { display: flex; gap: 10px; }
   .field-row .field { flex: 1; }
-  .modal-wide { width: 520px; }
+  .modal-wide { width: 600px; }
   .milestone-row { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--border); }
   .milestone-row:last-child { border-bottom: none; }
   .milestone-row input[type="text"] {
-    flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); font-size: 12.5px;
+    flex: 1; min-width: 90px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); font-size: 12.5px;
   }
   .milestone-row input[type="date"] {
-    width: 128px; flex: 0 0 auto; padding: 6px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); font-size: 12px;
+    width: 108px; flex: 0 0 auto; padding: 6px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); font-size: 12px;
   }
   .milestone-row select {
-    width: 96px; flex: 0 0 auto; padding: 5px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); font-size: 11.5px;
+    width: 86px; flex: 0 0 auto; padding: 5px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); font-size: 11.5px;
   }
   .color-grid { display: flex; gap: 8px; flex-wrap: wrap; }
   .color-swatch { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
@@ -295,9 +299,6 @@
   .backup-row-desc { font-size: 12px; color: var(--text-faint); margin-top: 1px; }
 
   /* Review mode */
-  .review-ws-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px; cursor: pointer; color: var(--text-dim); font-weight: 600; }
-  .review-ws-row:hover { background: var(--panel-2); }
-  .review-ws-row.active { background: var(--accent-bg); color: var(--accent); }
   .review-ws-badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; flex: 0 0 auto; }
   .review-ws-badge.overdue { background: var(--stat-red-bg); color: var(--stat-red); }
   .review-ws-badge.active-cycle { background: var(--stat-amber-bg); color: var(--stat-amber); }
@@ -362,9 +363,8 @@
     onkeydown="if(event.key==='Enter'){this.blur();}else if(event.key==='Escape'){cancelRenameProgramme();}">
   <div class="view-tabs">
     <button class="view-tab" id="tabPlanning" onclick="setMode('planning')"><i class="fa-solid fa-diagram-project"></i> Planning</button>
-    <button class="view-tab" id="tabReview" onclick="setMode('review')"><i class="fa-solid fa-clipboard-check"></i> Review</button>
+    <button class="view-tab" id="tabReview" onclick="setMode('review')" title="Select a specific workstream in the sidebar first"><i class="fa-solid fa-clipboard-check"></i> Review</button>
     <button class="view-tab" id="tabDashboard" onclick="setMode('dashboard')"><i class="fa-solid fa-gauge-high"></i> Dashboard</button>
-    <button class="view-tab" id="tabAdmin" onclick="setMode('admin')"><i class="fa-solid fa-sliders"></i> Admin</button>
   </div>
   <div class="topbar-spacer"></div>
   <span id="fileSyncIndicator"></span>
@@ -385,18 +385,23 @@
       </div>
     </div>
   </div>
+  <button class="btn btn-sm" id="tabAdmin" onclick="setMode('admin')"><i class="fa-solid fa-sliders"></i> Admin</button>
   <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileImport(event)">
   <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-moon"></i></button>
 </div>
 
-<div class="body-row" id="planningBody">
+<!-- Shared shell for Planning/Review/Dashboard: one sidebar (the workstream
+     selector all three modes read from) + one main content area whose
+     contents swap per mode. Admin isn't workstream-scoped, so it's a
+     separate full-width container reached from its own topbar button. -->
+<div class="body-row" id="scopedBody">
   <div class="sidebar">
     <div class="sidebar-label">Workstreams</div>
     <div id="wsList"></div>
     <div class="sidebar-add" onclick="openWorkstreamModal()"><i class="fa-solid fa-plus"></i> Workstream</div>
   </div>
   <div class="planning-main">
-    <div class="planning-toolbar">
+    <div class="planning-toolbar" id="planningToolbar">
       <div class="view-tabs">
         <button class="view-tab" id="tabStatus" onclick="setView('status')"><i class="fa-solid fa-list-check"></i> Status</button>
         <button class="view-tab" id="tabTimeline" onclick="setView('timeline')"><i class="fa-solid fa-timeline"></i> Timeline</button>
@@ -405,16 +410,6 @@
     <div class="main" id="main"></div>
   </div>
 </div>
-
-<div class="body-row" id="reviewBody" style="display:none">
-  <div class="sidebar">
-    <div class="sidebar-label">Workstreams</div>
-    <div id="reviewWsList"></div>
-  </div>
-  <div class="main" id="reviewMain"></div>
-</div>
-
-<div class="main" id="dashboardBody" style="display:none"></div>
 
 <div class="main" id="adminBody" style="display:none"></div>
 
@@ -495,9 +490,15 @@
         <input type="date" id="itemDueInput">
       </div>
     </div>
-    <div class="field">
-      <label>Status</label>
-      <select id="itemStatusSelect"></select>
+    <div class="field-row">
+      <div class="field">
+        <label>Actual completion date</label>
+        <input type="date" id="itemActualInput">
+      </div>
+      <div class="field">
+        <label>Status</label>
+        <select id="itemStatusSelect"></select>
+      </div>
     </div>
     <div class="field">
       <label>Notes</label>
@@ -639,8 +640,11 @@ let reviewCycles = [];
 let mode = 'planning'; // 'planning' | 'review' | 'dashboard' | 'admin'
 let view = 'status';
 let theme = 'light';
+// The single shared workstream selector — used by Planning (status board/timeline),
+// Review (which workstream's cycle to show), and Dashboard (scopes the rollup)
+// alike. null means "All workstreams" for Planning/Dashboard; Review mode
+// requires a specific one (see setMode()/setFilterWorkstream()).
 let filterWorkstreamId = null;
-let reviewWsId = null; // which workstream is selected in Review mode
 
 let editingWsId = null;
 let wsColorChoice = WS_COLORS[0];
@@ -673,7 +677,6 @@ function load() {
     view = raw.view || 'status';
     theme = raw.theme || 'light';
     filterWorkstreamId = raw.filterWorkstreamId || null;
-    reviewWsId = raw.reviewWsId || null;
     deletedWorkstreamIds = raw.deletedWorkstreamIds || [];
     deletedItemIds = raw.deletedItemIds || [];
   } else {
@@ -685,7 +688,7 @@ function load() {
 function save() {
   const data = {
     programme, workstreams, items, categories, reviewCycles, mode, view, theme,
-    filterWorkstreamId, reviewWsId, deletedWorkstreamIds, deletedItemIds
+    filterWorkstreamId, deletedWorkstreamIds, deletedItemIds
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   if (fileHandle) fileSyncWrite(data).catch(() => {});
@@ -760,9 +763,6 @@ function normalizeData() {
     if (typeof c.cancelledAt !== 'number') c.cancelledAt = null;
     if (!Array.isArray(c.confirmations)) c.confirmations = [];
   });
-  if (reviewWsId && !wsIds.has(reviewWsId)) reviewWsId = null;
-  if (!MODES.includes(mode)) mode = 'planning';
-
   // Migrate pre-nested-milestone data: a standalone item with type:'milestone'
   // used to be its own top-level row. Fold each one into its own single-milestone
   // scope item rather than silently dropping it.
@@ -792,15 +792,22 @@ function normalizeData() {
     if (!it.dueDate) it.dueDate = todayStr();
     if (!it.startDate) it.startDate = it.dueDate;
     if (typeof it.updatedAt !== 'number') it.updatedAt = Date.now();
+    if (typeof it.actualDate !== 'string') it.actualDate = null;
     if (!Array.isArray(it.milestones)) it.milestones = [];
     it.milestones.forEach(m => {
       if (!isSafeId(m.id)) m.id = genId();
       if (!m.name) m.name = 'Untitled milestone';
       if (!m.dueDate) m.dueDate = it.dueDate;
       if (!STATUSES.some(s => s.id === m.status)) m.status = 'not-started';
+      if (typeof m.actualDate !== 'string') m.actualDate = null;
     });
   });
   if (filterWorkstreamId && !wsIds.has(filterWorkstreamId)) filterWorkstreamId = null;
+  if (!MODES.includes(mode)) mode = 'planning';
+  // Review mode requires a specific workstream selected — see setMode()/
+  // setFilterWorkstream() for the same rule enforced at the entry points;
+  // this is the backstop for data loaded straight from storage/import/sync.
+  if (mode === 'review' && !filterWorkstreamId) mode = 'planning';
 }
 
 function genId() { return 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -841,14 +848,14 @@ function categoryById(id) { return categories.find(c => c.id === id); }
 function render() {
   document.getElementById('programmeNameDisplay').textContent = programme.name;
   MODES.forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
-  document.getElementById('planningBody').style.display = mode === 'planning' ? '' : 'none';
-  document.getElementById('reviewBody').style.display = mode === 'review' ? '' : 'none';
-  document.getElementById('dashboardBody').style.display = mode === 'dashboard' ? '' : 'none';
+  document.getElementById('tabReview').classList.toggle('disabled', !filterWorkstreamId);
+  document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
+  document.getElementById('planningToolbar').style.display = mode === 'planning' ? '' : 'none';
+  renderSidebar();
   if (mode === 'planning') {
     document.getElementById('tabStatus').classList.toggle('active', view === 'status');
     document.getElementById('tabTimeline').classList.toggle('active', view === 'timeline');
-    renderSidebar();
     renderMain();
   } else if (mode === 'review') {
     renderReview();
@@ -858,7 +865,13 @@ function render() {
     renderAdmin();
   }
 }
-function setMode(m) { mode = m; save(); render(); }
+function setMode(m) {
+  if (m === 'review' && !filterWorkstreamId) {
+    showToast('Select a specific workstream in the sidebar first — Review needs one', true);
+    return;
+  }
+  mode = m; save(); render();
+}
 
 function renderSidebar() {
   const el = document.getElementById('wsList');
@@ -868,9 +881,13 @@ function renderSidebar() {
     </div>`;
   html += workstreams.map(w => {
     const count = items.filter(it => it.workstreamId === w.id).length;
+    const reviewBadge = activeReviewCycle(w.id)
+      ? `<span class="review-ws-badge active-cycle">In review</span>`
+      : (isReviewOverdue(w.id) ? `<span class="review-ws-badge overdue">Overdue</span>` : '');
     return `<div class="ws-row ${filterWorkstreamId === w.id ? 'active' : ''}" onclick="setFilterWorkstream('${w.id}')">
         <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
         <span class="ws-row-name">${esc(w.name)}</span>
+        ${reviewBadge}
         <span class="ws-row-count">${count}</span>
         <button class="ws-row-edit" onclick="event.stopPropagation(); openWorkstreamModal('${w.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
       </div>`;
@@ -929,12 +946,14 @@ function itemRowHtml(it) {
     ? `<span class="item-chevron" onclick="toggleItemExpanded('${it.id}')"><i class="fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
     : `<span class="item-chevron"></span>`;
   const milestoneBadge = total ? `<span class="milestone-count-badge">${done}/${total} milestones</span>` : '';
+  const actualBadge = it.actualDate ? `<span class="item-actual-badge" title="Actual completion date"><i class="fa-solid fa-circle-check"></i> ${fmtDate(it.actualDate)}</span>` : '';
   const subRows = (expanded && total) ? milestoneRowsHtml(it) : '';
   return `<div class="item-row">
       ${chevron}
       <span class="item-name">${esc(it.name)}</span>
       <span class="item-owner">${it.owner ? '<i class="fa-solid fa-user"></i> ' + esc(it.owner) : ''}</span>
       <span class="item-dates">${fmtDate(it.startDate)} → ${fmtDate(it.dueDate)}</span>
+      ${actualBadge}
       ${milestoneBadge}
       <span class="item-notes">${esc(it.notes)}</span>
       <button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openItemModal('${it.id}')">${esc(statusLabel(it.status))}</button>
@@ -951,6 +970,7 @@ function milestoneRowsHtml(it) {
       <i class="fa-solid fa-diamond" style="font-size:9px;color:var(--text-faint)"></i>
       <span class="milestone-sub-name">${esc(m.name)}</span>
       <span class="milestone-sub-date">${fmtDate(m.dueDate)}</span>
+      ${m.actualDate ? `<span class="milestone-sub-actual" title="Actual completion date"><i class="fa-solid fa-circle-check"></i> ${fmtDate(m.actualDate)}</span>` : ''}
       <button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(statusLabel(m.status))}</button>
     </div>`).join('');
 }
@@ -1053,7 +1073,14 @@ function renderTimelineView(main) {
 
 // ---------- View / filter / theme ----------
 function setView(v) { view = v; save(); render(); }
-function setFilterWorkstream(id) { filterWorkstreamId = id; save(); render(); }
+function setFilterWorkstream(id) {
+  filterWorkstreamId = id;
+  // Switching to "All workstreams" while Review mode is showing a specific
+  // one's cycle would leave nothing sensible to display — bail to Planning,
+  // same as if that had been the state on load (see normalizeData()).
+  if (mode === 'review' && !filterWorkstreamId) mode = 'planning';
+  save(); render();
+}
 let renamingProgramme = false;
 function startRenameProgramme() {
   renamingProgramme = true;
@@ -1178,7 +1205,7 @@ function populateCategorySelect(selectedId) {
 // its own freshly-generated id and defaults to the given due date.
 function milestonesForCategory(categoryId, dueDate) {
   const cat = categoryById(categoryId);
-  return (cat ? cat.milestones : []).map(name => ({ id: genId(), name, dueDate, status: 'not-started' }));
+  return (cat ? cat.milestones : []).map(name => ({ id: genId(), name, dueDate, status: 'not-started', actualDate: null }));
 }
 function onItemCategoryChange() {
   if (editingItemId) return; // editing an existing item never re-seeds its already-customized checklist
@@ -1197,10 +1224,11 @@ function openItemModal(id, presetWorkstreamId) {
   document.getElementById('itemOwnerInput').value = it ? it.owner : '';
   document.getElementById('itemStartInput').value = it ? it.startDate : todayStr();
   document.getElementById('itemDueInput').value = it ? it.dueDate : todayStr();
+  document.getElementById('itemActualInput').value = it ? (it.actualDate || '') : '';
   document.getElementById('itemStatusSelect').value = it ? it.status : 'not-started';
   document.getElementById('itemNotesInput').value = it ? it.notes : '';
   editingMilestones = it
-    ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status }))
+    ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null }))
     : milestonesForCategory(categories[0].id, document.getElementById('itemDueInput').value);
   renderMilestonesEditor();
   document.getElementById('itemDeleteBtn').style.display = it ? 'inline-flex' : 'none';
@@ -1214,8 +1242,9 @@ function closeItemModal() {
 function renderMilestonesEditor() {
   document.getElementById('milestonesEditor').innerHTML = editingMilestones.map((m, idx) => `
     <div class="milestone-row">
-      <input type="text" value="${esc(m.name)}" oninput="editingMilestones[${idx}].name = this.value">
-      <input type="date" value="${esc(m.dueDate)}" oninput="editingMilestones[${idx}].dueDate = this.value">
+      <input type="text" value="${esc(m.name)}" title="Milestone name" oninput="editingMilestones[${idx}].name = this.value">
+      <input type="date" value="${esc(m.dueDate)}" title="Due date" oninput="editingMilestones[${idx}].dueDate = this.value">
+      <input type="date" value="${esc(m.actualDate || '')}" title="Actual completion date" oninput="editingMilestones[${idx}].actualDate = this.value || null">
       <select onchange="editingMilestones[${idx}].status = this.value">
         ${STATUSES.map(s => `<option value="${s.id}" ${s.id === m.status ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}
       </select>
@@ -1223,7 +1252,7 @@ function renderMilestonesEditor() {
     </div>`).join('');
 }
 function addMilestoneRow() {
-  editingMilestones.push({ id: genId(), name: 'New milestone', dueDate: document.getElementById('itemDueInput').value || todayStr(), status: 'not-started' });
+  editingMilestones.push({ id: genId(), name: 'New milestone', dueDate: document.getElementById('itemDueInput').value || todayStr(), status: 'not-started', actualDate: null });
   renderMilestonesEditor();
 }
 function removeMilestoneRow(idx) {
@@ -1238,12 +1267,13 @@ function saveItem() {
   const owner = document.getElementById('itemOwnerInput').value.trim();
   const dueDate = document.getElementById('itemDueInput').value || todayStr();
   const startDate = document.getElementById('itemStartInput').value || dueDate;
+  const actualDate = document.getElementById('itemActualInput').value || null;
   const status = document.getElementById('itemStatusSelect').value;
   const notes = document.getElementById('itemNotesInput').value.trim();
   const milestones = editingMilestones.map(m => ({
-    id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: m.dueDate || dueDate, status: m.status
+    id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: m.dueDate || dueDate, status: m.status, actualDate: m.actualDate || null
   }));
-  const data = { workstreamId, categoryId, name, owner, notes, status, startDate, dueDate, milestones, updatedAt: Date.now() };
+  const data = { workstreamId, categoryId, name, owner, notes, status, startDate, dueDate, actualDate, milestones, updatedAt: Date.now() };
   if (editingItemId) {
     Object.assign(items.find(i => i.id === editingItemId), data);
   } else {
@@ -1306,7 +1336,6 @@ function activeReviewCycle(wsId) {
 function reviewCyclesForWs(wsId) {
   return reviewCycles.filter(c => c.workstreamId === wsId);
 }
-function setReviewWorkstream(id) { reviewWsId = id; save(); renderReview(); }
 function startReviewCycle(wsId) {
   if (activeReviewCycle(wsId)) return;
   reviewCycles.push({ id: genId(), workstreamId: wsId, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [] });
@@ -1345,24 +1374,6 @@ function cancelReviewCycle(cycleId) {
     }
   });
 }
-function renderReview() {
-  renderReviewSidebar();
-  renderReviewMain();
-}
-function renderReviewSidebar() {
-  const el = document.getElementById('reviewWsList');
-  el.innerHTML = workstreams.map(w => {
-    const active = activeReviewCycle(w.id);
-    const badge = active
-      ? `<span class="review-ws-badge active-cycle">In review</span>`
-      : (isReviewOverdue(w.id) ? `<span class="review-ws-badge overdue">Overdue</span>` : '');
-    return `<div class="review-ws-row ${reviewWsId === w.id ? 'active' : ''}" onclick="setReviewWorkstream('${w.id}')">
-        <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
-        <span class="ws-row-name">${esc(w.name)}</span>
-        ${badge}
-      </div>`;
-  }).join('');
-}
 function reviewItemRowHtml(cycle, it) {
   const confirmed = cycle.confirmations.some(c => c.itemId === it.id);
   return `<div class="review-item-row ${confirmed ? 'confirmed' : ''}">
@@ -1384,23 +1395,28 @@ function reviewHistoryRowHtml(c) {
       <span style="color:var(--text-faint)">${fmtDate(dateStrFromTs(c.completedAt || c.cancelledAt))}</span>
     </div>`;
 }
-function renderReviewMain() {
-  const el = document.getElementById('reviewMain');
+// Review has no workstream picker of its own any more — it reads the same
+// filterWorkstreamId the sidebar (shared with Planning/Dashboard) sets.
+// setMode()/setFilterWorkstream() already keep mode from ever being 'review'
+// while filterWorkstreamId is null, but this still guards defensively in
+// case something else calls renderReview() directly (e.g. a test).
+function renderReview() {
+  const el = document.getElementById('main');
   if (workstreams.length === 0) {
     el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-clipboard-check"></i><div>No workstreams yet — add one in Planning first.</div></div>`;
     return;
   }
-  if (reviewWsId && !wsById(reviewWsId)) reviewWsId = null;
-  if (!reviewWsId) {
-    el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-clipboard-check"></i><div>Select a workstream to review.</div></div>`;
+  if (!filterWorkstreamId) {
+    el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-clipboard-check"></i><div>Select a workstream in the sidebar to review.</div></div>`;
     return;
   }
-  const w = wsById(reviewWsId);
-  const cycle = activeReviewCycle(reviewWsId);
-  const wItems = items.filter(it => it.workstreamId === reviewWsId);
+  const w = wsById(filterWorkstreamId);
+  if (!w) { filterWorkstreamId = null; renderReview(); return; }
+  const cycle = activeReviewCycle(filterWorkstreamId);
+  const wItems = items.filter(it => it.workstreamId === filterWorkstreamId);
   let html = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2></div>`;
   if (!cycle) {
-    html += `<button class="btn btn-primary" style="margin-bottom:20px" onclick="startReviewCycle('${reviewWsId}')"><i class="fa-solid fa-play"></i> Start review cycle</button>`;
+    html += `<button class="btn btn-primary" style="margin-bottom:20px" onclick="startReviewCycle('${filterWorkstreamId}')"><i class="fa-solid fa-play"></i> Start review cycle</button>`;
   } else {
     const confirmedCount = wItems.filter(it => cycle.confirmations.some(c => c.itemId === it.id)).length;
     const total = wItems.length;
@@ -1415,7 +1431,7 @@ function renderReviewMain() {
         <button class="btn btn-danger" onclick="cancelReviewCycle('${cycle.id}')">Cancel review</button>
       </div>`;
   }
-  const history = reviewCyclesForWs(reviewWsId).filter(c => c.completedAt || c.cancelledAt).sort((a, b) => b.startedAt - a.startedAt);
+  const history = reviewCyclesForWs(filterWorkstreamId).filter(c => c.completedAt || c.cancelledAt).sort((a, b) => b.startedAt - a.startedAt);
   html += `<div class="section-label">History</div>`;
   html += history.length
     ? `<div class="review-list">${history.map(reviewHistoryRowHtml).join('')}</div>`
@@ -1424,32 +1440,40 @@ function renderReviewMain() {
 }
 
 // ---------- Dashboard mode ----------
-function allMilestonesFlat() {
+function allMilestonesFlat(itemList) {
   const out = [];
-  items.forEach(it => it.milestones.forEach(m => out.push(Object.assign({}, m, { itemName: it.name, workstreamId: it.workstreamId }))));
+  (itemList || items).forEach(it => it.milestones.forEach(m => out.push(Object.assign({}, m, { itemName: it.name, workstreamId: it.workstreamId }))));
   return out;
 }
+// Dashboard scopes everything to visibleWorkstreams() — the same shared
+// filterWorkstreamId the sidebar sets for Planning/Review too. Selecting a
+// specific workstream narrows the whole rollup to it; "All workstreams"
+// (filterWorkstreamId === null) shows the full programme, same as before
+// this mode became workstream-scoped.
 function renderDashboard() {
-  const el = document.getElementById('dashboardBody');
+  const el = document.getElementById('main');
   if (workstreams.length === 0) {
     el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-gauge-high"></i><div>No workstreams yet — add one in Planning first.</div></div>`;
     return;
   }
-  const milestones = allMilestonesFlat();
+  const wss = visibleWorkstreams();
+  const wsIds = new Set(wss.map(w => w.id));
+  const scopedItems = items.filter(it => wsIds.has(it.workstreamId));
+  const milestones = allMilestonesFlat(scopedItems);
   const itemCounts = {}; STATUSES.forEach(s => itemCounts[s.id] = 0);
-  items.forEach(it => itemCounts[it.status]++);
-  const totalItems = items.length;
+  scopedItems.forEach(it => itemCounts[it.status]++);
+  const totalItems = scopedItems.length;
   const msDone = milestones.filter(m => m.status === 'complete').length;
   const msPct = milestones.length ? Math.round(msDone / milestones.length * 100) : 0;
-  const overdueReviewWs = workstreams.filter(w => isReviewOverdue(w.id));
+  const overdueReviewWs = wss.filter(w => isReviewOverdue(w.id));
 
   const today = todayStr();
   const soon = dateStrFromTs(Date.now() + 7 * DAY_MS);
   const toEntry = (x, isMilestone) => ({ label: isMilestone ? `${x.itemName} — ${x.name}` : x.name, date: x.dueDate });
-  const overdue = items.filter(it => it.status !== 'complete' && it.dueDate < today).map(x => toEntry(x, false))
+  const overdue = scopedItems.filter(it => it.status !== 'complete' && it.dueDate < today).map(x => toEntry(x, false))
     .concat(milestones.filter(m => m.status !== 'complete' && m.dueDate < today).map(x => toEntry(x, true)))
     .sort((a, b) => a.date.localeCompare(b.date));
-  const upcoming = items.filter(it => it.status !== 'complete' && it.dueDate >= today && it.dueDate <= soon).map(x => toEntry(x, false))
+  const upcoming = scopedItems.filter(it => it.status !== 'complete' && it.dueDate >= today && it.dueDate <= soon).map(x => toEntry(x, false))
     .concat(milestones.filter(m => m.status !== 'complete' && m.dueDate >= today && m.dueDate <= soon).map(x => toEntry(x, true)))
     .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -1459,8 +1483,8 @@ function renderDashboard() {
   }).join('');
   const legend = STATUSES.map(s => `<div class="dash-legend-item"><span class="dash-legend-dot" style="background:var(--stat-${s.id})"></span>${itemCounts[s.id]} ${esc(s.label)}</div>`).join('');
 
-  const wsRows = workstreams.map(w => {
-    const wItems = items.filter(it => it.workstreamId === w.id);
+  const wsRows = wss.map(w => {
+    const wItems = scopedItems.filter(it => it.workstreamId === w.id);
     const wMs = milestones.filter(m => m.workstreamId === w.id);
     const wMsDone = wMs.filter(m => m.status === 'complete').length;
     return `<div class="dash-ws-row">
@@ -1496,7 +1520,7 @@ function renderDashboard() {
       <div class="dash-card">
         <div class="dash-card-title">Overdue for Review</div>
         <div class="dash-big-stat">${overdueReviewWs.length}</div>
-        <div class="dash-sub-stat">${overdueReviewWs.length ? overdueReviewWs.map(w => esc(w.name)).join(', ') : `of ${workstreams.length} workstream${workstreams.length === 1 ? '' : 's'}`}</div>
+        <div class="dash-sub-stat">${overdueReviewWs.length ? overdueReviewWs.map(w => esc(w.name)).join(', ') : `of ${wss.length} workstream${wss.length === 1 ? '' : 's'}`}</div>
       </div>
     </div>
     <div class="section-label">Per-workstream summary</div>
@@ -1858,7 +1882,7 @@ async function createNewLinkedFile() {
     });
     fileHandle = handle;
     try { await _fsPut(handle); } catch (_) {}
-    await fileSyncWrite({ programme, workstreams, items, categories, reviewCycles, mode, view, theme, filterWorkstreamId, reviewWsId, deletedWorkstreamIds, deletedItemIds });
+    await fileSyncWrite({ programme, workstreams, items, categories, reviewCycles, mode, view, theme, filterWorkstreamId, deletedWorkstreamIds, deletedItemIds });
     updateFileSyncUI();
     showToast(`Linked — auto-saving to ${handle.name}`);
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not create file', true); }
@@ -1890,7 +1914,7 @@ async function linkFile() {
       }
       return;
     }
-    await fileSyncWrite({ programme, workstreams, items, categories, reviewCycles, mode, view, theme, filterWorkstreamId, reviewWsId, deletedWorkstreamIds, deletedItemIds });
+    await fileSyncWrite({ programme, workstreams, items, categories, reviewCycles, mode, view, theme, filterWorkstreamId, deletedWorkstreamIds, deletedItemIds });
     updateFileSyncUI();
     showToast(`Linked — auto-saving to ${handle.name}`);
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not link file', true); }

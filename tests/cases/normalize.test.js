@@ -70,3 +70,25 @@ test('normalizeData sorts workstreams by order', function () {
   normalizeData();
   assertEqual(workstreams[0].name, 'Should be first');
 });
+
+test('normalizeData backfills a missing actualDate to null on both an item and its milestone', function () {
+  items.push({
+    id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X',
+    dueDate: todayStr(), startDate: todayStr(),
+    milestones: [{ id: genId(), name: 'M', dueDate: todayStr(), status: 'not-started' }]
+  });
+  normalizeData();
+  assertEqual(items[0].actualDate, null);
+  assertEqual(items[0].milestones[0].actualDate, null);
+});
+
+test('normalizeData leaves an existing actualDate string alone', function () {
+  items.push({
+    id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X',
+    dueDate: todayStr(), startDate: todayStr(), actualDate: '2026-01-05',
+    milestones: [{ id: genId(), name: 'M', dueDate: todayStr(), status: 'not-started', actualDate: '2026-01-03' }]
+  });
+  normalizeData();
+  assertEqual(items[0].actualDate, '2026-01-05');
+  assertEqual(items[0].milestones[0].actualDate, '2026-01-03');
+});

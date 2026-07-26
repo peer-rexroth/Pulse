@@ -2,35 +2,49 @@ test('mode defaults to planning on a fresh install', function () {
   assertEqual(mode, 'planning');
 });
 
-test('setMode switches the active mode and persists it', function () {
-  setMode('review');
-  assertEqual(mode, 'review');
+test('setMode switches to a non-gated mode and persists it', function () {
+  setMode('dashboard');
+  assertEqual(mode, 'dashboard');
 });
 
-test('render() shows only the active mode\'s body container', function () {
+test('render() shows the shared scopedBody for planning/review/dashboard, and adminBody only for admin', function () {
+  setFilterWorkstream(workstreams[0].id);
   setMode('review');
-  assertEqual(document.getElementById('planningBody').style.display, 'none');
-  assertEqual(document.getElementById('reviewBody').style.display, '');
-  assertEqual(document.getElementById('dashboardBody').style.display, 'none');
+  assertEqual(document.getElementById('scopedBody').style.display, '');
   assertEqual(document.getElementById('adminBody').style.display, 'none');
 
   setMode('dashboard');
-  assertEqual(document.getElementById('dashboardBody').style.display, '');
-  assertEqual(document.getElementById('reviewBody').style.display, 'none');
+  assertEqual(document.getElementById('scopedBody').style.display, '');
+  assertEqual(document.getElementById('adminBody').style.display, 'none');
 
   setMode('admin');
+  assertEqual(document.getElementById('scopedBody').style.display, 'none');
   assertEqual(document.getElementById('adminBody').style.display, '');
-  assertEqual(document.getElementById('dashboardBody').style.display, 'none');
 
   setMode('planning');
-  assertEqual(document.getElementById('planningBody').style.display, '');
+  assertEqual(document.getElementById('scopedBody').style.display, '');
   assertEqual(document.getElementById('adminBody').style.display, 'none');
+});
+
+test('render() shows the Status/Timeline sub-toolbar only in Planning mode', function () {
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  assertEqual(document.getElementById('planningToolbar').style.display, 'none');
+  setMode('planning');
+  assertEqual(document.getElementById('planningToolbar').style.display, '');
 });
 
 test('render() marks the active mode tab active and the others inactive', function () {
   setMode('admin');
   assertTrue(document.getElementById('tabAdmin').classList.contains('active'));
   assertFalse(document.getElementById('tabPlanning').classList.contains('active'));
+});
+
+test('render() marks the Review tab disabled while "All workstreams" is selected, and enabled once one is picked', function () {
+  render(); // resetState() doesn't render on its own — a fresh fake tab element has no classes yet either way
+  assertTrue(document.getElementById('tabReview').classList.contains('disabled'));
+  setFilterWorkstream(workstreams[0].id);
+  assertFalse(document.getElementById('tabReview').classList.contains('disabled'));
 });
 
 test('normalizeData falls back to planning mode if the stored mode is invalid', function () {
@@ -44,7 +58,8 @@ test('switching to Admin mode renders the category list', function () {
   assertIncludes(document.getElementById('adminBody').innerHTML, 'Development');
 });
 
-test('switching to Review mode renders the workstream picker', function () {
+test('the shared sidebar (not a separate Review picker) lists workstreams regardless of mode', function () {
+  setFilterWorkstream(workstreams[0].id);
   setMode('review');
-  assertIncludes(document.getElementById('reviewWsList').innerHTML, workstreams[0].name);
+  assertIncludes(document.getElementById('wsList').innerHTML, workstreams[0].name);
 });

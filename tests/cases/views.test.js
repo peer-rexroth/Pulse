@@ -86,3 +86,25 @@ test('renderMain shows an empty state with no workstreams', function () {
   renderMain();
   assertIncludes(document.getElementById('main').innerHTML, 'No workstreams yet');
 });
+
+test('an item with an actual completion date shows it as a badge; one without shows nothing', function () {
+  addItem({ name: 'Done item', actualDate: '2026-08-20' });
+  addItem({ name: 'Not done item' });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  // fmtDate()'s output is locale-dependent (this environment renders German,
+  // e.g. "20. Aug." not "Aug 20"), so check the badge markup, not the text.
+  assertIncludes(html, 'item-actual-badge');
+  const badgeCount = (html.match(/item-actual-badge/g) || []).length;
+  assertEqual(badgeCount, 1, 'only the item with an actualDate should get a badge');
+});
+
+test('a milestone with an actual completion date shows it once its item is expanded', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Done milestone', dueDate: todayStr(), status: 'complete', actualDate: '2026-08-05' }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  assertIncludes(document.getElementById('main').innerHTML, 'milestone-sub-actual');
+});

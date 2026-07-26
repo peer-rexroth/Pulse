@@ -1,12 +1,13 @@
 function fillItemForm(overrides) {
   const f = Object.assign({
-    name: 'Ship schema v1', owner: 'Jamie', start: '2026-08-01', due: '2026-08-15',
+    name: 'Ship schema v1', owner: 'Jamie', start: '2026-08-01', due: '2026-08-15', actual: '',
     status: 'amber', notes: 'depends on review'
   }, overrides || {});
   document.getElementById('itemNameInput').value = f.name;
   document.getElementById('itemOwnerInput').value = f.owner;
   document.getElementById('itemStartInput').value = f.start;
   document.getElementById('itemDueInput').value = f.due;
+  document.getElementById('itemActualInput').value = f.actual;
   document.getElementById('itemStatusSelect').value = f.status;
   document.getElementById('itemNotesInput').value = f.notes;
   document.getElementById('itemWorkstreamSelect').value = f.workstreamId || workstreams[0].id;
@@ -125,4 +126,73 @@ test('opening a new item modal preselects the given workstream', function () {
   const secondId = workstreams[1].id;
   openItemModal(null, secondId);
   assertIncludes(document.getElementById('itemWorkstreamSelect').innerHTML, `value="${secondId}" selected`);
+});
+
+// ---------- Actual completion date (manual, item + milestone) ----------
+
+test('a new item has no actual completion date by default', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  assertEqual(items[0].actualDate, null);
+});
+
+test('saveItem persists a manually-entered actual completion date', function () {
+  openItemModal(null);
+  fillItemForm({ actual: '2026-08-20' });
+  saveItem();
+  assertEqual(items[0].actualDate, '2026-08-20');
+});
+
+test('setting status to Complete does not auto-fill the actual date — it stays manual', function () {
+  openItemModal(null);
+  fillItemForm({ status: 'complete' });
+  saveItem();
+  assertEqual(items[0].actualDate, null, 'actual date must be entered by hand, not inferred from status');
+});
+
+test('editing an item preserves and can update its actual completion date', function () {
+  openItemModal(null);
+  fillItemForm({ actual: '2026-08-20' });
+  saveItem();
+  const id = items[0].id;
+  openItemModal(id);
+  assertEqual(document.getElementById('itemActualInput').value, '2026-08-20');
+  fillItemForm({ actual: '2026-08-22' });
+  saveItem();
+  assertEqual(items[0].actualDate, '2026-08-22');
+});
+
+test('clearing the actual date field back out saves it as null, not an empty string', function () {
+  openItemModal(null);
+  fillItemForm({ actual: '2026-08-20' });
+  saveItem();
+  const id = items[0].id;
+  openItemModal(id);
+  document.getElementById('itemActualInput').value = '';
+  fillItemForm({ actual: '' });
+  saveItem();
+  assertEqual(items[0].actualDate, null);
+});
+
+test('a milestone has no actual completion date by default, and one can be set on it', function () {
+  openItemModal(null);
+  fillItemForm({});
+  assertEqual(editingMilestones[0].actualDate, null);
+  editingMilestones[0].actualDate = '2026-08-10';
+  saveItem();
+  assertEqual(items[0].milestones[0].actualDate, '2026-08-10');
+});
+
+test('removing a milestone\'s actual date via the editor saves it back to null', function () {
+  openItemModal(null);
+  fillItemForm({});
+  editingMilestones[0].actualDate = '2026-08-10';
+  saveItem();
+  const id = items[0].id;
+  openItemModal(id);
+  assertEqual(editingMilestones[0].actualDate, '2026-08-10');
+  editingMilestones[0].actualDate = '';
+  saveItem();
+  assertEqual(items[0].milestones[0].actualDate, null);
 });

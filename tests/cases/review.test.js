@@ -108,29 +108,54 @@ test('reviewCyclesForWs returns every cycle (active, completed, cancelled) for t
   assertEqual(reviewCyclesForWs(secondWs).length, 1);
 });
 
-test('setReviewWorkstream selects a workstream for the Review sidebar/main', function () {
-  setReviewWorkstream(workstreams[0].id);
-  assertEqual(reviewWsId, workstreams[0].id);
+// ---------- Shared workstream selector: Review mode's own gating ----------
+
+test('setMode("review") is blocked while "All workstreams" is selected', function () {
+  assertEqual(filterWorkstreamId, null);
+  setMode('review');
+  assertEqual(mode, 'planning', 'Review needs a specific workstream selected first');
+});
+
+test('setFilterWorkstream selects a workstream, which setMode("review") then accepts', function () {
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  assertEqual(mode, 'review');
+});
+
+test('picking "All workstreams" while already in Review mode falls back to Planning', function () {
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setFilterWorkstream(null);
+  assertEqual(mode, 'planning', 'Review has nothing sensible to show once the selection is cleared');
+});
+
+test('normalizeData falls back to planning if mode is "review" with no workstream selected', function () {
+  mode = 'review';
+  filterWorkstreamId = null;
+  normalizeData();
+  assertEqual(mode, 'planning');
 });
 
 test('renderReview shows a start button when no cycle is active, and the checklist once one starts', function () {
   addReviewItem({ name: 'Checklist item' });
-  setReviewWorkstream(workstreams[0].id);
-  let html = document.getElementById('reviewMain').innerHTML;
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  let html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Start review cycle');
   startReviewCycle(workstreams[0].id);
   renderReview();
-  html = document.getElementById('reviewMain').innerHTML;
+  html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Checklist item');
   assertIncludes(html, 'Complete review');
 });
 
 test('renderReview lists completed and cancelled cycles in history', function () {
-  setReviewWorkstream(workstreams[0].id);
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
   startReviewCycle(workstreams[0].id);
   const cycle = activeReviewCycle(workstreams[0].id);
   completeReviewCycle(cycle.id);
   renderReview();
-  const html = document.getElementById('reviewMain').innerHTML;
+  const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Completed');
 });
