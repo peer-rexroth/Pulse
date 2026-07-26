@@ -35,8 +35,12 @@ test('saveItem creates a scope item carrying the standard milestones through', f
   assertEqual(items.length, 1);
   const it = items[0];
   assertEqual(it.name, 'Ship schema v1');
-  assertEqual(it.startDate, '2026-08-01');
-  assertEqual(it.dueDate, '2026-08-15');
+  // Start/Due are computed from the milestones (all seeded to today's date
+  // at modal-open time, before fillItemForm's manual dates were entered) —
+  // see "Item date range roll-up" in CLAUDE.md for why the manual Start/Due
+  // fields in fillItemForm() are ignored once an item has milestones.
+  assertEqual(it.startDate, todayStr());
+  assertEqual(it.dueDate, todayStr());
   assertEqual(it.milestones.length, DEFAULT_CATEGORY_MILESTONES.length);
   assertEqual(it.milestones[0].name, 'Requirements defined');
 });
@@ -257,4 +261,67 @@ test('the computed status badge updates live when a milestone\'s status changes 
   editingMilestones[0].status = 'red';
   updateItemStatusFieldMode();
   assertEqual(document.getElementById('itemStatusComputedBadge').textContent, 'Off Track');
+});
+
+// ---------- Item plan date range computed from the earliest/latest milestone date ----------
+
+test('computedDateRangeFromMilestones spans the earliest to the latest date, considering both due and actual dates', function () {
+  assertDeepEqual(
+    computedDateRangeFromMilestones([{ dueDate: '2026-03-10', actualDate: null }, { dueDate: '2026-03-05', actualDate: null }]),
+    { startDate: '2026-03-05', dueDate: '2026-03-10' }
+  );
+  // An actual date earlier or later than every dueDate should widen the range.
+  assertDeepEqual(
+    computedDateRangeFromMilestones([{ dueDate: '2026-03-10', actualDate: '2026-03-20' }, { dueDate: '2026-03-05', actualDate: null }]),
+    { startDate: '2026-03-05', dueDate: '2026-03-20' }
+  );
+  assertEqual(computedDateRangeFromMilestones([]), null);
+});
+
+test('saveItem computes the item\'s plan date range from its milestones, ignoring the manual Start/Due inputs', function () {
+  openItemModal(null);
+  editingMilestones.forEach(m => { m.dueDate = '2026-05-15'; }); // control every seeded milestone, not just some
+  editingMilestones[0].dueDate = '2026-05-01';
+  editingMilestones[1].dueDate = '2026-06-15';
+  fillItemForm({ start: '2099-01-01', due: '2099-01-01' }); // should be ignored — milestones exist
+  saveItem();
+  assertEqual(items[0].startDate, '2026-05-01');
+  assertEqual(items[0].dueDate, '2026-06-15');
+});
+
+test('saveItem uses the manual Start/Due inputs when the item has no milestones', function () {
+  openItemModal(null);
+  editingMilestones = [];
+  renderMilestonesEditor();
+  fillItemForm({ start: '2026-04-01', due: '2026-04-20' });
+  saveItem();
+  assertEqual(items[0].startDate, '2026-04-01');
+  assertEqual(items[0].dueDate, '2026-04-20');
+});
+
+test('updateMilestoneDateField recomputes the parent item\'s plan date range immediately', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'dueDate', '2099-12-31');
+  assertEqual(items[0].dueDate, '2099-12-31', 'a milestone pushed further out should widen the item\'s computed due date');
+});
+
+test('the item modal shows a read-only computed date range when milestones exist, and editable Start/Due inputs when they don\'t', function () {
+  openItemModal(null);
+  assertEqual(document.getElementById('itemDatesManual').style.display, 'none');
+  assertEqual(document.getElementById('itemDatesComputed').style.display, '');
+  editingMilestones = [];
+  renderMilestonesEditor();
+  assertEqual(document.getElementById('itemDatesManual').style.display, '');
+  assertEqual(document.getElementById('itemDatesComputed').style.display, 'none');
+});
+
+test('the computed date range preview updates live when a milestone\'s date changes in the editor, and stays in sync on the hidden inputs', function () {
+  openItemModal(null);
+  editingMilestones[0].dueDate = '2026-07-04';
+  updateItemStatusFieldMode();
+  assertIncludes(document.getElementById('itemDatesComputedBadge').textContent, '→');
+  assertEqual(document.getElementById('itemDueInput').value, editingMilestones.reduce((max, m) => m.dueDate > max ? m.dueDate : max, editingMilestones[0].dueDate));
 });

@@ -161,6 +161,25 @@ test('an item with no milestones still renders the milestone-count-badge element
   assertIncludes(html, 'class="milestone-count-badge"></span>', 'the badge cell must exist even when blank, or every later column shifts left');
 });
 
+test('an item with milestones shows its plan dates as read-only text, not editable inputs', function () {
+  addItem({
+    name: 'Has milestones',
+    milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'item-dates-computed');
+  assertNotIncludes(html, 'item-dates-inline', 'an item with milestones should not offer editable Start/Due inputs on the row');
+});
+
+test('an item with no milestones still shows editable Start/Due inputs on the row', function () {
+  addItem({ name: 'No milestones', milestones: [] });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'item-dates-inline');
+  assertNotIncludes(html, 'item-dates-computed');
+});
+
 test('an item with milestones still renders exactly one milestone-count-badge with the count inside it', function () {
   addItem({
     name: 'Has milestones',

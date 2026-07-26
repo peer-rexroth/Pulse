@@ -106,6 +106,30 @@ test('normalizeData overrides a stale hand-set status on an item that has milest
   assertEqual(items[0].status, 'red', 'red is the weakest milestone and should win regardless of the saved manual value');
 });
 
+test('normalizeData overrides a stale hand-set plan date range on an item that has milestones', function () {
+  items.push({
+    id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X',
+    startDate: '2020-01-01', dueDate: '2020-01-01', // manually set/stale, should be ignored
+    milestones: [
+      { id: genId(), name: 'A', dueDate: '2026-02-01', status: 'not-started', actualDate: null },
+      { id: genId(), name: 'B', dueDate: '2026-05-01', status: 'not-started', actualDate: '2026-06-01' }
+    ]
+  });
+  normalizeData();
+  assertEqual(items[0].startDate, '2026-02-01');
+  assertEqual(items[0].dueDate, '2026-06-01', 'the later actualDate should win over the later dueDate');
+});
+
+test('normalizeData leaves the plan date range as manually set on an item with no milestones', function () {
+  items.push({
+    id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X',
+    startDate: '2026-03-01', dueDate: '2026-03-15', milestones: []
+  });
+  normalizeData();
+  assertEqual(items[0].startDate, '2026-03-01');
+  assertEqual(items[0].dueDate, '2026-03-15');
+});
+
 test('normalizeData leaves a manual status alone on an item with no milestones', function () {
   items.push({
     id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X',
