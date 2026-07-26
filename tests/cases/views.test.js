@@ -87,24 +87,45 @@ test('renderMain shows an empty state with no workstreams', function () {
   assertIncludes(document.getElementById('main').innerHTML, 'No workstreams yet');
 });
 
-test('an item with an actual completion date shows it as a badge; one without shows nothing', function () {
+test('the status board always shows an inline actual-date input, filled or empty', function () {
   addItem({ name: 'Done item', actualDate: '2026-08-20' });
   addItem({ name: 'Not done item' });
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  // fmtDate()'s output is locale-dependent (this environment renders German,
-  // e.g. "20. Aug." not "Aug 20"), so check the badge markup, not the text.
-  assertIncludes(html, 'item-actual-badge');
-  const badgeCount = (html.match(/item-actual-badge/g) || []).length;
-  assertEqual(badgeCount, 1, 'only the item with an actualDate should get a badge');
+  assertIncludes(html, 'item-actual-inline');
+  assertIncludes(html, 'value="2026-08-20"');
 });
 
-test('a milestone with an actual completion date shows it once its item is expanded', function () {
+test('a milestone shows an inline actual-date input once its item is expanded', function () {
   const it = addItem({
     name: 'Parent',
     milestones: [{ id: 'm1', name: 'Done milestone', dueDate: todayStr(), status: 'complete', actualDate: '2026-08-05' }]
   });
   toggleItemExpanded(it.id);
   renderMain();
-  assertIncludes(document.getElementById('main').innerHTML, 'milestone-sub-actual');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'milestone-sub-actual-inline');
+  assertIncludes(html, 'value="2026-08-05"');
+});
+
+test('updateItemDateField updates a single date field on the item and saves it', function () {
+  const it = addItem({ name: 'X' });
+  updateItemDateField(it.id, 'actualDate', '2026-09-01');
+  assertEqual(items[0].actualDate, '2026-09-01');
+  updateItemDateField(it.id, 'dueDate', '2026-09-15');
+  assertEqual(items[0].dueDate, '2026-09-15');
+  assertEqual(items[0].startDate, todayStr(), 'other date fields should be untouched');
+});
+
+test('updateMilestoneDateField updates a single date field on one milestone only', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [
+      { id: 'm1', name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null },
+      { id: 'm2', name: 'B', dueDate: todayStr(), status: 'not-started', actualDate: null }
+    ]
+  });
+  updateMilestoneDateField(it.id, 'm1', 'actualDate', '2026-09-01');
+  assertEqual(items[0].milestones[0].actualDate, '2026-09-01');
+  assertEqual(items[0].milestones[1].actualDate, null, 'the other milestone should be untouched');
 });

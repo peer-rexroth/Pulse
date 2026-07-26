@@ -92,3 +92,25 @@ test('normalizeData leaves an existing actualDate string alone', function () {
   assertEqual(items[0].actualDate, '2026-01-05');
   assertEqual(items[0].milestones[0].actualDate, '2026-01-03');
 });
+
+test('normalizeData overrides a stale hand-set status on an item that has milestones', function () {
+  items.push({
+    id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X',
+    dueDate: todayStr(), startDate: todayStr(), status: 'green', // manually set, but should be ignored
+    milestones: [
+      { id: genId(), name: 'A', dueDate: todayStr(), status: 'not-started' },
+      { id: genId(), name: 'B', dueDate: todayStr(), status: 'red' }
+    ]
+  });
+  normalizeData();
+  assertEqual(items[0].status, 'red', 'red is the weakest milestone and should win regardless of the saved manual value');
+});
+
+test('normalizeData leaves a manual status alone on an item with no milestones', function () {
+  items.push({
+    id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X',
+    dueDate: todayStr(), startDate: todayStr(), status: 'amber', milestones: []
+  });
+  normalizeData();
+  assertEqual(items[0].status, 'amber');
+});

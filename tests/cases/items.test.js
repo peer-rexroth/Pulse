@@ -196,3 +196,65 @@ test('removing a milestone\'s actual date via the editor saves it back to null',
   saveItem();
   assertEqual(items[0].milestones[0].actualDate, null);
 });
+
+// ---------- Item status computed from the weakest milestone ----------
+
+test('computedStatusFromMilestones picks the worst status: Red > Amber > Green > Not Started > Complete', function () {
+  assertEqual(computedStatusFromMilestones([{ status: 'green' }, { status: 'red' }, { status: 'amber' }]), 'red');
+  assertEqual(computedStatusFromMilestones([{ status: 'green' }, { status: 'amber' }]), 'amber');
+  assertEqual(computedStatusFromMilestones([{ status: 'green' }, { status: 'not-started' }]), 'green');
+  assertEqual(computedStatusFromMilestones([{ status: 'not-started' }, { status: 'complete' }]), 'not-started');
+  assertEqual(computedStatusFromMilestones([{ status: 'complete' }, { status: 'complete' }]), 'complete');
+  assertEqual(computedStatusFromMilestones([]), null);
+});
+
+test('saveItem computes the item status from its milestones, ignoring the Status select', function () {
+  openItemModal(null);
+  editingMilestones[0].status = 'red'; // one bad milestone among the rest ('not-started')
+  fillItemForm({ status: 'green' }); // manual selection should be ignored
+  saveItem();
+  assertEqual(items[0].status, 'red');
+});
+
+test('saveItem uses the manual Status select when the item has no milestones', function () {
+  openItemModal(null);
+  editingMilestones = [];
+  renderMilestonesEditor();
+  fillItemForm({ status: 'amber' });
+  saveItem();
+  assertEqual(items[0].status, 'amber');
+});
+
+test('cycleMilestoneStatus recomputes the parent item status after each change', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  assertEqual(it.status, 'not-started'); // all milestones start not-started
+  cycleMilestoneStatus(it.id, it.milestones[1].id); // -> green, which outranks (is weaker than) not-started
+  assertEqual(items[0].status, 'green', 'green is weaker than not-started under this severity order');
+  cycleMilestoneStatus(it.id, it.milestones[2].id);
+  cycleMilestoneStatus(it.id, it.milestones[2].id); // -> amber
+  assertEqual(items[0].status, 'amber');
+  cycleMilestoneStatus(it.id, it.milestones[3].id);
+  cycleMilestoneStatus(it.id, it.milestones[3].id);
+  cycleMilestoneStatus(it.id, it.milestones[3].id); // -> red
+  assertEqual(items[0].status, 'red', 'red should now outrank amber');
+});
+
+test('the item modal shows a read-only computed badge when milestones exist, and an editable select when they don\'t', function () {
+  openItemModal(null);
+  assertEqual(document.getElementById('itemStatusSelect').style.display, 'none');
+  assertEqual(document.getElementById('itemStatusComputed').style.display, '');
+  editingMilestones = [];
+  renderMilestonesEditor();
+  assertEqual(document.getElementById('itemStatusSelect').style.display, '');
+  assertEqual(document.getElementById('itemStatusComputed').style.display, 'none');
+});
+
+test('the computed status badge updates live when a milestone\'s status changes in the editor', function () {
+  openItemModal(null);
+  editingMilestones[0].status = 'red';
+  updateItemStatusFieldMode();
+  assertEqual(document.getElementById('itemStatusComputedBadge').textContent, 'Off Track');
+});
