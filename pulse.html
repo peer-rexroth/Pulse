@@ -93,6 +93,7 @@
     padding: 4px 8px; border-radius: 6px; min-width: 120px; max-width: 320px;
   }
   .programme-name:hover, .programme-name:focus { background: var(--panel-2); color: var(--text); outline: none; }
+  #programmeNameDisplay { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .view-tabs { display: flex; gap: 2px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
   .view-tab {
     border: none; background: transparent; padding: 6px 14px; border-radius: 6px; cursor: pointer;
@@ -355,7 +356,10 @@
 
 <div class="topbar">
   <div class="brand"><i class="fa-solid fa-wave-square"></i> Pulse</div>
-  <input id="programmeNameInput" class="programme-name" type="text" oninput="updateProgrammeName(this.value)" />
+  <span id="programmeNameDisplay" class="programme-name" ondblclick="startRenameProgramme()" title="Double-click to rename"></span>
+  <input id="programmeNameInput" class="programme-name" type="text" style="display:none"
+    onblur="commitRenameProgramme()"
+    onkeydown="if(event.key==='Enter'){this.blur();}else if(event.key==='Escape'){cancelRenameProgramme();}">
   <div class="view-tabs">
     <button class="view-tab" id="tabPlanning" onclick="setMode('planning')"><i class="fa-solid fa-diagram-project"></i> Planning</button>
     <button class="view-tab" id="tabReview" onclick="setMode('review')"><i class="fa-solid fa-clipboard-check"></i> Review</button>
@@ -835,7 +839,7 @@ function categoryById(id) { return categories.find(c => c.id === id); }
 // Planning's status board). Calling a narrower function from code reachable
 // in more than one mode would leave a stale view on screen after switching.
 function render() {
-  document.getElementById('programmeNameInput').value = programme.name;
+  document.getElementById('programmeNameDisplay').textContent = programme.name;
   MODES.forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
   document.getElementById('planningBody').style.display = mode === 'planning' ? '' : 'none';
   document.getElementById('reviewBody').style.display = mode === 'review' ? '' : 'none';
@@ -1050,7 +1054,37 @@ function renderTimelineView(main) {
 // ---------- View / filter / theme ----------
 function setView(v) { view = v; save(); render(); }
 function setFilterWorkstream(id) { filterWorkstreamId = id; save(); render(); }
-function updateProgrammeName(v) { programme.name = v; save(); }
+let renamingProgramme = false;
+function startRenameProgramme() {
+  renamingProgramme = true;
+  document.getElementById('programmeNameDisplay').style.display = 'none';
+  const input = document.getElementById('programmeNameInput');
+  input.style.display = '';
+  input.value = programme.name;
+  input.focus();
+  input.select();
+}
+// Escape's cancelRenameProgramme() clears renamingProgramme and blurs the
+// input to hide it — that blur indirectly fires this same handler via
+// onblur, so the guard below (checking renamingProgramme is still true)
+// is what stops that stale blur from re-committing after a cancel, the
+// same guard mytasks' commitRenameTask() uses for its own rename inputs.
+function commitRenameProgramme() {
+  if (!renamingProgramme) return;
+  const name = document.getElementById('programmeNameInput').value.trim() || programme.name;
+  programme.name = name;
+  renamingProgramme = false;
+  document.getElementById('programmeNameInput').style.display = 'none';
+  document.getElementById('programmeNameDisplay').style.display = '';
+  document.getElementById('programmeNameDisplay').textContent = name;
+  save();
+}
+function cancelRenameProgramme() {
+  renamingProgramme = false;
+  document.getElementById('programmeNameInput').style.display = 'none';
+  document.getElementById('programmeNameDisplay').style.display = '';
+  document.getElementById('programmeNameInput').blur();
+}
 function toggleTheme() {
   theme = theme === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', theme);

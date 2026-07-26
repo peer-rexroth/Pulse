@@ -141,6 +141,7 @@ async function run(argv) {
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
   editingMilestones = []; expandedItemIds = new Set();
   editingCategoryId = null; editingCategoryMilestones = [];
+  renamingProgramme = false;
   pendingImportData = null; modalTarget = null; toastUndoAction = null;
   fileHandle = null; lastSyncedSnapshot = null;
   normalizeData();
