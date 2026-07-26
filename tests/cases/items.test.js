@@ -362,3 +362,83 @@ test('editing an existing item via the modal does not reset its IT/Business/Budg
   saveItem();
   assertEqual(items[0].budgetStatus, 'amber', 'saving the modal again should not clobber a tag it never edits');
 });
+
+// ---------- Scope item order: bottom-of-list creation + drag reordering ----------
+
+test('a new item is added at the bottom of its workstream\'s list, regardless of due date', function () {
+  openItemModal(null);
+  fillItemForm({ name: 'First', due: '2026-12-31' });
+  saveItem();
+  openItemModal(null);
+  fillItemForm({ name: 'Second', due: '2026-01-01' }); // due much earlier than "First"
+  saveItem();
+  assertEqual(items[0].order, 0);
+  assertEqual(items[1].order, 1);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertTrue(html.indexOf('First') < html.indexOf('Second'), 'display order should follow creation order, not the earlier due date of "Second"');
+});
+
+test('renderReview shows scope items in the same order as Planning\'s status board, not its own date-based sort', function () {
+  openItemModal(null); fillItemForm({ name: 'First', due: '2026-12-31' }); saveItem();
+  openItemModal(null); fillItemForm({ name: 'Second', due: '2026-01-01' }); saveItem();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertTrue(html.indexOf('First') < html.indexOf('Second'), 'Review must reflect the same manual order as Planning, not re-sort by due date');
+});
+
+test('reorderItem moves an item to a new position and reassigns contiguous order values', function () {
+  openItemModal(null); fillItemForm({ name: 'A' }); saveItem();
+  openItemModal(null); fillItemForm({ name: 'B' }); saveItem();
+  openItemModal(null); fillItemForm({ name: 'C' }); saveItem();
+  const [a, b, c] = items;
+  reorderItem(a.id, c.id); // move A to where C is
+  const byOrder = items.slice().sort((x, y) => x.order - y.order).map(i => i.name);
+  assertDeepEqual(byOrder, ['B', 'C', 'A'], 'A should now sit where C was, pushing B and C up');
+});
+
+test('reorderItem is a no-op across two different workstreams', function () {
+  document.getElementById('wsNameInput').value = 'Second WS';
+  wsColorChoice = 'teal';
+  saveWorkstream();
+  const secondWs = workstreams[1].id;
+  openItemModal(null); fillItemForm({ name: 'A' }); saveItem();
+  openItemModal(null); fillItemForm({ name: 'B', workstreamId: secondWs }); saveItem();
+  const before = items.map(i => i.order);
+  reorderItem(items[0].id, items[1].id);
+  assertDeepEqual(items.map(i => i.order), before, 'nothing should change when dragging across workstreams');
+});
+
+test('dragStartItem/dropOnItem wires a row drag-and-drop to reorderItem', function () {
+  openItemModal(null); fillItemForm({ name: 'A' }); saveItem();
+  openItemModal(null); fillItemForm({ name: 'B' }); saveItem();
+  const [a, b] = items;
+  const fakeEvent = { dataTransfer: {}, preventDefault: () => {} };
+  dragStartItem(fakeEvent, b.id);
+  dropOnItem(fakeEvent, a.id);
+  assertEqual(items.find(i => i.id === b.id).order, 0, 'B should have moved to where A was');
+  assertEqual(draggedItemId, null, 'the drag state should be cleared after a drop');
+});
+
+test('normalizeData backfills a missing order per workstream, preserving current array order', function () {
+  const wsId = workstreams[0].id;
+  items.push({ id: genId(), workstreamId: wsId, categoryId: categories[0].id, name: 'X', dueDate: todayStr(), startDate: todayStr(), milestones: [] });
+  items.push({ id: genId(), workstreamId: wsId, categoryId: categories[0].id, name: 'Y', dueDate: todayStr(), startDate: todayStr(), milestones: [] });
+  normalizeData();
+  assertEqual(items[0].order, 0);
+  assertEqual(items[1].order, 1);
+});
+
+test('the drag handle renders in Planning but not in Review mode', function () {
+  const it = addItem({ name: 'Draggable' });
+  renderMain();
+  assertIncludes(document.getElementById('main').innerHTML, 'drag-handle');
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  renderReview();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'drag-handle', 'restructuring order isn\'t a review action');
+});

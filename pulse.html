@@ -203,17 +203,29 @@
   .milestone-count-badge { font-size: 11px; color: var(--text-faint); font-weight: 700; white-space: nowrap; }
 
   /* Inline date editing — Plan (start/due) and Actual dates, editable directly
-     on the status board as an alternative to opening the item modal. */
-  .inline-date-input {
-    border: 1px solid transparent; background: transparent; color: var(--text-dim); font-family: inherit;
-    font-size: 12px; padding: 2px 3px; border-radius: 5px; cursor: pointer; color-scheme: light dark;
+     on the status board as an alternative to opening the item modal. Every
+     one of these renders as a "pill": a small rounded, tinted container
+     holding a calendar icon + the bare <input type="date"> (see
+     dateInputHtml()) — the input itself carries no border/background of its
+     own, and its own native calendar-picker icon is hidden since the pill's
+     icon is what opens it instead (see dateInputHtml()'s onclick). */
+  .date-pill {
+    display: inline-flex; align-items: center; gap: 5px; background: var(--panel-2);
+    border-radius: 999px; padding: 3px 10px 3px 8px; color: var(--text-dim); color-scheme: light dark;
   }
-  .inline-date-input:hover, .inline-date-input:focus { border-color: var(--border); background: var(--panel-2); outline: none; cursor: text; }
-  .item-dates-inline { display: flex; align-items: center; gap: 3px; }
+  .date-pill:hover { background: var(--border); }
+  .date-pill i { font-size: 10px; color: var(--text-faint); cursor: pointer; }
+  .inline-date-input {
+    border: none; background: transparent; color: inherit; font-family: inherit;
+    font-size: 12px; padding: 0; cursor: text;
+  }
+  .inline-date-input::-webkit-calendar-picker-indicator { display: none; }
+  .inline-date-input:disabled { opacity: .8; cursor: default; }
+  .item-dates-inline { display: flex; align-items: center; gap: 5px; }
   .item-dates-computed { color: var(--text-dim); font-size: 12.5px; }
   .item-dates-arrow { color: var(--text-faint); font-size: 11px; }
-  .milestone-sub-actual-inline { display: flex; align-items: center; color: var(--stat-complete); }
-  .milestone-sub-actual-inline .inline-date-input { color: var(--stat-complete); }
+  .milestone-sub-actual-inline { display: flex; align-items: center; }
+  .milestone-sub-actual-inline .date-pill { color: var(--stat-complete); }
   .status-badge { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; cursor: pointer; border: none; justify-self: start; }
   .item-tags { display: flex; gap: 4px; flex-wrap: wrap; }
   .tag-badge { font-size: 11px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; padding: 0; border-radius: 6px; cursor: pointer; border: none; line-height: 1; }
@@ -221,6 +233,8 @@
   .item-row:hover .item-actions { display: flex; }
   .row-icon-btn { border: none; background: transparent; color: var(--text-faint); cursor: pointer; padding: 4px 6px; border-radius: 5px; }
   .row-icon-btn:hover { background: var(--border); color: var(--text); }
+  .drag-handle { cursor: grab; }
+  .drag-handle:active { cursor: grabbing; }
   .ws-section-add { padding: 8px 14px; border-radius: 0 0 var(--radius) var(--radius); }
 
   /* Shown only above an expanded item's own milestone rows (see
@@ -386,7 +400,7 @@
   .review-change-row:last-child { border-bottom: none; }
   .review-change-label { font-weight: 700; color: var(--text); flex: 0 0 auto; }
   .review-change-value { display: flex; align-items: center; gap: 6px; }
-  .review-change-value .inline-date-input:disabled { opacity: .8; cursor: default; }
+  .review-change-value .date-pill { background: var(--panel); } /* contrast against the row's own --panel-2 background */
   .review-change-arrow { color: var(--text-faint); font-size: 11px; flex: 0 0 auto; }
   .review-cycle-badge { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; flex: 0 0 auto; }
   .review-cycle-badge.completed { background: var(--stat-green-bg); color: var(--stat-green); }
@@ -796,7 +810,7 @@ function save() {
     filterWorkstreamId, deletedWorkstreamIds, deletedItemIds
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  if (fileHandle) fileSyncWrite(data).catch(() => {});
+  queueFileSyncWrite();
   maybeSnapshotBackup();
 }
 
@@ -919,6 +933,21 @@ function normalizeData() {
       if (range) { it.startDate = range.startDate; it.dueDate = range.dueDate; }
     }
   });
+  // order backfill — separate pass, after workstreamId has already been
+  // reassigned above for any orphaned item, so an item never gets slotted
+  // into a per-workstream counter keyed by a stale/invalid workstreamId.
+  // Legacy items (saved before this field existed) fall back to their
+  // current array position within their workstream, which is exactly their
+  // original creation order for data that's never been reordered — the same
+  // "current array order was always creation order" assumption normalizeData
+  // already relies on elsewhere.
+  {
+    const nextOrder = {};
+    items.forEach(it => {
+      if (typeof it.order !== 'number') it.order = nextOrder[it.workstreamId] || 0;
+      nextOrder[it.workstreamId] = Math.max(nextOrder[it.workstreamId] || 0, it.order + 1);
+    });
+  }
   if (filterWorkstreamId && !wsIds.has(filterWorkstreamId)) filterWorkstreamId = null;
   if (!MODES.includes(mode)) mode = 'planning';
   // Review mode requires a specific workstream selected — see setMode()/
@@ -1061,8 +1090,11 @@ function renderMain() {
 function renderStatusView(main) {
   const wss = visibleWorkstreams();
   const sections = wss.map(w => {
+    // Manual order, not dueDate — a new item lands at the bottom (saveItem()
+    // gives it the next order value for its workstream) and only ever
+    // changes via dragging (reorderItem()), not automatically by date.
     const wItems = items.filter(it => it.workstreamId === w.id)
-      .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+      .sort((a, b) => a.order - b.order);
     const counts = {};
     STATUSES.forEach(s => counts[s.id] = 0);
     wItems.forEach(it => counts[it.status]++);
@@ -1117,9 +1149,9 @@ function itemRowHtml(it, reviewCycle) {
   const planDatesHtml = (total || reviewCycle)
     ? `<span class="item-dates-computed" title="${total ? 'Computed from the earliest and latest milestone date (due or actual)' : 'Not editable during a review'}">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>`
     : `<span class="item-dates-inline">
-      <input type="date" class="inline-date-input" value="${it.startDate}" title="Start date" onchange="updateItemDateField('${it.id}','startDate',this.value)">
+      ${dateInputHtml(it.startDate, `title="Start date" onchange="updateItemDateField('${it.id}','startDate',this.value)"`)}
       <span class="item-dates-arrow">→</span>
-      <input type="date" class="inline-date-input" value="${it.dueDate}" title="Due date" onchange="updateItemDateField('${it.id}','dueDate',this.value)">
+      ${dateInputHtml(it.dueDate, `title="Due date" onchange="updateItemDateField('${it.id}','dueDate',this.value)"`)}
     </span>`;
   // The item's own actualDate is still a real field (editable in the item
   // modal), just no longer shown/edited inline on the row — the "Actual"
@@ -1159,7 +1191,14 @@ function itemRowHtml(it, reviewCycle) {
       </button>`;
   }
   const subRows = (expanded && total) ? milestoneHeaderHtml(reviewCycle) + milestoneRowsHtml(it, reviewCycle) : '';
-  return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''}">
+  // Drag-and-drop reordering is Planning-only, same gating as Edit/Delete
+  // below — a review is for confirming, not restructuring. Only the grip
+  // handle itself is draggable="true" (not the whole row), so dragging
+  // doesn't fight with clicking the tags/status/actions packed into the rest
+  // of the row; the drop target is the whole row, so dropping anywhere on it
+  // (not just precisely on its own handle) works.
+  const dragAttrs = reviewCycle ? '' : ` ondragover="event.preventDefault()" ondrop="dropOnItem(event,'${it.id}')"`;
+  return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''}"${dragAttrs}>
       ${chevron}
       <span class="item-name">${esc(it.name)}</span>
       ${milestoneBadge}
@@ -1171,8 +1210,9 @@ function itemRowHtml(it, reviewCycle) {
       ${tagsHtml}
       <button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openItemModal('${it.id}')">${esc(statusLabel(it.status))}</button>
       ${reviewCycle
-        ? `<span class="item-actions"></span>` // Edit/Delete are hidden during a review — still a real (empty) element for the usual column-collapse reason (see "Status board" in CLAUDE.md).
+        ? `<span class="item-actions"></span>` // Edit/Delete/drag are hidden during a review — still a real (empty) element for the usual column-collapse reason (see "Status board" in CLAUDE.md).
         : `<span class="item-actions">
+        <span class="row-icon-btn drag-handle" draggable="true" ondragstart="dragStartItem(event,'${it.id}')" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
         <button class="row-icon-btn" onclick="openItemModal('${it.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
         <button class="row-icon-btn" onclick="deleteItem('${it.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
       </span>`}
@@ -1234,7 +1274,7 @@ function milestoneRowsHtml(it, reviewCycle) {
     const dueHtml = reviewCycle
       ? `<span class="item-dates-computed" title="Not editable during a review">${fmtDate(m.dueDate)}</span>`
       : `<span class="item-dates-inline">
-        <input type="date" class="inline-date-input" value="${m.dueDate}" title="Due date" onchange="updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)">
+        ${dateInputHtml(m.dueDate, `title="Due date" onchange="updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)"`)}
       </span>`;
     return `
     <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''}">
@@ -1244,7 +1284,7 @@ function milestoneRowsHtml(it, reviewCycle) {
       <span></span>
       ${dueHtml}
       <span class="milestone-sub-actual-inline" title="Actual completion date">
-        <input type="date" class="inline-date-input" value="${m.actualDate || ''}" onchange="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)">
+        ${dateInputHtml(m.actualDate, `onchange="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)"`)}
       </span>
       <button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(statusLabel(m.status))}</button>
       <span></span>
@@ -1348,6 +1388,26 @@ function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso + 'T00:00:00');
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// Every inline, directly-editable date field on the status board (item
+// Start/Due, milestone Due/Actual, and the read-only before/after pair in a
+// review's history) renders through this one helper, so they all look like
+// the same pill: a small calendar icon + the native <input type="date">
+// itself, no visible border/background on the input — the pill provides
+// both. The date TEXT itself is untouched by this — a native date input
+// always renders using the OS/browser locale's own format (DD.MM.YY here),
+// same as before; only the surrounding chrome changed. `attrs` is a raw
+// string of whatever additional attributes that call site needs (onchange,
+// title, disabled, …). Only the icon opens the calendar popup
+// (`showPicker()`, guarded since it's not universally supported and a
+// disabled input has nothing to open) — clicking the input itself still
+// just focuses it for typing, the normal native behavior.
+function dateInputHtml(value, attrs) {
+  return `<span class="date-pill">
+      <i class="fa-solid fa-calendar" onclick="const inp=this.nextElementSibling; if(inp.showPicker && !inp.disabled) inp.showPicker();"></i>
+      <input type="date" class="inline-date-input" value="${value || ''}" ${attrs || ''}>
+    </span>`;
 }
 
 // Plan date ranges (scope-item row and item modal) always include the year,
@@ -1680,11 +1740,52 @@ function saveItem() {
     // itStatus/businessStatus/budgetStatus aren't part of `data` — they're
     // never edited via this modal, only cycled inline on the row (see
     // cycleItemAttr()) — so a brand-new item needs its own defaults here,
-    // and editing an existing one never resets them back to green.
-    items.push(Object.assign({ id: genId(), itStatus: 'green', businessStatus: 'green', budgetStatus: 'green' }, data));
+    // and editing an existing one never resets them back to green. order
+    // similarly only matters at creation — it's what puts a new item at the
+    // bottom of its workstream's list rather than wherever dueDate happens
+    // to sort it — everything after that is only ever touched by dragging
+    // (see reorderItem()).
+    const order = items.filter(i => i.workstreamId === workstreamId).length;
+    items.push(Object.assign({ id: genId(), itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order }, data));
   }
   save(); closeItemModal(); render();
   showToast('Item saved');
+}
+// Drag-and-drop reordering of scope items within a workstream's status-board
+// list — Planning only (the drag handle only renders outside Review, same
+// gating as Edit/Delete — see itemRowHtml()'s reviewCycle branch). draggedItemId
+// is plain module-level state, not persisted, exactly like expandedItemIds.
+let draggedItemId = null;
+function dragStartItem(e, id) {
+  draggedItemId = id;
+  e.dataTransfer.effectAllowed = 'move';
+}
+function dropOnItem(e, targetId) {
+  e.preventDefault();
+  const fromId = draggedItemId;
+  draggedItemId = null;
+  if (!fromId || fromId === targetId) return;
+  reorderItem(fromId, targetId);
+}
+// Moves the dragged item to sit where the drop-target item currently is,
+// within their shared workstream — a no-op across two different workstreams,
+// since dragging isn't how an item's workstream gets changed (that's still
+// the item modal's job). Reassigns clean, contiguous order values (0,1,2,…)
+// to every item in that workstream afterward rather than trying to splice a
+// fractional value in between two neighbors, so order never needs a repair
+// pass and always exactly matches array position once sorted.
+function reorderItem(fromId, targetId) {
+  const dragged = items.find(i => i.id === fromId);
+  const target = items.find(i => i.id === targetId);
+  if (!dragged || !target || dragged.workstreamId !== target.workstreamId) return;
+  const wsItems = items.filter(i => i.workstreamId === dragged.workstreamId).sort((a, b) => a.order - b.order);
+  const fromIdx = wsItems.findIndex(i => i.id === fromId);
+  const toIdx = wsItems.findIndex(i => i.id === targetId);
+  if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+  const [moved] = wsItems.splice(fromIdx, 1);
+  wsItems.splice(toIdx, 0, moved);
+  wsItems.forEach((it, i) => { it.order = i; });
+  save(); render();
 }
 function deleteItemFromModal() {
   if (!editingItemId) return;
@@ -1950,9 +2051,9 @@ function reviewHistoryRowHtml(c) {
             <span class="status-badge" style="background:var(--stat-${newValue}-bg);color:var(--stat-${newValue});cursor:default">${esc(statusLabel(newValue))}</span>`;
         } else if (e.dateChange) {
           const { oldValue, newValue } = e.dateChange;
-          valueHtml = `<input type="date" class="inline-date-input" value="${oldValue || ''}" disabled>
+          valueHtml = `${dateInputHtml(oldValue, 'disabled')}
             <span class="review-change-arrow">→</span>
-            <input type="date" class="inline-date-input" value="${newValue || ''}" disabled>`;
+            ${dateInputHtml(newValue, 'disabled')}`;
         } else {
           valueHtml = esc(e.change);
         }
@@ -1993,8 +2094,11 @@ function renderReview() {
   const w = wsById(filterWorkstreamId);
   if (!w) { filterWorkstreamId = null; renderReview(); return; }
   const cycle = activeReviewCycle(filterWorkstreamId);
+  // Same manual order as Planning's status board (see renderStatusView) —
+  // Review should read as the exact same list, not its own independent
+  // date-based sort.
   const wItems = items.filter(it => it.workstreamId === filterWorkstreamId)
-    .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+    .sort((a, b) => a.order - b.order);
   let html = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2></div>`;
   if (!cycle) {
     html += `<button class="btn btn-primary" style="margin-bottom:20px" onclick="startReviewCycle('${filterWorkstreamId}')"><i class="fa-solid fa-play"></i> Start review cycle</button>`;
@@ -2387,7 +2491,7 @@ function closeImportModal() {
   pendingImportData = null;
 }
 // Additive merge used by every "read data from outside localStorage" path
-// (linkFile, reconnectFile, initFileSync, fileSyncWrite's cross-tab merge,
+// (linkFile, reconnectFile, initFileSync, doFileSyncWrite's cross-tab merge,
 // and applyImport's merge mode). Tombstones are what let this tell "never
 // seen this id" apart from "saw it, user deleted it" — without them, an id
 // merely absent from the local array looks new either way, so a stale copy
@@ -2529,8 +2633,34 @@ const _fsPut = h => _fsIdb('readwrite', (s, r, j) => { const q = s.put(h, _FS.ke
 const _fsDel = () => _fsIdb('readwrite', (s, r, j) => { const q = s.delete(_FS.key); q.onsuccess = () => r(); q.onerror = () => j(q.error); });
 
 let lastSyncedSnapshot = null;
-async function fileSyncWrite(data) {
+// save() fires a file write on every single change (a keystroke, a status
+// cycle, a rename) without waiting for the previous one to finish — with no
+// queuing, two overlapping writes could finish in either order, and if the
+// one carrying *older* data happened to win the race, whatever the newer
+// write should have persisted (e.g. a just-typed rename) would silently be
+// clobbered back to the stale value with no error and no visible sign
+// anything went wrong. fileSyncWriteInFlight/fileSyncWritePending below
+// serialize writes and always pull the *current* live globals immediately
+// before writing (rather than a snapshot captured whenever the write was
+// requested), so the file converges on the true latest state no matter how
+// many saves happened while a write was in progress.
+let fileSyncWriteInFlight = false;
+let fileSyncWritePending = false;
+function queueFileSyncWrite() {
   if (!fileHandle) return;
+  if (fileSyncWriteInFlight) { fileSyncWritePending = true; return; }
+  fileSyncWriteInFlight = true;
+  doFileSyncWrite().finally(() => {
+    fileSyncWriteInFlight = false;
+    if (fileSyncWritePending) { fileSyncWritePending = false; queueFileSyncWrite(); }
+  });
+}
+async function doFileSyncWrite() {
+  if (!fileHandle) return;
+  const data = {
+    programme, workstreams, items, categories, reviewCycles, mode, view, theme,
+    filterWorkstreamId, deletedWorkstreamIds, deletedItemIds
+  };
   try {
     const perm = await fileHandle.requestPermission({ mode: 'readwrite' });
     if (perm !== 'granted') { await _clearFileLink(); return; }
@@ -2558,7 +2688,13 @@ async function fileSyncWrite(data) {
     await w.close();
     lastSyncedSnapshot = text;
     updateFileSyncUI();
-  } catch (e) { /* localStorage remains the authoritative fallback */ }
+  } catch (e) {
+    // localStorage remains the authoritative fallback, but a silent failure
+    // here means a change (like a rename) could look saved in the app while
+    // never actually reaching the linked file — surface it so that's never
+    // a mystery.
+    showToast('Could not save to the linked file — it will keep retrying on the next change', true);
+  }
 }
 async function _clearFileLink() {
   fileHandle = null;
@@ -2575,7 +2711,7 @@ async function createNewLinkedFile() {
     });
     fileHandle = handle;
     try { await _fsPut(handle); } catch (_) {}
-    await fileSyncWrite({ programme, workstreams, items, categories, reviewCycles, mode, view, theme, filterWorkstreamId, deletedWorkstreamIds, deletedItemIds });
+    await doFileSyncWrite();
     updateFileSyncUI();
     showToast(`Linked — auto-saving to ${handle.name}`);
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not create file', true); }
@@ -2607,7 +2743,7 @@ async function linkFile() {
       }
       return;
     }
-    await fileSyncWrite({ programme, workstreams, items, categories, reviewCycles, mode, view, theme, filterWorkstreamId, deletedWorkstreamIds, deletedItemIds });
+    await doFileSyncWrite();
     updateFileSyncUI();
     showToast(`Linked — auto-saving to ${handle.name}`);
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not link file', true); }
