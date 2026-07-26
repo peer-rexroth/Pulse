@@ -374,6 +374,9 @@
   .review-confirm-btn.sm { padding: 5px 8px; }
   .review-history-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
   .review-history-row:last-child { border-bottom: none; }
+  .review-change-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 12px 6px 34px; font-size: 12px; color: var(--text-dim); background: var(--panel-2); border-bottom: 1px solid var(--border); }
+  .review-change-row:last-child { border-bottom: none; }
+  .review-change-label { font-weight: 700; color: var(--text); flex: 0 0 auto; }
   .review-cycle-badge { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; flex: 0 0 auto; }
   .review-cycle-badge.completed { background: var(--stat-green-bg); color: var(--stat-green); }
   .review-cycle-badge.cancelled { background: var(--stat-not-started-bg); color: var(--stat-not-started); }
@@ -735,6 +738,8 @@ let editingCategoryMilestones = [];
 let editingCategoryOriginalMilestones = [];
 // Which item rows currently show their nested milestones — UI-only, not persisted.
 let expandedItemIds = new Set();
+// Which review-history entries currently show their change log — UI-only, not persisted.
+let expandedHistoryIds = new Set();
 
 // Deletion tombstones: {id, deletedAt}[] — records "this id used to exist and
 // was intentionally removed" so a merge (import, file sync) can tell that
@@ -844,6 +849,7 @@ function normalizeData() {
     if (typeof c.cancelledAt !== 'number') c.cancelledAt = null;
     if (!Array.isArray(c.confirmations)) c.confirmations = [];
     if (!Array.isArray(c.milestoneConfirmations)) c.milestoneConfirmations = [];
+    if (!Array.isArray(c.changeLog)) c.changeLog = [];
   });
   // Migrate pre-nested-milestone data: a standalone item with type:'milestone'
   // used to be its own top-level row. Fold each one into its own single-milestone
@@ -1249,17 +1255,20 @@ function cycleMilestoneStatus(itemId, milestoneId) {
   m.status = STATUSES[(idx + 1) % STATUSES.length].id;
   it.status = computedStatusFromMilestones(it.milestones);
   it.updatedAt = Date.now();
+  logReviewChange(it.workstreamId, it.name, m.name, `Status changed to ${statusLabel(m.status)}`);
   save(); render();
 }
 // The IT/Business/Budget tags are item-level only (see ITEM_TAG_FIELDS/RAG3
 // above) — a plain 3-state click-to-cycle, independent of the main status
 // and milestone roll-up.
+const TAG_FIELD_LABELS = { itStatus: 'IT', businessStatus: 'Business', budgetStatus: 'Budget' };
 function cycleItemAttr(itemId, field) {
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   const idx = RAG3.indexOf(it[field]);
   it[field] = RAG3[(idx + 1) % RAG3.length];
   it.updatedAt = Date.now();
+  logReviewChange(it.workstreamId, it.name, null, `${TAG_FIELD_LABELS[field]} changed to ${statusLabel(it[field])}`);
   save(); render();
 }
 // Inline date editing directly on the status board — an alternative to
@@ -1270,6 +1279,7 @@ function updateItemDateField(itemId, field, value) {
   if (!it) return;
   it[field] = value;
   it.updatedAt = Date.now();
+  logReviewChange(it.workstreamId, it.name, null, `Changed ${field === 'startDate' ? 'start' : 'due'} date to ${fmtDate(value)}`);
   save(); render();
 }
 function updateMilestoneDateField(itemId, milestoneId, field, value) {
@@ -1284,6 +1294,10 @@ function updateMilestoneDateField(itemId, milestoneId, field, value) {
   // cycleMilestoneStatus() does for the computed status.
   const range = computedDateRangeFromMilestones(it.milestones);
   if (range) { it.startDate = range.startDate; it.dueDate = range.dueDate; }
+  const changeText = field === 'actualDate'
+    ? (value ? `Changed actual date to ${fmtDate(value)}` : 'Cleared actual date')
+    : `Changed due date to ${fmtDate(value)}`;
+  logReviewChange(it.workstreamId, it.name, m.name, changeText);
   save(); render();
 }
 
@@ -1678,12 +1692,25 @@ function isReviewOverdue(wsId) {
 function activeReviewCycle(wsId) {
   return reviewCycles.find(c => c.workstreamId === wsId && !c.completedAt && !c.cancelledAt);
 }
+// Records a concrete, human-readable change ("Changed actual date to 26 Jul
+// 2026") against whichever review cycle is currently active for the given
+// workstream — a no-op if none is (most edits happen outside a review).
+// Deliberately fires regardless of whether the edit came from Planning or
+// Review's own rows: the point is a record of what changed *while this
+// workstream was under review*, not just edits made through the Review
+// screen specifically. See reviewHistoryRowHtml() for where this is shown.
+function logReviewChange(workstreamId, itemName, milestoneName, changeText) {
+  const cycle = activeReviewCycle(workstreamId);
+  if (!cycle) return;
+  if (!Array.isArray(cycle.changeLog)) cycle.changeLog = [];
+  cycle.changeLog.push({ itemName, milestoneName: milestoneName || null, change: changeText, changedAt: Date.now() });
+}
 function reviewCyclesForWs(wsId) {
   return reviewCycles.filter(c => c.workstreamId === wsId);
 }
 function startReviewCycle(wsId) {
   if (activeReviewCycle(wsId)) return;
-  reviewCycles.push({ id: genId(), workstreamId: wsId, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [] });
+  reviewCycles.push({ id: genId(), workstreamId: wsId, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [], changeLog: [] });
   save(); render();
   showToast('Review cycle started');
 }
@@ -1784,6 +1811,15 @@ function cancelReviewCycle(cycleId) {
     }
   });
 }
+function toggleHistoryExpanded(cycleId) {
+  if (expandedHistoryIds.has(cycleId)) expandedHistoryIds.delete(cycleId); else expandedHistoryIds.add(cycleId);
+  render();
+}
+// changeLog entries (see logReviewChange()) are what let a history entry
+// show the actual changes made while that cycle was active — "Development
+// completed: Changed actual date to 26 Jul 2026" — not just a confirmed
+// count. Collapsed by default (a cycle can accumulate a lot of these) behind
+// a chevron, same expand/collapse pattern as an item's milestone list.
 function reviewHistoryRowHtml(c) {
   const badge = c.completedAt
     ? `<span class="review-cycle-badge completed">Completed</span>`
@@ -1795,12 +1831,24 @@ function reviewHistoryRowHtml(c) {
   const summary = typeof c.itemCountAtClose === 'number'
     ? `<span style="color:var(--text-faint)">${c.confirmedCountAtClose} of ${c.itemCountAtClose} confirmed</span>`
     : '';
+  const hasLog = c.changeLog && c.changeLog.length > 0;
+  const expanded = expandedHistoryIds.has(c.id);
+  const chevron = hasLog
+    ? `<span class="item-chevron" onclick="toggleHistoryExpanded('${c.id}')"><i class="fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
+    : `<span class="item-chevron"></span>`;
+  const changeRows = (hasLog && expanded)
+    ? c.changeLog.map(e => `<div class="review-change-row">
+        <span class="review-change-label">${esc(e.milestoneName || e.itemName)}</span>
+        <span>${esc(e.change)}</span>
+      </div>`).join('')
+    : '';
   return `<div class="review-history-row">
+      ${chevron}
       <span style="flex:1">Started ${fmtDate(dateStrFromTs(c.startedAt))}</span>
       ${summary}
       ${badge}
       <span style="color:var(--text-faint)">${fmtDate(dateStrFromTs(c.completedAt || c.cancelledAt))}</span>
-    </div>`;
+    </div>${changeRows}`;
 }
 // Review has no workstream picker of its own any more — it reads the same
 // filterWorkstreamId the sidebar (shared with Planning/Dashboard) sets.

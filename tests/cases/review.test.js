@@ -225,6 +225,96 @@ test('a cancelled cycle\'s confirmed-count snapshot stays accurate even if a mil
   assertEqual(reviewCycles[0].confirmedCountAtClose, 1, 'but the frozen history snapshot must not retroactively change');
 });
 
+// ---------- Change log: what actually changed during a review ----------
+
+test('updateMilestoneDateField logs a change against the active cycle when setting an actual date', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'Development completed', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'actualDate', '2026-07-26');
+  assertEqual(reviewCycles[0].changeLog.length, 1);
+  const entry = reviewCycles[0].changeLog[0];
+  assertEqual(entry.milestoneName, 'Development completed');
+  assertIncludes(entry.change, 'Changed actual date to');
+});
+
+test('updateMilestoneDateField logs "Cleared actual date" when the value is unset', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'M', dueDate: todayStr(), status: 'not-started', actualDate: '2026-07-01' }]
+  });
+  startReviewCycle(workstreams[0].id);
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'actualDate', null);
+  assertEqual(activeReviewCycle(workstreams[0].id).changeLog[0].change, 'Cleared actual date');
+});
+
+test('cycleMilestoneStatus logs the new status against the active cycle', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'Design defined', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  startReviewCycle(workstreams[0].id);
+  cycleMilestoneStatus(it.id, it.milestones[0].id);
+  const entry = activeReviewCycle(workstreams[0].id).changeLog[0];
+  assertEqual(entry.milestoneName, 'Design defined');
+  assertEqual(entry.change, 'Status changed to On Track');
+});
+
+test('cycleItemAttr logs an item-level change (no milestoneName) against the active cycle', function () {
+  const it = addReviewItem({ name: 'Call Money', itStatus: 'green' });
+  startReviewCycle(workstreams[0].id);
+  cycleItemAttr(it.id, 'itStatus');
+  const entry = activeReviewCycle(workstreams[0].id).changeLog[0];
+  assertEqual(entry.itemName, 'Call Money');
+  assertEqual(entry.milestoneName, null);
+  assertEqual(entry.change, 'IT changed to At Risk');
+});
+
+test('nothing is logged when no review cycle is active for the item\'s workstream', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'M', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  cycleMilestoneStatus(it.id, it.milestones[0].id);
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'actualDate', '2026-07-26');
+  cycleItemAttr(it.id, 'itStatus');
+  assertEqual(reviewCycles.length, 0, 'sanity check — no cycle exists at all yet');
+});
+
+test('nothing is logged against a cycle once it has closed', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'M', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  completeReviewCycle(cycle.id);
+  cycleMilestoneStatus(it.id, it.milestones[0].id);
+  assertEqual(reviewCycles[0].changeLog.length, 0, 'edits after the cycle closed must not append to its change log');
+});
+
+test('renderReview shows a collapsed history entry with a chevron, expanding to reveal the actual changes', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'Development completed', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'actualDate', '2026-07-26');
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  completeReviewCycle(cycle.id);
+  renderReview();
+  let html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'Development completed: Changed actual date', 'collapsed by default');
+  assertIncludes(html, 'review-history-row');
+  toggleHistoryExpanded(cycle.id);
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'review-change-row');
+  assertIncludes(html, 'Development completed');
+  assertIncludes(html, 'Changed actual date to');
+});
+
 // ---------- Milestone-level confirmation ----------
 
 function addReviewItemWithMilestones(names) {
