@@ -254,6 +254,10 @@
   .milestone-row select {
     width: 86px; flex: 0 0 auto; padding: 5px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); font-size: 11.5px;
   }
+  .milestone-reorder { display: flex; flex-direction: column; flex: 0 0 auto; }
+  .milestone-reorder .row-icon-btn { padding: 0 4px; font-size: 10px; line-height: 1.6; }
+  .milestone-reorder .row-icon-btn:disabled { opacity: .25; cursor: default; }
+  .milestone-reorder .row-icon-btn:disabled:hover { background: transparent; }
   .color-grid { display: flex; gap: 8px; flex-wrap: wrap; }
   .color-swatch { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
   .color-swatch.selected { border-color: var(--text); }
@@ -1661,14 +1665,27 @@ function closeCategoryModal() {
   editingCategoryMilestones = [];
 }
 function renderCategoryMilestonesEditor() {
+  const last = editingCategoryMilestones.length - 1;
   document.getElementById('categoryMilestonesEditor').innerHTML = editingCategoryMilestones.map((name, idx) => `
     <div class="milestone-row">
+      <div class="milestone-reorder">
+        <button class="row-icon-btn" onclick="moveCategoryMilestoneRow(${idx},-1)" title="Move up" ${idx === 0 ? 'disabled' : ''}><i class="fa-solid fa-chevron-up"></i></button>
+        <button class="row-icon-btn" onclick="moveCategoryMilestoneRow(${idx},1)" title="Move down" ${idx === last ? 'disabled' : ''}><i class="fa-solid fa-chevron-down"></i></button>
+      </div>
       <input type="text" value="${esc(name)}" oninput="editingCategoryMilestones[${idx}] = this.value">
       <button class="row-icon-btn" onclick="removeCategoryMilestoneRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>
     </div>`).join('');
 }
 function addCategoryMilestoneRow() {
   editingCategoryMilestones.push('New milestone');
+  renderCategoryMilestonesEditor();
+}
+function moveCategoryMilestoneRow(idx, dir) {
+  const target = idx + dir;
+  if (target < 0 || target >= editingCategoryMilestones.length) return;
+  const tmp = editingCategoryMilestones[idx];
+  editingCategoryMilestones[idx] = editingCategoryMilestones[target];
+  editingCategoryMilestones[target] = tmp;
   renderCategoryMilestonesEditor();
 }
 function removeCategoryMilestoneRow(idx) {

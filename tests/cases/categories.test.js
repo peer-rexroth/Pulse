@@ -116,6 +116,35 @@ test('addCategoryMilestoneRow / removeCategoryMilestoneRow edit the in-progress 
   assertEqual(categories.length, 1, 'nothing should be saved until Save is clicked');
 });
 
+test('moveCategoryMilestoneRow swaps a milestone with its neighbor', function () {
+  openCategoryModal(categories[0].id);
+  const before = editingCategoryMilestones.slice();
+  moveCategoryMilestoneRow(0, 1); // move first entry down
+  assertEqual(editingCategoryMilestones[0], before[1]);
+  assertEqual(editingCategoryMilestones[1], before[0]);
+  moveCategoryMilestoneRow(1, -1); // move it back up
+  assertDeepEqual(editingCategoryMilestones, before);
+});
+
+test('moveCategoryMilestoneRow refuses to move past either end', function () {
+  openCategoryModal(categories[0].id);
+  const before = editingCategoryMilestones.slice();
+  moveCategoryMilestoneRow(0, -1); // already first — no-op
+  assertDeepEqual(editingCategoryMilestones, before);
+  const lastIdx = editingCategoryMilestones.length - 1;
+  moveCategoryMilestoneRow(lastIdx, 1); // already last — no-op
+  assertDeepEqual(editingCategoryMilestones, before);
+});
+
+test('a reordered template is only committed to the category on Save', function () {
+  openCategoryModal(categories[0].id);
+  const before = editingCategoryMilestones.slice();
+  moveCategoryMilestoneRow(0, 1);
+  assertDeepEqual(categories[0].milestones, before, 'the saved category should be untouched before Save');
+  saveCategory();
+  assertEqual(categories[0].milestones[0], before[1]);
+});
+
 test('renderAdmin lists every category with its milestone template and item count', function () {
   const it = { id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() };
   items.push(it);
