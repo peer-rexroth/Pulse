@@ -95,6 +95,66 @@ test('an item\'s own actual date is not shown or editable inline on its row (sti
   assertNotIncludes(html, '2026-08-20');
 });
 
+test('a milestone with no actual date shows a "+" ghost instead of an empty editable input', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Open milestone', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'actual-date-ghost');
+  assertIncludes(html, `revealActualDate('${it.milestones[0].id}')`);
+  assertNotIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','actualDate'`, 'no editable Actual input should render until the ghost is clicked');
+});
+
+test('revealActualDate swaps a milestone\'s "+" ghost for a real editable input', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Open milestone', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  revealActualDate(it.milestones[0].id);
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'actual-date-ghost');
+  assertIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','actualDate'`);
+});
+
+test('the revealed, still-empty Actual input wires up an Escape handler back to cancelRevealActualDate', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Open milestone', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  revealActualDate(it.milestones[0].id);
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `cancelRevealActualDate('${it.milestones[0].id}')`);
+});
+
+test('cancelRevealActualDate reverts a revealed-but-still-empty Actual field back to the "+" ghost', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Open milestone', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  revealActualDate(it.milestones[0].id);
+  cancelRevealActualDate(it.milestones[0].id);
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'actual-date-ghost');
+  assertNotIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','actualDate'`);
+});
+
+test('the Escape handler is not wired up on a milestone that already has a real actual date', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Done milestone', dueDate: todayStr(), status: 'complete', actualDate: '2026-08-05' }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, `cancelRevealActualDate('${it.milestones[0].id}')`, 'a real, saved actual date is not a "reveal" state to cancel out of');
+});
+
 test('a milestone shows an inline actual-date input once its item is expanded', function () {
   const it = addItem({
     name: 'Parent',

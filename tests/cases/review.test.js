@@ -291,6 +291,23 @@ test('updateMilestoneDateField logs "Cleared actual date" when the value is unse
   assertEqual(activeReviewCycle(workstreams[0].id).changeLog[0].change, 'Cleared actual date');
 });
 
+test('updateMilestoneDateField is a no-op (no log entry) when the value hasn\'t actually changed', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'M', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  startReviewCycle(workstreams[0].id);
+  // Simulates focusing the empty Actual ghost input then blurring without typing anything.
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'actualDate', null);
+  assertEqual(activeReviewCycle(workstreams[0].id).changeLog.length, 0, 'a bare focus+blur with no real edit should not be recorded as a change');
+});
+
+test('updateItemDateField is a no-op (no log entry) when the value hasn\'t actually changed', function () {
+  const it = addReviewItem({ startDate: '2026-06-01', dueDate: '2026-07-01' });
+  startReviewCycle(workstreams[0].id);
+  updateItemDateField(it.id, 'dueDate', '2026-07-01');
+  assertEqual(activeReviewCycle(workstreams[0].id).changeLog.length, 0);
+});
+
 test('cycleMilestoneStatus logs the new status against the active cycle', function () {
   const it = addReviewItem({
     milestones: [{ id: genId(), name: 'Design defined', dueDate: todayStr(), status: 'not-started', actualDate: null }]
@@ -591,6 +608,7 @@ test('renderReview locks each milestone\'s own Due date too, leaving only Actual
   setMode('review');
   startReviewCycle(workstreams[0].id);
   toggleItemExpanded(it.id);
+  revealedActualIds.add(it.milestones[0].id); // reveal the empty Actual field's ghost placeholder
   renderReview();
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'milestone-sub-actual-inline', 'Actual should still be a real, editable input');

@@ -145,7 +145,7 @@ async function run(argv) {
   workstreams.push({ id: genId(), name: 'Workstream 1', color: 'blue', order: 0 });
   mode = 'planning'; view = 'status'; theme = 'light'; filterWorkstreamId = null;
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
-  editingMilestones = []; expandedItemIds = new Set();
+  editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set();
   editingCategoryId = null; editingCategoryMilestones = [];
   renamingProgramme = false;
   pendingImportData = null; modalTarget = null; toastUndoAction = null;
