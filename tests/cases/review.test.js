@@ -150,6 +150,24 @@ test('renderReview shows a start button when no cycle is active, and the checkli
   assertIncludes(html, 'Complete review');
 });
 
+test('the Complete review button is disabled with an explanatory tooltip until every item is confirmed', function () {
+  addReviewItem({ name: 'Unconfirmed item' });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  renderReview();
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'disabled', 'the button should be visibly disabled while items remain unconfirmed');
+  assertIncludes(html, 'Confirm every item', 'a tooltip should explain why it can\'t be completed yet');
+  const it = items[0];
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleReviewConfirm(cycle.id, it.id);
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, '<button class="btn btn-primary" disabled', 'the button should become enabled once everything is confirmed');
+  assertIncludes(html, 'Mark this review cycle as completed');
+});
+
 test('renderReview lists completed and cancelled cycles in history', function () {
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
@@ -159,6 +177,52 @@ test('renderReview lists completed and cancelled cycles in history', function ()
   renderReview();
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Completed');
+});
+
+test('a completed cycle\'s history entry shows how many items were confirmed', function () {
+  addReviewItem({ name: 'A' });
+  addReviewItem({ name: 'B' });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  items.forEach(it => toggleReviewConfirm(cycle.id, it.id));
+  completeReviewCycle(cycle.id);
+  assertEqual(reviewCycles[0].itemCountAtClose, 2);
+  assertEqual(reviewCycles[0].confirmedCountAtClose, 2);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '2 of 2 confirmed');
+});
+
+test('a cancelled cycle\'s history entry shows partial confirmation progress at the moment it was cancelled', function () {
+  addReviewItem({ name: 'A' });
+  addReviewItem({ name: 'B' });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleReviewConfirm(cycle.id, items[0].id);
+  cancelReviewCycle(cycle.id);
+  confirmModalAction();
+  assertEqual(reviewCycles[0].itemCountAtClose, 2);
+  assertEqual(reviewCycles[0].confirmedCountAtClose, 1);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '1 of 2 confirmed');
+});
+
+test('a cancelled cycle\'s confirmed-count snapshot stays accurate even if a milestone is later added to a confirmed item', function () {
+  const it = addReviewItem({ name: 'A' });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleReviewConfirm(cycle.id, it.id);
+  cancelReviewCycle(cycle.id);
+  confirmModalAction();
+  assertEqual(reviewCycles[0].confirmedCountAtClose, 1, 'the snapshot should reflect confirmation state at close time');
+  it.milestones.push({ id: genId(), name: 'New milestone', dueDate: todayStr(), status: 'not-started', actualDate: null });
+  assertFalse(isItemConfirmedInCycle(cycle, it), 'the item is no longer confirmed by live re-derivation now that it has an unconfirmed milestone');
+  assertEqual(reviewCycles[0].confirmedCountAtClose, 1, 'but the frozen history snapshot must not retroactively change');
 });
 
 // ---------- Milestone-level confirmation ----------

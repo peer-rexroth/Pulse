@@ -135,6 +135,7 @@
   .btn:hover { background: var(--panel-2); }
   .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .btn-primary:hover { filter: brightness(1.06); }
+  .btn:disabled, .btn-primary:disabled { opacity: .4; cursor: not-allowed; filter: none; }
   .btn-danger { color: var(--danger); }
   .btn-sm { padding: 4px 9px; font-size: 12.5px; border-radius: 6px; }
 
@@ -1745,9 +1746,25 @@ function canCompleteReviewCycle(cycle) {
   const wItems = items.filter(it => it.workstreamId === cycle.workstreamId);
   return wItems.every(it => isItemConfirmedInCycle(cycle, it));
 }
+// Freezes how many items (of the workstream's current total) were confirmed
+// at the moment a cycle closes — called right before completedAt/cancelledAt
+// is set. This can't be recomputed later from live data: an item's
+// confirmed-ness is derived from its *current* milestones (see
+// isItemConfirmedInCycle()), so a milestone added to an item long after this
+// cycle closed would otherwise make history retroactively — and wrongly —
+// show that item as unconfirmed for a review that happened before the
+// milestone even existed. Storing the count at close time is what lets
+// reviewHistoryRowHtml() show an accurate "X of Y confirmed" for a past
+// cycle regardless of anything that happens to the data afterward.
+function snapshotReviewCycleCounts(cycle) {
+  const wItems = items.filter(it => it.workstreamId === cycle.workstreamId);
+  cycle.itemCountAtClose = wItems.length;
+  cycle.confirmedCountAtClose = wItems.filter(it => isItemConfirmedInCycle(cycle, it)).length;
+}
 function completeReviewCycle(cycleId) {
   const cycle = reviewCycles.find(c => c.id === cycleId);
   if (!cycle || !canCompleteReviewCycle(cycle)) return;
+  snapshotReviewCycleCounts(cycle);
   cycle.completedAt = Date.now();
   save(); render();
   showToast('Review cycle completed');
@@ -1760,6 +1777,7 @@ function cancelReviewCycle(cycleId) {
     body: 'It stays in history marked as cancelled. This cannot be undone.',
     confirmLabel: 'Cancel Review',
     action: () => {
+      snapshotReviewCycleCounts(cycle);
       cycle.cancelledAt = Date.now();
       save(); render();
       showToast('Review cycle cancelled');
@@ -1770,8 +1788,16 @@ function reviewHistoryRowHtml(c) {
   const badge = c.completedAt
     ? `<span class="review-cycle-badge completed">Completed</span>`
     : `<span class="review-cycle-badge cancelled">Cancelled</span>`;
+  // itemCountAtClose is null for a cycle closed before this snapshot existed
+  // (backfilled by normalizeData()) — there's no way to know in hindsight
+  // what it would have shown, so the summary is simply omitted rather than
+  // guessed at from today's (possibly since-changed) item list.
+  const summary = typeof c.itemCountAtClose === 'number'
+    ? `<span style="color:var(--text-faint)">${c.confirmedCountAtClose} of ${c.itemCountAtClose} confirmed</span>`
+    : '';
   return `<div class="review-history-row">
       <span style="flex:1">Started ${fmtDate(dateStrFromTs(c.startedAt))}</span>
+      ${summary}
       ${badge}
       <span style="color:var(--text-faint)">${fmtDate(dateStrFromTs(c.completedAt || c.cancelledAt))}</span>
     </div>`;
@@ -1803,6 +1829,7 @@ function renderReview() {
     const confirmedCount = wItems.filter(it => isItemConfirmedInCycle(cycle, it)).length;
     const total = wItems.length;
     const pct = total ? Math.round(confirmedCount / total * 100) : 100;
+    const canComplete = canCompleteReviewCycle(cycle);
     // Same row markup as Planning's status board (itemRowHtml/
     // milestoneHeaderHtml/milestoneRowsHtml), just with the reviewCycle
     // passed through — see the comment on itemRowHtml() for exactly what
@@ -1815,7 +1842,7 @@ function renderReview() {
         ${wItems.length ? wItems.map(it => itemRowHtml(it, cycle)).join('') : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No items in this workstream yet.</div>`}
       </div>
       <div style="display:flex;gap:8px;margin-bottom:20px">
-        <button class="btn btn-primary" ${canCompleteReviewCycle(cycle) ? '' : 'disabled'} onclick="completeReviewCycle('${cycle.id}')"><i class="fa-solid fa-check"></i> Complete review</button>
+        <button class="btn btn-primary" ${canComplete ? '' : 'disabled'} title="${canComplete ? 'Mark this review cycle as completed' : 'Confirm every item — and every one of its milestones — before this can be completed'}" onclick="completeReviewCycle('${cycle.id}')"><i class="fa-solid fa-check"></i> Complete review</button>
         <button class="btn btn-danger" onclick="cancelReviewCycle('${cycle.id}')">Cancel review</button>
       </div>`;
   }
