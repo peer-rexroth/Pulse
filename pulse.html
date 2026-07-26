@@ -360,12 +360,17 @@
   .review-progress { font-size: 12.5px; font-weight: 700; color: var(--text-dim); }
   .review-progress-bar { width: 100%; height: 6px; border-radius: 999px; background: var(--panel-2); overflow: hidden; margin: 8px 0 16px; }
   .review-progress-fill { height: 100%; background: var(--stat-green); border-radius: 999px; transition: width .2s; }
-  .review-item-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
-  .review-item-row:last-child { border-bottom: none; }
-  .review-item-row.confirmed { background: var(--stat-green-bg); }
   .review-list { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; }
-  .review-confirm-btn { border: 1px solid var(--border); background: var(--panel); color: var(--text-dim); cursor: pointer; padding: 5px 11px; border-radius: 7px; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+  /* The Review-mode checklist reuses Planning's own .item-row/.milestone-sub-row
+     markup (see itemRowHtml()'s reviewCycle param) — this just gives that
+     reused block the same card look .ws-section has, without overflow:hidden
+     (a row wider than the card must stay reachable via .main's own
+     overflow:auto, never silently clipped — see "Status board" in CLAUDE.md). */
+  .review-checklist { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; }
+  .item-row.review-confirmed, .milestone-sub-row.review-confirmed { background: var(--stat-green-bg); }
+  .review-confirm-btn { border: 1px solid var(--border); background: var(--panel); color: var(--text-dim); cursor: pointer; padding: 5px 11px; border-radius: 7px; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; justify-self: start; }
   .review-confirm-btn.confirmed { background: var(--stat-green); border-color: var(--stat-green); color: #fff; }
+  .review-confirm-btn.sm { padding: 5px 8px; }
   .review-history-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
   .review-history-row:last-child { border-bottom: none; }
   .review-cycle-badge { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; flex: 0 0 auto; }
@@ -416,8 +421,8 @@
     onkeydown="if(event.key==='Enter'){this.blur();}else if(event.key==='Escape'){cancelRenameProgramme();}">
   <div class="view-tabs">
     <button class="view-tab" id="tabPlanning" onclick="setMode('planning')"><i class="fa-solid fa-diagram-project"></i> Planning</button>
-    <button class="view-tab" id="tabReview" onclick="setMode('review')" title="Select a specific workstream in the sidebar first"><i class="fa-solid fa-clipboard-check"></i> Review</button>
     <button class="view-tab" id="tabDashboard" onclick="setMode('dashboard')"><i class="fa-solid fa-gauge-high"></i> Dashboard</button>
+    <button class="view-tab" id="tabReview" onclick="setMode('review')" title="Select a specific workstream in the sidebar first"><i class="fa-solid fa-clipboard-check"></i> Review</button>
   </div>
   <div class="topbar-spacer"></div>
   <span id="fileSyncIndicator"></span>
@@ -837,6 +842,7 @@ function normalizeData() {
     if (typeof c.completedAt !== 'number') c.completedAt = null;
     if (typeof c.cancelledAt !== 'number') c.cancelledAt = null;
     if (!Array.isArray(c.confirmations)) c.confirmations = [];
+    if (!Array.isArray(c.milestoneConfirmations)) c.milestoneConfirmations = [];
   });
   // Migrate pre-nested-milestone data: a standalone item with type:'milestone'
   // used to be its own top-level row. Fold each one into its own single-milestone
@@ -1050,7 +1056,15 @@ function renderStatusView(main) {
   main.innerHTML = sections;
 }
 
-function itemRowHtml(it) {
+// reviewCycle is optional — passed only when this row is rendered inside
+// Review mode (renderReview()), which reuses this exact same row markup
+// ("same view as Planning") with two differences: Plan dates are always
+// read-only (even for a zero-milestone item, which Planning would otherwise
+// let you hand-edit inline — Review is a confirmation pass, not a place to
+// edit the plan), and a trailing Confirm control is appended. See
+// isItemConfirmedInCycle()/toggleConfirmAllMilestones()/toggleReviewConfirm()
+// above.
+function itemRowHtml(it, reviewCycle) {
   const total = it.milestones.length;
   const done = it.milestones.filter(m => m.status === 'complete').length;
   const expanded = expandedItemIds.has(it.id);
@@ -1064,9 +1078,10 @@ function itemRowHtml(it) {
   // Plan dates are computed from milestones (earliest/latest due or actual
   // date) whenever any exist, same as status — so they're read-only text
   // here rather than editable inputs; only an item with zero milestones has
-  // a plan range worth hand-editing directly on the row.
-  const planDatesHtml = total
-    ? `<span class="item-dates-computed" title="Computed from the earliest and latest milestone date (due or actual)">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>`
+  // a plan range worth hand-editing directly on the row, and only outside
+  // Review — inside it, reviewCycle forces the read-only form regardless.
+  const planDatesHtml = (total || reviewCycle)
+    ? `<span class="item-dates-computed" title="${total ? 'Computed from the earliest and latest milestone date (due or actual)' : 'Not editable during a review'}">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>`
     : `<span class="item-dates-inline">
       <input type="date" class="inline-date-input" value="${it.startDate}" title="Start date" onchange="updateItemDateField('${it.id}','startDate',this.value)">
       <span class="item-dates-arrow">→</span>
@@ -1089,8 +1104,28 @@ function itemRowHtml(it) {
       <button class="tag-badge" style="background:var(--stat-${it.businessStatus}-bg);color:var(--stat-${it.businessStatus})" onclick="cycleItemAttr('${it.id}','businessStatus')" title="Business"><i class="fa-solid fa-briefcase"></i></button>
       <button class="tag-badge" style="background:var(--stat-${it.budgetStatus}-bg);color:var(--stat-${it.budgetStatus})" onclick="cycleItemAttr('${it.id}','budgetStatus')" title="Budget"><i class="fa-solid fa-euro-sign"></i></button>
     </span>`;
-  const subRows = (expanded && total) ? milestoneHeaderHtml() + milestoneRowsHtml(it) : '';
-  return `<div class="item-row">
+  // Review-only trailing cell — an implicit 12th grid column (explicit
+  // grid-column:12), deliberately outside --item-grid-cols so Planning's own
+  // layout is completely untouched; it only ever exists when reviewCycle is
+  // passed. An item with milestones can only ever be confirmed by confirming
+  // every one of them (isItemConfirmedInCycle()), so its button confirms/
+  // unconfirms all of them at once rather than setting an independent flag;
+  // a zero-milestone item still confirms directly via toggleReviewConfirm(),
+  // same as before per-milestone confirmation existed.
+  let reviewCellHtml = '';
+  let confirmedForReview = false;
+  if (reviewCycle) {
+    confirmedForReview = isItemConfirmedInCycle(reviewCycle, it);
+    reviewCellHtml = total
+      ? `<button class="review-confirm-btn ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleConfirmAllMilestones('${reviewCycle.id}','${it.id}')" title="Confirm every milestone on this item">
+          <i class="fa-solid ${confirmedForReview ? 'fa-check' : 'fa-square'}"></i> ${confirmedForReview ? 'Confirmed' : 'Confirm all'}
+        </button>`
+      : `<button class="review-confirm-btn ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleReviewConfirm('${reviewCycle.id}','${it.id}')">
+          <i class="fa-solid ${confirmedForReview ? 'fa-check' : 'fa-square'}"></i> ${confirmedForReview ? 'Confirmed' : 'Confirm'}
+        </button>`;
+  }
+  const subRows = (expanded && total) ? milestoneHeaderHtml(reviewCycle) + milestoneRowsHtml(it, reviewCycle) : '';
+  return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''}">
       ${chevron}
       <span class="item-name">${esc(it.name)}</span>
       ${milestoneBadge}
@@ -1105,6 +1140,7 @@ function itemRowHtml(it) {
         <button class="row-icon-btn" onclick="openItemModal('${it.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
         <button class="row-icon-btn" onclick="deleteItem('${it.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
       </span>
+      ${reviewCellHtml}
     </div>${subRows}`;
 }
 
@@ -1116,9 +1152,10 @@ function itemRowHtml(it) {
 // columns right before Status (see --item-grid-cols), not under the item's
 // own Owner/Plan-dates columns — so a milestone's own dates read right next
 // to its own status badge.
-function milestoneHeaderHtml() {
+function milestoneHeaderHtml(reviewCycle) {
+  const reviewLabel = reviewCycle ? `<span style="grid-column:12">Confirm</span>` : '';
   return `<div class="milestone-header">
-      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span>Status</span><span></span>
+      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span>Status</span><span></span>${reviewLabel}
     </div>`;
 }
 // Emits the same 11 grid cells itemRowHtml() does (chevron|name|milestones|
@@ -1141,9 +1178,21 @@ function milestoneHeaderHtml() {
 // whose milestones already have distinct due dates, which is the common
 // case for anything actually planned out. Due dates are shown as data on
 // each row; they don't dictate the row order.
-function milestoneRowsHtml(it) {
-  return it.milestones.map(m => `
-    <div class="milestone-sub-row">
+function milestoneRowsHtml(it, reviewCycle) {
+  return it.milestones.map(m => {
+    // Same implicit 12th column as itemRowHtml()'s review cell — only exists
+    // when reviewCycle is passed, and is the ONLY way a milestone can be
+    // confirmed individually (see toggleMilestoneConfirm()).
+    let reviewCellHtml = '';
+    let mConfirmed = false;
+    if (reviewCycle) {
+      mConfirmed = isMilestoneConfirmedInCycle(reviewCycle, m.id);
+      reviewCellHtml = `<button class="review-confirm-btn sm ${mConfirmed ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleMilestoneConfirm('${reviewCycle.id}','${m.id}')" title="${mConfirmed ? 'Confirmed' : 'Confirm this milestone'}">
+          <i class="fa-solid ${mConfirmed ? 'fa-check' : 'fa-square'}"></i>
+        </button>`;
+    }
+    return `
+    <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''}">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
       <span class="milestone-sub-name" style="grid-column: 2 / 6">${esc(m.name)}</span>
       <span></span>
@@ -1156,7 +1205,9 @@ function milestoneRowsHtml(it) {
       </span>
       <button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(statusLabel(m.status))}</button>
       <span></span>
-    </div>`).join('');
+      ${reviewCellHtml}
+    </div>`;
+  }).join('');
 }
 
 function toggleItemExpanded(id) {
@@ -1607,9 +1658,28 @@ function reviewCyclesForWs(wsId) {
 }
 function startReviewCycle(wsId) {
   if (activeReviewCycle(wsId)) return;
-  reviewCycles.push({ id: genId(), workstreamId: wsId, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [] });
+  reviewCycles.push({ id: genId(), workstreamId: wsId, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [] });
   save(); render();
   showToast('Review cycle started');
+}
+// An item with no milestones is confirmed manually (toggleReviewConfirm,
+// stored in cycle.confirmations, exactly as before milestone-level
+// confirmation existed). An item WITH milestones has no independent stored
+// confirmation at all — it's always derived as confirmed only once every one
+// of its milestones is confirmed (toggleMilestoneConfirm/
+// toggleConfirmAllMilestones, stored in cycle.milestoneConfirmations). This
+// mirrors the rest of the app's "computed vs manual" pattern (status, plan
+// dates) and is what makes "a scope item can only be confirmed once all its
+// milestones are confirmed" an invariant rather than something that can
+// drift out of sync — there's no separate item-level flag to forget to
+// clear if a milestone gets unconfirmed again, or added mid-cycle.
+function isMilestoneConfirmedInCycle(cycle, milestoneId) {
+  return cycle.milestoneConfirmations.some(x => x.milestoneId === milestoneId);
+}
+function isItemConfirmedInCycle(cycle, it) {
+  return it.milestones.length
+    ? it.milestones.every(m => isMilestoneConfirmedInCycle(cycle, m.id))
+    : cycle.confirmations.some(c => c.itemId === it.id);
 }
 function toggleReviewConfirm(cycleId, itemId) {
   const cycle = reviewCycles.find(c => c.id === cycleId);
@@ -1619,9 +1689,37 @@ function toggleReviewConfirm(cycleId, itemId) {
   else cycle.confirmations.splice(idx, 1);
   save(); render();
 }
+function toggleMilestoneConfirm(cycleId, milestoneId) {
+  const cycle = reviewCycles.find(c => c.id === cycleId);
+  if (!cycle) return;
+  const idx = cycle.milestoneConfirmations.findIndex(x => x.milestoneId === milestoneId);
+  if (idx === -1) cycle.milestoneConfirmations.push({ milestoneId, confirmedAt: Date.now() });
+  else cycle.milestoneConfirmations.splice(idx, 1);
+  save(); render();
+}
+// Confirms every one of the item's not-yet-confirmed milestones in one
+// click; if all are already confirmed, unconfirms all of them instead (the
+// same toggle shape as every other confirm control here) — a shortcut for
+// toggleMilestoneConfirm(), not a separate source of truth.
+function toggleConfirmAllMilestones(cycleId, itemId) {
+  const cycle = reviewCycles.find(c => c.id === cycleId);
+  const it = items.find(i => i.id === itemId);
+  if (!cycle || !it || !it.milestones.length) return;
+  const allConfirmed = it.milestones.every(m => isMilestoneConfirmedInCycle(cycle, m.id));
+  if (allConfirmed) {
+    cycle.milestoneConfirmations = cycle.milestoneConfirmations.filter(x => !it.milestones.some(m => m.id === x.milestoneId));
+  } else {
+    it.milestones.forEach(m => {
+      if (!isMilestoneConfirmedInCycle(cycle, m.id)) {
+        cycle.milestoneConfirmations.push({ milestoneId: m.id, confirmedAt: Date.now() });
+      }
+    });
+  }
+  save(); render();
+}
 function canCompleteReviewCycle(cycle) {
   const wItems = items.filter(it => it.workstreamId === cycle.workstreamId);
-  return wItems.every(it => cycle.confirmations.some(c => c.itemId === it.id));
+  return wItems.every(it => isItemConfirmedInCycle(cycle, it));
 }
 function completeReviewCycle(cycleId) {
   const cycle = reviewCycles.find(c => c.id === cycleId);
@@ -1643,17 +1741,6 @@ function cancelReviewCycle(cycleId) {
       showToast('Review cycle cancelled');
     }
   });
-}
-function reviewItemRowHtml(cycle, it) {
-  const confirmed = cycle.confirmations.some(c => c.itemId === it.id);
-  return `<div class="review-item-row ${confirmed ? 'confirmed' : ''}">
-      <span class="item-name">${esc(it.name)}</span>
-      <span class="item-dates">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>
-      <button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openItemModal('${it.id}')">${esc(statusLabel(it.status))}</button>
-      <button class="review-confirm-btn ${confirmed ? 'confirmed' : ''}" onclick="toggleReviewConfirm('${cycle.id}','${it.id}')">
-        <i class="fa-solid ${confirmed ? 'fa-check' : 'fa-square'}"></i> ${confirmed ? 'Confirmed' : 'Confirm'}
-      </button>
-    </div>`;
 }
 function reviewHistoryRowHtml(c) {
   const badge = c.completedAt
@@ -1683,18 +1770,25 @@ function renderReview() {
   const w = wsById(filterWorkstreamId);
   if (!w) { filterWorkstreamId = null; renderReview(); return; }
   const cycle = activeReviewCycle(filterWorkstreamId);
-  const wItems = items.filter(it => it.workstreamId === filterWorkstreamId);
+  const wItems = items.filter(it => it.workstreamId === filterWorkstreamId)
+    .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
   let html = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2></div>`;
   if (!cycle) {
     html += `<button class="btn btn-primary" style="margin-bottom:20px" onclick="startReviewCycle('${filterWorkstreamId}')"><i class="fa-solid fa-play"></i> Start review cycle</button>`;
   } else {
-    const confirmedCount = wItems.filter(it => cycle.confirmations.some(c => c.itemId === it.id)).length;
+    const confirmedCount = wItems.filter(it => isItemConfirmedInCycle(cycle, it)).length;
     const total = wItems.length;
     const pct = total ? Math.round(confirmedCount / total * 100) : 100;
+    // Same row markup as Planning's status board (itemRowHtml/
+    // milestoneHeaderHtml/milestoneRowsHtml), just with the reviewCycle
+    // passed through — see the comment on itemRowHtml() for exactly what
+    // that changes. .review-checklist mirrors .ws-section's card look
+    // (border/radius/background) without the page-wide-header baggage a
+    // reused .ws-section would carry.
     html += `<div class="review-progress">${confirmedCount} of ${total} item${total === 1 ? '' : 's'} confirmed — started ${fmtDate(dateStrFromTs(cycle.startedAt))}</div>
       <div class="review-progress-bar"><div class="review-progress-fill" style="width:${pct}%"></div></div>
-      <div class="review-list">
-        ${wItems.length ? wItems.map(it => reviewItemRowHtml(cycle, it)).join('') : `<div class="review-item-row" style="color:var(--text-faint)">No items in this workstream yet.</div>`}
+      <div class="review-checklist">
+        ${wItems.length ? wItems.map(it => itemRowHtml(it, cycle)).join('') : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No items in this workstream yet.</div>`}
       </div>
       <div style="display:flex;gap:8px;margin-bottom:20px">
         <button class="btn btn-primary" ${canCompleteReviewCycle(cycle) ? '' : 'disabled'} onclick="completeReviewCycle('${cycle.id}')"><i class="fa-solid fa-check"></i> Complete review</button>

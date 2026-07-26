@@ -160,3 +160,104 @@ test('renderReview lists completed and cancelled cycles in history', function ()
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Completed');
 });
+
+// ---------- Milestone-level confirmation ----------
+
+function addReviewItemWithMilestones(names) {
+  return addReviewItem({
+    milestones: names.map(name => ({ id: genId(), name, dueDate: todayStr(), status: 'not-started', actualDate: null }))
+  });
+}
+
+test('an item with milestones is not confirmed until every one of its milestones is confirmed individually', function () {
+  const it = addReviewItemWithMilestones(['A', 'B']);
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  assertFalse(isItemConfirmedInCycle(cycle, it));
+  toggleMilestoneConfirm(cycle.id, it.milestones[0].id);
+  assertFalse(isItemConfirmedInCycle(cycle, it), 'one of two milestones confirmed should not be enough');
+  toggleMilestoneConfirm(cycle.id, it.milestones[1].id);
+  assertTrue(isItemConfirmedInCycle(cycle, it));
+  toggleMilestoneConfirm(cycle.id, it.milestones[0].id);
+  assertFalse(isItemConfirmedInCycle(cycle, it), 'unconfirming one milestone again should un-confirm the item');
+});
+
+test('toggleMilestoneConfirm toggles a single milestone confirmation on and off', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleMilestoneConfirm(cycle.id, it.milestones[0].id);
+  assertEqual(reviewCycles[0].milestoneConfirmations.length, 1);
+  toggleMilestoneConfirm(cycle.id, it.milestones[0].id);
+  assertEqual(reviewCycles[0].milestoneConfirmations.length, 0);
+});
+
+test('toggleConfirmAllMilestones confirms every milestone on an item at once, and unconfirms all if already all confirmed', function () {
+  const it = addReviewItemWithMilestones(['A', 'B', 'C']);
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  assertTrue(isItemConfirmedInCycle(cycle, it));
+  assertEqual(reviewCycles[0].milestoneConfirmations.length, 3);
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  assertFalse(isItemConfirmedInCycle(cycle, it));
+  assertEqual(reviewCycles[0].milestoneConfirmations.length, 0);
+});
+
+test('toggleConfirmAllMilestones only adds the still-unconfirmed milestones, leaving already-confirmed ones alone', function () {
+  const it = addReviewItemWithMilestones(['A', 'B']);
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleMilestoneConfirm(cycle.id, it.milestones[0].id);
+  const firstConfirmedAt = reviewCycles[0].milestoneConfirmations[0].confirmedAt;
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  assertTrue(isItemConfirmedInCycle(cycle, it));
+  assertEqual(reviewCycles[0].milestoneConfirmations.length, 2);
+  assertEqual(reviewCycles[0].milestoneConfirmations.find(x => x.milestoneId === it.milestones[0].id).confirmedAt, firstConfirmedAt, 'the already-confirmed milestone should not be re-touched');
+});
+
+test('canCompleteReviewCycle requires every milestone confirmed, not just the item', function () {
+  const it = addReviewItemWithMilestones(['A', 'B']);
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleMilestoneConfirm(cycle.id, it.milestones[0].id);
+  assertFalse(canCompleteReviewCycle(cycle));
+  toggleMilestoneConfirm(cycle.id, it.milestones[1].id);
+  assertTrue(canCompleteReviewCycle(cycle));
+});
+
+test('a milestone added mid-cycle to an already-confirmed item un-confirms it, with no extra bookkeeping', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  assertTrue(isItemConfirmedInCycle(cycle, it));
+  it.milestones.push({ id: genId(), name: 'B', dueDate: todayStr(), status: 'not-started', actualDate: null });
+  assertFalse(isItemConfirmedInCycle(cycle, it), 'the newly added milestone has no confirmation yet');
+});
+
+test('renderReview locks Plan dates as read-only, even for an item with zero milestones', function () {
+  addReviewItem({ name: 'No milestones yet' });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'item-dates-computed', 'plan dates should render as read-only text during review');
+  assertNotIncludes(html, 'item-dates-inline', 'plan dates must not be editable inline during a review, unlike Planning');
+});
+
+test('renderReview shows individual and confirm-all milestone controls once an item is expanded', function () {
+  const it = addReviewItemWithMilestones(['A', 'B']);
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleItemExpanded(it.id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Confirm all');
+  assertIncludes(html, `toggleConfirmAllMilestones('${cycle.id}','${it.id}')`);
+  assertIncludes(html, `toggleMilestoneConfirm('${cycle.id}','${it.milestones[0].id}')`);
+  assertIncludes(html, `toggleMilestoneConfirm('${cycle.id}','${it.milestones[1].id}')`);
+});
