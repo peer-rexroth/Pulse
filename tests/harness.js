@@ -137,9 +137,10 @@ async function run(argv) {
   const glue = `
 ;function resetState(){
   seedDefaults();
-  view = 'status'; theme = 'light'; filterWorkstreamId = null;
+  mode = 'planning'; view = 'status'; theme = 'light'; filterWorkstreamId = null; reviewWsId = null;
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
   editingMilestones = []; expandedItemIds = new Set();
+  editingCategoryId = null; editingCategoryMilestones = [];
   pendingImportData = null; modalTarget = null; toastUndoAction = null;
   fileHandle = null; lastSyncedSnapshot = null;
   normalizeData();

@@ -141,6 +141,9 @@
   .sidebar-add:hover { color: var(--accent); border-color: var(--accent); }
 
   .main { flex: 1; min-width: 0; overflow: auto; padding: 20px 24px; }
+  .planning-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .planning-toolbar { flex: 0 0 auto; padding: 14px 24px 0; }
+  .planning-main .main { padding-top: 16px; }
 
   .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-faint); gap: 10px; text-align: center; }
   .empty-state i { font-size: 34px; opacity: .5; }
@@ -289,6 +292,63 @@
   .backup-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); }
   .backup-row-date { font-size: 13px; font-weight: 700; }
   .backup-row-desc { font-size: 12px; color: var(--text-faint); margin-top: 1px; }
+
+  /* Review mode */
+  .review-ws-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px; cursor: pointer; color: var(--text-dim); font-weight: 600; }
+  .review-ws-row:hover { background: var(--panel-2); }
+  .review-ws-row.active { background: var(--accent-bg); color: var(--accent); }
+  .review-ws-badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; flex: 0 0 auto; }
+  .review-ws-badge.overdue { background: var(--stat-red-bg); color: var(--stat-red); }
+  .review-ws-badge.active-cycle { background: var(--stat-amber-bg); color: var(--stat-amber); }
+  .review-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .review-header h2 { font-size: 18px; margin: 0; flex: 1; }
+  .review-progress { font-size: 12.5px; font-weight: 700; color: var(--text-dim); }
+  .review-progress-bar { width: 100%; height: 6px; border-radius: 999px; background: var(--panel-2); overflow: hidden; margin: 8px 0 16px; }
+  .review-progress-fill { height: 100%; background: var(--stat-green); border-radius: 999px; transition: width .2s; }
+  .review-item-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .review-item-row:last-child { border-bottom: none; }
+  .review-item-row.confirmed { background: var(--stat-green-bg); }
+  .review-list { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; }
+  .review-confirm-btn { border: 1px solid var(--border); background: var(--panel); color: var(--text-dim); cursor: pointer; padding: 5px 11px; border-radius: 7px; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+  .review-confirm-btn.confirmed { background: var(--stat-green); border-color: var(--stat-green); color: #fff; }
+  .review-history-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .review-history-row:last-child { border-bottom: none; }
+  .review-cycle-badge { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; flex: 0 0 auto; }
+  .review-cycle-badge.completed { background: var(--stat-green-bg); color: var(--stat-green); }
+  .review-cycle-badge.cancelled { background: var(--stat-not-started-bg); color: var(--stat-not-started); }
+  .section-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin: 20px 0 8px; }
+  .section-label:first-child { margin-top: 0; }
+
+  /* Dashboard mode */
+  .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .dash-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .dash-card-title { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 10px; }
+  .dash-big-stat { font-size: 30px; font-weight: 700; }
+  .dash-sub-stat { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+  .dash-bar { display: flex; width: 100%; height: 10px; border-radius: 999px; overflow: hidden; background: var(--panel-2); }
+  .dash-bar-seg { height: 100%; }
+  .dash-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; font-size: 11.5px; color: var(--text-dim); }
+  .dash-legend-item { display: flex; align-items: center; gap: 5px; }
+  .dash-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+  .dash-ws-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .dash-ws-row:last-child { border-bottom: none; }
+  .dash-ws-name { flex: 1; font-weight: 600; font-size: 13px; }
+  .attention-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .attention-row:last-child { border-bottom: none; }
+  .attention-row .item-name { font-size: 12.5px; }
+  .attention-empty { padding: 14px; color: var(--text-faint); font-size: 12.5px; text-align: center; }
+  .attention-tag { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; flex: 0 0 auto; }
+  .attention-tag.overdue { background: var(--stat-red-bg); color: var(--stat-red); }
+  .attention-tag.upcoming { background: var(--stat-amber-bg); color: var(--stat-amber); }
+
+  /* Admin mode */
+  .admin-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .admin-header h2 { font-size: 18px; margin: 0; flex: 1; }
+  .category-list { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .category-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .category-row:last-child { border-bottom: none; }
+  .category-name { font-weight: 700; width: 160px; flex: 0 0 auto; }
+  .category-milestones-preview { flex: 1; color: var(--text-faint); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -297,8 +357,10 @@
   <div class="brand"><i class="fa-solid fa-wave-square"></i> Pulse</div>
   <input id="programmeNameInput" class="programme-name" type="text" oninput="updateProgrammeName(this.value)" />
   <div class="view-tabs">
-    <button class="view-tab" id="tabStatus" onclick="setView('status')"><i class="fa-solid fa-list-check"></i> Status</button>
-    <button class="view-tab" id="tabTimeline" onclick="setView('timeline')"><i class="fa-solid fa-timeline"></i> Timeline</button>
+    <button class="view-tab" id="tabPlanning" onclick="setMode('planning')"><i class="fa-solid fa-diagram-project"></i> Planning</button>
+    <button class="view-tab" id="tabReview" onclick="setMode('review')"><i class="fa-solid fa-clipboard-check"></i> Review</button>
+    <button class="view-tab" id="tabDashboard" onclick="setMode('dashboard')"><i class="fa-solid fa-gauge-high"></i> Dashboard</button>
+    <button class="view-tab" id="tabAdmin" onclick="setMode('admin')"><i class="fa-solid fa-sliders"></i> Admin</button>
   </div>
   <div class="topbar-spacer"></div>
   <span id="fileSyncIndicator"></span>
@@ -323,14 +385,34 @@
   <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-moon"></i></button>
 </div>
 
-<div class="body-row">
+<div class="body-row" id="planningBody">
   <div class="sidebar">
     <div class="sidebar-label">Workstreams</div>
     <div id="wsList"></div>
     <div class="sidebar-add" onclick="openWorkstreamModal()"><i class="fa-solid fa-plus"></i> Workstream</div>
   </div>
-  <div class="main" id="main"></div>
+  <div class="planning-main">
+    <div class="planning-toolbar">
+      <div class="view-tabs">
+        <button class="view-tab" id="tabStatus" onclick="setView('status')"><i class="fa-solid fa-list-check"></i> Status</button>
+        <button class="view-tab" id="tabTimeline" onclick="setView('timeline')"><i class="fa-solid fa-timeline"></i> Timeline</button>
+      </div>
+    </div>
+    <div class="main" id="main"></div>
+  </div>
 </div>
+
+<div class="body-row" id="reviewBody" style="display:none">
+  <div class="sidebar">
+    <div class="sidebar-label">Workstreams</div>
+    <div id="reviewWsList"></div>
+  </div>
+  <div class="main" id="reviewMain"></div>
+</div>
+
+<div class="main" id="dashboardBody" style="display:none"></div>
+
+<div class="main" id="adminBody" style="display:none"></div>
 
 <!-- Workstream modal -->
 <div class="modal-bg" id="wsModalBg">
@@ -354,6 +436,29 @@
   </div>
 </div>
 
+<!-- Category modal -->
+<div class="modal-bg" id="categoryModalBg">
+  <div class="modal">
+    <h3 id="categoryModalTitle">New category</h3>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="categoryNameInput" placeholder="e.g. Vendor Onboarding">
+    </div>
+    <div class="field">
+      <label>Milestone template</label>
+      <div id="categoryMilestonesEditor"></div>
+      <button class="btn btn-sm" style="margin-top:8px" onclick="addCategoryMilestoneRow()"><i class="fa-solid fa-plus"></i> Add milestone</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="categoryDeleteBtn" onclick="deleteCategoryFromModal()" style="display:none"><i class="fa-solid fa-trash"></i> Delete</button>
+      <div class="modal-actions-right">
+        <button class="btn" onclick="closeCategoryModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveCategory()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Item modal -->
 <div class="modal-bg" id="itemModalBg">
   <div class="modal modal-wide">
@@ -368,9 +473,13 @@
         <select id="itemWorkstreamSelect"></select>
       </div>
       <div class="field">
-        <label>Owner</label>
-        <input type="text" id="itemOwnerInput" placeholder="e.g. Jamie">
+        <label>Category</label>
+        <select id="itemCategorySelect" onchange="onItemCategoryChange()"></select>
       </div>
+    </div>
+    <div class="field">
+      <label>Owner</label>
+      <input type="text" id="itemOwnerInput" placeholder="e.g. Jamie">
     </div>
     <div class="field-row">
       <div class="field">
@@ -499,9 +608,11 @@ const STATUSES = [
 
 const WS_COLORS = ['blue', 'teal', 'purple', 'amber', 'pink', 'green', 'red', 'grey'];
 
-// Auto-added to every new scope item, in this order — the standard delivery
-// checklist this programme tracks against.
-const STANDARD_MILESTONES = [
+// Seeds the one default category ("Development") the first time a programme
+// has none — see normalizeData(). New categories created afterward define
+// their own milestone template from scratch; this constant only matters at
+// that one seeding moment, not as a live default used elsewhere.
+const DEFAULT_CATEGORY_MILESTONES = [
   'Requirements defined',
   'Design defined',
   'Development completed',
@@ -512,19 +623,27 @@ const STANDARD_MILESTONES = [
 
 const DAY_MS = 86400000;
 const PX_PER_DAY = 26;
+const REVIEW_STALE_DAYS = 30;
+const MODES = ['planning', 'review', 'dashboard', 'admin'];
 
 // ---------- State ----------
 let programme = { name: 'New Programme' };
 let workstreams = [];
 let items = [];
+let categories = [];
+let reviewCycles = [];
+let mode = 'planning'; // 'planning' | 'review' | 'dashboard' | 'admin'
 let view = 'status';
 let theme = 'light';
 let filterWorkstreamId = null;
+let reviewWsId = null; // which workstream is selected in Review mode
 
 let editingWsId = null;
 let wsColorChoice = WS_COLORS[0];
 let editingItemId = null;
 let editingMilestones = [];
+let editingCategoryId = null;
+let editingCategoryMilestones = [];
 // Which item rows currently show their nested milestones — UI-only, not persisted.
 let expandedItemIds = new Set();
 
@@ -544,9 +663,13 @@ function load() {
     programme = raw.programme || { name: 'New Programme' };
     workstreams = raw.workstreams || [];
     items = raw.items || [];
+    categories = raw.categories || [];
+    reviewCycles = raw.reviewCycles || [];
+    mode = raw.mode || 'planning';
     view = raw.view || 'status';
     theme = raw.theme || 'light';
     filterWorkstreamId = raw.filterWorkstreamId || null;
+    reviewWsId = raw.reviewWsId || null;
     deletedWorkstreamIds = raw.deletedWorkstreamIds || [];
     deletedItemIds = raw.deletedItemIds || [];
   } else {
@@ -556,7 +679,10 @@ function load() {
 }
 
 function save() {
-  const data = { programme, workstreams, items, view, theme, filterWorkstreamId, deletedWorkstreamIds, deletedItemIds };
+  const data = {
+    programme, workstreams, items, categories, reviewCycles, mode, view, theme,
+    filterWorkstreamId, reviewWsId, deletedWorkstreamIds, deletedItemIds
+  };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   if (fileHandle) fileSyncWrite(data).catch(() => {});
   maybeSnapshotBackup();
@@ -567,6 +693,8 @@ function seedDefaults() {
   const wsId = genId();
   workstreams = [{ id: wsId, name: 'Workstream 1', color: 'blue', order: 0 }];
   items = [];
+  categories = [{ id: genId(), name: 'Development', milestones: DEFAULT_CATEGORY_MILESTONES.slice(), order: 0 }];
+  reviewCycles = [];
   deletedWorkstreamIds = [];
   deletedItemIds = [];
 }
@@ -580,7 +708,7 @@ function maybeSnapshotBackup() {
     const backups = getBackups();
     const today = todayStr();
     if (backups.length && backups[backups.length - 1].date === today) return;
-    backups.push({ date: today, savedAt: Date.now(), programme, workstreams, items });
+    backups.push({ date: today, savedAt: Date.now(), programme, workstreams, items, categories, reviewCycles });
     while (backups.length > MAX_BACKUPS) backups.shift();
     localStorage.setItem(BACKUPS_KEY, JSON.stringify(backups));
   } catch (e) { /* backups are a bonus, not a requirement for save() to succeed */ }
@@ -604,6 +732,33 @@ function normalizeData() {
   workstreams.sort((a, b) => a.order - b.order);
   const wsIds = new Set(workstreams.map(w => w.id));
 
+  if (!Array.isArray(categories)) categories = [];
+  categories.forEach((c, i) => {
+    if (!isSafeId(c.id)) c.id = genId();
+    if (!c.name) c.name = 'Category ' + (i + 1);
+    if (!Array.isArray(c.milestones)) c.milestones = [];
+    if (typeof c.order !== 'number') c.order = i;
+  });
+  categories.sort((a, b) => a.order - b.order);
+  // A programme with no categories at all (pre-categories save, or every
+  // category deleted somehow) always gets this one default seeded back in —
+  // items must always have a category to pick from and fall back to.
+  if (categories.length === 0) {
+    categories = [{ id: genId(), name: 'Development', milestones: DEFAULT_CATEGORY_MILESTONES.slice(), order: 0 }];
+  }
+  const catIds = new Set(categories.map(c => c.id));
+
+  if (!Array.isArray(reviewCycles)) reviewCycles = [];
+  reviewCycles.forEach(c => {
+    if (!isSafeId(c.id)) c.id = genId();
+    if (typeof c.startedAt !== 'number') c.startedAt = Date.now();
+    if (typeof c.completedAt !== 'number') c.completedAt = null;
+    if (typeof c.cancelledAt !== 'number') c.cancelledAt = null;
+    if (!Array.isArray(c.confirmations)) c.confirmations = [];
+  });
+  if (reviewWsId && !wsIds.has(reviewWsId)) reviewWsId = null;
+  if (!MODES.includes(mode)) mode = 'planning';
+
   // Migrate pre-nested-milestone data: a standalone item with type:'milestone'
   // used to be its own top-level row. Fold each one into its own single-milestone
   // scope item rather than silently dropping it.
@@ -625,6 +780,7 @@ function normalizeData() {
     delete it.type;
     if (!isSafeId(it.id)) it.id = genId();
     if (!wsIds.has(it.workstreamId)) it.workstreamId = workstreams[0] ? workstreams[0].id : null;
+    if (!catIds.has(it.categoryId)) it.categoryId = categories[0].id;
     if (!it.name) it.name = 'Untitled';
     if (!it.owner) it.owner = '';
     if (!it.notes) it.notes = '';
@@ -669,15 +825,36 @@ function esc(s) {
 }
 function statusLabel(id) { const s = STATUSES.find(s => s.id === id); return s ? s.label : id; }
 function wsById(id) { return workstreams.find(w => w.id === id); }
+function categoryById(id) { return categories.find(c => c.id === id); }
 
 // ---------- Rendering ----------
+// render() is the single top-level dispatcher: every mutation should call
+// this (or, for a same-mode-only optimization, the narrower render function
+// for whichever mode is guaranteed to be showing — see e.g. cycleMilestoneStatus's
+// renderMain() call, safe because milestone status badges only exist in
+// Planning's status board). Calling a narrower function from code reachable
+// in more than one mode would leave a stale view on screen after switching.
 function render() {
   document.getElementById('programmeNameInput').value = programme.name;
-  document.getElementById('tabStatus').classList.toggle('active', view === 'status');
-  document.getElementById('tabTimeline').classList.toggle('active', view === 'timeline');
-  renderSidebar();
-  renderMain();
+  MODES.forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
+  document.getElementById('planningBody').style.display = mode === 'planning' ? '' : 'none';
+  document.getElementById('reviewBody').style.display = mode === 'review' ? '' : 'none';
+  document.getElementById('dashboardBody').style.display = mode === 'dashboard' ? '' : 'none';
+  document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
+  if (mode === 'planning') {
+    document.getElementById('tabStatus').classList.toggle('active', view === 'status');
+    document.getElementById('tabTimeline').classList.toggle('active', view === 'timeline');
+    renderSidebar();
+    renderMain();
+  } else if (mode === 'review') {
+    renderReview();
+  } else if (mode === 'dashboard') {
+    renderDashboard();
+  } else if (mode === 'admin') {
+    renderAdmin();
+  }
 }
+function setMode(m) { mode = m; save(); render(); }
 
 function renderSidebar() {
   const el = document.getElementById('wsList');
@@ -956,12 +1133,32 @@ function populateWorkstreamSelect(selectedId) {
     `<option value="${w.id}" ${w.id === selectedId ? 'selected' : ''}>${esc(w.name)}</option>`
   ).join('');
 }
+function populateCategorySelect(selectedId) {
+  document.getElementById('itemCategorySelect').innerHTML = categories.map(c =>
+    `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${esc(c.name)}</option>`
+  ).join('');
+}
+// Builds a fresh editingMilestones array from a category's template — used
+// both for a brand-new item's initial seed and when switching category
+// while still creating one (see onItemCategoryChange). Each milestone gets
+// its own freshly-generated id and defaults to the given due date.
+function milestonesForCategory(categoryId, dueDate) {
+  const cat = categoryById(categoryId);
+  return (cat ? cat.milestones : []).map(name => ({ id: genId(), name, dueDate, status: 'not-started' }));
+}
+function onItemCategoryChange() {
+  if (editingItemId) return; // editing an existing item never re-seeds its already-customized checklist
+  const categoryId = document.getElementById('itemCategorySelect').value;
+  editingMilestones = milestonesForCategory(categoryId, document.getElementById('itemDueInput').value);
+  renderMilestonesEditor();
+}
 function openItemModal(id, presetWorkstreamId) {
   editingItemId = id || null;
   const it = id ? items.find(i => i.id === id) : null;
   document.getElementById('itemModalTitle').textContent = it ? 'Edit item' : 'New item';
   populateStatusSelect();
   populateWorkstreamSelect(it ? it.workstreamId : (presetWorkstreamId || (workstreams[0] && workstreams[0].id)));
+  populateCategorySelect(it ? it.categoryId : categories[0].id);
   document.getElementById('itemNameInput').value = it ? it.name : '';
   document.getElementById('itemOwnerInput').value = it ? it.owner : '';
   document.getElementById('itemStartInput').value = it ? it.startDate : todayStr();
@@ -970,7 +1167,7 @@ function openItemModal(id, presetWorkstreamId) {
   document.getElementById('itemNotesInput').value = it ? it.notes : '';
   editingMilestones = it
     ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status }))
-    : STANDARD_MILESTONES.map(name => ({ id: genId(), name, dueDate: document.getElementById('itemDueInput').value, status: 'not-started' }));
+    : milestonesForCategory(categories[0].id, document.getElementById('itemDueInput').value);
   renderMilestonesEditor();
   document.getElementById('itemDeleteBtn').style.display = it ? 'inline-flex' : 'none';
   document.getElementById('itemModalBg').classList.add('open');
@@ -1003,6 +1200,7 @@ function saveItem() {
   const name = document.getElementById('itemNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
   const workstreamId = document.getElementById('itemWorkstreamSelect').value;
+  const categoryId = document.getElementById('itemCategorySelect').value;
   const owner = document.getElementById('itemOwnerInput').value.trim();
   const dueDate = document.getElementById('itemDueInput').value || todayStr();
   const startDate = document.getElementById('itemStartInput').value || dueDate;
@@ -1011,7 +1209,7 @@ function saveItem() {
   const milestones = editingMilestones.map(m => ({
     id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: m.dueDate || dueDate, status: m.status
   }));
-  const data = { workstreamId, name, owner, notes, status, startDate, dueDate, milestones, updatedAt: Date.now() };
+  const data = { workstreamId, categoryId, name, owner, notes, status, startDate, dueDate, milestones, updatedAt: Date.now() };
   if (editingItemId) {
     Object.assign(items.find(i => i.id === editingItemId), data);
   } else {
@@ -1044,6 +1242,327 @@ function deleteItem(id) {
         save(); render();
         showToast('Item restored');
       });
+    }
+  });
+}
+
+// ---------- Shared: review-staleness helpers (used by Review sidebar + Dashboard) ----------
+function dateStrFromTs(ts) { return new Date(ts).toISOString().slice(0, 10); }
+function lastCompletedReview(wsId) {
+  const done = reviewCycles.filter(c => c.workstreamId === wsId && c.completedAt);
+  return done.length ? Math.max(...done.map(c => c.completedAt)) : null;
+}
+function isReviewOverdue(wsId) {
+  const last = lastCompletedReview(wsId);
+  if (!last) return true; // never reviewed
+  return (Date.now() - last) > REVIEW_STALE_DAYS * DAY_MS;
+}
+
+// ---------- Review mode ----------
+// A review cycle is scoped to one workstream at a time (activeReviewCycle
+// enforces at most one open — not completed, not cancelled — cycle per
+// workstream). It can only be completed once every *currently existing*
+// item in that workstream has a confirmation entry — canCompleteReviewCycle
+// re-checks the live item list each time rather than a snapshot taken at
+// start, which is what makes an item added mid-cycle automatically show up
+// as an unconfirmed blocker without any extra bookkeeping.
+function activeReviewCycle(wsId) {
+  return reviewCycles.find(c => c.workstreamId === wsId && !c.completedAt && !c.cancelledAt);
+}
+function reviewCyclesForWs(wsId) {
+  return reviewCycles.filter(c => c.workstreamId === wsId);
+}
+function setReviewWorkstream(id) { reviewWsId = id; save(); renderReview(); }
+function startReviewCycle(wsId) {
+  if (activeReviewCycle(wsId)) return;
+  reviewCycles.push({ id: genId(), workstreamId: wsId, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [] });
+  save(); render();
+  showToast('Review cycle started');
+}
+function toggleReviewConfirm(cycleId, itemId) {
+  const cycle = reviewCycles.find(c => c.id === cycleId);
+  if (!cycle) return;
+  const idx = cycle.confirmations.findIndex(x => x.itemId === itemId);
+  if (idx === -1) cycle.confirmations.push({ itemId, confirmedAt: Date.now() });
+  else cycle.confirmations.splice(idx, 1);
+  save(); render();
+}
+function canCompleteReviewCycle(cycle) {
+  const wItems = items.filter(it => it.workstreamId === cycle.workstreamId);
+  return wItems.every(it => cycle.confirmations.some(c => c.itemId === it.id));
+}
+function completeReviewCycle(cycleId) {
+  const cycle = reviewCycles.find(c => c.id === cycleId);
+  if (!cycle || !canCompleteReviewCycle(cycle)) return;
+  cycle.completedAt = Date.now();
+  save(); render();
+  showToast('Review cycle completed');
+}
+function cancelReviewCycle(cycleId) {
+  const cycle = reviewCycles.find(c => c.id === cycleId);
+  if (!cycle) return;
+  openConfirmModal({
+    title: 'Cancel this review cycle?',
+    body: 'It stays in history marked as cancelled. This cannot be undone.',
+    action: () => {
+      cycle.cancelledAt = Date.now();
+      save(); render();
+      showToast('Review cycle cancelled');
+    }
+  });
+}
+function renderReview() {
+  renderReviewSidebar();
+  renderReviewMain();
+}
+function renderReviewSidebar() {
+  const el = document.getElementById('reviewWsList');
+  el.innerHTML = workstreams.map(w => {
+    const active = activeReviewCycle(w.id);
+    const badge = active
+      ? `<span class="review-ws-badge active-cycle">In review</span>`
+      : (isReviewOverdue(w.id) ? `<span class="review-ws-badge overdue">Overdue</span>` : '');
+    return `<div class="review-ws-row ${reviewWsId === w.id ? 'active' : ''}" onclick="setReviewWorkstream('${w.id}')">
+        <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
+        <span class="ws-row-name">${esc(w.name)}</span>
+        ${badge}
+      </div>`;
+  }).join('');
+}
+function reviewItemRowHtml(cycle, it) {
+  const confirmed = cycle.confirmations.some(c => c.itemId === it.id);
+  return `<div class="review-item-row ${confirmed ? 'confirmed' : ''}">
+      <span class="item-name">${esc(it.name)}</span>
+      <span class="item-dates">${fmtDate(it.startDate)} → ${fmtDate(it.dueDate)}</span>
+      <button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openItemModal('${it.id}')">${esc(statusLabel(it.status))}</button>
+      <button class="review-confirm-btn ${confirmed ? 'confirmed' : ''}" onclick="toggleReviewConfirm('${cycle.id}','${it.id}')">
+        <i class="fa-solid ${confirmed ? 'fa-check' : 'fa-square'}"></i> ${confirmed ? 'Confirmed' : 'Confirm'}
+      </button>
+    </div>`;
+}
+function reviewHistoryRowHtml(c) {
+  const badge = c.completedAt
+    ? `<span class="review-cycle-badge completed">Completed</span>`
+    : `<span class="review-cycle-badge cancelled">Cancelled</span>`;
+  return `<div class="review-history-row">
+      <span style="flex:1">Started ${fmtDate(dateStrFromTs(c.startedAt))}</span>
+      ${badge}
+      <span style="color:var(--text-faint)">${fmtDate(dateStrFromTs(c.completedAt || c.cancelledAt))}</span>
+    </div>`;
+}
+function renderReviewMain() {
+  const el = document.getElementById('reviewMain');
+  if (workstreams.length === 0) {
+    el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-clipboard-check"></i><div>No workstreams yet — add one in Planning first.</div></div>`;
+    return;
+  }
+  if (reviewWsId && !wsById(reviewWsId)) reviewWsId = null;
+  if (!reviewWsId) {
+    el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-clipboard-check"></i><div>Select a workstream to review.</div></div>`;
+    return;
+  }
+  const w = wsById(reviewWsId);
+  const cycle = activeReviewCycle(reviewWsId);
+  const wItems = items.filter(it => it.workstreamId === reviewWsId);
+  let html = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2></div>`;
+  if (!cycle) {
+    html += `<button class="btn btn-primary" style="margin-bottom:20px" onclick="startReviewCycle('${reviewWsId}')"><i class="fa-solid fa-play"></i> Start review cycle</button>`;
+  } else {
+    const confirmedCount = wItems.filter(it => cycle.confirmations.some(c => c.itemId === it.id)).length;
+    const total = wItems.length;
+    const pct = total ? Math.round(confirmedCount / total * 100) : 100;
+    html += `<div class="review-progress">${confirmedCount} of ${total} item${total === 1 ? '' : 's'} confirmed — started ${fmtDate(dateStrFromTs(cycle.startedAt))}</div>
+      <div class="review-progress-bar"><div class="review-progress-fill" style="width:${pct}%"></div></div>
+      <div class="review-list">
+        ${wItems.length ? wItems.map(it => reviewItemRowHtml(cycle, it)).join('') : `<div class="review-item-row" style="color:var(--text-faint)">No items in this workstream yet.</div>`}
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:20px">
+        <button class="btn btn-primary" ${canCompleteReviewCycle(cycle) ? '' : 'disabled'} onclick="completeReviewCycle('${cycle.id}')"><i class="fa-solid fa-check"></i> Complete review</button>
+        <button class="btn btn-danger" onclick="cancelReviewCycle('${cycle.id}')">Cancel review</button>
+      </div>`;
+  }
+  const history = reviewCyclesForWs(reviewWsId).filter(c => c.completedAt || c.cancelledAt).sort((a, b) => b.startedAt - a.startedAt);
+  html += `<div class="section-label">History</div>`;
+  html += history.length
+    ? `<div class="review-list">${history.map(reviewHistoryRowHtml).join('')}</div>`
+    : `<div class="attention-empty">No past review cycles yet.</div>`;
+  el.innerHTML = html;
+}
+
+// ---------- Dashboard mode ----------
+function allMilestonesFlat() {
+  const out = [];
+  items.forEach(it => it.milestones.forEach(m => out.push(Object.assign({}, m, { itemName: it.name, workstreamId: it.workstreamId }))));
+  return out;
+}
+function renderDashboard() {
+  const el = document.getElementById('dashboardBody');
+  if (workstreams.length === 0) {
+    el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-gauge-high"></i><div>No workstreams yet — add one in Planning first.</div></div>`;
+    return;
+  }
+  const milestones = allMilestonesFlat();
+  const itemCounts = {}; STATUSES.forEach(s => itemCounts[s.id] = 0);
+  items.forEach(it => itemCounts[it.status]++);
+  const totalItems = items.length;
+  const msDone = milestones.filter(m => m.status === 'complete').length;
+  const msPct = milestones.length ? Math.round(msDone / milestones.length * 100) : 0;
+  const overdueReviewWs = workstreams.filter(w => isReviewOverdue(w.id));
+
+  const today = todayStr();
+  const soon = dateStrFromTs(Date.now() + 7 * DAY_MS);
+  const toEntry = (x, isMilestone) => ({ label: isMilestone ? `${x.itemName} — ${x.name}` : x.name, date: x.dueDate });
+  const overdue = items.filter(it => it.status !== 'complete' && it.dueDate < today).map(x => toEntry(x, false))
+    .concat(milestones.filter(m => m.status !== 'complete' && m.dueDate < today).map(x => toEntry(x, true)))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const upcoming = items.filter(it => it.status !== 'complete' && it.dueDate >= today && it.dueDate <= soon).map(x => toEntry(x, false))
+    .concat(milestones.filter(m => m.status !== 'complete' && m.dueDate >= today && m.dueDate <= soon).map(x => toEntry(x, true)))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const bar = STATUSES.map(s => {
+    const pct = totalItems ? (itemCounts[s.id] / totalItems * 100) : 0;
+    return pct > 0 ? `<div class="dash-bar-seg" style="width:${pct}%;background:var(--stat-${s.id})"></div>` : '';
+  }).join('');
+  const legend = STATUSES.map(s => `<div class="dash-legend-item"><span class="dash-legend-dot" style="background:var(--stat-${s.id})"></span>${itemCounts[s.id]} ${esc(s.label)}</div>`).join('');
+
+  const wsRows = workstreams.map(w => {
+    const wItems = items.filter(it => it.workstreamId === w.id);
+    const wMs = milestones.filter(m => m.workstreamId === w.id);
+    const wMsDone = wMs.filter(m => m.status === 'complete').length;
+    return `<div class="dash-ws-row">
+        <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
+        <span class="dash-ws-name">${esc(w.name)}</span>
+        <span class="dash-sub-stat">${wItems.length} item${wItems.length === 1 ? '' : 's'}</span>
+        <span class="dash-sub-stat">${wMs.length ? Math.round(wMsDone / wMs.length * 100) : 0}% milestones done</span>
+      </div>`;
+  }).join('');
+
+  const attentionHtml = (entries, kind) => entries.length
+    ? entries.map(e => `<div class="attention-row">
+          <span class="attention-tag ${kind}">${kind === 'overdue' ? 'Overdue' : 'Upcoming'}</span>
+          <span class="item-name">${esc(e.label)}</span>
+          <span class="item-dates">${fmtDate(e.date)}</span>
+        </div>`).join('')
+    : `<div class="attention-empty">Nothing here.</div>`;
+
+  el.innerHTML = `
+    <div class="dash-grid">
+      <div class="dash-card">
+        <div class="dash-card-title">Item Status</div>
+        <div class="dash-big-stat">${totalItems}</div>
+        <div class="dash-sub-stat">total scope item${totalItems === 1 ? '' : 's'}</div>
+        <div class="dash-bar" style="margin-top:12px">${bar}</div>
+        <div class="dash-legend">${legend}</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">Milestone Completion</div>
+        <div class="dash-big-stat">${msPct}%</div>
+        <div class="dash-sub-stat">${msDone} of ${milestones.length} milestones complete</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">Overdue for Review</div>
+        <div class="dash-big-stat">${overdueReviewWs.length}</div>
+        <div class="dash-sub-stat">${overdueReviewWs.length ? overdueReviewWs.map(w => esc(w.name)).join(', ') : `of ${workstreams.length} workstream${workstreams.length === 1 ? '' : 's'}`}</div>
+      </div>
+    </div>
+    <div class="section-label">Per-workstream summary</div>
+    <div class="dash-card" style="margin-bottom:20px">${wsRows}</div>
+    <div class="dash-grid" style="grid-template-columns: 1fr 1fr;">
+      <div>
+        <div class="section-label">Overdue</div>
+        <div class="category-list">${attentionHtml(overdue, 'overdue')}</div>
+      </div>
+      <div>
+        <div class="section-label">Upcoming (next 7 days)</div>
+        <div class="category-list">${attentionHtml(upcoming, 'upcoming')}</div>
+      </div>
+    </div>`;
+}
+
+// ---------- Admin mode: category management ----------
+function renderAdmin() {
+  const el = document.getElementById('adminBody');
+  el.innerHTML = `
+    <div class="admin-header">
+      <h2>Scope Item Categories</h2>
+      <button class="btn btn-primary" onclick="openCategoryModal()"><i class="fa-solid fa-plus"></i> Category</button>
+    </div>
+    <p style="margin-bottom:16px">Each category defines the standard milestone checklist a new scope item is seeded with when you pick it in Planning.</p>
+    <div class="category-list">
+      ${categories.map(c => {
+        const count = items.filter(it => it.categoryId === c.id).length;
+        return `<div class="category-row">
+            <span class="category-name">${esc(c.name)}</span>
+            <span class="category-milestones-preview">${c.milestones.length ? esc(c.milestones.join(' → ')) : 'No milestones in template'}</span>
+            <span class="milestone-count-badge">${count} item${count === 1 ? '' : 's'}</span>
+            <span class="item-actions" style="display:flex">
+              <button class="row-icon-btn" onclick="openCategoryModal('${c.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+            </span>
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+function openCategoryModal(id) {
+  editingCategoryId = id || null;
+  const c = id ? categoryById(id) : null;
+  document.getElementById('categoryModalTitle').textContent = c ? 'Edit category' : 'New category';
+  document.getElementById('categoryNameInput').value = c ? c.name : '';
+  editingCategoryMilestones = c ? c.milestones.slice() : [];
+  renderCategoryMilestonesEditor();
+  document.getElementById('categoryDeleteBtn').style.display = c ? 'inline-flex' : 'none';
+  document.getElementById('categoryModalBg').classList.add('open');
+  document.getElementById('categoryNameInput').focus();
+}
+function closeCategoryModal() {
+  document.getElementById('categoryModalBg').classList.remove('open');
+  editingCategoryMilestones = [];
+}
+function renderCategoryMilestonesEditor() {
+  document.getElementById('categoryMilestonesEditor').innerHTML = editingCategoryMilestones.map((name, idx) => `
+    <div class="milestone-row">
+      <input type="text" value="${esc(name)}" oninput="editingCategoryMilestones[${idx}] = this.value">
+      <button class="row-icon-btn" onclick="removeCategoryMilestoneRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>
+    </div>`).join('');
+}
+function addCategoryMilestoneRow() {
+  editingCategoryMilestones.push('New milestone');
+  renderCategoryMilestonesEditor();
+}
+function removeCategoryMilestoneRow(idx) {
+  editingCategoryMilestones.splice(idx, 1);
+  renderCategoryMilestonesEditor();
+}
+function saveCategory() {
+  const name = document.getElementById('categoryNameInput').value.trim();
+  if (!name) { showToast('Name is required', true); return; }
+  const milestones = editingCategoryMilestones.map(m => (m || '').trim()).filter(m => m);
+  if (editingCategoryId) {
+    const c = categoryById(editingCategoryId);
+    c.name = name; c.milestones = milestones;
+  } else {
+    categories.push({ id: genId(), name, milestones, order: categories.length });
+  }
+  save(); closeCategoryModal(); render();
+  showToast('Category saved');
+}
+function deleteCategoryFromModal() {
+  if (!editingCategoryId) return;
+  const catId = editingCategoryId;
+  const cat = categoryById(catId);
+  if (!cat) return;
+  if (categories.length <= 1) { showToast('At least one category is required', true); return; }
+  closeCategoryModal();
+  const count = items.filter(it => it.categoryId === catId).length;
+  const fallback = categories.find(c => c.id !== catId);
+  const body = (count ? `${count} item${count === 1 ? '' : 's'} using this category will move to "${fallback.name}". ` : '') + 'This cannot be undone.';
+  openConfirmModal({
+    title: `Delete "${cat.name}"?`,
+    body,
+    action: () => {
+      categories = categories.filter(c => c.id !== catId);
+      items.forEach(it => { if (it.categoryId === catId) it.categoryId = fallback.id; });
+      save(); render();
+      showToast('Category deleted');
     }
   });
 }
@@ -1093,7 +1612,7 @@ function downloadData(data, filename) {
   a.click(); URL.revokeObjectURL(url);
 }
 function currentExportPayload() {
-  return { version: 1, exported: new Date().toISOString(), programme, workstreams, items };
+  return { version: 1, exported: new Date().toISOString(), programme, workstreams, items, categories, reviewCycles };
 }
 function exportProgramme() {
   downloadData(currentExportPayload(), `pulse-${todayStr()}.json`);
@@ -1148,6 +1667,18 @@ function mergeData(data, opts) {
     if (!respectTombstones) untombstone(deletedWorkstreamIds, iw.id);
     workstreams.push(iw);
   });
+  // Categories and review cycles merge silently too (additive by id, categories
+  // also deduped by name) — same "not counted in {added, updated}" treatment as
+  // workstreams. Review cycles are an append-only history log, so an id that
+  // already exists locally is left as-is rather than overwritten.
+  (data.categories || []).forEach(ic => {
+    if (categories.find(c => c.id === ic.id || c.name.toLowerCase() === ic.name.toLowerCase())) return;
+    categories.push(ic);
+  });
+  (data.reviewCycles || []).forEach(rc => {
+    if (reviewCycles.find(c => c.id === rc.id)) return;
+    reviewCycles.push(rc);
+  });
   let added = 0, updated = 0;
   (data.items || []).forEach(ii => {
     const existing = items.find(i => i.id === ii.id);
@@ -1169,6 +1700,8 @@ function applyImport(mode) {
     programme = pendingImportData.programme || { name: 'New Programme' };
     workstreams = pendingImportData.workstreams || [];
     items = pendingImportData.items || [];
+    categories = pendingImportData.categories || [];
+    reviewCycles = pendingImportData.reviewCycles || [];
     normalizeData();
     showToast('Backed up previous data, then replaced');
   } else {
@@ -1217,6 +1750,8 @@ function restoreBackup(date) {
       programme = b.programme || { name: 'New Programme' };
       workstreams = b.workstreams || [];
       items = b.items || [];
+      categories = b.categories || [];
+      reviewCycles = b.reviewCycles || [];
       normalizeData();
       save(); render();
       showToast(`Restored backup from ${fmtDate(date)}`);
@@ -1258,7 +1793,7 @@ async function fileSyncWrite(data) {
           const { added, updated } = mergeData(externalData);
           if (added || updated) {
             normalizeData();
-            payload = { ...data, workstreams, items };
+            payload = { ...data, workstreams, items, categories, reviewCycles };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
             render();
             showToast(`Synced changes from another tab/device (${added} added, ${updated} updated)`);
@@ -1289,7 +1824,7 @@ async function createNewLinkedFile() {
     });
     fileHandle = handle;
     try { await _fsPut(handle); } catch (_) {}
-    await fileSyncWrite({ programme, workstreams, items, view, theme, filterWorkstreamId, deletedWorkstreamIds, deletedItemIds });
+    await fileSyncWrite({ programme, workstreams, items, categories, reviewCycles, mode, view, theme, filterWorkstreamId, reviewWsId, deletedWorkstreamIds, deletedItemIds });
     updateFileSyncUI();
     showToast(`Linked — auto-saving to ${handle.name}`);
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not create file', true); }
@@ -1321,7 +1856,7 @@ async function linkFile() {
       }
       return;
     }
-    await fileSyncWrite({ programme, workstreams, items, view, theme, filterWorkstreamId, deletedWorkstreamIds, deletedItemIds });
+    await fileSyncWrite({ programme, workstreams, items, categories, reviewCycles, mode, view, theme, filterWorkstreamId, reviewWsId, deletedWorkstreamIds, deletedItemIds });
     updateFileSyncUI();
     showToast(`Linked — auto-saving to ${handle.name}`);
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not link file', true); }
@@ -1436,12 +1971,13 @@ document.addEventListener('click', (e) => {
 // ---------- Modal backdrop click-to-close ----------
 document.getElementById('wsModalBg').addEventListener('click', (e) => { if (e.target.id === 'wsModalBg') closeWorkstreamModal(); });
 document.getElementById('itemModalBg').addEventListener('click', (e) => { if (e.target.id === 'itemModalBg') closeItemModal(); });
+document.getElementById('categoryModalBg').addEventListener('click', (e) => { if (e.target.id === 'categoryModalBg') closeCategoryModal(); });
 document.getElementById('confirmModalBg').addEventListener('click', (e) => { if (e.target.id === 'confirmModalBg') closeConfirmModal(); });
 document.getElementById('importModalBg').addEventListener('click', (e) => { if (e.target.id === 'importModalBg') closeImportModal(); });
 document.getElementById('backupsModalBg').addEventListener('click', (e) => { if (e.target.id === 'backupsModalBg') closeBackupsModal(); });
 document.getElementById('fileSyncModalBg').addEventListener('click', (e) => { if (e.target.id === 'fileSyncModalBg') closeFileSyncModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeFileSyncModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeCategoryModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeFileSyncModal(); }
 });
 
 // ---------- Init ----------

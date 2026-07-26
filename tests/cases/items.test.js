@@ -14,7 +14,7 @@ function fillItemForm(overrides) {
 
 test('opening a new item modal seeds the standard set of milestones', function () {
   openItemModal(null);
-  assertEqual(editingMilestones.length, STANDARD_MILESTONES.length);
+  assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length);
   assertEqual(editingMilestones[0].name, 'Requirements defined');
   assertEqual(editingMilestones[5].name, 'Deployment completed');
   editingMilestones.forEach(m => assertEqual(m.status, 'not-started'));
@@ -36,7 +36,7 @@ test('saveItem creates a scope item carrying the standard milestones through', f
   assertEqual(it.name, 'Ship schema v1');
   assertEqual(it.startDate, '2026-08-01');
   assertEqual(it.dueDate, '2026-08-15');
-  assertEqual(it.milestones.length, STANDARD_MILESTONES.length);
+  assertEqual(it.milestones.length, DEFAULT_CATEGORY_MILESTONES.length);
   assertEqual(it.milestones[0].name, 'Requirements defined');
 });
 
@@ -74,7 +74,7 @@ test('removeMilestoneRow removes one row from the in-progress edit without touch
 test('addMilestoneRow appends a custom milestone beyond the standard set', function () {
   openItemModal(null);
   addMilestoneRow();
-  assertEqual(editingMilestones.length, STANDARD_MILESTONES.length + 1);
+  assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length + 1);
   assertEqual(editingMilestones[6].name, 'New milestone');
   fillItemForm({});
   saveItem();
