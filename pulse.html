@@ -106,8 +106,10 @@
     height: 54px; flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
     padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--border);
   }
-  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; color: var(--text); }
-  .brand i { color: var(--accent); }
+  /* Matches mytasks' .topbar-brand sizing/weight/letter-spacing exactly, so
+     the two sibling apps' headers read as one family. */
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 21px; letter-spacing: -0.02em; color: var(--text); }
+  .brand i { color: var(--accent); font-size: 19px; }
   .programme-name {
     border: none; background: transparent; font-size: 14px; font-weight: 600; color: var(--text-dim);
     padding: 4px 8px; border-radius: 6px; min-width: 120px; max-width: 320px;
@@ -457,7 +459,7 @@
   </div>
   <button class="btn btn-sm" id="tabAdmin" onclick="setMode('admin')"><i class="fa-solid fa-sliders"></i> Admin</button>
   <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileImport(event)">
-  <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-moon"></i></button>
+  <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-circle-half-stroke"></i></button>
 </div>
 
 <!-- Shared shell for Planning/Review/Dashboard: one sidebar (the workstream
@@ -1276,7 +1278,7 @@ function cycleMilestoneStatus(itemId, milestoneId) {
   // statusChange lets reviewHistoryRowHtml() render the same colored
   // .status-badge pill shown in the row itself, twice — old value, then new
   // — instead of plain text.
-  logReviewChange(it.workstreamId, it.name, m.name, `Status changed to ${statusLabel(m.status)}`, { statusChange: { oldValue, newValue: m.status } });
+  logReviewChange(it.workstreamId, it.name, m.name, `Status changed to ${statusLabel(m.status)}`, { statusChange: { oldValue, newValue: m.status }, itemId: it.id, milestoneId: m.id });
   save(); render();
 }
 // The IT/Business/Budget tags are item-level only (see ITEM_TAG_FIELDS/RAG3
@@ -1293,7 +1295,7 @@ function cycleItemAttr(itemId, field) {
   // itself uses, twice — once colored by the old value, once by the new —
   // instead of plain text; change is still set as a plain-text fallback
   // (used as the row's title tooltip).
-  logReviewChange(it.workstreamId, it.name, null, `${TAG_FIELD_LABELS[field]} changed to ${statusLabel(it[field])}`, { tagChange: { field, oldValue, newValue: it[field] } });
+  logReviewChange(it.workstreamId, it.name, null, `${TAG_FIELD_LABELS[field]} changed to ${statusLabel(it[field])}`, { tagChange: { field, oldValue, newValue: it[field] }, itemId: it.id });
   save(); render();
 }
 // Inline date editing directly on the status board — an alternative to
@@ -1306,7 +1308,7 @@ function updateItemDateField(itemId, field, value) {
   it[field] = value;
   it.updatedAt = Date.now();
   const label = field === 'startDate' ? 'Start' : 'Due';
-  logReviewChange(it.workstreamId, it.name, null, `Changed ${label.toLowerCase()} date to ${fmtDate(value)}`, { dateChange: { label, oldValue, newValue: value } });
+  logReviewChange(it.workstreamId, it.name, null, `Changed ${label.toLowerCase()} date to ${fmtDate(value)}`, { dateChange: { label, oldValue, newValue: value }, itemId: it.id });
   save(); render();
 }
 function updateMilestoneDateField(itemId, milestoneId, field, value) {
@@ -1338,7 +1340,7 @@ function updateMilestoneDateField(itemId, milestoneId, field, value) {
     changeText = `Due: ${fmtDate(oldDue)} → ${fmtDate(value)}`;
     dateChange = { label: 'Due', oldValue: oldDue, newValue: value };
   }
-  logReviewChange(it.workstreamId, it.name, m.name, changeText, { dateChange });
+  logReviewChange(it.workstreamId, it.name, m.name, changeText, { dateChange, itemId: it.id, milestoneId: m.id });
   save(); render();
 }
 
@@ -1471,10 +1473,12 @@ function cancelRenameProgramme() {
   document.getElementById('programmeNameDisplay').style.display = '';
   document.getElementById('programmeNameInput').blur();
 }
+// The button icon (fa-circle-half-stroke) is static — matching mytasks,
+// which uses the same single icon regardless of light/dark state rather
+// than swapping between a sun and a moon.
 function toggleTheme() {
   theme = theme === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', theme);
-  document.getElementById('themeBtn').innerHTML = theme === 'dark' ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
   save();
 }
 
@@ -1876,6 +1880,32 @@ function toggleHistoryShowAll(wsId) {
 // completed: Changed actual date to 26 Jul 2026" — not just a confirmed
 // count. Collapsed by default (a cycle can accumulate a lot of these) behind
 // a chevron, same expand/collapse pattern as an item's milestone list.
+// Reorders a cycle's changeLog for display: entries are logged in whatever
+// order changes actually happened (chronological), but that's not
+// necessarily the order milestones appear in their scope item — a reviewer
+// might jump around a checklist rather than working straight down it. This
+// groups entries by itemId (preserving each item's first-appearance order,
+// so different items' changes never get interleaved) and, within one item's
+// group, sorts by that milestone's *current* index in it.milestones — the
+// same order the row itself displays them in. An item-level entry (no
+// milestoneId — a tag or item-date change) or one whose milestone can no
+// longer be found (deleted since) sorts to the front of its group via the -1
+// fallback, with ties broken by original logged order (Array.sort is
+// stable) since there's nothing more meaningful to order them by.
+function orderedChangeLog(changeLog) {
+  const groups = [];
+  const groupByItemId = new Map();
+  changeLog.forEach(e => {
+    let group = groupByItemId.get(e.itemId);
+    if (!group) { group = []; groupByItemId.set(e.itemId, group); groups.push(group); }
+    group.push(e);
+  });
+  return groups.flatMap(group => {
+    const it = items.find(i => i.id === group[0].itemId);
+    const milestoneIds = it ? it.milestones.map(m => m.id) : [];
+    return group.slice().sort((a, b) => milestoneIds.indexOf(a.milestoneId) - milestoneIds.indexOf(b.milestoneId));
+  });
+}
 // Only ever called with a completed cycle — a cancelled one is deleted
 // outright (see cancelReviewCycle()) rather than kept and filtered here.
 function reviewHistoryRowHtml(c) {
@@ -1905,7 +1935,7 @@ function reviewHistoryRowHtml(c) {
   // for anything without a structured shape, and e.change is kept on every
   // entry regardless as the row's title tooltip.
   const changeRows = (hasLog && expanded)
-    ? c.changeLog.map(e => {
+    ? orderedChangeLog(c.changeLog).map(e => {
         let valueHtml;
         if (e.tagChange) {
           const { field, oldValue, newValue } = e.tagChange;
@@ -2704,7 +2734,6 @@ document.addEventListener('keydown', (e) => {
 // ---------- Init ----------
 load();
 document.documentElement.setAttribute('data-theme', theme);
-document.getElementById('themeBtn').innerHTML = theme === 'dark' ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
 render();
 initFileSync();
 

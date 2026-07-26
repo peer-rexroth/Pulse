@@ -380,6 +380,52 @@ test('cycleMilestoneStatus logs a statusChange {oldValue, newValue}, rendered as
   assertIncludes(html, 'Call Money — Design defined');
 });
 
+test('history reorders changes to match the scope item\'s own milestone order, not the order they were logged in', function () {
+  const mA = { id: genId(), name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null };
+  const mB = { id: genId(), name: 'B', dueDate: todayStr(), status: 'not-started', actualDate: null };
+  const mC = { id: genId(), name: 'C', dueDate: todayStr(), status: 'not-started', actualDate: null };
+  const it = addReviewItem({ name: 'Call Money', milestones: [mA, mB, mC] });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  // Logged out of order: C, then A, then B.
+  cycleMilestoneStatus(it.id, mC.id);
+  cycleMilestoneStatus(it.id, mA.id);
+  cycleMilestoneStatus(it.id, mB.id);
+  assertDeepEqual(cycle.changeLog.map(e => e.milestoneName), ['C', 'A', 'B'], 'sanity check — logged in the order the calls were made');
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  completeReviewCycle(cycle.id);
+  toggleHistoryExpanded(cycle.id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  const idxA = html.indexOf('Call Money — A');
+  const idxB = html.indexOf('Call Money — B');
+  const idxC = html.indexOf('Call Money — C');
+  assertTrue(idxA >= 0 && idxB >= 0 && idxC >= 0, 'all three change rows should render');
+  assertTrue(idxA < idxB && idxB < idxC, 'displayed order should follow the item\'s own milestone array order (A, B, C), not log order (C, A, B)');
+});
+
+test('an item-level change (no milestone) sorts to the front of its item\'s group in history', function () {
+  const m = { id: genId(), name: 'Only milestone', dueDate: todayStr(), status: 'not-started', actualDate: null };
+  const it = addReviewItem({ name: 'Call Money', itStatus: 'green', milestones: [m] });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  // Logged milestone-first, then the item-level tag change.
+  cycleMilestoneStatus(it.id, m.id);
+  cycleItemAttr(it.id, 'itStatus');
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  completeReviewCycle(cycle.id);
+  toggleHistoryExpanded(cycle.id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  const idxTag = html.indexOf('fa-laptop-code');
+  const idxMilestone = html.indexOf('Call Money — Only milestone');
+  assertTrue(idxTag >= 0 && idxTag < idxMilestone, 'the item-level change should display before the milestone-level one, even though it was logged second');
+});
+
 test('nothing is logged when no review cycle is active for the item\'s workstream', function () {
   const it = addReviewItem({
     milestones: [{ id: genId(), name: 'M', dueDate: todayStr(), status: 'not-started', actualDate: null }]
