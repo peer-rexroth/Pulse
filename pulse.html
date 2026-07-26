@@ -1133,8 +1133,16 @@ function milestoneHeaderHtml() {
 // separate blank cells there, since a milestone's name has nothing else
 // competing for that space and was truncating too eagerly at a single
 // column's width.
+//
+// Rendered in plain array order, not re-sorted by due date — array order is
+// the checklist's actual sequence (seeded from the category template, and
+// kept in sync with template reorders by applyCategoryMilestoneSync()), and
+// a date-based sort would silently override that ordering for any item
+// whose milestones already have distinct due dates, which is the common
+// case for anything actually planned out. Due dates are shown as data on
+// each row; they don't dictate the row order.
 function milestoneRowsHtml(it) {
-  return it.milestones.slice().sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '')).map(m => `
+  return it.milestones.map(m => `
     <div class="milestone-sub-row">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
       <span class="milestone-sub-name" style="grid-column: 2 / 6">${esc(m.name)}</span>

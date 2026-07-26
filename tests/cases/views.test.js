@@ -107,6 +107,23 @@ test('a milestone shows an inline actual-date input once its item is expanded', 
   assertIncludes(html, 'value="2026-08-05"');
 });
 
+test('milestones render in plain array order, not sorted by due date', function () {
+  const it = addItem({
+    name: 'Out of date order',
+    milestones: [
+      { id: 'm1', name: 'First in array, latest due', dueDate: '2027-01-01', status: 'not-started', actualDate: null },
+      { id: 'm2', name: 'Second in array, earliest due', dueDate: '2026-01-01', status: 'not-started', actualDate: null }
+    ]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  const idxFirst = html.indexOf('First in array, latest due');
+  const idxSecond = html.indexOf('Second in array, earliest due');
+  assertTrue(idxFirst >= 0 && idxSecond >= 0, 'both milestones should render');
+  assertTrue(idxFirst < idxSecond, 'array order should win over due-date order — reordering the category template would otherwise have no visible effect on an already-planned item');
+});
+
 test('updateItemDateField updates a single date field on the item and saves it', function () {
   const it = addItem({ name: 'X' });
   updateItemDateField(it.id, 'actualDate', '2026-09-01');
