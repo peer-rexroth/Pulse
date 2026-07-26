@@ -164,6 +164,46 @@ test('applyImport replace mode backs up current data first, then overwrites ever
   assertFalse(workstreams.some(w => w.name === originalWsName));
 });
 
+// ---------- isFreshLocalState / replaceFromFileData ----------
+// linkFile()/reconnectFile()/initFileSync() all gate on window.showOpenFilePicker,
+// which the test harness's fake window doesn't have (see "Testing caveat" in
+// CLAUDE.md), so those three functions themselves can't be exercised here.
+// isFreshLocalState()/replaceFromFileData() are pure logic against the
+// global state, though, so they're testable directly.
+
+test('isFreshLocalState is true right after seedDefaults, and false once there\'s any real customization', function () {
+  assertTrue(isFreshLocalState(), 'a freshly-seeded programme has nothing to lose');
+  items.push({ id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X', owner: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [] });
+  assertFalse(isFreshLocalState(), 'a single real item means there is something to lose');
+});
+
+test('isFreshLocalState is false once the programme has been renamed, even with no items yet', function () {
+  programme.name = 'Core Banking Modernization';
+  assertFalse(isFreshLocalState());
+});
+
+test('isFreshLocalState is false once a second workstream or category exists, even with no items yet', function () {
+  workstreams.push({ id: genId(), name: 'Second', color: 'teal', order: 1 });
+  assertFalse(isFreshLocalState(), 'a second workstream is a sign of real setup work worth preserving');
+});
+
+test('replaceFromFileData wholesale-replaces programme/workstreams/items/categories/reviewCycles from the given data', function () {
+  const data = {
+    programme: { name: 'Restored Programme' },
+    workstreams: [{ id: 'w-restored', name: 'Restored WS', color: 'blue', order: 0 }],
+    items: [{ id: 'i-restored', workstreamId: 'w-restored', name: 'Restored Item', owner: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [] }],
+    categories: [{ id: 'c-restored', name: 'Restored Category', milestones: ['Step 1'], order: 0 }],
+    reviewCycles: []
+  };
+  replaceFromFileData(data);
+  assertEqual(programme.name, 'Restored Programme');
+  assertEqual(workstreams.length, 1);
+  assertEqual(workstreams[0].name, 'Restored WS');
+  assertEqual(items.length, 1);
+  assertEqual(items[0].name, 'Restored Item');
+  assertEqual(categories[0].name, 'Restored Category');
+});
+
 // ---------- Local backups ----------
 
 test('maybeSnapshotBackup takes at most one backup per day', function () {

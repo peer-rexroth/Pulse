@@ -1,7 +1,13 @@
-test('seedDefaults creates one workstream with no items', function () {
-  assertEqual(workstreams.length, 1);
+test('seedDefaults starts with zero workstreams — a fresh programme has none until the user adds their own', function () {
+  // resetState() (the test harness's own glue, not seedDefaults() itself)
+  // pushes a "Workstream 1" back in purely for every other test's baseline
+  // convenience — calling seedDefaults() directly here checks the real
+  // product behavior underneath that shim.
+  seedDefaults();
+  assertEqual(workstreams.length, 0);
   assertEqual(items.length, 0);
-  assertEqual(workstreams[0].name, 'Workstream 1');
+  assertEqual(categories.length, 1);
+  assertEqual(categories[0].name, 'Development');
 });
 
 test('saveWorkstream adds a new workstream with chosen name and color', function () {

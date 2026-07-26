@@ -211,15 +211,29 @@
      icon is what opens it instead (see dateInputHtml()'s onclick). */
   .date-pill {
     display: inline-flex; align-items: center; gap: 5px; background: var(--panel-2);
-    border-radius: 999px; padding: 3px 10px 3px 8px; color: var(--text-dim); color-scheme: light dark;
+    border-radius: 999px; padding: 3px 8px; color: var(--text-dim); color-scheme: light dark;
   }
   .date-pill:hover { background: var(--border); }
   .date-pill i { font-size: 10px; color: var(--text-faint); cursor: pointer; }
   .inline-date-input {
     border: none; background: transparent; color: inherit; font-family: inherit;
-    font-size: 12px; padding: 0; cursor: text;
+    font-size: 12px; padding: 0; margin: 0; cursor: text; width: 96px;
+    /* A native <input type="date">'s own default intrinsic width is fixed by
+       the browser for its *type*, not computed from its rendered shadow-DOM
+       content — hiding the picker-indicator/clear-button below doesn't make
+       Chrome recompute that default down, so width:auto left the same
+       oversized box with empty trailing space. An explicit width is the only
+       thing that actually shrinks it. Kept generous (not shrink-wrapped
+       exactly to a DD.MM.YYYY value's text metrics) since the browser's own
+       per-segment (day/month/year) click targets need a bit of headroom
+       beyond the bare text width to stay reliably clickable/typeable. */
   }
-  .inline-date-input::-webkit-calendar-picker-indicator { display: none; }
+  .inline-date-input::-webkit-calendar-picker-indicator,
+  .inline-date-input::-webkit-clear-button,
+  .inline-date-input::-webkit-inner-spin-button {
+    display: none; -webkit-appearance: none; width: 0; height: 0; padding: 0; margin: 0; opacity: 0;
+  }
+  .inline-date-input::-webkit-datetime-edit { padding: 0; }
   .inline-date-input:disabled { opacity: .8; cursor: default; }
   .item-dates-inline { display: flex; align-items: center; gap: 5px; }
   .item-dates-computed { color: var(--text-dim); font-size: 12.5px; }
@@ -726,7 +740,9 @@ const WS_COLORS = ['blue', 'teal', 'purple', 'amber', 'pink', 'green', 'red', 'g
 // their own milestone template from scratch; this constant only matters at
 // that one seeding moment, not as a live default used elsewhere.
 const DEFAULT_CATEGORY_MILESTONES = [
+  'Scope item confirmed',
   'Requirements defined',
+  'Requirements approved',
   'Design defined',
   'Development completed',
   'Ready for SIT',
@@ -814,10 +830,13 @@ function save() {
   maybeSnapshotBackup();
 }
 
+// No default workstream — a brand-new programme starts with zero of them
+// (every mode already has its own "No workstreams yet" empty state) so a
+// first-time user picks their own name rather than inheriting a placeholder
+// they'd just have to rename or ignore.
 function seedDefaults() {
   programme = { name: 'New Programme' };
-  const wsId = genId();
-  workstreams = [{ id: wsId, name: 'Workstream 1', color: 'blue', order: 0 }];
+  workstreams = [];
   items = [];
   categories = [{ id: genId(), name: 'Development', milestones: DEFAULT_CATEGORY_MILESTONES.slice(), order: 0 }];
   reviewCycles = [];
@@ -2490,6 +2509,34 @@ function closeImportModal() {
   document.getElementById('importModalBg').classList.remove('open');
   pendingImportData = null;
 }
+// True only for an untouched, just-seeded programme — no items, the single
+// default workstream, the single default category, still the placeholder
+// name. This is what a fresh page load produces after localStorage has been
+// wiped (e.g. the user cleared browsing data), which is exactly the case
+// linkFile()/reconnectFile()/initFileSync() need to tell apart from "I
+// already have real local data and I'm bringing in a second source": for a
+// truly fresh state there is nothing to lose, so replacing wholesale from
+// the incoming file is correct — merging would silently keep the fresh
+// programme name (mergeData() never touches `programme` — see below — it's
+// not a collection, there's nothing to "merge") and skip re-adopting any
+// category the incoming file modified, since a same-named category already
+// "exists" locally (the fresh seed's own untouched one) and mergeData()'s
+// additive logic treats that as nothing to do.
+function isFreshLocalState() {
+  return items.length === 0 && workstreams.length <= 1 && categories.length <= 1 && programme.name === 'New Programme';
+}
+// Wholesale replace from a file's contents — used only when
+// isFreshLocalState() is true, as the alternative to mergeData() in that one
+// case. Unlike applyImport('replace'), this doesn't back up first: there's
+// nothing of value in a fresh, untouched local state to lose.
+function replaceFromFileData(data) {
+  programme = data.programme || { name: 'New Programme' };
+  workstreams = data.workstreams || [];
+  items = data.items || [];
+  categories = data.categories || [];
+  reviewCycles = data.reviewCycles || [];
+  normalizeData();
+}
 // Additive merge used by every "read data from outside localStorage" path
 // (linkFile, reconnectFile, initFileSync, doFileSyncWrite's cross-tab merge,
 // and applyImport's merge mode). Tombstones are what let this tell "never
@@ -2732,11 +2779,17 @@ async function linkFile() {
     if (existingText.trim()) {
       let data; try { data = JSON.parse(existingText); } catch (_) {}
       if (data && data.workstreams && data.items) {
-        const { added, updated } = mergeData(data);
-        normalizeData();
-        save(); render(); updateFileSyncUI();
-        const parts = []; if (added) parts.push(`${added} added`); if (updated) parts.push(`${updated} updated`);
-        showToast(`Merged from ${handle.name} — ${parts.length ? parts.join(', ') : 'nothing new'} — auto-saving enabled`);
+        if (isFreshLocalState()) {
+          replaceFromFileData(data);
+          save(); render(); updateFileSyncUI();
+          showToast(`Restored from ${handle.name} — auto-saving enabled`);
+        } else {
+          const { added, updated } = mergeData(data);
+          normalizeData();
+          save(); render(); updateFileSyncUI();
+          const parts = []; if (added) parts.push(`${added} added`); if (updated) parts.push(`${updated} updated`);
+          showToast(`Merged from ${handle.name} — ${parts.length ? parts.join(', ') : 'nothing new'} — auto-saving enabled`);
+        }
       } else {
         fileHandle = null;
         showToast(`${handle.name} is not a Pulse data file — unlinked`, true);
@@ -2760,6 +2813,13 @@ async function reconnectFile() {
     const text = await (await fileHandle.getFile()).text();
     const data = JSON.parse(text);
     if (data.workstreams && data.items) {
+      if (isFreshLocalState()) {
+        replaceFromFileData(data);
+        lastSyncedSnapshot = text;
+        save(); render(); updateFileSyncUI();
+        showToast(`Reconnected to ${fileHandle.name} — restored from file`);
+        return;
+      }
       const { added, updated } = mergeData(data);
       normalizeData();
       lastSyncedSnapshot = text;
@@ -2815,8 +2875,12 @@ async function initFileSync() {
         const text = await (await handle.getFile()).text();
         const data = JSON.parse(text);
         if (data.workstreams && data.items) {
-          mergeData(data);
-          normalizeData();
+          if (isFreshLocalState()) {
+            replaceFromFileData(data);
+          } else {
+            mergeData(data);
+            normalizeData();
+          }
           lastSyncedSnapshot = text;
           save(); render();
         }

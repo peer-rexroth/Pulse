@@ -15,8 +15,8 @@ function fillItemForm(overrides) {
 test('opening a new item modal seeds the standard set of milestones', function () {
   openItemModal(null);
   assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length);
-  assertEqual(editingMilestones[0].name, 'Requirements defined');
-  assertEqual(editingMilestones[5].name, 'Deployment completed');
+  assertEqual(editingMilestones[0].name, 'Scope item confirmed');
+  assertEqual(editingMilestones[editingMilestones.length - 1].name, 'Deployment completed');
   editingMilestones.forEach(m => assertEqual(m.status, 'not-started'));
 });
 
@@ -41,7 +41,7 @@ test('saveItem creates a scope item carrying the standard milestones through', f
   assertEqual(it.startDate, todayStr());
   assertEqual(it.dueDate, todayStr());
   assertEqual(it.milestones.length, DEFAULT_CATEGORY_MILESTONES.length);
-  assertEqual(it.milestones[0].name, 'Requirements defined');
+  assertEqual(it.milestones[0].name, 'Scope item confirmed');
 });
 
 test('saveItem rejects an empty name', function () {
@@ -68,10 +68,10 @@ test('editing an item preserves its existing milestones, not the standard set', 
 
 test('removeMilestoneRow removes one row from the in-progress edit without touching saved data yet', function () {
   openItemModal(null);
-  assertEqual(editingMilestones.length, 6);
-  removeMilestoneRow(2);
-  assertEqual(editingMilestones.length, 5);
-  assertEqual(editingMilestones[2].name, 'Ready for SIT');
+  assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length);
+  removeMilestoneRow(2); // removes "Requirements approved"
+  assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length - 1);
+  assertEqual(editingMilestones[2].name, 'Design defined');
   assertEqual(items.length, 0, 'nothing should be saved until Save is clicked');
 });
 
@@ -79,10 +79,10 @@ test('addMilestoneRow appends a custom milestone beyond the standard set', funct
   openItemModal(null);
   addMilestoneRow();
   assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length + 1);
-  assertEqual(editingMilestones[6].name, 'New milestone');
+  assertEqual(editingMilestones[DEFAULT_CATEGORY_MILESTONES.length].name, 'New milestone');
   fillItemForm({});
   saveItem();
-  assertEqual(items[0].milestones.length, 7);
+  assertEqual(items[0].milestones.length, DEFAULT_CATEGORY_MILESTONES.length + 1);
 });
 
 test('a milestone with a blanked-out name falls back to a placeholder on save', function () {

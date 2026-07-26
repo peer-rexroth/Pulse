@@ -137,6 +137,12 @@ async function run(argv) {
   const glue = `
 ;function resetState(){
   seedDefaults();
+  // seedDefaults() itself no longer creates a workstream (a fresh real
+  // programme starts with zero — see pulse.html), but nearly every test in
+  // this suite assumes workstreams[0] already exists as a baseline
+  // convenience, so the harness adds one back here rather than touching
+  // every individual test.
+  workstreams.push({ id: genId(), name: 'Workstream 1', color: 'blue', order: 0 });
   mode = 'planning'; view = 'status'; theme = 'light'; filterWorkstreamId = null;
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
   editingMilestones = []; expandedItemIds = new Set();
