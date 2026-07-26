@@ -153,3 +153,118 @@ test('renderAdmin lists every category with its milestone template and item coun
   assertIncludes(html, 'Development');
   assertIncludes(html, '1 item');
 });
+
+// ---------- Category template changes sync to items using that category ----------
+
+function addItemWithCategory(categoryId, milestoneNames) {
+  const it = {
+    id: genId(), workstreamId: workstreams[0].id, categoryId, name: 'Synced item', owner: '', notes: '',
+    status: 'green', startDate: todayStr(), dueDate: todayStr(), updatedAt: Date.now(),
+    milestones: milestoneNames.map(name => ({ id: genId(), name, dueDate: todayStr(), status: 'not-started', actualDate: null }))
+  };
+  items.push(it);
+  return it;
+}
+
+test('adding a milestone to a category template prompts for confirmation, then appends it to items using that category', function () {
+  const catId = categories[0].id;
+  addItemWithCategory(catId, categories[0].milestones);
+  openCategoryModal(catId);
+  addCategoryMilestoneRow();
+  editingCategoryMilestones[editingCategoryMilestones.length - 1] = 'Go-live approved';
+  saveCategory();
+  assertTrue(!!modalTarget, 'a confirm modal should be armed rather than saving immediately');
+  assertEqual(categories[0].milestones.includes('Go-live approved'), false, 'not applied until confirmed');
+  confirmModalAction();
+  assertTrue(categories[0].milestones.includes('Go-live approved'));
+  assertTrue(items[0].milestones.some(m => m.name === 'Go-live approved' && m.status === 'not-started'));
+});
+
+test('appending a category milestone skips items that already have a milestone with that exact name', function () {
+  const catId = categories[0].id;
+  const it = addItemWithCategory(catId, categories[0].milestones);
+  const existingCount = it.milestones.length;
+  it.milestones[0].status = 'complete'; // hand-customize one so we can tell it wasn't touched
+  openCategoryModal(catId);
+  addCategoryMilestoneRow();
+  editingCategoryMilestones[editingCategoryMilestones.length - 1] = categories[0].milestones[0]; // duplicate an existing name
+  saveCategory();
+  confirmModalAction();
+  assertEqual(items[0].milestones.length, existingCount, 'no duplicate milestone should be appended');
+  assertEqual(items[0].milestones[0].status, 'complete', 'the existing matching milestone must be untouched');
+});
+
+test('removing a milestone from a category template removes it from items, even if already Complete with an actual date', function () {
+  const catId = categories[0].id;
+  const it = addItemWithCategory(catId, categories[0].milestones);
+  const removedName = categories[0].milestones[0];
+  it.milestones[0].status = 'complete';
+  it.milestones[0].actualDate = '2026-01-01';
+  openCategoryModal(catId);
+  removeCategoryMilestoneRow(0);
+  saveCategory();
+  confirmModalAction();
+  assertFalse(items[0].milestones.some(m => m.name === removedName), 'the removed template entry should be gone from the item too');
+});
+
+test('a renamed template entry is treated as remove-old-name plus add-new-name', function () {
+  const catId = categories[0].id;
+  const it = addItemWithCategory(catId, categories[0].milestones);
+  const oldName = categories[0].milestones[0];
+  openCategoryModal(catId);
+  editingCategoryMilestones[0] = 'Renamed milestone';
+  saveCategory();
+  confirmModalAction();
+  assertFalse(items[0].milestones.some(m => m.name === oldName));
+  assertTrue(items[0].milestones.some(m => m.name === 'Renamed milestone' && m.status === 'not-started'));
+});
+
+test('reordering a template with no name changes saves immediately, without a confirm modal', function () {
+  const catId = categories[0].id;
+  addItemWithCategory(catId, categories[0].milestones);
+  openCategoryModal(catId);
+  moveCategoryMilestoneRow(0, 1);
+  const expectedFirst = editingCategoryMilestones[0]; // captured before saveCategory() clears the working copy
+  saveCategory();
+  assertFalse(!!modalTarget, 'a pure reorder has no items-facing impact to confirm');
+  assertEqual(categories[0].milestones[0], expectedFirst);
+});
+
+test('template changes save immediately (no confirm) when no items use the category', function () {
+  document.getElementById('categoryNameInput').value = 'Vendor Onboarding';
+  editingCategoryMilestones = ['Contract signed'];
+  saveCategory();
+  const secondCat = categories[1];
+  openCategoryModal(secondCat.id);
+  addCategoryMilestoneRow();
+  saveCategory();
+  assertFalse(!!modalTarget);
+  assertEqual(categories[1].milestones.length, 2);
+});
+
+test('cancelling the confirm modal discards the whole category edit, including the name change', function () {
+  const catId = categories[0].id;
+  addItemWithCategory(catId, categories[0].milestones);
+  const originalName = categories[0].name;
+  openCategoryModal(catId);
+  document.getElementById('categoryNameInput').value = 'Renamed Category';
+  removeCategoryMilestoneRow(0);
+  saveCategory();
+  assertTrue(!!modalTarget);
+  closeConfirmModal();
+  assertEqual(categories[0].name, originalName);
+  assertEqual(categories[0].milestones.length, DEFAULT_CATEGORY_MILESTONES.length);
+});
+
+test('an item\'s computed status is refreshed after a category sync removes its worst milestone', function () {
+  const catId = categories[0].id;
+  const it = addItemWithCategory(catId, categories[0].milestones);
+  it.milestones[0].status = 'red';
+  it.status = computedStatusFromMilestones(it.milestones);
+  assertEqual(items[0].status, 'red');
+  openCategoryModal(catId);
+  removeCategoryMilestoneRow(0); // remove the one red milestone
+  saveCategory();
+  confirmModalAction();
+  assertFalse(items[0].status === 'red', 'status should be recomputed from the remaining milestones');
+});

@@ -675,6 +675,11 @@ let editingItemId = null;
 let editingMilestones = [];
 let editingCategoryId = null;
 let editingCategoryMilestones = [];
+// The category's milestone template as it was when the modal opened — diffed
+// against editingCategoryMilestones at Save time to sync additions/removals
+// out to items already using this category. See "Categories (Admin mode)"
+// in CLAUDE.md for why this is a name-based diff, not positional.
+let editingCategoryOriginalMilestones = [];
 // Which item rows currently show their nested milestones — UI-only, not persisted.
 let expandedItemIds = new Set();
 
@@ -1655,6 +1660,7 @@ function openCategoryModal(id) {
   document.getElementById('categoryModalTitle').textContent = c ? 'Edit category' : 'New category';
   document.getElementById('categoryNameInput').value = c ? c.name : '';
   editingCategoryMilestones = c ? c.milestones.slice() : [];
+  editingCategoryOriginalMilestones = c ? c.milestones.slice() : [];
   renderCategoryMilestonesEditor();
   document.getElementById('categoryDeleteBtn').style.display = c ? 'inline-flex' : 'none';
   document.getElementById('categoryModalBg').classList.add('open');
@@ -1663,6 +1669,7 @@ function openCategoryModal(id) {
 function closeCategoryModal() {
   document.getElementById('categoryModalBg').classList.remove('open');
   editingCategoryMilestones = [];
+  editingCategoryOriginalMilestones = [];
 }
 function renderCategoryMilestonesEditor() {
   const last = editingCategoryMilestones.length - 1;
@@ -1692,12 +1699,58 @@ function removeCategoryMilestoneRow(idx) {
   editingCategoryMilestones.splice(idx, 1);
   renderCategoryMilestonesEditor();
 }
+// Applies a category's template change to every item already using it:
+// milestones whose name was removed from the template are removed from the
+// item too (losing whatever status/date they had — this is a deliberate,
+// confirmed-up-front destructive sync, see saveCategory()); milestones whose
+// name was newly added are appended fresh (Not Started, no date), unless the
+// item already has a milestone with that exact name. A rename is just "old
+// name removed, new name added" under this diff — there's no id linking a
+// template entry across edits, so a rename and a remove+add are
+// indistinguishable and treated identically. Reordering the template is
+// deliberately NOT synced to existing items' milestone order.
+function applyCategoryMilestoneSync(categoryId, addedNames, removedNames) {
+  items.filter(it => it.categoryId === categoryId).forEach(it => {
+    if (removedNames.length) {
+      it.milestones = it.milestones.filter(m => !removedNames.includes(m.name));
+    }
+    addedNames.forEach(name => {
+      if (!it.milestones.some(m => m.name === name)) {
+        it.milestones.push({ id: genId(), name, dueDate: it.dueDate, status: 'not-started', actualDate: null });
+      }
+    });
+    if (it.milestones.length) it.status = computedStatusFromMilestones(it.milestones);
+    it.updatedAt = Date.now();
+  });
+}
 function saveCategory() {
   const name = document.getElementById('categoryNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
   const milestones = editingCategoryMilestones.map(m => (m || '').trim()).filter(m => m);
   if (editingCategoryId) {
-    const c = categoryById(editingCategoryId);
+    const catId = editingCategoryId;
+    const c = categoryById(catId);
+    const added = milestones.filter(m => !editingCategoryOriginalMilestones.includes(m));
+    const removed = editingCategoryOriginalMilestones.filter(m => !milestones.includes(m));
+    const affectedItems = items.filter(it => it.categoryId === catId);
+    if ((added.length || removed.length) && affectedItems.length) {
+      const parts = [];
+      if (added.length) parts.push(`add ${added.length} milestone${added.length === 1 ? '' : 's'}`);
+      if (removed.length) parts.push(`remove ${removed.length} milestone${removed.length === 1 ? '' : 's'} (losing any status/dates recorded on them)`);
+      const body = `This will ${parts.join(' and ')} on ${affectedItems.length} item${affectedItems.length === 1 ? '' : 's'} using "${c.name}". This cannot be undone.`;
+      closeCategoryModal();
+      openConfirmModal({
+        title: 'Apply these changes to existing items?',
+        body,
+        action: () => {
+          c.name = name; c.milestones = milestones;
+          applyCategoryMilestoneSync(catId, added, removed);
+          save(); render();
+          showToast('Category saved and items updated');
+        }
+      });
+      return;
+    }
     c.name = name; c.milestones = milestones;
   } else {
     categories.push({ id: genId(), name, milestones, order: categories.length });
