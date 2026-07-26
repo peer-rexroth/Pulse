@@ -1875,9 +1875,19 @@ function removeCategoryMilestoneRow(idx) {
 // item already has a milestone with that exact name. A rename is just "old
 // name removed, new name added" under this diff — there's no id linking a
 // template entry across edits, so a rename and a remove+add are
-// indistinguishable and treated identically. Reordering the template is
-// deliberately NOT synced to existing items' milestone order.
-function applyCategoryMilestoneSync(categoryId, addedNames, removedNames) {
+// indistinguishable and treated identically. The template's current order
+// (orderedNames) is then applied to every one of the item's milestones whose
+// name matches an entry in the template — a milestone whose name isn't in
+// the template at all (a one-off custom milestone added by hand, beyond the
+// category's checklist) keeps its existing relative position, sorted after
+// every template-matched milestone. Reordering an item's underlying
+// milestones array only actually changes what's *displayed* when due dates
+// are tied (milestoneRowsHtml() sorts by dueDate, stably, for display) —
+// exactly the case for a freshly-seeded item whose dates haven't been
+// differentiated yet; once dates diverge, display order legitimately
+// reflects those dates instead, same as it always has.
+function applyCategoryMilestoneSync(categoryId, addedNames, removedNames, orderedNames) {
+  const rank = m => { const idx = orderedNames.indexOf(m.name); return idx === -1 ? orderedNames.length : idx; };
   items.filter(it => it.categoryId === categoryId).forEach(it => {
     if (removedNames.length) {
       it.milestones = it.milestones.filter(m => !removedNames.includes(m.name));
@@ -1887,6 +1897,7 @@ function applyCategoryMilestoneSync(categoryId, addedNames, removedNames) {
         it.milestones.push({ id: genId(), name, dueDate: it.dueDate, status: 'not-started', actualDate: null });
       }
     });
+    it.milestones.sort((a, b) => rank(a) - rank(b));
     if (it.milestones.length) {
       it.status = computedStatusFromMilestones(it.milestones);
       const range = computedDateRangeFromMilestones(it.milestones);
@@ -1904,6 +1915,12 @@ function saveCategory() {
     const c = categoryById(catId);
     const added = milestones.filter(m => !editingCategoryOriginalMilestones.includes(m));
     const removed = editingCategoryOriginalMilestones.filter(m => !milestones.includes(m));
+    // Same names, different order — not destructive (nothing added or
+    // removed), so it skips the confirm-modal gate below, but still needs
+    // its own sync pass or an existing item's milestones would keep
+    // whatever order they were originally created with.
+    const reordered = !added.length && !removed.length
+      && milestones.some((m, i) => m !== editingCategoryOriginalMilestones[i]);
     const affectedItems = items.filter(it => it.categoryId === catId);
     if ((added.length || removed.length) && affectedItems.length) {
       const parts = [];
@@ -1917,7 +1934,7 @@ function saveCategory() {
         confirmLabel: 'Apply Changes',
         action: () => {
           c.name = name; c.milestones = milestones;
-          applyCategoryMilestoneSync(catId, added, removed);
+          applyCategoryMilestoneSync(catId, added, removed, milestones);
           save(); render();
           showToast('Category saved and items updated');
         }
@@ -1925,6 +1942,7 @@ function saveCategory() {
       return;
     }
     c.name = name; c.milestones = milestones;
+    if (reordered && affectedItems.length) applyCategoryMilestoneSync(catId, [], [], milestones);
   } else {
     categories.push({ id: genId(), name, milestones, order: categories.length });
   }

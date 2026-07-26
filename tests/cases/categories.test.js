@@ -220,15 +220,42 @@ test('a renamed template entry is treated as remove-old-name plus add-new-name',
   assertTrue(items[0].milestones.some(m => m.name === 'Renamed milestone' && m.status === 'not-started'));
 });
 
-test('reordering a template with no name changes saves immediately, without a confirm modal', function () {
+test('reordering a template with no name changes saves immediately, without a confirm modal, and reorders items using it', function () {
   const catId = categories[0].id;
-  addItemWithCategory(catId, categories[0].milestones);
+  const it = addItemWithCategory(catId, categories[0].milestones);
   openCategoryModal(catId);
   moveCategoryMilestoneRow(0, 1);
   const expectedFirst = editingCategoryMilestones[0]; // captured before saveCategory() clears the working copy
+  const expectedSecond = editingCategoryMilestones[1];
   saveCategory();
   assertFalse(!!modalTarget, 'a pure reorder has no items-facing impact to confirm');
   assertEqual(categories[0].milestones[0], expectedFirst);
+  assertEqual(it.milestones[0].name, expectedFirst, 'the existing item\'s milestone order should follow the reordered template');
+  assertEqual(it.milestones[1].name, expectedSecond);
+});
+
+test('a custom milestone not in the template keeps its relative position after a template reorder', function () {
+  const catId = categories[0].id;
+  const it = addItemWithCategory(catId, categories[0].milestones);
+  it.milestones.push({ id: genId(), name: 'One-off custom step', dueDate: todayStr(), status: 'not-started', actualDate: null });
+  openCategoryModal(catId);
+  moveCategoryMilestoneRow(0, 1);
+  saveCategory();
+  assertEqual(it.milestones[it.milestones.length - 1].name, 'One-off custom step', 'a milestone with no matching template entry should sort after every template-matched one');
+});
+
+test('reordering the template also positions a newly-added milestone correctly on existing items, not just appended', function () {
+  const catId = categories[0].id;
+  const it = addItemWithCategory(catId, categories[0].milestones);
+  openCategoryModal(catId);
+  addCategoryMilestoneRow();
+  const newName = 'Go-live approved';
+  editingCategoryMilestones[editingCategoryMilestones.length - 1] = newName;
+  moveCategoryMilestoneRow(editingCategoryMilestones.length - 1, -1); // move the new entry up one, off the very end
+  const expectedIdx = editingCategoryMilestones.indexOf(newName);
+  saveCategory();
+  confirmModalAction();
+  assertEqual(it.milestones[expectedIdx].name, newName, 'the newly-added milestone should land at its template position, not always at the array end');
 });
 
 test('template changes save immediately (no confirm) when no items use the category', function () {
