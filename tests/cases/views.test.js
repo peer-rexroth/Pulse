@@ -87,13 +87,12 @@ test('renderMain shows an empty state with no workstreams', function () {
   assertIncludes(document.getElementById('main').innerHTML, 'No workstreams yet');
 });
 
-test('the status board always shows an inline actual-date input, filled or empty', function () {
+test('an item\'s own actual date is not shown or editable inline on its row (still a real, editable field via the item modal)', function () {
   addItem({ name: 'Done item', actualDate: '2026-08-20' });
-  addItem({ name: 'Not done item' });
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'item-actual-inline');
-  assertIncludes(html, 'value="2026-08-20"');
+  assertNotIncludes(html, 'item-actual-inline', 'the item-level inline actual-date input was intentionally removed from the row');
+  assertNotIncludes(html, '2026-08-20');
 });
 
 test('a milestone shows an inline actual-date input once its item is expanded', function () {

@@ -1048,10 +1048,12 @@ function itemRowHtml(it) {
       <span class="item-dates-arrow">→</span>
       <input type="date" class="inline-date-input" value="${it.dueDate}" title="Due date" onchange="updateItemDateField('${it.id}','dueDate',this.value)">
     </span>`;
-  const actualDateHtml = `<span class="item-actual-inline" title="Actual completion date">
-      <i class="fa-solid fa-circle-check"></i>
-      <input type="date" class="inline-date-input" value="${it.actualDate || ''}" onchange="updateItemDateField('${it.id}','actualDate',this.value || null)">
-    </span>`;
+  // The item's own actualDate is still a real field (editable in the item
+  // modal), just no longer shown/edited inline on the row — the "Actual"
+  // column here is otherwise only meaningful for milestone rows. Still a
+  // real (empty) element, not an omitted one, for the usual column-collapse
+  // reason (see "Status board" in CLAUDE.md).
+  const actualDateHtml = `<span></span>`;
   const subRows = (expanded && total) ? milestoneHeaderHtml() + milestoneRowsHtml(it) : '';
   return `<div class="item-row">
       ${chevron}
