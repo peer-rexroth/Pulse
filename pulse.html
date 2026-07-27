@@ -638,8 +638,6 @@
   }
   .minutes-action-item-row input[type="text"]:focus,
   .minutes-action-item-row textarea:focus { outline: none; background: var(--panel-2); }
-  .minutes-action-item-row .date-pill { background: transparent; padding: 3px 2px; }
-  .minutes-action-item-row .inline-date-input { width: 100%; }
   .milestone-row { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--border); }
   .milestone-row:last-child { border-bottom: none; }
   .milestone-row input[type="text"] {
@@ -768,6 +766,20 @@
   .action-log-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); }
   .action-log-text { white-space: pre-wrap; }
   .action-log-source { color: var(--text-faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Columns 12 (complete toggle), 13 (Created), 14 (Closed) are all implicit
+     grid tracks — none of them are part of --item-grid-cols' 11 explicit
+     columns — so without this, each one's width is "auto": sized from
+     whatever that one row happens to put there. That's harmless for column
+     12 (every row always renders the same icon glyph, confirmed or not), but
+     Created/Closed genuinely differ row to row (a date string vs. nothing,
+     for a still-open item) — left as "auto" the Action Item column (2, the
+     grid's one flexible track) would resolve to a different width on every
+     row depending on whether that row's own Closed cell happened to be empty,
+     making the whole table's left edge look inconsistent, not just its
+     header. Pinning explicit widths for every implicit column this table
+     ever uses removes the "auto" sizing that causes it, the same way the 11
+     explicit columns already never re-flow based on content. */
+  .action-log-row, .action-log-header { grid-auto-columns: 56px 90px 90px; }
   .section-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin: 20px 0 8px; }
   .section-label:first-child { margin-top: 0; }
 
@@ -826,11 +838,11 @@
         <i class="fa-solid fa-download dropdown-item-icon"></i>
         <div><div class="dropdown-item-label">Export</div><div class="dropdown-item-desc">Download data as .json</div></div>
       </div>
-      <div class="dropdown-item" onclick="triggerImport();closeDataMenu()">
+      <div class="dropdown-item" id="dataMenuImportItem" onclick="triggerImport();closeDataMenu()">
         <i class="fa-solid fa-upload dropdown-item-icon"></i>
         <div><div class="dropdown-item-label">Import</div><div class="dropdown-item-desc">Load a .json data file</div></div>
       </div>
-      <div class="dropdown-item" onclick="openBackupsModal();closeDataMenu()">
+      <div class="dropdown-item" id="dataMenuBackupsItem" onclick="openBackupsModal();closeDataMenu()">
         <i class="fa-solid fa-clock-rotate-left dropdown-item-icon"></i>
         <div><div class="dropdown-item-label">Backups</div><div class="dropdown-item-desc">Restore an automatic daily snapshot</div></div>
       </div>
@@ -838,6 +850,7 @@
   </div>
   <button class="btn btn-sm" id="tabAdmin" onclick="setMode('admin')"><i class="fa-solid fa-sliders"></i> Admin</button>
   <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileImport(event)">
+  <button class="icon-btn" id="roleBtn" onclick="openRoleModal()" title="Switch role"><i class="fa-solid fa-user-shield"></i></button>
   <button class="icon-btn" onclick="openThemeModal()" title="Color scheme"><i class="fa-solid fa-palette"></i></button>
   <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-circle-half-stroke"></i></button>
 </div>
@@ -848,7 +861,7 @@
      separate full-width container reached from its own topbar button. -->
 <div class="body-row" id="scopedBody">
   <div class="sidebar">
-    <div class="sidebar-label">Workstreams <button class="sidebar-label-add" onclick="openWorkstreamModal()" title="New workstream"><i class="fa-solid fa-plus"></i></button></div>
+    <div class="sidebar-label">Workstreams <button class="sidebar-label-add" id="addWsBtn" onclick="openWorkstreamModal()" title="New workstream"><i class="fa-solid fa-plus"></i></button></div>
     <div id="wsList"></div>
   </div>
   <div class="planning-main">
@@ -880,7 +893,7 @@
       <button class="btn btn-danger" id="wsDeleteBtn" onclick="deleteWorkstreamFromModal()" style="display:none"><i class="fa-solid fa-trash"></i> Delete</button>
       <div class="modal-actions-right">
         <button class="btn" onclick="closeWorkstreamModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveWorkstream()">Save</button>
+        <button class="btn btn-primary" id="wsSaveBtn" onclick="saveWorkstream()">Save</button>
       </div>
     </div>
   </div>
@@ -897,13 +910,13 @@
     <div class="field">
       <label>Milestone template</label>
       <div id="categoryMilestonesEditor"></div>
-      <button class="btn btn-sm" style="margin-top:8px" onclick="addCategoryMilestoneRow()"><i class="fa-solid fa-plus"></i> Add milestone</button>
+      <button class="btn btn-sm" id="categoryAddMilestoneBtn" style="margin-top:8px" onclick="addCategoryMilestoneRow()"><i class="fa-solid fa-plus"></i> Add milestone</button>
     </div>
     <div class="modal-actions">
       <button class="btn btn-danger" id="categoryDeleteBtn" onclick="deleteCategoryFromModal()" style="display:none"><i class="fa-solid fa-trash"></i> Delete</button>
       <div class="modal-actions-right">
         <button class="btn" onclick="closeCategoryModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveCategory()">Save</button>
+        <button class="btn btn-primary" id="categorySaveBtn" onclick="saveCategory()">Save</button>
       </div>
     </div>
   </div>
@@ -923,8 +936,8 @@
           <textarea id="minutesPasteInput" style="height:130px" oninput="setMinutesDropzoneStatus(null)" placeholder="Paste raw meeting notes here, or drag a .txt/.md/.docx file onto this box — lines starting with Summary, Action Items, Decisions, or Next Steps are split into the fields alongside automatically."></textarea>
           <span class="minutes-dropzone-status" id="minutesDropzoneStatus" style="display:none"><i class="fa-solid fa-circle-check"></i><span id="minutesDropzoneStatusText"></span></span>
         </div>
-        <button class="btn btn-sm" style="margin-top:8px" onclick="parseMinutesPaste()"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fill</button>
-        <button class="btn btn-sm" style="margin-top:8px" onclick="clearMinutesFields()" title="Clear every field below — does not affect anything already saved"><i class="fa-solid fa-eraser"></i> Clear all fields</button>
+        <button class="btn btn-sm" id="minutesAutoFillBtn" style="margin-top:8px" onclick="parseMinutesPaste()"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fill</button>
+        <button class="btn btn-sm" id="minutesClearBtn" style="margin-top:8px" onclick="clearMinutesFields()" title="Clear every field below — does not affect anything already saved"><i class="fa-solid fa-eraser"></i> Clear all fields</button>
       </div>
       <div class="field">
         <label>Meeting Summary</label>
@@ -938,7 +951,7 @@
           </div>
           <div id="minutesActionItemsRows"></div>
         </div>
-        <button class="btn btn-sm" style="margin-top:8px" onclick="addMinutesActionItemRow()"><i class="fa-solid fa-plus"></i> Add action item</button>
+        <button class="btn btn-sm" id="minutesAddActionItemBtn" style="margin-top:8px" onclick="addMinutesActionItemRow()"><i class="fa-solid fa-plus"></i> Add action item</button>
       </div>
       <div class="field">
         <label>Decisions</label>
@@ -953,7 +966,7 @@
       <button class="btn btn-danger" id="minutesRemoveBtn" onclick="removeMinutes()" style="display:none"><i class="fa-solid fa-trash"></i> Remove</button>
       <div class="modal-actions-right">
         <button class="btn" onclick="closeMinutesModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveMinutes()">Save</button>
+        <button class="btn btn-primary" id="minutesSaveBtn" onclick="saveMinutes()">Save</button>
       </div>
     </div>
   </div>
@@ -1013,13 +1026,13 @@
     <div class="field">
       <label>Milestones</label>
       <div id="milestonesEditor"></div>
-      <button class="btn btn-sm" style="margin-top:8px" onclick="addMilestoneRow()"><i class="fa-solid fa-plus"></i> Add milestone</button>
+      <button class="btn btn-sm" id="itemAddMilestoneBtn" style="margin-top:8px" onclick="addMilestoneRow()"><i class="fa-solid fa-plus"></i> Add milestone</button>
     </div>
     <div class="modal-actions">
       <button class="btn btn-danger" id="itemDeleteBtn" onclick="deleteItemFromModal()" style="display:none"><i class="fa-solid fa-trash"></i> Delete</button>
       <div class="modal-actions-right">
         <button class="btn" onclick="closeItemModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveItem()">Save</button>
+        <button class="btn btn-primary" id="itemSaveBtn" onclick="saveItem()">Save</button>
       </div>
     </div>
   </div>
@@ -1047,6 +1060,20 @@
       <button class="btn" onclick="applyImport('merge')">Merge</button>
       <button class="btn btn-danger" onclick="applyImport('replace')">Replace</button>
     </div>
+  </div>
+</div>
+
+<!-- Role modal — see "Roles (RBAC)" in CLAUDE.md. Doubles as the mandatory
+     first-launch picker (no role chosen yet: closeRoleModal()/the backdrop
+     click/Escape all no-op, so there's no way to dismiss it without picking
+     one) and the anytime voluntary switcher reached via the topbar's shield
+     icon (a role already chosen: the same modal, but now freely dismissable). -->
+<div class="modal-bg" id="roleModalBg">
+  <div class="modal" style="width:440px">
+    <h3>Choose your role</h3>
+    <p>This is a workflow setting, not a security boundary — Pulse has no accounts or server, so it only guides what's shown/enabled in the UI. Saved to this browser only, never written to a shared/synced data file.</p>
+    <div class="theme-options" id="roleOptions"></div>
+    <div class="modal-actions" style="justify-content:flex-end"><button class="btn btn-primary" id="roleModalDoneBtn" onclick="closeRoleModal()">Done</button></div>
   </div>
 </div>
 
@@ -1086,7 +1113,7 @@
   <div class="modal" style="width:400px">
     <h3>Sync to a file</h3>
     <p>Back up and auto-save this programme to a real file on disk.</p>
-    <div class="import-options">
+    <div class="import-options" id="fileSyncOptions">
       <div id="fileSyncReconnectOption" class="import-option" style="display:none" onclick="closeFileSyncModal();reconnectFile()">
         <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-teal-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
           <i class="fa-solid fa-rotate-right" style="color:var(--ws-teal);font-size:15px"></i>
@@ -1115,6 +1142,7 @@
         </div>
       </div>
     </div>
+    <p id="fileSyncAdminNotice" style="display:none">Admin role is required to manage file sync.</p>
     <div id="fileSyncWarning" style="display:flex;align-items:flex-start;gap:8px;background:var(--stat-amber-bg);border-radius:10px;padding:10px 12px;margin-top:4px">
       <i class="fa-solid fa-triangle-exclamation" style="color:var(--stat-amber);font-size:13px;margin-top:2px;flex-shrink:0"></i>
       <span style="font-size:12px;color:var(--stat-amber);line-height:1.55">Without a linked file, your programme is stored in browser storage and <strong>will be lost if you clear browsing data</strong>.</span>
@@ -1190,6 +1218,39 @@ const DAY_MS = 86400000;
 const REVIEW_STALE_DAYS = 30;
 const MODES = ['planning', 'review', 'dashboard', 'admin'];
 
+// ---------- Roles (RBAC) ----------
+// A soft, UI-level permission ladder, NOT real access control — there's no
+// server or account system anywhere in this app, so anyone with the browser's
+// dev tools (or direct access to the data file) can already see and change
+// everything regardless of the role shown here. This exists purely to guide
+// day-to-day workflow on a shared device/team (e.g. keep a Visitor from
+// accidentally editing scope items), not to keep anyone out on purpose.
+// ROLES is an increasing ladder — each role can do everything the one before
+// it can, plus more (see hasRole()); it is never treated as a set of
+// independent, non-overlapping permissions.
+const ROLES = ['visitor', 'editor', 'reviewer', 'admin'];
+const ROLE_META = {
+  visitor: { label: 'Visitor', icon: 'fa-eye', desc: 'View Planning, Review, and Dashboard — no edits.' },
+  editor: { label: 'Editor', icon: 'fa-pen', desc: 'Everything a Visitor can see, plus create/edit/delete workstreams, scope items, milestones, and categories.' },
+  reviewer: { label: 'Reviewer', icon: 'fa-clipboard-check', desc: 'Everything an Editor can do, plus run review cycles, attach meeting minutes, and manage the Action Log.' },
+  admin: { label: 'Admin', icon: 'fa-user-shield', desc: 'Everything a Reviewer can do, plus import/restore data and manage file sync.' }
+};
+function roleLevel(r) { return ROLES.indexOf(r); }
+// True once the *current* role's level is at or above minRole's — e.g.
+// hasRole('editor') is also true for a reviewer or admin, per the ladder.
+function hasRole(minRole) { return roleLevel(userRole) >= roleLevel(minRole); }
+// Defense-in-depth guard for every state-mutating function below (the real,
+// user-facing gate is hiding/disabling the controls themselves in the render
+// functions — see "Role-based UI" in CLAUDE.md) — shows a toast and returns
+// false rather than throwing, so a stray call (e.g. from the console) fails
+// quietly instead of corrupting anything. Every mutating function that needs
+// at least `minRole` calls this first and returns immediately if it's false.
+function requireRole(minRole) {
+  if (hasRole(minRole)) return true;
+  showToast(`${ROLE_META[minRole].label} role or higher required for this action`, true);
+  return false;
+}
+
 // ---------- State ----------
 let programme = { name: 'New Programme' };
 let workstreams = [];
@@ -1199,6 +1260,15 @@ let reviewCycles = [];
 let mode = 'planning'; // 'planning' | 'review' | 'dashboard' | 'admin'
 let theme = 'light';
 let colorScheme = 'standard'; // one of THEME_SCHEMES' ids — see toggleTheme() vs setColorScheme()
+// null until a role is chosen (openRoleModal() then blocks the app behind an
+// undismissable picker — see render()). Deliberately stored under its own
+// localStorage key (loadRole()/saveRole(), not load()/save()'s 'pulse-v1'
+// blob) so it never round-trips through doFileSyncWrite()/mergeData() —
+// an explicit requirement that the role stay purely local to this browser
+// and never end up in the shared/synced data file, unlike mode/theme/
+// colorScheme (which do get written to the file, just never read back from
+// one — see "Roles (RBAC)" in CLAUDE.md for why this one is stricter).
+let userRole = null;
 // The single shared workstream selector — used by Planning (status board),
 // Review (which workstream's cycle to show), and Dashboard (scopes the rollup)
 // alike. null means "All workstreams" for Planning/Dashboard; Review mode
@@ -1285,6 +1355,23 @@ function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   queueFileSyncWrite();
   maybeSnapshotBackup();
+}
+
+// Deliberately its own localStorage key, entirely separate from STORAGE_KEY —
+// unlike mode/theme/colorScheme (which live inside the same blob save()
+// writes, and get written out to the synced file by queueFileSyncWrite()
+// even though they're never read back from one), userRole must never touch
+// doFileSyncWrite()'s payload or mergeData() at all, so a role chosen on one
+// device can't leak into the shared file and silently change what another
+// device's picker defaults to. null means "no role chosen yet on this
+// browser" — render() gates the whole app behind openRoleModal() until one is.
+const ROLE_STORAGE_KEY = 'pulse-role-v1';
+function loadRole() {
+  const raw = localStorage.getItem(ROLE_STORAGE_KEY);
+  userRole = ROLES.includes(raw) ? raw : null;
+}
+function saveRole() {
+  localStorage.setItem(ROLE_STORAGE_KEY, userRole);
 }
 
 // No default workstream — a brand-new programme starts with zero of them
@@ -1562,6 +1649,8 @@ function render() {
   document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
   document.getElementById('reviewToolbar').style.display = mode === 'review' ? '' : 'none';
+  document.getElementById('dataMenuImportItem').style.display = hasRole('admin') ? '' : 'none';
+  document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
   renderSidebar();
   if (mode === 'planning') {
     renderMain();
@@ -1584,6 +1673,7 @@ function setMode(m) {
 }
 
 function renderSidebar() {
+  document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
   const el = document.getElementById('wsList');
   let html = `<div class="ws-row ${filterWorkstreamId === null ? 'active' : ''}" onclick="setFilterWorkstream(null)">
       <span class="ws-row-name">All workstreams</span>
@@ -1594,12 +1684,15 @@ function renderSidebar() {
     const reviewBadge = activeReviewCycle(w.id)
       ? `<span class="review-ws-badge active-cycle">In review</span>`
       : (isReviewOverdue(w.id) ? `<span class="review-ws-badge overdue">Overdue</span>` : '');
+    const editBtn = hasRole('editor')
+      ? `<button class="ws-row-edit" onclick="event.stopPropagation(); openWorkstreamModal('${w.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>`
+      : '';
     return `<div class="ws-row ${filterWorkstreamId === w.id ? 'active' : ''}" onclick="setFilterWorkstream('${w.id}')">
         <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
         <span class="ws-row-name">${esc(w.name)}</span>
         ${reviewBadge}
         <span class="ws-row-count">${count}</span>
-        <button class="ws-row-edit" onclick="event.stopPropagation(); openWorkstreamModal('${w.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+        ${editBtn}
       </div>`;
   }).join('');
   el.innerHTML = html;
@@ -1643,9 +1736,9 @@ function renderStatusView(main) {
           <div class="rag-summary">${pills}</div>
         </div>
         ${rows}
-        <div class="ws-section-add">
+        ${hasRole('editor') ? `<div class="ws-section-add">
           <button class="btn btn-sm" onclick="openItemModal(null, '${w.id}')"><i class="fa-solid fa-plus"></i> Add item</button>
-        </div>
+        </div>` : ''}
       </div>`;
   }).join('');
   main.innerHTML = sections;
@@ -1682,9 +1775,9 @@ function itemRowHtml(it, reviewCycle) {
   const planDatesHtml = (total || reviewCycle)
     ? `<span class="item-dates-computed" title="${total ? 'Computed from the earliest and latest milestone date (due or actual)' : 'Not editable during a review'}">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>`
     : `<span class="item-dates-inline">
-      ${dateInputHtml(it.startDate, `title="Start date" onblur="if(this.value) updateItemDateField('${it.id}','startDate',this.value)"`)}
+      ${dateInputHtml(it.startDate, `title="Start date" ${hasRole('editor') ? `onblur="if(this.value) updateItemDateField('${it.id}','startDate',this.value)"` : 'disabled'}`)}
       <span class="item-dates-arrow">→</span>
-      ${dateInputHtml(it.dueDate, `title="Due date" onblur="if(this.value) updateItemDateField('${it.id}','dueDate',this.value)"`)}
+      ${dateInputHtml(it.dueDate, `title="Due date" ${hasRole('editor') ? `onblur="if(this.value) updateItemDateField('${it.id}','dueDate',this.value)"` : 'disabled'}`)}
     </span>`;
   // The item's own actualDate is still a real field (editable in the item
   // modal), just no longer shown/edited inline on the row — the "Actual"
@@ -1699,7 +1792,10 @@ function itemRowHtml(it, reviewCycle) {
   // (see --item-grid-cols) — since tags are item-only and that column is
   // otherwise blank on the item's own row.
   const tagsHtml = `<span class="item-tags">
-      ${ITEM_TAG_FIELDS.map(f => `<button class="tag-badge" style="background:var(--stat-${it[f]}-bg);color:var(--stat-${it[f]})" onclick="cycleItemAttr('${it.id}','${f}')" title="${TAG_FIELD_LABELS[f]}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></button>`).join('')}
+      ${ITEM_TAG_FIELDS.map(f => hasRole('editor')
+        ? `<button class="tag-badge" style="background:var(--stat-${it[f]}-bg);color:var(--stat-${it[f]})" onclick="cycleItemAttr('${it.id}','${f}')" title="${TAG_FIELD_LABELS[f]}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></button>`
+        : `<span class="tag-badge" style="background:var(--stat-${it[f]}-bg);color:var(--stat-${it[f]});cursor:default" title="${TAG_FIELD_LABELS[f]}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></span>`
+      ).join('')}
     </span>`;
   // Review-only trailing cell — an implicit 12th grid column (explicit
   // grid-column:12), deliberately outside --item-grid-cols so Planning's own
@@ -1719,9 +1815,16 @@ function itemRowHtml(it, reviewCycle) {
     const titleAttr = total
       ? (confirmedForReview ? 'All milestones confirmed — click to unconfirm all' : 'Confirm every milestone on this item')
       : (confirmedForReview ? 'Confirmed — click to unconfirm' : 'Confirm this item');
-    reviewCellHtml = `<button class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:12" onclick="${onClickAttr}" title="${titleAttr}">
+    // A Visitor/Editor can still see confirmed status during a review — just
+    // not toggle it — so this renders as an inert span, not an omitted cell,
+    // when the role is below Reviewer (see toggleReviewConfirm()'s own guard).
+    reviewCellHtml = hasRole('reviewer')
+      ? `<button class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:12" onclick="${onClickAttr}" title="${titleAttr}">
         <i class="fa-${confirmedForReview ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
-      </button>`;
+      </button>`
+      : `<span class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:12" title="${titleAttr}">
+        <i class="fa-${confirmedForReview ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
+      </span>`;
   }
   const subRows = (expanded && total) ? milestoneHeaderHtml(reviewCycle) + milestoneRowsHtml(it, reviewCycle) : '';
   // Drag-and-drop reordering is Planning-only, same gating as Edit/Delete
@@ -1742,8 +1845,8 @@ function itemRowHtml(it, reviewCycle) {
       <span></span>
       ${tagsHtml}
       <button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openItemModal('${it.id}')">${esc(statusLabel(it.status))}</button>
-      ${reviewCycle
-        ? `<span class="item-actions"></span>` // Edit/Delete/drag are hidden during a review — still a real (empty) element for the usual column-collapse reason (see "Status board" in CLAUDE.md).
+      ${(reviewCycle || !hasRole('editor'))
+        ? `<span class="item-actions"></span>` // Edit/Delete/drag are hidden during a review, and for anyone below Editor — still a real (empty) element for the usual column-collapse reason (see "Status board" in CLAUDE.md).
         : `<span class="item-actions">
         <span class="row-icon-btn drag-handle" draggable="true" ondragstart="dragStartItem(event,'${it.id}')" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
         <button class="row-icon-btn" onclick="openItemModal('${it.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
@@ -1762,7 +1865,17 @@ function itemRowHtml(it, reviewCycle) {
 // own Owner/Plan-dates columns — so a milestone's own dates read right next
 // to its own status badge.
 function milestoneHeaderHtml(reviewCycle) {
-  const reviewLabel = reviewCycle ? `<span style="grid-column:12">Confirm</span>` : '';
+  // Deliberately an invisible icon placeholder, not a visible "Confirm" text
+  // label — this row (like every row here) is its own independent CSS Grid
+  // instance, and column 2 is the only flexible track (minmax(140px,1.3fr));
+  // a multi-character text label in the implicit column 12 is *wider* than
+  // the plain icon every data row below actually renders there, so it ate
+  // into a different amount of this row's own width than the data rows did
+  // — visibly shifting Due/Actual/Status out of alignment with the rows
+  // below (reported via screenshot). Matching the row's real icon+class,
+  // hidden, is the same fix already applied to the Action Log's own header
+  // for the identical reason — see actionLogHtml() in CLAUDE.md.
+  const reviewLabel = reviewCycle ? `<span class="review-confirm-toggle" style="grid-column:12;visibility:hidden"><i class="fa-solid fa-circle-check"></i></span>` : '';
   return `<div class="milestone-header">
       <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span>Status</span><span></span>${reviewLabel}
     </div>`;
@@ -1796,29 +1909,38 @@ function milestoneRowsHtml(it, reviewCycle) {
     let mConfirmed = false;
     if (reviewCycle) {
       mConfirmed = isMilestoneConfirmedInCycle(reviewCycle, m.id);
-      reviewCellHtml = `<button class="review-confirm-toggle ${mConfirmed ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleMilestoneConfirm('${reviewCycle.id}','${m.id}')" title="${mConfirmed ? 'Confirmed — click to unconfirm' : 'Confirm this milestone'}">
+      // See itemRowHtml()'s own reviewCellHtml comment: below Reviewer, this
+      // renders as an inert span (visible, not togglable), not an omitted cell.
+      reviewCellHtml = hasRole('reviewer')
+        ? `<button class="review-confirm-toggle ${mConfirmed ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleMilestoneConfirm('${reviewCycle.id}','${m.id}')" title="${mConfirmed ? 'Confirmed — click to unconfirm' : 'Confirm this milestone'}">
           <i class="fa-${mConfirmed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
-        </button>`;
+        </button>`
+        : `<span class="review-confirm-toggle ${mConfirmed ? 'confirmed' : ''}" style="grid-column:12" title="${mConfirmed ? 'Confirmed' : 'Not confirmed'}">
+          <i class="fa-${mConfirmed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
+        </span>`;
     }
     // Due is part of the plan — locked read-only during a review, same as
     // the item's own Plan dates above. Actual stays editable regardless:
     // recording when something actually finished is exactly what a review
-    // pass is for.
+    // pass is for. Below Editor, both are disabled the same way the item's
+    // own Plan dates are (see planDatesHtml above).
     const dueHtml = reviewCycle
       ? `<span class="item-dates-computed" title="Not editable during a review">${fmtDate(m.dueDate)}</span>`
       : `<span class="item-dates-inline">
-        ${dateInputHtml(m.dueDate, `title="Due date" onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)"`)}
+        ${dateInputHtml(m.dueDate, `title="Due date" ${hasRole('editor') ? `onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)"` : 'disabled'}`)}
       </span>`;
     // An unset Actual date starts hidden behind a muted "+" — it only needs
     // a value when a milestone actually finishes on a different date than
     // planned, so a permanently-empty pill here would misread as a required
     // field. Revealing it (see revealActualDate()) swaps in the real pill;
     // Escape while it's still unset/unsaved reverts back to the "+" instead
-    // of leaving a half-typed field hanging open.
+    // of leaving a half-typed field hanging open. Below Editor, an unset
+    // Actual date has nothing to reveal (the ghost "+" is itself an edit
+    // affordance), so it renders as a plain blank cell instead.
     const isRevealedEmpty = !m.actualDate && revealedActualIds.has(m.id);
     const actualHtml = (!m.actualDate && !revealedActualIds.has(m.id))
-      ? `<button class="actual-date-ghost" title="Set an actual date — only needed if this milestone finished on a different date than planned" onclick="revealActualDate('${m.id}')"><i class="fa-solid fa-plus"></i></button>`
-      : dateInputHtml(m.actualDate, `id="actual-input-${m.id}" onblur="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)" ${isRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealActualDate('${m.id}')"` : ''}`);
+      ? (hasRole('editor') ? `<button class="actual-date-ghost" title="Set an actual date — only needed if this milestone finished on a different date than planned" onclick="revealActualDate('${m.id}')"><i class="fa-solid fa-plus"></i></button>` : '')
+      : dateInputHtml(m.actualDate, `id="actual-input-${m.id}" ${hasRole('editor') ? `onblur="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)" ${isRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealActualDate('${m.id}')"` : ''}` : 'disabled'}`);
     return `
     <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''}">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
@@ -1829,7 +1951,9 @@ function milestoneRowsHtml(it, reviewCycle) {
       <span class="milestone-sub-actual-inline" title="Actual completion date">
         ${actualHtml}
       </span>
-      <button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(statusLabel(m.status))}</button>
+      ${hasRole('editor')
+        ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(statusLabel(m.status))}</button>`
+        : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`}
       <span></span>
       ${reviewCellHtml}
     </div>`;
@@ -1860,6 +1984,7 @@ function cancelRevealActualDate(milestoneId) {
 }
 
 function cycleMilestoneStatus(itemId, milestoneId) {
+  if (!requireRole('editor')) return;
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   const m = it.milestones.find(m => m.id === milestoneId);
@@ -1880,6 +2005,7 @@ function cycleMilestoneStatus(itemId, milestoneId) {
 // above) — a plain 3-state click-to-cycle, independent of the main status
 // and milestone roll-up.
 function cycleItemAttr(itemId, field) {
+  if (!requireRole('editor')) return;
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   const oldValue = it[field];
@@ -1897,6 +2023,7 @@ function cycleItemAttr(itemId, field) {
 // opening the item modal, not a replacement for it. Dates don't factor into
 // computedStatusFromMilestones(), so neither of these needs to touch status.
 function updateItemDateField(itemId, field, value) {
+  if (!requireRole('editor')) return;
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   const oldValue = it[field];
@@ -1908,6 +2035,7 @@ function updateItemDateField(itemId, field, value) {
   save(); render();
 }
 function updateMilestoneDateField(itemId, milestoneId, field, value) {
+  if (!requireRole('editor')) return;
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   const m = it.milestones.find(x => x.id === milestoneId);
@@ -1993,6 +2121,7 @@ function setFilterWorkstream(id) {
 }
 let renamingProgramme = false;
 function startRenameProgramme() {
+  if (!requireRole('editor')) return;
   renamingProgramme = true;
   document.getElementById('programmeNameDisplay').style.display = 'none';
   const input = document.getElementById('programmeNameInput');
@@ -2061,6 +2190,41 @@ function setColorScheme(scheme) {
   save();
 }
 
+// ---------- Role modal (RBAC) ----------
+function renderRoleModal() {
+  document.getElementById('roleOptions').innerHTML = ROLES.map(r => {
+    const m = ROLE_META[r];
+    return `<div class="theme-option ${r === userRole ? 'selected' : ''}" onclick="setUserRole('${r}')">
+      <div class="theme-option-swatches"><i class="fa-solid ${m.icon}" style="font-size:16px;width:16px;text-align:center;color:var(--text-dim)"></i></div>
+      <div class="theme-option-body">
+        <div class="theme-option-name">${esc(m.label)}</div>
+        <div class="theme-option-desc">${esc(m.desc)}</div>
+      </div>
+      <i class="fa-solid fa-check theme-option-check"></i>
+    </div>`;
+  }).join('');
+  // No role chosen yet (mandatory first-launch gate): grey out and disable
+  // Done rather than letting the modal be dismissed with nothing picked —
+  // see the modal's own HTML comment for why closeRoleModal() also guards this.
+  const doneBtn = document.getElementById('roleModalDoneBtn');
+  doneBtn.disabled = !userRole;
+  doneBtn.style.opacity = userRole ? '' : '.5';
+}
+function openRoleModal() {
+  renderRoleModal();
+  document.getElementById('roleModalBg').classList.add('open');
+}
+function closeRoleModal() {
+  if (!userRole) return; // mandatory first pick — nothing to dismiss back to
+  document.getElementById('roleModalBg').classList.remove('open');
+}
+function setUserRole(role) {
+  userRole = role;
+  saveRole();
+  renderRoleModal();
+  render();
+}
+
 // ---------- Workstream modal ----------
 function openWorkstreamModal(id) {
   editingWsId = id || null;
@@ -2071,7 +2235,9 @@ function openWorkstreamModal(id) {
   document.getElementById('wsColorGrid').innerHTML = WS_COLORS.map(c =>
     `<div class="color-swatch ${c === wsColorChoice ? 'selected' : ''}" style="background:var(--ws-${c})" onclick="pickWsColor('${c}')"></div>`
   ).join('');
-  document.getElementById('wsDeleteBtn').style.display = w ? 'inline-flex' : 'none';
+  document.getElementById('wsDeleteBtn').style.display = (w && hasRole('editor')) ? 'inline-flex' : 'none';
+  document.getElementById('wsNameInput').disabled = !hasRole('editor');
+  document.getElementById('wsSaveBtn').style.display = hasRole('editor') ? '' : 'none';
   document.getElementById('wsModalBg').classList.add('open');
   document.getElementById('wsNameInput').focus();
 }
@@ -2082,6 +2248,7 @@ function pickWsColor(c) {
 }
 function closeWorkstreamModal() { document.getElementById('wsModalBg').classList.remove('open'); }
 function saveWorkstream() {
+  if (!requireRole('editor')) return;
   const name = document.getElementById('wsNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
   if (editingWsId) {
@@ -2094,6 +2261,7 @@ function saveWorkstream() {
   showToast('Workstream saved');
 }
 function deleteWorkstreamFromModal() {
+  if (!requireRole('editor')) return;
   if (!editingWsId) return;
   const wsId = editingWsId;
   const w = wsById(wsId);
@@ -2172,7 +2340,18 @@ function openItemModal(id, presetWorkstreamId) {
     ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null }))
     : milestonesForCategory(categories[0].id, document.getElementById('itemDueInput').value);
   renderMilestonesEditor();
-  document.getElementById('itemDeleteBtn').style.display = it ? 'inline-flex' : 'none';
+  document.getElementById('itemDeleteBtn').style.display = (it && hasRole('editor')) ? 'inline-flex' : 'none';
+  // Below Editor, the modal is still reachable to view an item's full detail —
+  // just not to change or save anything. Disabling every field (rather than
+  // omitting the modal entirely) is what makes "view only" actually mean you
+  // can still read everything, same spirit as Plan dates/tags/status on the
+  // row itself (see itemRowHtml()).
+  const editable = hasRole('editor');
+  ['itemNameInput', 'itemOwnerInput', 'itemStartInput', 'itemDueInput', 'itemActualInput', 'itemWorkstreamSelect', 'itemCategorySelect', 'itemStatusSelect'].forEach(id => {
+    document.getElementById(id).disabled = !editable;
+  });
+  document.getElementById('itemAddMilestoneBtn').style.display = editable ? '' : 'none';
+  document.getElementById('itemSaveBtn').style.display = editable ? '' : 'none';
   document.getElementById('itemModalBg').classList.add('open');
   document.getElementById('itemNameInput').focus();
 }
@@ -2181,15 +2360,17 @@ function closeItemModal() {
   editingMilestones = [];
 }
 function renderMilestonesEditor() {
+  const editable = hasRole('editor');
+  const dis = editable ? '' : 'disabled';
   document.getElementById('milestonesEditor').innerHTML = editingMilestones.map((m, idx) => `
     <div class="milestone-row">
-      <input type="text" value="${esc(m.name)}" title="Milestone name" oninput="editingMilestones[${idx}].name = this.value">
-      <input type="date" value="${esc(m.dueDate)}" title="Due date" oninput="editingMilestones[${idx}].dueDate = this.value; updateItemStatusFieldMode();">
-      <input type="date" value="${esc(m.actualDate || '')}" title="Actual completion date" oninput="editingMilestones[${idx}].actualDate = this.value || null; updateItemStatusFieldMode();">
-      <select onchange="editingMilestones[${idx}].status = this.value; updateItemStatusFieldMode();">
+      <input type="text" value="${esc(m.name)}" title="Milestone name" ${dis} oninput="editingMilestones[${idx}].name = this.value">
+      <input type="date" value="${esc(m.dueDate)}" title="Due date" ${dis} oninput="editingMilestones[${idx}].dueDate = this.value; updateItemStatusFieldMode();">
+      <input type="date" value="${esc(m.actualDate || '')}" title="Actual completion date" ${dis} oninput="editingMilestones[${idx}].actualDate = this.value || null; updateItemStatusFieldMode();">
+      <select ${dis} onchange="editingMilestones[${idx}].status = this.value; updateItemStatusFieldMode();">
         ${STATUSES.map(s => `<option value="${s.id}" ${s.id === m.status ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}
       </select>
-      <button class="row-icon-btn" onclick="removeMilestoneRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>
+      ${editable ? `<button class="row-icon-btn" onclick="removeMilestoneRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>` : '<span></span>'}
     </div>`).join('');
   updateItemStatusFieldMode();
 }
@@ -2224,14 +2405,17 @@ function updateItemStatusFieldMode() {
   }
 }
 function addMilestoneRow() {
+  if (!requireRole('editor')) return;
   editingMilestones.push({ id: genId(), name: 'New milestone', dueDate: document.getElementById('itemDueInput').value || todayStr(), status: 'not-started', actualDate: null });
   renderMilestonesEditor();
 }
 function removeMilestoneRow(idx) {
+  if (!requireRole('editor')) return;
   editingMilestones.splice(idx, 1);
   renderMilestonesEditor();
 }
 function saveItem() {
+  if (!requireRole('editor')) return;
   const name = document.getElementById('itemNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
   const workstreamId = document.getElementById('itemWorkstreamSelect').value;
@@ -2307,6 +2491,7 @@ function dropOnItem(e, targetId) {
 // fractional value in between two neighbors, so order never needs a repair
 // pass and always exactly matches array position once sorted.
 function reorderItem(fromId, targetId) {
+  if (!requireRole('editor')) return;
   const dragged = items.find(i => i.id === fromId);
   const target = items.find(i => i.id === targetId);
   if (!dragged || !target || dragged.workstreamId !== target.workstreamId) return;
@@ -2326,6 +2511,7 @@ function deleteItemFromModal() {
   deleteItem(id);
 }
 function deleteItem(id) {
+  if (!requireRole('editor')) return;
   const it = items.find(i => i.id === id);
   if (!it) return;
   openConfirmModal({
@@ -2393,6 +2579,7 @@ function reviewCyclesForWs(wsId) {
   return reviewCycles.filter(c => c.workstreamId === wsId);
 }
 function startReviewCycle(wsId) {
+  if (!requireRole('reviewer')) return;
   if (activeReviewCycle(wsId)) return;
   reviewCycles.push({ id: genId(), workstreamId: wsId, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null });
   save(); render();
@@ -2418,6 +2605,7 @@ function isItemConfirmedInCycle(cycle, it) {
     : cycle.confirmations.some(c => c.itemId === it.id);
 }
 function toggleReviewConfirm(cycleId, itemId) {
+  if (!requireRole('reviewer')) return;
   const cycle = reviewCycles.find(c => c.id === cycleId);
   if (!cycle) return;
   const idx = cycle.confirmations.findIndex(x => x.itemId === itemId);
@@ -2426,6 +2614,7 @@ function toggleReviewConfirm(cycleId, itemId) {
   save(); render();
 }
 function toggleMilestoneConfirm(cycleId, milestoneId) {
+  if (!requireRole('reviewer')) return;
   const cycle = reviewCycles.find(c => c.id === cycleId);
   if (!cycle) return;
   const idx = cycle.milestoneConfirmations.findIndex(x => x.milestoneId === milestoneId);
@@ -2438,6 +2627,7 @@ function toggleMilestoneConfirm(cycleId, milestoneId) {
 // same toggle shape as every other confirm control here) — a shortcut for
 // toggleMilestoneConfirm(), not a separate source of truth.
 function toggleConfirmAllMilestones(cycleId, itemId) {
+  if (!requireRole('reviewer')) return;
   const cycle = reviewCycles.find(c => c.id === cycleId);
   const it = items.find(i => i.id === itemId);
   if (!cycle || !it || !it.milestones.length) return;
@@ -2474,6 +2664,7 @@ function snapshotReviewCycleCounts(cycle) {
   cycle.confirmedCountAtClose = wItems.filter(it => isItemConfirmedInCycle(cycle, it)).length;
 }
 function completeReviewCycle(cycleId) {
+  if (!requireRole('reviewer')) return;
   const cycle = reviewCycles.find(c => c.id === cycleId);
   if (!cycle || !canCompleteReviewCycle(cycle)) return;
   snapshotReviewCycleCounts(cycle);
@@ -2492,6 +2683,7 @@ function completeReviewCycle(cycleId) {
 // pulse-data.json — is still correctly excluded from history and from ever
 // re-activating; nothing new ever sets it again.
 function cancelReviewCycle(cycleId) {
+  if (!requireRole('reviewer')) return;
   const cycle = reviewCycles.find(c => c.id === cycleId);
   if (!cycle) return;
   openConfirmModal({
@@ -2708,19 +2900,23 @@ let editingMinutesActionItems = [];
 // height measurement here; an earlier scrollHeight-based approach kept
 // measuring unreliably and left rows looking taller than one line at rest.
 function renderMinutesActionItemsRows() {
+  const editable = hasRole('reviewer');
+  const dis = editable ? '' : 'disabled';
   document.getElementById('minutesActionItemsRows').innerHTML = editingMinutesActionItems.map((a, idx) => `
     <div class="minutes-action-item-row">
-      <textarea rows="1" placeholder="Action item" oninput="editingMinutesActionItems[${idx}].text = this.value">${esc(a.text)}</textarea>
-      <input type="text" value="${esc(a.owner || '')}" placeholder="Owner" oninput="editingMinutesActionItems[${idx}].owner = this.value">
-      ${dateInputHtml(a.dueDate, `onblur="editingMinutesActionItems[${idx}].dueDate = this.value || null"`)}
-      <button class="row-icon-btn" onclick="removeMinutesActionItemRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>
+      <textarea rows="1" placeholder="Action item" ${dis} oninput="editingMinutesActionItems[${idx}].text = this.value">${esc(a.text)}</textarea>
+      <input type="text" value="${esc(a.owner || '')}" placeholder="Owner" ${dis} oninput="editingMinutesActionItems[${idx}].owner = this.value">
+      ${dateInputHtml(a.dueDate, editable ? `onblur="editingMinutesActionItems[${idx}].dueDate = this.value || null"` : 'disabled')}
+      ${editable ? `<button class="row-icon-btn" onclick="removeMinutesActionItemRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>` : '<span></span>'}
     </div>`).join('');
 }
 function addMinutesActionItemRow() {
+  if (!requireRole('reviewer')) return;
   editingMinutesActionItems.push({ id: genId(), text: '', owner: '', dueDate: null });
   renderMinutesActionItemsRows();
 }
 function removeMinutesActionItemRow(idx) {
+  if (!requireRole('reviewer')) return;
   editingMinutesActionItems.splice(idx, 1);
   renderMinutesActionItemsRows();
 }
@@ -2736,7 +2932,19 @@ function openMinutesModal(cycleId) {
   document.getElementById('minutesNextStepsInput').value = m ? m.nextSteps : '';
   editingMinutesActionItems = (m && m.actionItems ? m.actionItems : []).map(a => ({ ...a }));
   renderMinutesActionItemsRows();
-  document.getElementById('minutesRemoveBtn').style.display = m ? 'inline-flex' : 'none';
+  document.getElementById('minutesRemoveBtn').style.display = (m && hasRole('reviewer')) ? 'inline-flex' : 'none';
+  // Below Reviewer, minutes stay viewable (reading past meeting notes is
+  // exactly what "view only" should still allow) but every editing
+  // affordance is hidden or disabled — same "view, don't touch" treatment
+  // as the Item modal above.
+  const editable = hasRole('reviewer');
+  ['minutesSummaryInput', 'minutesDecisionsInput', 'minutesNextStepsInput', 'minutesPasteInput'].forEach(id => {
+    document.getElementById(id).disabled = !editable;
+  });
+  document.getElementById('minutesAutoFillBtn').style.display = editable ? '' : 'none';
+  document.getElementById('minutesClearBtn').style.display = editable ? '' : 'none';
+  document.getElementById('minutesAddActionItemBtn').style.display = editable ? '' : 'none';
+  document.getElementById('minutesSaveBtn').style.display = editable ? '' : 'none';
   document.getElementById('minutesModalBg').classList.add('open');
 }
 function closeMinutesModal() {
@@ -2756,6 +2964,7 @@ function applyParsedMinutesText(text) {
   renderMinutesActionItemsRows();
 }
 function parseMinutesPaste() {
+  if (!requireRole('reviewer')) return;
   const text = document.getElementById('minutesPasteInput').value;
   if (!text.trim()) return;
   applyParsedMinutesText(text);
@@ -2770,6 +2979,7 @@ function parseMinutesPaste() {
 // out an existing cycle's minutes in the modal before typing fresh ones
 // (still requires clicking Save to actually commit the empty state).
 function clearMinutesFields() {
+  if (!requireRole('reviewer')) return;
   document.getElementById('minutesPasteInput').value = '';
   setMinutesDropzoneStatus(null);
   document.getElementById('minutesSummaryInput').value = '';
@@ -3016,6 +3226,7 @@ function setMinutesDropzoneStatus(filename) {
 async function handleMinutesFileDrop(event) {
   event.preventDefault();
   document.getElementById('minutesDropzone').classList.remove('drag-over');
+  if (!requireRole('reviewer')) return;
   const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
   if (!file) return;
   try {
@@ -3028,6 +3239,7 @@ async function handleMinutesFileDrop(event) {
   }
 }
 function saveMinutes() {
+  if (!requireRole('reviewer')) return;
   const cycle = reviewCycles.find(c => c.id === minutesModalCycleId);
   if (!cycle) return;
   const summary = document.getElementById('minutesSummaryInput').value.trim();
@@ -3045,6 +3257,7 @@ function saveMinutes() {
   showToast('Meeting minutes saved');
 }
 function removeMinutes() {
+  if (!requireRole('reviewer')) return;
   const cycleId = minutesModalCycleId;
   const cycle = reviewCycles.find(c => c.id === cycleId);
   if (!cycle) return;
@@ -3184,12 +3397,23 @@ function sortedActionLog(list) {
 // placeholder/spacer) are blank, Owner sits at column 8 (Milestone-Due),
 // the due date at column 9 (Tags), Source sits alone at column 10
 // (Status), a Delete button occupies column 11 (the same Actions column
-// Scope Item Review's own Edit/Delete live in), and the confirm toggle
-// sits at the same explicit grid-column:12 the Scope Item Review tab's
-// own item-level toggle uses.
+// Scope Item Review's own Edit/Delete live in), the confirm toggle sits
+// at the same explicit grid-column:12 the Scope Item Review tab's own
+// item-level toggle uses, and Created/Closed sit at columns 13/14 — two
+// implicit columns beyond the shared 11-column --item-grid-cols, same as
+// column 12 already is, so Scope Item Review's own layout is untouched
+// (see .action-log-row's grid-auto-columns rule for why these need a
+// pinned width, unlike column 12).
 function actionLogRowHtml(w, a) {
   const cycle = reviewCycles.find(c => c.id === a.cycleId);
-  const source = cycle ? `From review started ${fmtDate(dateStrFromTs(cycle.startedAt))}` : '';
+  // Every action item today is transcribed from a review's meeting minutes
+  // (syncActionLogFromMinutes() is the only thing that ever writes a row
+  // here) — so "Review" is simply what this column reads once that source
+  // cycle still exists; the date it started is kept as a hover tooltip
+  // rather than dropped outright, in case that context is still useful.
+  const source = cycle ? 'Review' : '';
+  const sourceTitle = cycle ? `From review started ${fmtDate(dateStrFromTs(cycle.startedAt))}` : '';
+  const canManage = hasRole('reviewer');
   return `<div class="item-row action-log-row ${a.completed ? 'review-confirmed' : ''}">
       <span style="grid-column:1"></span>
       <span class="action-log-text" style="grid-column:2/6">${esc(a.text)}</span>
@@ -3197,11 +3421,19 @@ function actionLogRowHtml(w, a) {
       <span style="grid-column:7"></span>
       <span class="item-owner" style="grid-column:8">${esc(a.owner)}</span>
       <span class="item-dates-computed" style="grid-column:9">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>
-      <span class="action-log-source" style="grid-column:10" title="${esc(source)}">${esc(source)}</span>
-      <button class="row-icon-btn" style="grid-column:11" onclick="deleteActionLogItem('${w.id}','${a.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
-      <button class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
+      <span class="action-log-source" style="grid-column:10" title="${esc(sourceTitle)}">${esc(source)}</span>
+      ${canManage
+        ? `<button class="row-icon-btn" style="grid-column:11" onclick="deleteActionLogItem('${w.id}','${a.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>`
+        : `<span style="grid-column:11"></span>`}
+      ${canManage
+        ? `<button class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
         <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
-      </button>
+      </button>`
+        : `<span class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:12" title="${a.completed ? 'Completed' : 'Not completed'}">
+        <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
+      </span>`}
+      <span class="item-dates-computed" style="grid-column:13">${fmtDate(dateStrFromTs(a.addedAt))}</span>
+      <span class="item-dates-computed" style="grid-column:14">${a.completedAt ? fmtDate(dateStrFromTs(a.completedAt)) : ''}</span>
     </div>`;
 }
 // The "<X> open of <Y> action items" count — shown next to the workstream
@@ -3232,9 +3464,15 @@ function actionLogHtml(w) {
   // this header row would have one fewer implicit column and one fewer
   // gap, so its flexible Action Item column (col 2) would resolve wider
   // than the data rows' — shifting every column after it out of alignment.
-  // Same fix milestoneHeaderHtml() already applies for the same reason
-  // (its own "Confirm" label at grid-column:12) — see "Column layout is a
-  // real CSS grid" in CLAUDE.md.
+  // Same fix milestoneHeaderHtml() applies for the same reason (its own
+  // "Confirm" column) — see "Column layout is a real CSS grid" in
+  // CLAUDE.md. Columns 13/14 (Created/Closed) don't need this same
+  // invisible-placeholder trick — unlike column 12 (always some icon),
+  // their content genuinely varies row to row (a date vs. nothing for a
+  // still-open item), so instead they're pinned to a fixed width via
+  // .action-log-row's own grid-auto-columns rule, which keeps every row's
+  // (and this header's) implicit columns exactly the same width regardless
+  // of what each one actually contains.
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header">
         <span style="grid-column:1"></span>
@@ -3243,11 +3481,14 @@ function actionLogHtml(w) {
         <span style="grid-column:9">Due Date</span>
         <span style="grid-column:10">Source</span>
         <span class="review-confirm-toggle item-level" style="grid-column:12;visibility:hidden"><i class="fa-solid fa-circle-check"></i></span>
+        <span style="grid-column:13">Created</span>
+        <span style="grid-column:14">Closed</span>
       </div>
       ${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}
     </div>`;
 }
 function toggleActionLogItem(wsId, itemId) {
+  if (!requireRole('reviewer')) return;
   const w = wsById(wsId);
   if (!w) return;
   const a = w.actionLog.find(x => x.id === itemId);
@@ -3264,6 +3505,7 @@ function toggleActionLogItem(wsId, itemId) {
 // record, not something that cascades into other data the way deleteItem()'s
 // milestones do.
 function deleteActionLogItem(wsId, itemId) {
+  if (!requireRole('reviewer')) return;
   const w = wsById(wsId);
   if (!w) return;
   const a = w.actionLog.find(x => x.id === itemId);
@@ -3336,7 +3578,9 @@ function renderReview() {
     .sort((a, b) => a.order - b.order);
   let html = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2></div>`;
   if (!cycle) {
-    html += `<button class="btn btn-primary" style="margin-bottom:20px" onclick="startReviewCycle('${filterWorkstreamId}')"><i class="fa-solid fa-play"></i> Start review cycle</button>`;
+    html += hasRole('reviewer')
+      ? `<button class="btn btn-primary" style="margin-bottom:20px" onclick="startReviewCycle('${filterWorkstreamId}')"><i class="fa-solid fa-play"></i> Start review cycle</button>`
+      : `<div class="attention-empty">No active review cycle. Reviewer role or higher is required to start one.</div>`;
   } else {
     const confirmedCount = wItems.filter(it => isItemConfirmedInCycle(cycle, it)).length;
     const total = wItems.length;
@@ -3353,10 +3597,10 @@ function renderReview() {
       <div class="review-checklist">
         ${wItems.length ? wItems.map(it => itemRowHtml(it, cycle)).join('') : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No items in this workstream yet.</div>`}
       </div>
-      <div style="display:flex;gap:8px;margin-bottom:20px">
+      ${hasRole('reviewer') ? `<div style="display:flex;gap:8px;margin-bottom:20px">
         <button class="btn btn-primary" ${canComplete ? '' : 'disabled'} title="${canComplete ? 'Mark this review cycle as completed' : 'Confirm every item — and every one of its milestones — before this can be completed'}" onclick="completeReviewCycle('${cycle.id}')"><i class="fa-solid fa-check"></i> Complete review</button>
         <button class="btn btn-danger" onclick="cancelReviewCycle('${cycle.id}')">Cancel review</button>
-      </div>`;
+      </div>` : ''}`;
   }
   // Cancelled cycles are never in reviewCycles at all (see
   // cancelReviewCycle()) — this filter is only a defensive backstop for a
@@ -3485,7 +3729,7 @@ function renderAdmin() {
   el.innerHTML = `
     <div class="admin-header">
       <h2>Scope Item Categories</h2>
-      <button class="btn btn-primary" onclick="openCategoryModal()"><i class="fa-solid fa-plus"></i> Category</button>
+      ${hasRole('editor') ? `<button class="btn btn-primary" onclick="openCategoryModal()"><i class="fa-solid fa-plus"></i> Category</button>` : ''}
     </div>
     <p style="margin-bottom:16px">Each category defines the standard milestone checklist a new scope item is seeded with when you pick it in Planning.</p>
     <div class="category-list">
@@ -3496,7 +3740,7 @@ function renderAdmin() {
             <span class="category-milestones-preview">${c.milestones.length ? esc(c.milestones.join(' → ')) : 'No milestones in template'}</span>
             <span class="milestone-count-badge">${count} item${count === 1 ? '' : 's'}</span>
             <span class="item-actions" style="display:flex">
-              <button class="row-icon-btn" onclick="openCategoryModal('${c.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+              ${hasRole('editor') ? `<button class="row-icon-btn" onclick="openCategoryModal('${c.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>` : ''}
             </span>
           </div>`;
       }).join('')}
@@ -3510,7 +3754,10 @@ function openCategoryModal(id) {
   editingCategoryMilestones = c ? c.milestones.slice() : [];
   editingCategoryOriginalMilestones = c ? c.milestones.slice() : [];
   renderCategoryMilestonesEditor();
-  document.getElementById('categoryDeleteBtn').style.display = c ? 'inline-flex' : 'none';
+  document.getElementById('categoryDeleteBtn').style.display = (c && hasRole('editor')) ? 'inline-flex' : 'none';
+  document.getElementById('categoryNameInput').disabled = !hasRole('editor');
+  document.getElementById('categoryAddMilestoneBtn').style.display = hasRole('editor') ? '' : 'none';
+  document.getElementById('categorySaveBtn').style.display = hasRole('editor') ? '' : 'none';
   document.getElementById('categoryModalBg').classList.add('open');
   document.getElementById('categoryNameInput').focus();
 }
@@ -3521,14 +3768,15 @@ function closeCategoryModal() {
 }
 function renderCategoryMilestonesEditor() {
   const last = editingCategoryMilestones.length - 1;
+  const editable = hasRole('editor');
   document.getElementById('categoryMilestonesEditor').innerHTML = editingCategoryMilestones.map((name, idx) => `
     <div class="milestone-row">
       <div class="milestone-reorder">
-        <button class="row-icon-btn" onclick="moveCategoryMilestoneRow(${idx},-1)" title="Move up" ${idx === 0 ? 'disabled' : ''}><i class="fa-solid fa-chevron-up"></i></button>
-        <button class="row-icon-btn" onclick="moveCategoryMilestoneRow(${idx},1)" title="Move down" ${idx === last ? 'disabled' : ''}><i class="fa-solid fa-chevron-down"></i></button>
+        <button class="row-icon-btn" onclick="moveCategoryMilestoneRow(${idx},-1)" title="Move up" ${(idx === 0 || !editable) ? 'disabled' : ''}><i class="fa-solid fa-chevron-up"></i></button>
+        <button class="row-icon-btn" onclick="moveCategoryMilestoneRow(${idx},1)" title="Move down" ${(idx === last || !editable) ? 'disabled' : ''}><i class="fa-solid fa-chevron-down"></i></button>
       </div>
-      <input type="text" value="${esc(name)}" oninput="editingCategoryMilestones[${idx}] = this.value">
-      <button class="row-icon-btn" onclick="removeCategoryMilestoneRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>
+      <input type="text" value="${esc(name)}" ${editable ? '' : 'disabled'} oninput="editingCategoryMilestones[${idx}] = this.value">
+      ${editable ? `<button class="row-icon-btn" onclick="removeCategoryMilestoneRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>` : '<span></span>'}
     </div>`).join('');
 }
 function addCategoryMilestoneRow() {
@@ -3536,6 +3784,7 @@ function addCategoryMilestoneRow() {
   renderCategoryMilestonesEditor();
 }
 function moveCategoryMilestoneRow(idx, dir) {
+  if (!requireRole('editor')) return;
   const target = idx + dir;
   if (target < 0 || target >= editingCategoryMilestones.length) return;
   const tmp = editingCategoryMilestones[idx];
@@ -3544,6 +3793,7 @@ function moveCategoryMilestoneRow(idx, dir) {
   renderCategoryMilestonesEditor();
 }
 function removeCategoryMilestoneRow(idx) {
+  if (!requireRole('editor')) return;
   editingCategoryMilestones.splice(idx, 1);
   renderCategoryMilestonesEditor();
 }
@@ -3592,6 +3842,7 @@ function applyCategoryMilestoneSync(categoryId, addedNames, removedNames, ordere
   });
 }
 function saveCategory() {
+  if (!requireRole('editor')) return;
   const name = document.getElementById('categoryNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
   const milestones = editingCategoryMilestones.map(m => (m || '').trim()).filter(m => m);
@@ -3635,6 +3886,7 @@ function saveCategory() {
   showToast('Category saved');
 }
 function deleteCategoryFromModal() {
+  if (!requireRole('editor')) return;
   if (!editingCategoryId) return;
   const catId = editingCategoryId;
   const cat = categoryById(catId);
@@ -3716,7 +3968,7 @@ function currentExportPayload() {
 function exportProgramme() {
   downloadData(currentExportPayload(), `pulse-${todayStr()}.json`);
 }
-function triggerImport() { document.getElementById('fileInput').click(); }
+function triggerImport() { if (!requireRole('admin')) return; document.getElementById('fileInput').click(); }
 function handleFileImport(event) {
   const file = event.target.files[0]; if (!file) return;
   const reader = new FileReader();
@@ -3893,6 +4145,7 @@ function mergeData(data, opts) {
   return { added, updated, conflicts };
 }
 function applyImport(mode) {
+  if (!requireRole('admin')) return;
   if (!pendingImportData) return;
   if (mode === 'replace') {
     downloadData(currentExportPayload(), `pulse-backup-before-replace-${todayStr()}.json`);
@@ -3969,6 +4222,7 @@ function updateSyncConflictsUI() {
     : '';
 }
 function restoreBackup(date) {
+  if (!requireRole('admin')) return;
   const backups = getBackups();
   const b = backups.find(x => x.date === date);
   if (!b) return;
@@ -4156,6 +4410,7 @@ async function _clearFileLink() {
   updateFileSyncUI();
 }
 async function createNewLinkedFile() {
+  if (!requireRole('admin')) return;
   if (!window.showSaveFilePicker) { showToast('File linking requires Chrome or Edge', true); return; }
   try {
     const handle = await window.showSaveFilePicker({
@@ -4171,6 +4426,7 @@ async function createNewLinkedFile() {
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not create file', true); }
 }
 async function linkFile() {
+  if (!requireRole('admin')) return;
   if (!window.showOpenFilePicker) { showToast('File linking requires Chrome or Edge', true); return; }
   try {
     const [handle] = await window.showOpenFilePicker({
@@ -4213,10 +4469,12 @@ async function linkFile() {
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not link file', true); }
 }
 async function unlinkFile() {
+  if (!requireRole('admin')) return;
   await _clearFileLink();
   showToast('File unlinked — saving to browser storage only');
 }
 async function reconnectFile() {
+  if (!requireRole('admin')) return;
   if (!fileHandle) return;
   try {
     const perm = await fileHandle.requestPermission({ mode: 'readwrite' });
@@ -4259,6 +4517,8 @@ function updateFileSyncUI() {
   const el = document.getElementById('fileSyncIndicator');
   if (!el) return;
   if (!window.showOpenFilePicker) { el.style.display = 'none'; return; }
+  if (!hasRole('admin')) { el.style.display = 'none'; return; }
+  el.style.display = '';
   if (!fileHandle) { fadeSwapHTML(el, `<button class="btn btn-sm" onclick="openFileSyncModal()" title="Link a .json data file for auto-save"><i class="fa-solid fa-link"></i> Link file</button>`); return; }
   fileHandle.queryPermission({ mode: 'readwrite' }).then(perm => {
     if (!el) return;
@@ -4279,7 +4539,11 @@ async function initFileSync() {
   updateFileSyncUI();
   try {
     const handle = await _fsGet();
-    if (!handle) { openFileSyncModal(); return; }
+    // Only auto-prompts an Admin — anyone else can't act on it anyway (see
+    // openFileSyncModal()'s own admin-notice branch), and on a brand-new
+    // browser (no role chosen yet, userRole still null) this would otherwise
+    // pop up behind/alongside the mandatory role picker every single launch.
+    if (!handle) { if (hasRole('admin')) openFileSyncModal(); return; }
     fileHandle = handle;
     const perm = await handle.queryPermission({ mode: 'readwrite' });
     if (perm === 'granted') {
@@ -4315,13 +4579,20 @@ function openFileSyncModal(reconnectHandle) {
   const ro = document.getElementById('fileSyncReconnectOption');
   const rl = document.getElementById('fileSyncReconnectLabel');
   const warn = document.getElementById('fileSyncWarning');
-  if (reconnectHandle) {
+  // Linking/creating/reconnecting a synced file is Admin-tier (see
+  // createNewLinkedFile()/linkFile()/reconnectFile()'s own requireRole()
+  // guards) — below that, the options are replaced with a plain notice
+  // rather than left clickable-but-doomed-to-toast-an-error.
+  const canManage = hasRole('admin');
+  document.getElementById('fileSyncOptions').style.display = canManage ? '' : 'none';
+  document.getElementById('fileSyncAdminNotice').style.display = canManage ? 'none' : '';
+  if (canManage && reconnectHandle) {
     ro.style.display = 'flex';
     rl.textContent = `Resume sync with ${reconnectHandle.name}`;
     warn.style.display = 'none';
   } else {
     ro.style.display = 'none';
-    warn.style.display = 'flex';
+    warn.style.display = canManage ? 'flex' : 'none';
   }
   document.getElementById('fileSyncModalBg').classList.add('open');
 }
@@ -4345,16 +4616,19 @@ document.getElementById('backupsModalBg').addEventListener('click', (e) => { if 
 document.getElementById('syncConflictsModalBg').addEventListener('click', (e) => { if (e.target.id === 'syncConflictsModalBg') closeSyncConflictsModal(); });
 document.getElementById('fileSyncModalBg').addEventListener('click', (e) => { if (e.target.id === 'fileSyncModalBg') closeFileSyncModal(); });
 document.getElementById('themeModalBg').addEventListener('click', (e) => { if (e.target.id === 'themeModalBg') closeThemeModal(); });
+document.getElementById('roleModalBg').addEventListener('click', (e) => { if (e.target.id === 'roleModalBg') closeRoleModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeThemeModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeThemeModal(); closeRoleModal(); }
 });
 
 // ---------- Init ----------
 load();
+loadRole();
 document.documentElement.setAttribute('data-theme', theme);
 document.documentElement.setAttribute('data-scheme', colorScheme);
 render();
 initFileSync();
+if (!userRole) openRoleModal(); // mandatory first-launch gate — see the modal's own HTML comment
 
 if (location.protocol !== 'file:' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {

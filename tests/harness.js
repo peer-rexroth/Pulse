@@ -146,6 +146,11 @@ async function run(argv) {
   // every individual test.
   workstreams.push({ id: genId(), name: 'Workstream 1', color: 'blue', order: 0 });
   mode = 'planning'; theme = 'light'; colorScheme = 'standard'; filterWorkstreamId = null;
+  // Default to the top of the role ladder so every existing test — written
+  // before RBAC existed, and testing functionality rather than permissions —
+  // keeps exercising full behavior unimpeded. Tests that specifically cover
+  // role gating set userRole to a lower tier themselves (see role.test.js).
+  userRole = 'admin';
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set();
   editingCategoryId = null; editingCategoryMilestones = [];

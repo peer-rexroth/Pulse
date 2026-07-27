@@ -1390,7 +1390,7 @@ test('actionLogHtml shows an empty state when the workstream has no action items
   assertNotIncludes(html, 'action-log-header', 'no header row without any actual rows to label');
 });
 
-test('actionLogHtml shows a header row (Action Item / Owner / Due Date / Source) once there is at least one action item', function () {
+test('actionLogHtml shows a header row (Action Item / Owner / Due Date / Source / Created / Closed) once there is at least one action item', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
   addMinutesActionItemRow();
@@ -1405,6 +1405,42 @@ test('actionLogHtml shows a header row (Action Item / Owner / Due Date / Source)
   assertIncludes(html, 'Owner');
   assertIncludes(html, 'Due Date');
   assertIncludes(html, 'Source');
+  assertIncludes(html, 'Created');
+  assertIncludes(html, 'Closed');
+});
+
+test('actionLogRowHtml shows the Source column as plain "Review" (with the fuller "From review started ..." text kept as a hover tooltip), since every row is transcribed from a review\'s minutes', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Update runbook';
+  saveMinutes();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('actionLog');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '>Review<');
+  assertIncludes(html, 'From review started');
+});
+
+test('actionLogRowHtml shows a Created date (from addedAt) and a Closed date only once the item is completed (from completedAt)', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Update runbook';
+  saveMinutes();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('actionLog');
+  const id = workstreams[0].actionLog[0].id;
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, fmtDate(dateStrFromTs(workstreams[0].actionLog[0].addedAt)), 'Created should show the addedAt date');
+  assertEqual(workstreams[0].actionLog[0].completedAt, null, 'sanity check — not completed yet');
+
+  toggleActionLogItem(workstreams[0].id, id);
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, fmtDate(dateStrFromTs(workstreams[0].actionLog[0].completedAt)), 'Closed should show the completedAt date once completed');
 });
 
 // Regression test: the header row is missing a grid-column:12 element
@@ -1426,6 +1462,30 @@ test('actionLogHtml\'s header row reserves an (invisible) grid-column:12 slot so
   const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 800);
   assertIncludes(headerRow, 'grid-column:12', 'the header row must place something at column 12 to match the data rows\' implicit toggle column');
   assertIncludes(headerRow, 'visibility:hidden', 'the col-12 placeholder should reserve space without actually being visible in the header');
+});
+
+// Regression test: the same shape of bug as actionLogHtml()'s header above,
+// but in milestoneHeaderHtml() — a visible "Confirm" text label used to sit
+// at column 12 in the header row, while every milestone data row below it
+// (milestoneRowsHtml()) only ever puts a bare icon there. Since each row is
+// its own independent CSS Grid instance and column 2 is the only flexible
+// track, the wider text label consumed more of the header's own width than
+// the data rows' icon did — visibly shifting Due/Actual/Status/Confirm out
+// of alignment (reported via screenshot). Fixed the same way: an invisible
+// placeholder matching the real icon, not a text label.
+test('milestoneHeaderHtml\'s Confirm column is an (invisible) icon placeholder, not a text label, so it stays aligned with the data rows\' own icon-only column', function () {
+  const m = { id: genId(), name: 'M1', dueDate: todayStr(), status: 'not-started', actualDate: null };
+  const it = addReviewItem({ name: 'Has milestone', milestones: [m] });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  toggleItemExpanded(it.id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  const headerRow = html.slice(html.indexOf('milestone-header'), html.indexOf('milestone-header') + 500);
+  assertIncludes(headerRow, 'grid-column:12', 'the header row must place something at column 12 to match the data rows\' implicit toggle column');
+  assertIncludes(headerRow, 'visibility:hidden', 'the col-12 placeholder should reserve space without actually being visible');
+  assertNotIncludes(headerRow, '>Confirm<', 'a visible text label here is wider than the data rows\' icon and would reintroduce the misalignment');
 });
 
 test('sortedActionLog puts open items first (soonest due date first, undated last) and sinks completed items to the bottom', function () {
