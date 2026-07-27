@@ -607,15 +607,20 @@
   .minutes-action-items-field { grid-column: 1 / -1; }
   .minutes-action-items { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .minutes-action-item-row {
-    display: grid; grid-template-columns: 1fr 100px auto 30px; gap: 6px; align-items: center;
+    display: grid; grid-template-columns: 1fr 100px 96px 30px; gap: 6px; align-items: center;
     padding: 5px 8px; border-bottom: 1px solid var(--border);
   }
-  /* The Due Date column is `auto` (shrinks to the pill's own content width,
-     icon + up-to-10-char "dd.mm.yyyy" input) rather than a fixed px value,
-     so it always sizes to its minimum instead of leaving dead space or
-     clipping — the pill previously had a background/padding "chip" look
-     here like every other date field in the app, but that's deliberately
-     stripped below to match this table's flat Action Item/Owner cells. */
+  /* The Due Date column is a fixed 96px — the pill's own minimum content
+     width (icon + gap + the 80px-wide "dd.mm.yyyy" input) — NOT `auto`.
+     Each .minutes-action-item-row (including the header row) is its own
+     independent CSS Grid instance, so an `auto` track is measured against
+     that row's own content only: the header row's content is a plain "Due
+     Date" text span, narrower than a data row's icon+input pill, so the
+     two rows computed different auto widths for column 3 — which pushed
+     column 1 (the only flexible `1fr` track) to absorb a different amount
+     of leftover space per row, visibly misaligning every column under the
+     header. A fixed px value is identical across every row regardless of
+     its content, which is what actually keeps header and data aligned. */
   .minutes-action-item-row .date-pill {
     justify-self: start; background: none; padding: 0; border-radius: 0;
   }
