@@ -2227,7 +2227,13 @@ function parseMeetingMinutes(text) {
     // Stripped only for header matching — markdown heading/bold/bullet
     // decoration (#, *, _, -, >) around a header line, never the stored content.
     const cleaned = rawLine.replace(/^[\s#*_>-]+/, '').replace(/[\s*_]+$/, '');
-    const section = MINUTES_SECTIONS.find(s => s.re.test(cleaned));
+    // A tab/pipe-delimited line is always a table row, never a section
+    // header — without this guard, a pasted table's own header row (e.g.
+    // "Action Item<TAB>Owner<TAB>Due Date") would match the actionItems
+    // pattern below and get treated as *another* section boundary, mangling
+    // everything after it (see linesToActionItems() for the real header-row
+    // handling, done downstream once this text is a plain string again).
+    const section = (rawLine.includes('\t') || rawLine.includes('|')) ? null : MINUTES_SECTIONS.find(s => s.re.test(cleaned));
     if (section) {
       current = section.key;
       const rest = cleaned.replace(section.re, '').trim();
@@ -2240,14 +2246,95 @@ function parseMeetingMinutes(text) {
   const join = lines => lines.join('\n').trim();
   return { summary: join(buckets.summary), actionItems: join(buckets.actionItems), decisions: join(buckets.decisions), openPoints: join(buckets.openPoints), nextSteps: join(buckets.nextSteps) };
 }
-// Action Items has no reliable way to parse Owner/Due Date out of free text
-// (minutes phrase these too inconsistently — "Alice — due Friday", "[Bob]
-// 08/01", "Action: ..."), so auto-fill only extracts *what* the action item
-// is, one row per non-blank line, and leaves Owner/Due Date blank for the
-// user to fill in by hand.
+// Free-form prose has no reliable way to parse Owner/Due Date out of it
+// ("Alice — due Friday", "[Bob] 08/01", "Action: ..." are all genuinely
+// ambiguous), so a plain line with no column structure just becomes a row
+// with only its text filled in. But the single most common real-world case
+// is pasting an actual table — from Excel/Word/Outlook, or a markdown table
+// — and *that* has real column boundaries: tab-separated (what a spreadsheet
+// puts on the clipboard as plain text) or pipe-separated (`| a | b | c |`).
+// When a line splits into 2+ columns via either delimiter, column 1 is the
+// owner and column 2 (if present) the due date — reliably, since a real
+// table already told us which text is which.
+const MINUTES_MONTH_NAMES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+// A due date with no year ("Jul 22") is common in minutes — nobody writes
+// the year for something due next week. Assumes the *nearest* occurrence:
+// this year, unless that would already be more than ~30 days in the past,
+// in which case it rolls forward to next year (a "Jan 5" written in July is
+// almost certainly next January, not one that already passed last January).
+function inferActionItemYear(monthIndex0, day, refDate) {
+  const year = refDate.getFullYear();
+  const candidate = new Date(year, monthIndex0, day);
+  const cutoff = new Date(refDate);
+  cutoff.setDate(cutoff.getDate() - 30);
+  return candidate < cutoff ? year + 1 : year;
+}
+function isoFromDateParts(year, month, day) {
+  if (!(month >= 1 && month <= 12)) return null;
+  const d = new Date(year, month - 1, day);
+  // Date silently rolls an out-of-range day/month forward (e.g. Feb 30 -> Mar 2)
+  // instead of erroring — comparing the parts back out catches that.
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+function parseFlexibleDate(str) {
+  const s = (str || '').trim();
+  if (!s) return null;
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return isoFromDateParts(+m[1], +m[2], +m[3]);
+  const today = new Date(todayStr() + 'T00:00:00');
+  // "Jul 22" / "Jul 22, 2026" / "July 22nd"
+  m = s.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?$/);
+  if (m) {
+    const mi = MINUTES_MONTH_NAMES.indexOf(m[1].slice(0, 3).toLowerCase());
+    if (mi !== -1) {
+      const day = +m[2];
+      return isoFromDateParts(m[3] ? +m[3] : inferActionItemYear(mi, day, today), mi + 1, day);
+    }
+  }
+  // "22 Jul" / "22nd Jul 2026"
+  m = s.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9})\.?(?:,?\s*(\d{4}))?$/);
+  if (m) {
+    const mi = MINUTES_MONTH_NAMES.indexOf(m[2].slice(0, 3).toLowerCase());
+    if (mi !== -1) {
+      const day = +m[1];
+      return isoFromDateParts(m[3] ? +m[3] : inferActionItemYear(mi, day, today), mi + 1, day);
+    }
+  }
+  // "7/22" / "07/22/2026" — US month/day order, matching the month-name formats above
+  m = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (m) {
+    const month = +m[1], day = +m[2];
+    const year = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : inferActionItemYear(month - 1, day, today);
+    return isoFromDateParts(year, month, day);
+  }
+  return null;
+}
+// A pasted table's own header row ("Action Item | Owner | Due Date") would
+// otherwise become a nonsense first row — recognized and dropped by its
+// first column reading as one of the obvious header labels.
+function looksLikeActionItemsHeaderRow(cols) {
+  return /^(action\s*items?|task|item)$/i.test((cols[0] || '').trim());
+}
+function splitActionItemLine(line) {
+  if (line.includes('\t')) return line.split('\t').map(c => c.trim());
+  if (line.includes('|')) {
+    const cells = line.split('|').map(c => c.trim());
+    // A markdown-style row ("| a | b | c |") splits with an empty cell on
+    // each end — drop those, but only from the very edges, so a genuinely
+    // empty middle column (no due date) is preserved.
+    if (cells[0] === '') cells.shift();
+    if (cells[cells.length - 1] === '') cells.pop();
+    return cells;
+  }
+  return [line];
+}
 function linesToActionItems(text) {
   return (text || '').split('\n').map(l => l.trim()).filter(Boolean)
-    .map(line => ({ id: genId(), text: line, owner: '', dueDate: null }));
+    .map(splitActionItemLine)
+    .filter(cols => !looksLikeActionItemsHeaderRow(cols))
+    .map(cols => ({ id: genId(), text: cols[0] || '', owner: (cols[1] || '').trim(), dueDate: parseFlexibleDate(cols[2]) }))
+    .filter(a => a.text);
 }
 
 let minutesModalCycleId = null;

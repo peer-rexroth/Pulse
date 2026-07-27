@@ -542,6 +542,89 @@ test('linesToActionItems turns each non-blank line into its own row with Owner/D
   assertEqual(rows[1].text, 'Bob to schedule the cutover.');
 });
 
+// ---------- Pasting an actual table (Excel/Word/Outlook clipboard, or markdown) ----------
+
+test('linesToActionItems splits a tab-separated table into text/owner/dueDate, skipping the header row', function () {
+  const table = [
+    'Action Item\tOwner\tDue Date',
+    'Send simplified transition specs to Tom\tSofia Bergman\tJul 22',
+    'Pause external launch communications until the date is confirmed\tMarcus Webb\t',
+    'Send a test device budget request to Priya\tDaniel Achebe\tJul 24'
+  ].join('\n');
+  const rows = linesToActionItems(table);
+  assertEqual(rows.length, 3, 'the header row should be recognized and skipped, not turned into a 4th row');
+  assertEqual(rows[0].text, 'Send simplified transition specs to Tom');
+  assertEqual(rows[0].owner, 'Sofia Bergman');
+  assertTrue(!!rows[0].dueDate, 'a bare "Jul 22" due date should resolve to a real ISO date, not stay null');
+  assertEqual(rows[1].owner, 'Marcus Webb');
+  assertEqual(rows[1].dueDate, null, 'a row whose due-date column was empty in the source table should stay unset, not error');
+});
+
+test('linesToActionItems also splits a markdown-style pipe table', function () {
+  const table = '| Update the runbook | Alice | 2026-08-01 |\n| Schedule the cutover | Bob | |';
+  const rows = linesToActionItems(table);
+  assertEqual(rows.length, 2);
+  assertEqual(rows[0].text, 'Update the runbook');
+  assertEqual(rows[0].owner, 'Alice');
+  assertEqual(rows[0].dueDate, '2026-08-01');
+  assertEqual(rows[1].owner, 'Bob');
+  assertEqual(rows[1].dueDate, null);
+});
+
+test('parseMinutesPaste extracts owner and due date from a pasted table under the Action Items header', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesPasteInput').value = [
+    'Action Items',
+    'Action Item\tOwner\tDue Date',
+    'Send simplified transition specs to Tom\tSofia Bergman\tJul 22',
+    'Pause external launch communications until the date is confirmed\tMarcus Webb\t'
+  ].join('\n');
+  parseMinutesPaste();
+  assertEqual(editingMinutesActionItems.length, 2, 'the table header row must not survive into the working rows either');
+  assertEqual(editingMinutesActionItems[0].owner, 'Sofia Bergman');
+  assertTrue(!!editingMinutesActionItems[0].dueDate);
+  assertEqual(editingMinutesActionItems[1].owner, 'Marcus Webb');
+  assertEqual(editingMinutesActionItems[1].dueDate, null);
+});
+
+// ---------- Flexible due-date parsing ----------
+
+test('parseFlexibleDate passes an already-ISO date straight through', function () {
+  assertEqual(parseFlexibleDate('2026-07-22'), '2026-07-22');
+});
+
+test('parseFlexibleDate resolves today\'s own "Mon D" (no year) back to today\'s date', function () {
+  const today = new Date(todayStr() + 'T00:00:00');
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  assertEqual(parseFlexibleDate(`${monthNames[today.getMonth()]} ${today.getDate()}`), todayStr());
+});
+
+test('parseFlexibleDate rolls a yearless date more than ~30 days in the past forward to next year', function () {
+  const today = new Date(todayStr() + 'T00:00:00');
+  const past = new Date(today);
+  past.setDate(past.getDate() - 40);
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const label = `${monthNames[past.getMonth()]} ${past.getDate()}`;
+  const expectedYear = today.getFullYear() + 1;
+  const expected = `${expectedYear}-${String(past.getMonth() + 1).padStart(2, '0')}-${String(past.getDate()).padStart(2, '0')}`;
+  assertEqual(parseFlexibleDate(label), expected);
+});
+
+test('parseFlexibleDate accepts M/D/YYYY and M/D with an inferred year', function () {
+  assertEqual(parseFlexibleDate('7/22/2026'), '2026-07-22');
+  const today = new Date(todayStr() + 'T00:00:00');
+  const label = `${today.getMonth() + 1}/${today.getDate()}`;
+  assertEqual(parseFlexibleDate(label), todayStr());
+});
+
+test('parseFlexibleDate returns null for blank or unrecognized text, rather than a garbage date', function () {
+  assertEqual(parseFlexibleDate(''), null);
+  assertEqual(parseFlexibleDate('   '), null);
+  assertEqual(parseFlexibleDate('TBD'), null);
+  assertEqual(parseFlexibleDate('Someday'), null);
+});
+
 test('parseMinutesPaste fills the Action Items table (not a single textarea) from the pasted text', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
