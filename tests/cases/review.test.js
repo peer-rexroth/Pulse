@@ -9,7 +9,13 @@ function addReviewItem(overrides) {
 }
 
 test('a workstream with no completed review cycle is overdue for review', function () {
+  addReviewItem({});
   assertTrue(isReviewOverdue(workstreams[0].id));
+});
+
+test('a workstream with no scope items yet is never overdue for review — there is nothing to review', function () {
+  assertEqual(items.filter(it => it.workstreamId === workstreams[0].id).length, 0, 'sanity check — a fresh workstream starts with no items');
+  assertFalse(isReviewOverdue(workstreams[0].id));
 });
 
 test('starting a review cycle creates one active cycle for that workstream', function () {

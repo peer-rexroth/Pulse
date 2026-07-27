@@ -74,14 +74,27 @@ test('an overdue milestone shows as "item name — milestone name"', function ()
 });
 
 test('a workstream overdue for review is counted and named in the Overdue for Review card', function () {
+  addDashItem({});
   renderDashboard();
   assertIncludes(document.getElementById('main').innerHTML, workstreams[0].name);
   assertIncludes(document.getElementById('main').innerHTML, '>1<');
 });
 
 test('completing a review cycle removes the workstream from the overdue-for-review count', function () {
+  const it = addDashItem({});
   startReviewCycle(workstreams[0].id);
-  completeReviewCycle(activeReviewCycle(workstreams[0].id).id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleReviewConfirm(cycle.id, it.id); // completeReviewCycle requires every item confirmed first
+  completeReviewCycle(cycle.id);
+  renderDashboard();
+  // Scoped to the "Overdue for Review" card's own sub-stat text (its zero-count
+  // branch reads "of N workstream(s)") rather than a blind '>1<' search — the
+  // dashboard's unrelated "Item Status" card also legitimately shows "1" here
+  // (one scope item exists), which a bare '>1<' substring check can't tell apart.
+  assertIncludes(document.getElementById('main').innerHTML, 'of 1 workstream');
+});
+
+test('a workstream with no scope items yet is not counted in the Overdue for Review card — nothing to review yet', function () {
   renderDashboard();
   assertNotIncludes(document.getElementById('main').innerHTML, '>1<');
 });
@@ -116,6 +129,7 @@ test('selecting a specific workstream scopes the item count, RAG breakdown, and 
 });
 
 test('selecting a specific workstream narrows the per-workstream summary and overdue-for-review count to it', function () {
+  addDashItem({}); // gives workstreams[0] a scope item so it still counts as overdue for review below
   document.getElementById('wsNameInput').value = 'Second';
   wsColorChoice = 'teal';
   saveWorkstream();

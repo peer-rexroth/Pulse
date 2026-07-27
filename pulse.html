@@ -586,9 +586,14 @@
   /* Direct-child combinator matters here: without it, this also matches the
      per-row Action Item <textarea>s (nested a few levels deeper inside
      .minutes-action-items-field, which is itself a .field) and forces every
-     row to 84px regardless of content — that was the real cause of rows
-     looking multi-line-tall even for a one-line action item. */
-  .minutes-grid .field > textarea { min-height: 84px; }
+     row to this height regardless of content — that was the real cause of
+     rows looking multi-line-tall even for a one-line action item. A fixed
+     `height` (not just `min-height`) so Meeting Summary/Decisions/Next Steps
+     all start at the exact same size as each other and as the paste/drop
+     box's own explicit height below — resize:vertical (from the shared
+     `.field textarea` rule) still lets any one of them be dragged taller by
+     hand afterward. */
+  .minutes-grid .field > textarea { height: 130px; }
   .minutes-dropzone { border-radius: 8px; transition: background .1s ease; }
   .minutes-dropzone.drag-over { background: var(--accent-bg); }
   .minutes-dropzone.drag-over textarea { outline: 2px dashed var(--accent); outline-offset: -2px; }
@@ -807,8 +812,8 @@
     onblur="commitRenameProgramme()"
     onkeydown="if(event.key==='Enter'){this.blur();}else if(event.key==='Escape'){cancelRenameProgramme();}">
   <div class="view-tabs">
-    <button class="view-tab" id="tabPlanning" onclick="setMode('planning')"><i class="fa-solid fa-diagram-project"></i> Planning</button>
     <button class="view-tab" id="tabDashboard" onclick="setMode('dashboard')"><i class="fa-solid fa-gauge-high"></i> Dashboard</button>
+    <button class="view-tab" id="tabPlanning" onclick="setMode('planning')"><i class="fa-solid fa-diagram-project"></i> Planning</button>
     <button class="view-tab" id="tabReview" onclick="setMode('review')" title="Select a specific workstream in the sidebar first"><i class="fa-solid fa-clipboard-check"></i> Review</button>
   </div>
   <div class="topbar-spacer"></div>
@@ -915,7 +920,7 @@
           ondragover="event.preventDefault(); this.classList.add('drag-over')"
           ondragleave="this.classList.remove('drag-over')"
           ondrop="handleMinutesFileDrop(event)">
-          <textarea id="minutesPasteInput" style="min-height:130px" oninput="setMinutesDropzoneStatus(null)" placeholder="Paste raw meeting notes here, or drag a .txt/.md/.docx file onto this box — lines starting with Summary, Action Items, Decisions, or Next Steps are split into the fields alongside automatically."></textarea>
+          <textarea id="minutesPasteInput" style="height:130px" oninput="setMinutesDropzoneStatus(null)" placeholder="Paste raw meeting notes here, or drag a .txt/.md/.docx file onto this box — lines starting with Summary, Action Items, Decisions, or Next Steps are split into the fields alongside automatically."></textarea>
           <span class="minutes-dropzone-status" id="minutesDropzoneStatus" style="display:none"><i class="fa-solid fa-circle-check"></i><span id="minutesDropzoneStatusText"></span></span>
         </div>
         <button class="btn btn-sm" style="margin-top:8px" onclick="parseMinutesPaste()"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fill</button>
@@ -2349,6 +2354,12 @@ function lastCompletedReview(wsId) {
   return done.length ? Math.max(...done.map(c => c.completedAt)) : null;
 }
 function isReviewOverdue(wsId) {
+  // A workstream with no scope items yet has nothing to review — every item
+  // is backfilled with a startDate/dueDate as soon as it's created (see
+  // normalizeData()), so "no items" and "no items with any dates" are the
+  // same condition here. Without this guard, a brand-new empty workstream
+  // read as "Overdue" from the moment it was created, which is misleading.
+  if (!items.some(it => it.workstreamId === wsId)) return false;
   const last = lastCompletedReview(wsId);
   if (!last) return true; // never reviewed
   return (Date.now() - last) > REVIEW_STALE_DAYS * DAY_MS;
