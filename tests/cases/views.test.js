@@ -8,12 +8,6 @@ function addItem(overrides) {
   return it;
 }
 
-test('setView switches the active view flag', function () {
-  assertEqual(view, 'status');
-  setView('timeline');
-  assertEqual(view, 'timeline');
-});
-
 test('setFilterWorkstream narrows visibleWorkstreams to one', function () {
   document.getElementById('wsNameInput').value = 'Second';
   wsColorChoice = 'teal';
@@ -64,20 +58,6 @@ test('an item with no milestones shows no count badge and no chevron toggle', fu
   renderMain();
   const html = document.getElementById('main').innerHTML;
   assertNotIncludes(html, 'milestones</span>');
-});
-
-test('renderTimelineView renders one bar per item and one diamond per milestone', function () {
-  addItem({
-    name: 'Bar item',
-    milestones: [{ id: 'm1', name: 'Diamond milestone', dueDate: todayStr(), status: 'green' }]
-  });
-  view = 'timeline';
-  renderMain();
-  const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'tl-bar');
-  assertIncludes(html, 'tl-milestone');
-  assertIncludes(html, 'Bar item');
-  assertIncludes(html, 'Diamond milestone');
 });
 
 test('renderMain shows an empty state with no workstreams', function () {

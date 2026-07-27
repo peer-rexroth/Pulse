@@ -26,14 +26,6 @@ test('render() shows the shared scopedBody for planning/review/dashboard, and ad
   assertEqual(document.getElementById('adminBody').style.display, 'none');
 });
 
-test('render() shows the Status/Timeline sub-toolbar only in Planning mode', function () {
-  setFilterWorkstream(workstreams[0].id);
-  setMode('review');
-  assertEqual(document.getElementById('planningToolbar').style.display, 'none');
-  setMode('planning');
-  assertEqual(document.getElementById('planningToolbar').style.display, '');
-});
-
 test('render() marks the active mode tab active and the others inactive', function () {
   setMode('admin');
   assertTrue(document.getElementById('tabAdmin').classList.contains('active'));

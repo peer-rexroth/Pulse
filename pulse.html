@@ -273,35 +273,6 @@
   }
   .milestone-sub-name { font-weight: 600; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  /* Timeline view */
-  .timeline-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .timeline-scroll { overflow-x: auto; }
-  .timeline-inner { position: relative; }
-  .timeline-header { display: flex; position: sticky; top: 0; background: var(--panel); z-index: 3; border-bottom: 1px solid var(--border); }
-  .timeline-header-spacer { width: 160px; flex: 0 0 auto; position: sticky; left: 0; background: var(--panel); z-index: 4; border-right: 1px solid var(--border); }
-  .month-label {
-    flex: 0 0 auto; padding: 8px 10px; font-weight: 700; font-size: 12px; color: var(--text-dim);
-    border-right: 1px solid var(--border);
-  }
-  .lane { display: flex; border-bottom: 1px solid var(--border); min-height: 44px; }
-  .lane:last-child { border-bottom: none; }
-  .lane-label {
-    width: 160px; flex: 0 0 auto; position: sticky; left: 0; background: var(--panel); z-index: 2;
-    border-right: 1px solid var(--border); display: flex; align-items: center; gap: 7px; padding: 8px 10px; font-weight: 700; font-size: 12.5px;
-  }
-  .lane-body { position: relative; flex: 1; }
-  .lane-track { position: relative; height: 30px; margin: 6px 0; }
-  .today-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--danger); opacity: .5; z-index: 1; }
-  .tl-bar {
-    position: absolute; top: 4px; height: 22px; border-radius: 6px; display: flex; align-items: center;
-    padding: 0 8px; font-size: 11.5px; font-weight: 700; white-space: nowrap; overflow: hidden; cursor: pointer;
-    color: #fff; box-shadow: var(--shadow);
-  }
-  .tl-milestone {
-    position: absolute; top: 3px; width: 16px; height: 16px; transform: translateX(-8px) rotate(45deg);
-    cursor: pointer; box-shadow: var(--shadow); z-index: 2;
-  }
-
   /* Modal */
   .modal-bg {
     position: fixed; inset: 0; background: rgba(10,12,16,.4); display: none; align-items: center; justify-content: center; z-index: 50;
@@ -486,18 +457,18 @@
   .review-cycle-badge.completed { background: var(--stat-green-bg); color: var(--stat-green); }
   /* Action Log (Review's second tab) — a workstream-wide, review-cycle-
      spanning list of action items imported from attached meeting minutes
-     (see syncActionLogFromMinutes()). Same card look as .review-checklist
-     and the same icon-only complete toggle as a review confirm checkmark
-     (.review-confirm-toggle), just persisted independently of any one
-     cycle's own confirm state. */
+     (see syncActionLogFromMinutes()). Deliberately reuses .item-row's own
+     --item-grid-cols grid (rather than a bespoke column layout) so its
+     columns line up visually with Scope Item Review's checklist directly
+     above it — Action Item under Name, Owner under Owner, Due Date under
+     Plan-dates, and the complete toggle at the same explicit grid-column:12
+     slot the Scope Item Review tab's own item-level confirm toggle uses.
+     A completed row gets the exact same .review-confirmed green tint a
+     confirmed checklist row gets, not a bespoke "done" style. */
   .action-log-list { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; overflow: hidden; }
-  .action-log-row { display: grid; grid-template-columns: 30px 1fr 130px 100px 120px; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
-  .action-log-row:last-child { border-bottom: none; }
-  .action-log-row.completed { background: var(--stat-green-bg); }
-  .action-log-row.completed .action-log-text { color: var(--text-faint); text-decoration: line-through; }
   .action-log-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); }
   .action-log-text { white-space: pre-wrap; }
-  .action-log-source { color: var(--text-faint); font-size: 11.5px; text-align: right; }
+  .action-log-source { color: var(--text-faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .section-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin: 20px 0 8px; }
   .section-label:first-child { margin-top: 0; }
 
@@ -581,12 +552,6 @@
     <div id="wsList"></div>
   </div>
   <div class="planning-main">
-    <div class="planning-toolbar" id="planningToolbar">
-      <div class="view-tabs">
-        <button class="view-tab" id="tabStatus" onclick="setView('status')"><i class="fa-solid fa-list-check"></i> Status</button>
-        <button class="view-tab" id="tabTimeline" onclick="setView('timeline')"><i class="fa-solid fa-timeline"></i> Timeline</button>
-      </div>
-    </div>
     <div class="planning-toolbar" id="reviewToolbar" style="display:none">
       <div class="view-tabs">
         <button class="view-tab" id="tabReviewScope" onclick="setReviewTab('scope')"><i class="fa-solid fa-clipboard-check"></i> Scope Item Review</button>
@@ -899,7 +864,6 @@ const DEFAULT_CATEGORY_MILESTONES = [
 ];
 
 const DAY_MS = 86400000;
-const PX_PER_DAY = 26;
 const REVIEW_STALE_DAYS = 30;
 const MODES = ['planning', 'review', 'dashboard', 'admin'];
 
@@ -910,9 +874,8 @@ let items = [];
 let categories = [];
 let reviewCycles = [];
 let mode = 'planning'; // 'planning' | 'review' | 'dashboard' | 'admin'
-let view = 'status';
 let theme = 'light';
-// The single shared workstream selector — used by Planning (status board/timeline),
+// The single shared workstream selector — used by Planning (status board),
 // Review (which workstream's cycle to show), and Dashboard (scopes the rollup)
 // alike. null means "All workstreams" for Planning/Dashboard; Review mode
 // requires a specific one (see setMode()/setFilterWorkstream()).
@@ -973,7 +936,6 @@ function load() {
     categories = raw.categories || [];
     reviewCycles = raw.reviewCycles || [];
     mode = raw.mode || 'planning';
-    view = raw.view || 'status';
     theme = raw.theme || 'light';
     filterWorkstreamId = raw.filterWorkstreamId || null;
     deletedWorkstreamIds = raw.deletedWorkstreamIds || [];
@@ -987,7 +949,7 @@ function load() {
 
 function save() {
   const data = {
-    programme, workstreams, items, categories, reviewCycles, mode, view, theme,
+    programme, workstreams, items, categories, reviewCycles, mode, theme,
     filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -1269,12 +1231,9 @@ function render() {
   document.getElementById('tabReview').classList.toggle('disabled', !filterWorkstreamId);
   document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
-  document.getElementById('planningToolbar').style.display = mode === 'planning' ? '' : 'none';
   document.getElementById('reviewToolbar').style.display = mode === 'review' ? '' : 'none';
   renderSidebar();
   if (mode === 'planning') {
-    document.getElementById('tabStatus').classList.toggle('active', view === 'status');
-    document.getElementById('tabTimeline').classList.toggle('active', view === 'timeline');
     renderMain();
   } else if (mode === 'review') {
     document.getElementById('tabReviewScope').classList.toggle('active', reviewTab === 'scope');
@@ -1328,8 +1287,7 @@ function renderMain() {
       <button class="btn btn-primary" onclick="openWorkstreamModal()"><i class="fa-solid fa-plus"></i> Add a workstream</button></div>`;
     return;
   }
-  if (view === 'timeline') renderTimelineView(main);
-  else renderStatusView(main);
+  renderStatusView(main);
 }
 
 function renderStatusView(main) {
@@ -1693,82 +1651,7 @@ function fmtDateY(iso) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function renderTimelineView(main) {
-  const wss = visibleWorkstreams();
-  const wsIds = new Set(wss.map(w => w.id));
-  const relevant = items.filter(it => wsIds.has(it.workstreamId));
-
-  let minD, maxD;
-  if (relevant.length) {
-    const allDates = [];
-    relevant.forEach(it => {
-      allDates.push(it.dueDate);
-      if (it.startDate) allDates.push(it.startDate);
-      it.milestones.forEach(m => allDates.push(m.dueDate));
-    });
-    minD = new Date(Math.min(...allDates.map(d => new Date(d + 'T00:00:00'))) - 10 * DAY_MS);
-    maxD = new Date(Math.max(...allDates.map(d => new Date(d + 'T00:00:00'))) + 10 * DAY_MS);
-  } else {
-    const now = new Date();
-    minD = new Date(now.getFullYear(), now.getMonth(), 1);
-    maxD = new Date(now.getFullYear(), now.getMonth() + 2, 0);
-  }
-  const totalDays = Math.max(1, Math.round((maxD - minD) / DAY_MS));
-  const totalWidth = totalDays * PX_PER_DAY;
-  const dayOffset = (iso) => Math.round((new Date(iso + 'T00:00:00') - minD) / DAY_MS) * PX_PER_DAY;
-  const todayOffset = dayOffset(todayStr());
-
-  // Month header segments
-  let months = [];
-  let cursor = new Date(minD.getFullYear(), minD.getMonth(), 1);
-  while (cursor < maxD) {
-    const segStart = cursor < minD ? minD : cursor;
-    const nextMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-    const segEnd = nextMonth < maxD ? nextMonth : maxD;
-    const widthDays = Math.max(1, Math.round((segEnd - segStart) / DAY_MS));
-    months.push({ label: cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }), width: widthDays * PX_PER_DAY });
-    cursor = nextMonth;
-  }
-
-  const laneHtml = wss.map(w => {
-    const wItems = relevant.filter(it => it.workstreamId === w.id)
-      .sort((a, b) => (a.startDate || a.dueDate).localeCompare(b.startDate || b.dueDate));
-    const tracks = wItems.length ? wItems.map(it => {
-      const x1 = dayOffset(it.startDate), x2 = dayOffset(it.dueDate);
-      const w2 = Math.max(x2 - x1, 18);
-      const milestoneEls = it.milestones.map(m => {
-        const mx = dayOffset(m.dueDate);
-        return `<div class="tl-milestone" style="left:${mx}px;background:var(--stat-${m.status});border:2px solid var(--panel)" onclick="openItemModal('${it.id}')" title="${esc(m.name)} — ${fmtDate(m.dueDate)}"></div>`;
-      }).join('');
-      return `<div class="lane-track">
-          <div class="tl-bar" style="left:${x1}px;width:${w2}px;background:var(--stat-${it.status})" onclick="openItemModal('${it.id}')" title="${esc(it.name)}">${esc(it.name)}</div>
-          ${milestoneEls}
-        </div>`;
-    }).join('') : `<div class="lane-track"></div>`;
-    return `<div class="lane">
-        <div class="lane-label"><span class="ws-dot" style="background:var(--ws-${w.color})"></span>${esc(w.name)}</div>
-        <div class="lane-body" style="width:${totalWidth}px">
-          <div class="today-line" style="left:${todayOffset}px"></div>
-          ${tracks}
-        </div>
-      </div>`;
-  }).join('');
-
-  main.innerHTML = `<div class="timeline-wrap">
-      <div class="timeline-scroll">
-        <div class="timeline-inner" style="width:${160 + totalWidth}px">
-          <div class="timeline-header">
-            <div class="timeline-header-spacer"></div>
-            ${months.map(m => `<div class="month-label" style="width:${m.width}px">${esc(m.label)}</div>`).join('')}
-          </div>
-          ${laneHtml}
-        </div>
-      </div>
-    </div>`;
-}
-
 // ---------- View / filter / theme ----------
-function setView(v) { view = v; save(); render(); }
 function setReviewTab(t) { reviewTab = t; render(); }
 function setFilterWorkstream(id) {
   filterWorkstreamId = id;
@@ -2918,17 +2801,28 @@ function sortedActionLog(list) {
   const done = list.filter(a => a.completed).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
   return open.concat(done);
 }
+// Column slots deliberately mirror itemRowHtml()'s own --item-grid-cols
+// positions: col2 (Name) holds the Action Item text, col4 (Owner) the
+// owner, col5 (Plan-dates) the due date, col8/11 (Milestone-Due/Tags/
+// Status, merged) the source cycle, and the confirm toggle sits at the
+// same explicit grid-column:12 the Scope Item Review tab's own item-level
+// toggle uses — see the .action-log-row comment above for why.
 function actionLogRowHtml(w, a) {
   const cycle = reviewCycles.find(c => c.id === a.cycleId);
   const source = cycle ? `From review started ${fmtDate(dateStrFromTs(cycle.startedAt))}` : '';
-  return `<div class="action-log-row ${a.completed ? 'completed' : ''}">
-      <button class="review-confirm-toggle ${a.completed ? 'confirmed' : ''}" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
+  return `<div class="item-row action-log-row ${a.completed ? 'review-confirmed' : ''}">
+      <span style="grid-column:1"></span>
+      <span class="action-log-text" style="grid-column:2">${esc(a.text)}</span>
+      <span style="grid-column:3"></span>
+      <span class="item-owner" style="grid-column:4">${esc(a.owner)}</span>
+      <span class="item-dates-computed" style="grid-column:5">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>
+      <span style="grid-column:6"></span>
+      <span style="grid-column:7"></span>
+      <span class="action-log-source" style="grid-column:8/11" title="${esc(source)}">${esc(source)}</span>
+      <span style="grid-column:11"></span>
+      <button class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
         <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
       </button>
-      <span class="action-log-text">${esc(a.text)}</span>
-      <span>${esc(a.owner)}</span>
-      <span>${a.dueDate ? fmtDate(a.dueDate) : ''}</span>
-      <span class="action-log-source">${esc(source)}</span>
     </div>`;
 }
 // The workstream-wide action log — every action item ever imported from a
@@ -2943,7 +2837,16 @@ function actionLogHtml(w) {
   const openCount = list.filter(a => !a.completed).length;
   return `<div class="review-progress">${openCount} open of ${list.length} action item${list.length === 1 ? '' : 's'}</div>
     <div class="action-log-list">
-      <div class="action-log-row action-log-header"><span></span><span>Action Item</span><span>Owner</span><span>Due Date</span><span>Source</span></div>
+      <div class="item-row action-log-row action-log-header">
+        <span style="grid-column:1"></span>
+        <span style="grid-column:2">Action Item</span>
+        <span style="grid-column:3"></span>
+        <span style="grid-column:4">Owner</span>
+        <span style="grid-column:5">Due Date</span>
+        <span style="grid-column:6"></span>
+        <span style="grid-column:7"></span>
+        <span style="grid-column:8/11">Source</span>
+      </div>
       ${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}
     </div>`;
 }
@@ -3729,7 +3632,7 @@ function queueFileSyncWrite() {
 async function doFileSyncWrite() {
   if (!fileHandle) return;
   const data = {
-    programme, workstreams, items, categories, reviewCycles, mode, view, theme,
+    programme, workstreams, items, categories, reviewCycles, mode, theme,
     filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds
   };
   try {

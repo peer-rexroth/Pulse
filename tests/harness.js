@@ -145,7 +145,7 @@ async function run(argv) {
   // convenience, so the harness adds one back here rather than touching
   // every individual test.
   workstreams.push({ id: genId(), name: 'Workstream 1', color: 'blue', order: 0 });
-  mode = 'planning'; view = 'status'; theme = 'light'; filterWorkstreamId = null;
+  mode = 'planning'; theme = 'light'; filterWorkstreamId = null;
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set();
   editingCategoryId = null; editingCategoryMilestones = [];
