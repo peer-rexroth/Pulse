@@ -109,6 +109,8 @@ async function run(argv) {
   })();
   globalThis.setTimeout = function () { return 0; };
   globalThis.clearTimeout = function () {};
+  globalThis.setInterval = function () { return 0; };
+  globalThis.clearInterval = function () {};
   globalThis.confirm = function () { return true; };
   globalThis.Blob = function (parts, opts) { this.parts = parts; this.opts = opts; globalThis.__lastBlob = this; };
   globalThis.URL = { createObjectURL() { return 'blob:mock'; }, revokeObjectURL() {} };
@@ -149,7 +151,7 @@ async function run(argv) {
   editingCategoryId = null; editingCategoryMilestones = [];
   renamingProgramme = false;
   pendingImportData = null; modalTarget = null; toastUndoAction = null;
-  fileHandle = null; lastSyncedSnapshot = null;
+  fileHandle = null; lastSyncedSnapshot = null; lastSyncedAt = 0; syncConflictLog = [];
   normalizeData();
 }
 `;

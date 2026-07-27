@@ -128,6 +128,143 @@ test('mergeData with respectTombstones:false lets a tombstoned item back in rega
   assertEqual(items.length, 1);
 });
 
+// ---------- Per-milestone merge ----------
+// A milestone-bearing item's milestones merge by id independently of the
+// item's own scalar fields (name/owner/status/dates) — see mergeData()'s and
+// mergeMilestonesArray()'s own comments for why: two people editing
+// *different* parts of the same item should both keep their edit, not have
+// one whole item snapshot silently replace the other.
+
+function addMergeTestItem(overrides) {
+  const it = Object.assign({
+    id: 'merge-item-1', workstreamId: workstreams[0].id, categoryId: categories[0].id,
+    name: 'Shared item', owner: '', status: 'green', startDate: todayStr(), dueDate: todayStr(),
+    updatedAt: 1000,
+    milestones: [
+      { id: 'ms-a', name: 'Milestone A', dueDate: todayStr(), status: 'not-started', actualDate: null, updatedAt: 1000 },
+      { id: 'ms-b', name: 'Milestone B', dueDate: todayStr(), status: 'not-started', actualDate: null, updatedAt: 1000 }
+    ]
+  }, overrides || {});
+  items.push(it);
+  return it;
+}
+
+test('mergeData merges two different milestones on the same item independently — both edits survive', function () {
+  const local = addMergeTestItem();
+  // Local edited milestone A only; milestone B is untouched in both copies.
+  local.milestones[0] = { ...local.milestones[0], status: 'complete', updatedAt: 2000 };
+  // Incoming (the file/other device) edited milestone B only; its copy of
+  // milestone A is still the original, unedited version.
+  const incoming = {
+    ...local,
+    updatedAt: 1000, // the item's own scalar fields did not change on the incoming side
+    milestones: [
+      { id: 'ms-a', name: 'Milestone A', dueDate: todayStr(), status: 'not-started', actualDate: null, updatedAt: 1000 },
+      { ...local.milestones[1], status: 'complete', updatedAt: 2500 }
+    ]
+  };
+  const { updated } = mergeData({ workstreams: [], items: [incoming] });
+  assertEqual(updated, 1);
+  assertEqual(items[0].milestones.find(m => m.id === 'ms-a').status, 'complete', 'the local edit to milestone A should survive');
+  assertEqual(items[0].milestones.find(m => m.id === 'ms-b').status, 'complete', 'the incoming edit to milestone B should also be adopted');
+});
+
+test('mergeData keeps a tombstoned milestone deleted when the incoming copy is stale, and lets it back in when newer', function () {
+  const local = addMergeTestItem();
+  local.milestones = local.milestones.filter(m => m.id !== 'ms-b');
+  tombstone(deletedMilestoneIds, 'ms-b');
+  const deletedAt = deletedMilestoneIds[0].deletedAt;
+  let incoming = { ...local, milestones: [local.milestones[0], { id: 'ms-b', name: 'Milestone B', dueDate: todayStr(), status: 'not-started', actualDate: null, updatedAt: deletedAt - 1000 }] };
+  mergeData({ workstreams: [], items: [incoming] });
+  assertFalse(items[0].milestones.some(m => m.id === 'ms-b'), 'a stale incoming copy should not resurrect a tombstoned milestone');
+
+  incoming = { ...local, milestones: [local.milestones[0], { id: 'ms-b', name: 'Milestone B', dueDate: todayStr(), status: 'not-started', actualDate: null, updatedAt: deletedAt + 1000 }] };
+  mergeData({ workstreams: [], items: [incoming] });
+  assertTrue(items[0].milestones.some(m => m.id === 'ms-b'), 'an incoming edit newer than the deletion should let the milestone back in');
+  assertFalse(deletedMilestoneIds.some(x => x.id === 'ms-b'), 'the stale tombstone should be cleared');
+});
+
+test('mergeData reports a conflict when the same milestone was edited on both sides since the last sync', function () {
+  const local = addMergeTestItem();
+  lastSyncedAt = 5000; // pretend this browser and the file last agreed at t=5000
+  local.milestones[0] = { ...local.milestones[0], status: 'amber', updatedAt: 6000 }; // edited locally after that
+  const incoming = { ...local, milestones: [{ ...local.milestones[0], status: 'complete', updatedAt: 7000 }, local.milestones[1]] };
+  const { conflicts } = mergeData({ workstreams: [], items: [incoming] });
+  assertEqual(conflicts.length, 1);
+  assertTrue(conflicts[0].note.includes('Milestone A'));
+  assertEqual(items[0].milestones.find(m => m.id === 'ms-a').status, 'complete', 'the newer (incoming) edit should still win despite the conflict');
+});
+
+test('mergeData does not report a conflict when two *different* milestones changed on each side', function () {
+  const local = addMergeTestItem();
+  lastSyncedAt = 5000;
+  local.milestones[0] = { ...local.milestones[0], status: 'amber', updatedAt: 6000 }; // local touched A only
+  // incoming's own copy of milestone A is still the original, untouched version.
+  const incoming = {
+    ...local,
+    milestones: [
+      { id: 'ms-a', name: 'Milestone A', dueDate: todayStr(), status: 'not-started', actualDate: null, updatedAt: 1000 },
+      { ...local.milestones[1], status: 'complete', updatedAt: 6500 } // incoming touched B only
+    ]
+  };
+  const { conflicts } = mergeData({ workstreams: [], items: [incoming] });
+  assertEqual(conflicts.length, 0, 'two independently-edited milestones merging cleanly is not a conflict');
+});
+
+test('mergeData does not report a conflict on the very first merge (lastSyncedAt still 0)', function () {
+  const local = addMergeTestItem();
+  assertEqual(lastSyncedAt, 0, 'a fresh session with no prior sync');
+  local.milestones[0] = { ...local.milestones[0], status: 'amber', updatedAt: 6000 };
+  const incoming = { ...local, milestones: [{ ...local.milestones[0], status: 'complete', updatedAt: 7000 }, local.milestones[1]] };
+  const { conflicts } = mergeData({ workstreams: [], items: [incoming] });
+  assertEqual(conflicts.length, 0, 'nothing has "since the last sync" meaning yet on a first-ever merge');
+});
+
+test('mergeData reports a conflict when an item\'s own scalar fields were edited on both sides since the last sync', function () {
+  const local = addMergeTestItem({ milestones: [] });
+  lastSyncedAt = 5000;
+  local.owner = 'Local Owner'; local.updatedAt = 6000;
+  const incoming = { ...local, owner: 'Incoming Owner', updatedAt: 7000, milestones: [] };
+  const { conflicts } = mergeData({ workstreams: [], items: [incoming] });
+  assertEqual(conflicts.length, 1);
+  assertEqual(items[0].owner, 'Incoming Owner', 'the newer edit should still win');
+});
+
+test('showToast defaults its action button label to "Undo" when no custom label is given', function () {
+  showToast('Something happened', false, () => {});
+  assertEqual(document.getElementById('toastUndoBtn').textContent, 'Undo');
+});
+
+test('reportSyncConflicts appends to syncConflictLog and shows a "Review" toast action', function () {
+  syncConflictLog = [];
+  reportSyncConflicts([{ itemName: 'X', milestoneName: null, note: 'Test conflict' }]);
+  assertEqual(syncConflictLog.length, 1);
+  assertEqual(document.getElementById('toastUndoBtn').textContent, 'Review');
+  assertTrue(!!toastUndoAction, 'the Review button should be wired up to open the conflicts modal');
+});
+
+test('reportSyncConflicts is a no-op when there are no conflicts', function () {
+  syncConflictLog = [];
+  reportSyncConflicts([]);
+  assertEqual(syncConflictLog.length, 0);
+});
+
+test('clearSyncConflictLog empties the log', function () {
+  syncConflictLog = [{ itemName: 'X', milestoneName: null, note: 'Test', at: Date.now() }];
+  clearSyncConflictLog();
+  assertEqual(syncConflictLog.length, 0);
+});
+
+test('normalizeData backfills a missing milestone.updatedAt from the parent item\'s own updatedAt', function () {
+  items.push({
+    id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X', owner: '',
+    status: 'green', startDate: todayStr(), dueDate: todayStr(), updatedAt: 12345,
+    milestones: [{ id: genId(), name: 'M', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  normalizeData();
+  assertEqual(items[0].milestones[0].updatedAt, 12345);
+});
+
 // ---------- Export / Import ----------
 
 test('exportProgramme downloads a JSON blob containing the current workstreams and items', function () {

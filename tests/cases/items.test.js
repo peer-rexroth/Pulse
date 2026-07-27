@@ -66,6 +66,43 @@ test('editing an item preserves its existing milestones, not the standard set', 
   assertEqual(items[0].milestones.length, 2);
 });
 
+// ---------- Per-milestone updatedAt on save (see mergeData()'s per-milestone merge) ----------
+
+test('saveItem only bumps a milestone\'s updatedAt when its content actually changed', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const id = items[0].id;
+  items[0].milestones.forEach(m => { m.updatedAt = 1000; }); // sentinel: "last touched long ago"
+  openItemModal(id);
+  editingMilestones[0].status = 'complete'; // only touch the first milestone
+  saveItem();
+  assertTrue(items[0].milestones[0].updatedAt > 1000, 'the changed milestone should get a fresh updatedAt');
+  assertEqual(items[0].milestones[1].updatedAt, 1000, 'an untouched milestone must keep its prior updatedAt exactly — a future merge treats a bumped timestamp as "edited here"');
+});
+
+test('saveItem tombstones a milestone that was removed via the modal', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const id = items[0].id;
+  const removedId = items[0].milestones[1].id;
+  openItemModal(id);
+  editingMilestones.splice(1, 1);
+  saveItem();
+  assertFalse(items[0].milestones.some(m => m.id === removedId));
+  assertTrue(deletedMilestoneIds.some(x => x.id === removedId), 'a merge must be able to tell this milestone was deleted, not just never seen');
+});
+
+test('saveItem stamps a brand-new milestone (added via the modal) with its own updatedAt', function () {
+  openItemModal(null);
+  addMilestoneRow();
+  fillItemForm({});
+  saveItem();
+  const newMilestone = items[0].milestones[items[0].milestones.length - 1];
+  assertTrue(typeof newMilestone.updatedAt === 'number' && newMilestone.updatedAt > 0);
+});
+
 test('removeMilestoneRow removes one row from the in-progress edit without touching saved data yet', function () {
   openItemModal(null);
   assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length);

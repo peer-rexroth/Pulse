@@ -208,6 +208,29 @@ test('removing a milestone from a category template removes it from items, even 
   assertFalse(items[0].milestones.some(m => m.name === removedName), 'the removed template entry should be gone from the item too');
 });
 
+test('removing a milestone from a category template tombstones it', function () {
+  const catId = categories[0].id;
+  const it = addItemWithCategory(catId, categories[0].milestones);
+  const removedId = it.milestones[0].id;
+  openCategoryModal(catId);
+  removeCategoryMilestoneRow(0);
+  saveCategory();
+  confirmModalAction();
+  assertTrue(deletedMilestoneIds.some(x => x.id === removedId), 'a merge must be able to tell this milestone was deleted, not just never seen');
+});
+
+test('a milestone appended by a category template sync gets its own updatedAt', function () {
+  const catId = categories[0].id;
+  addItemWithCategory(catId, categories[0].milestones);
+  openCategoryModal(catId);
+  addCategoryMilestoneRow();
+  editingCategoryMilestones[editingCategoryMilestones.length - 1] = 'Go-live approved';
+  saveCategory();
+  confirmModalAction();
+  const added = items[0].milestones.find(m => m.name === 'Go-live approved');
+  assertTrue(typeof added.updatedAt === 'number' && added.updatedAt > 0);
+});
+
 test('a renamed template entry is treated as remove-old-name plus add-new-name', function () {
   const catId = categories[0].id;
   const it = addItemWithCategory(catId, categories[0].milestones);

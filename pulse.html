@@ -374,6 +374,15 @@
   .sync-linked { font-size: 12px; color: var(--stat-green); display: flex; align-items: center; gap: 5px; max-width: 150px; }
   .sync-linked span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sync-reconnect { color: var(--stat-amber) !important; border-color: var(--stat-amber) !important; }
+  .sync-conflict-badge { color: var(--stat-amber) !important; border-color: var(--stat-amber) !important; }
+
+  /* Sync conflicts modal */
+  .sync-conflicts-intro { font-size: 12.5px; color: var(--text-faint); line-height: 1.5; margin: 0 0 12px; }
+  .sync-conflicts-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+  .sync-conflicts-empty { font-size: 13px; color: var(--text-faint); padding: 8px 2px; line-height: 1.5; }
+  .conflict-row { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); }
+  .conflict-row-note { font-size: 12.5px; line-height: 1.5; }
+  .conflict-row-time { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
 
   /* Import options (file sync onboarding modal) */
   .import-options { display: flex; flex-direction: column; gap: 8px; }
@@ -474,6 +483,7 @@
     <button class="view-tab" id="tabReview" onclick="setMode('review')" title="Select a specific workstream in the sidebar first"><i class="fa-solid fa-clipboard-check"></i> Review</button>
   </div>
   <div class="topbar-spacer"></div>
+  <span id="syncConflictIndicator"></span>
   <span id="fileSyncIndicator"></span>
   <div class="data-dropdown" id="dataDropdown">
     <button class="btn btn-sm" onclick="event.stopPropagation();toggleDataMenu()"><i class="fa-solid fa-database"></i> Data <i class="fa-solid fa-chevron-down" style="font-size:9px"></i></button>
@@ -665,6 +675,19 @@
   </div>
 </div>
 
+<!-- Sync conflicts modal -->
+<div class="modal-bg" id="syncConflictsModalBg">
+  <div class="modal" style="width:460px">
+    <h3>Sync conflicts</h3>
+    <p class="sync-conflicts-intro">Two edits landed on the same item or milestone close enough together that the linked file couldn't tell which one you'd want — the most recent edit was kept automatically in each case. Listed here so nothing gets lost silently.</p>
+    <div class="sync-conflicts-list" id="syncConflictsList"></div>
+    <div class="modal-actions" style="justify-content:space-between">
+      <button class="btn btn-sm" id="syncConflictsClearBtn" onclick="clearSyncConflictLog()">Clear</button>
+      <button class="btn btn-primary" onclick="closeSyncConflictsModal()">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- File sync onboarding modal -->
 <div class="modal-bg" id="fileSyncModalBg">
   <div class="modal" style="width:400px">
@@ -808,6 +831,12 @@ const HISTORY_PAGE_SIZE = 5;
 // apart from "never seen this id" and not silently resurrect it.
 let deletedWorkstreamIds = [];
 let deletedItemIds = [];
+// Same tombstone shape, one level deeper — a milestone removed from an item
+// (via the item modal or a category-template sync) needs its own tombstone
+// so a merge with an external file/tab can't silently resurrect it just
+// because that milestone's id is merely absent from the local array (see
+// mergeData()'s milestone-level merge).
+let deletedMilestoneIds = [];
 let pendingImportData = null;
 let modalTarget = null;
 
@@ -827,6 +856,7 @@ function load() {
     filterWorkstreamId = raw.filterWorkstreamId || null;
     deletedWorkstreamIds = raw.deletedWorkstreamIds || [];
     deletedItemIds = raw.deletedItemIds || [];
+    deletedMilestoneIds = raw.deletedMilestoneIds || [];
   } else {
     seedDefaults();
   }
@@ -836,7 +866,7 @@ function load() {
 function save() {
   const data = {
     programme, workstreams, items, categories, reviewCycles, mode, view, theme,
-    filterWorkstreamId, deletedWorkstreamIds, deletedItemIds
+    filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   queueFileSyncWrite();
@@ -855,6 +885,7 @@ function seedDefaults() {
   reviewCycles = [];
   deletedWorkstreamIds = [];
   deletedItemIds = [];
+  deletedMilestoneIds = [];
 }
 
 // Takes at most one rolling snapshot per calendar day, keeping the last
@@ -879,8 +910,10 @@ function getBackups() {
 function normalizeData() {
   if (!Array.isArray(deletedWorkstreamIds)) deletedWorkstreamIds = [];
   if (!Array.isArray(deletedItemIds)) deletedItemIds = [];
+  if (!Array.isArray(deletedMilestoneIds)) deletedMilestoneIds = [];
   deletedWorkstreamIds = deletedWorkstreamIds.filter(x => x && x.id);
   deletedItemIds = deletedItemIds.filter(x => x && x.id);
+  deletedMilestoneIds = deletedMilestoneIds.filter(x => x && x.id);
 
   workstreams.forEach((w, i) => {
     if (!isSafeId(w.id)) w.id = genId();
@@ -953,6 +986,12 @@ function normalizeData() {
       if (!m.dueDate) m.dueDate = it.dueDate;
       if (!STATUSES.some(s => s.id === m.status)) m.status = 'not-started';
       if (typeof m.actualDate !== 'string') m.actualDate = null;
+      // Backfilled from the parent item's own updatedAt (not Date.now()) —
+      // legacy data predating this field shouldn't look freshly edited to a
+      // merge just because it happened to load on this device first; the
+      // item's own timestamp is the closest honest approximation of "when
+      // this milestone was last known to be in this state".
+      if (typeof m.updatedAt !== 'number') m.updatedAt = it.updatedAt || Date.now();
     });
     // Enforce the "weakest milestone wins" status and the earliest/latest
     // plan-date-range invariants on every load/merge/import too, not just at
@@ -1007,6 +1046,20 @@ function tombstone(list, id) {
 function untombstone(list, id) {
   const idx = list.findIndex(x => x.id === id);
   if (idx !== -1) list.splice(idx, 1);
+}
+// Used wherever a whole milestones array is replaced at once from a detached
+// working copy (currently only saveItem(), editing via the item modal) —
+// preserves each unchanged milestone's existing updatedAt instead of bumping
+// every one of them just because the array as a whole was resaved, so a
+// later merge (see mergeData()) only ever treats a milestone as "freshly
+// edited here" when its actual content changed.
+function stampChangedMilestones(newList, prevList) {
+  return newList.map(m => {
+    const prev = prevList.find(p => p.id === m.id);
+    const changed = !prev || prev.name !== m.name || prev.dueDate !== m.dueDate
+      || prev.status !== m.status || prev.actualDate !== m.actualDate;
+    return { ...m, updatedAt: changed ? Date.now() : prev.updatedAt };
+  });
 }
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function esc(s) {
@@ -1366,6 +1419,7 @@ function cycleMilestoneStatus(itemId, milestoneId) {
   const oldValue = m.status;
   const idx = STATUSES.findIndex(s => s.id === m.status);
   m.status = STATUSES[(idx + 1) % STATUSES.length].id;
+  m.updatedAt = Date.now();
   it.status = computedStatusFromMilestones(it.milestones);
   it.updatedAt = Date.now();
   // statusChange lets reviewHistoryRowHtml() render the same colored
@@ -1412,6 +1466,7 @@ function updateMilestoneDateField(itemId, milestoneId, field, value) {
   if (!m) return;
   if (value === m[field]) return; // a focus+blur with no real edit shouldn't log a change
   it.updatedAt = Date.now();
+  m.updatedAt = Date.now();
   const oldDue = m.dueDate;
   const oldActual = m.actualDate;
   m[field] = value;
@@ -1782,7 +1837,7 @@ function saveItem() {
   const manualStartDate = document.getElementById('itemStartInput').value || manualDueDate;
   const actualDate = document.getElementById('itemActualInput').value || null;
   const milestones = editingMilestones.map(m => ({
-    id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: m.dueDate || manualDueDate, status: m.status, actualDate: m.actualDate || null
+    id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: m.dueDate || manualDueDate, status: m.status, actualDate: m.actualDate || null, updatedAt: Date.now()
   }));
   // An item with milestones always gets its status AND plan date range
   // computed from them — the Status <select> and Start/Due <input>s are only
@@ -1795,7 +1850,20 @@ function saveItem() {
   const dueDate = range ? range.dueDate : manualDueDate;
   const data = { workstreamId, categoryId, name, owner, status, startDate, dueDate, actualDate, milestones, updatedAt: Date.now() };
   if (editingItemId) {
-    Object.assign(items.find(i => i.id === editingItemId), data);
+    const target = items.find(i => i.id === editingItemId);
+    // The modal edits a detached copy (editingMilestones) and saves the whole
+    // list back at once — stamping every milestone's updatedAt here regardless
+    // would make an untouched milestone look freshly edited to a future merge
+    // (see mergeData()), silently outranking a genuine edit someone else made
+    // to it elsewhere in the meantime. Only bump the ones whose content
+    // actually changed; a milestone present in target.milestones but missing
+    // from the new list was removed here, and needs its own tombstone so a
+    // merge can't resurrect it from a stale external copy.
+    data.milestones = stampChangedMilestones(milestones, target.milestones);
+    target.milestones.forEach(old => {
+      if (!data.milestones.some(m => m.id === old.id)) tombstone(deletedMilestoneIds, old.id);
+    });
+    Object.assign(target, data);
   } else {
     // itStatus/businessStatus/budgetStatus aren't part of `data` — they're
     // never edited via this modal, only cycled inline on the row (see
@@ -2395,11 +2463,16 @@ function applyCategoryMilestoneSync(categoryId, addedNames, removedNames, ordere
   const rank = m => { const idx = orderedNames.indexOf(m.name); return idx === -1 ? orderedNames.length : idx; };
   items.filter(it => it.categoryId === categoryId).forEach(it => {
     if (removedNames.length) {
+      // Tombstoned the same way a manually-deleted milestone is (see
+      // saveItem()) — this sync is destructive by design (see confirm-modal
+      // copy in saveCategory()), but a merge with an external file/tab still
+      // needs to know these were removed on purpose rather than just absent.
+      it.milestones.filter(m => removedNames.includes(m.name)).forEach(m => tombstone(deletedMilestoneIds, m.id));
       it.milestones = it.milestones.filter(m => !removedNames.includes(m.name));
     }
     addedNames.forEach(name => {
       if (!it.milestones.some(m => m.name === name)) {
-        it.milestones.push({ id: genId(), name, dueDate: it.dueDate, status: 'not-started', actualDate: null });
+        it.milestones.push({ id: genId(), name, dueDate: it.dueDate, status: 'not-started', actualDate: null, updatedAt: Date.now() });
       }
     });
     it.milestones.sort((a, b) => rank(a) - rank(b));
@@ -2479,12 +2552,17 @@ function deleteCategoryFromModal() {
 // ---------- Toast ----------
 let toastTimer = null;
 let toastUndoAction = null;
-function showToast(msg, isError, undoAction) {
+// actionLabel defaults to "Undo" since that's the original and by far the
+// most common caller — sync-conflict reporting is the one exception, passing
+// 'Review' so the button doesn't lie about what it does.
+function showToast(msg, isError, undoAction, actionLabel) {
   const t = document.getElementById('toast');
   document.getElementById('toastMsg').textContent = msg;
   t.style.background = isError ? 'var(--danger)' : 'var(--text)';
   toastUndoAction = undoAction || null;
-  document.getElementById('toastUndoBtn').style.display = undoAction ? 'inline' : 'none';
+  const btn = document.getElementById('toastUndoBtn');
+  btn.textContent = actionLabel || 'Undo';
+  btn.style.display = undoAction ? 'inline' : 'none';
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.classList.remove('show'); toastUndoAction = null; }, undoAction ? 6000 : 2000);
@@ -2578,21 +2656,67 @@ function replaceFromFileData(data) {
   reviewCycles = data.reviewCycles || [];
   normalizeData();
 }
+// Merges one item's incoming milestones array into its existing one, by
+// milestone id, independently of whatever happens to the item's own scalar
+// fields below — this is what lets two people editing *different* milestones
+// on the *same* item (or one editing a milestone while another renames the
+// item) both keep their change, instead of one whole item snapshot silently
+// replacing the other. Same tombstone/timestamp shape as the item-level
+// merge below, just one level deeper (deletedMilestoneIds instead of
+// deletedItemIds). Returns the merged array, whether anything about it
+// actually changed, and the names of any milestone that was a genuine
+// conflict — the *same* milestone touched on both sides since lastSyncedAt
+// (0 disables this entirely — see lastSyncedAt's own comment for why a
+// first-ever merge must never report one). Deliberately per-milestone-id,
+// not "did anything change on each side" — two different milestones each
+// independently edited on their own side merge cleanly and are not a
+// conflict, even though "something changed on both sides" would be true of
+// the array as a whole.
+function mergeMilestonesArray(existingList, incomingList, respectTombstones) {
+  let changed = false;
+  const conflictedNames = [];
+  const merged = existingList.map(m => ({ ...m }));
+  incomingList.forEach(im => {
+    const idx = merged.findIndex(m => m.id === im.id);
+    if (idx !== -1) {
+      const em = merged[idx];
+      if (lastSyncedAt > 0 && (em.updatedAt || 0) > lastSyncedAt && (im.updatedAt || 0) > lastSyncedAt) {
+        conflictedNames.push(im.name);
+      }
+      if ((im.updatedAt || 0) > (em.updatedAt || 0)) { merged[idx] = { ...im }; changed = true; }
+      return;
+    }
+    const tomb = deletedMilestoneIds.find(x => x.id === im.id);
+    if (respectTombstones && tomb && tomb.deletedAt >= (im.updatedAt || 0)) return; // stays deleted — the incoming copy is stale
+    if (tomb) untombstone(deletedMilestoneIds, im.id);
+    merged.push({ ...im }); changed = true;
+  });
+  return { merged, changed, conflictedNames };
+}
 // Additive merge used by every "read data from outside localStorage" path
 // (linkFile, reconnectFile, initFileSync, doFileSyncWrite's cross-tab merge,
-// and applyImport's merge mode). Tombstones are what let this tell "never
-// seen this id" apart from "saw it, user deleted it" — without them, an id
-// merely absent from the local array looks new either way, so a stale copy
-// from an old linked file or another device gets silently re-added.
-// Incoming tombstones are merged in the same pass so a deletion recorded on
-// one device/file propagates to whichever side is doing the reading.
+// pollFileSync, and applyImport's merge mode). Tombstones are what let this
+// tell "never seen this id" apart from "saw it, user deleted it" — without
+// them, an id merely absent from the local array looks new either way, so a
+// stale copy from an old linked file or another device gets silently
+// re-added. Incoming tombstones are merged in the same pass so a deletion
+// recorded on one device/file propagates to whichever side is doing the
+// reading.
 //
 // opts.respectTombstones (default true) is set to false only by
 // applyImport()'s merge mode — see the comment on that call for why manual
 // import is exempt. Workstreams merge silently (mirroring how mytasks merges
 // projects); only items are counted in the returned {added, updated}.
+//
+// conflicts (see lastSyncedAt below) is a plain-English audit trail, not a
+// gate on anything — the merge above already resolved every case one way or
+// another (per-milestone, or per-item for everything else); this only
+// records which of those resolutions happened to overwrite a *local* change
+// made since the last successful sync, so "silently" doesn't also mean
+// "invisibly" when that happens.
 function mergeData(data, opts) {
   const respectTombstones = !opts || opts.respectTombstones !== false;
+  const conflicts = [];
   (data.deletedWorkstreamIds || []).forEach(dw => {
     const existing = deletedWorkstreamIds.find(x => x.id === dw.id);
     if (!existing) deletedWorkstreamIds.push({ id: dw.id, deletedAt: dw.deletedAt || Date.now() });
@@ -2602,6 +2726,11 @@ function mergeData(data, opts) {
     const existing = deletedItemIds.find(x => x.id === di.id);
     if (!existing) deletedItemIds.push({ id: di.id, deletedAt: di.deletedAt || Date.now() });
     else if ((di.deletedAt || 0) > existing.deletedAt) existing.deletedAt = di.deletedAt;
+  });
+  (data.deletedMilestoneIds || []).forEach(dm => {
+    const existing = deletedMilestoneIds.find(x => x.id === dm.id);
+    if (!existing) deletedMilestoneIds.push({ id: dm.id, deletedAt: dm.deletedAt || Date.now() });
+    else if ((dm.deletedAt || 0) > existing.deletedAt) existing.deletedAt = dm.deletedAt;
   });
   (data.workstreams || []).forEach(iw => {
     if (workstreams.find(w => w.id === iw.id || w.name.toLowerCase() === iw.name.toLowerCase())) return;
@@ -2625,7 +2754,28 @@ function mergeData(data, opts) {
   (data.items || []).forEach(ii => {
     const existing = items.find(i => i.id === ii.id);
     if (existing) {
-      if ((ii.updatedAt || 0) > (existing.updatedAt || 0)) { Object.assign(existing, ii); updated++; }
+      const itemName = existing.name;
+      const { merged: mergedMilestones, changed: milestonesChanged, conflictedNames } =
+        mergeMilestonesArray(existing.milestones || [], ii.milestones || [], respectTombstones);
+      conflictedNames.forEach(mName => {
+        conflicts.push({ itemName, milestoneName: mName,
+          note: `"${mName}" (on "${itemName}") was edited both locally and elsewhere since the last sync — kept whichever edit was newer.` });
+      });
+      let scalarChanged = false;
+      const incomingNewer = (ii.updatedAt || 0) > (existing.updatedAt || 0);
+      if (incomingNewer) {
+        const bothEditedSinceSync = lastSyncedAt > 0
+          && (existing.updatedAt || 0) > lastSyncedAt && (ii.updatedAt || 0) > lastSyncedAt;
+        if (bothEditedSinceSync) {
+          conflicts.push({ itemName, milestoneName: null,
+            note: `Both your copy and the incoming one changed "${itemName}" since the last sync — kept the incoming version.` });
+        }
+        const { milestones, ...incomingScalars } = ii;
+        Object.assign(existing, incomingScalars);
+        scalarChanged = true;
+      }
+      existing.milestones = mergedMilestones;
+      if (milestonesChanged || scalarChanged) updated++;
       return;
     }
     const tomb = deletedItemIds.find(x => x.id === ii.id);
@@ -2633,7 +2783,7 @@ function mergeData(data, opts) {
     if (tomb) untombstone(deletedItemIds, ii.id); // incoming edit is newer than our deletion (or tombstones are being ignored) — let it back in
     items.push(ii); added++;
   });
-  return { added, updated };
+  return { added, updated, conflicts };
 }
 function applyImport(mode) {
   if (!pendingImportData) return;
@@ -2679,6 +2829,38 @@ function renderBackupsModal() {
     </div>
   `).join('');
 }
+// ---------- Sync conflicts (see mergeData()'s conflicts return + reportSyncConflicts()) ----------
+function openSyncConflictsModal() { renderSyncConflictsModal(); document.getElementById('syncConflictsModalBg').classList.add('open'); }
+function closeSyncConflictsModal() { document.getElementById('syncConflictsModalBg').classList.remove('open'); }
+function renderSyncConflictsModal() {
+  const el = document.getElementById('syncConflictsList');
+  if (syncConflictLog.length === 0) {
+    el.innerHTML = `<div class="sync-conflicts-empty">No conflicts recorded this session — nothing has needed automatic resolving.</div>`;
+    return;
+  }
+  el.innerHTML = syncConflictLog.slice().reverse().map(c => `
+    <div class="conflict-row">
+      <div class="conflict-row-note">${esc(c.note)}</div>
+      <div class="conflict-row-time">${esc(new Date(c.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</div>
+    </div>
+  `).join('');
+}
+function clearSyncConflictLog() {
+  syncConflictLog = [];
+  updateSyncConflictsUI();
+  renderSyncConflictsModal();
+}
+// Small amber badge next to the file-sync indicator — the toast
+// reportSyncConflicts() shows is easy to miss (it's a passing notification,
+// same as any other toast), so this stays up as a persistent, clickable
+// reminder for as long as there's anything unreviewed.
+function updateSyncConflictsUI() {
+  const el = document.getElementById('syncConflictIndicator');
+  if (!el) return;
+  el.innerHTML = syncConflictLog.length
+    ? `<button class="btn btn-sm sync-conflict-badge" onclick="openSyncConflictsModal()" title="Some edits needed automatic conflict resolution"><i class="fa-solid fa-triangle-exclamation"></i> ${syncConflictLog.length} conflict${syncConflictLog.length === 1 ? '' : 's'}</button>`
+    : '';
+}
 function restoreBackup(date) {
   const backups = getBackups();
   const b = backups.find(x => x.date === date);
@@ -2721,6 +2903,32 @@ const _fsPut = h => _fsIdb('readwrite', (s, r, j) => { const q = s.put(h, _FS.ke
 const _fsDel = () => _fsIdb('readwrite', (s, r, j) => { const q = s.delete(_FS.key); q.onsuccess = () => r(); q.onerror = () => j(q.error); });
 
 let lastSyncedSnapshot = null;
+// The last time this browser successfully reconciled with the linked file
+// (a link, reconnect, write-time merge, or background poll — see below) —
+// mergeData()'s conflict detection uses this as the merge "base": an item or
+// milestone that changed on *both* sides since this checkpoint was a genuine
+// concurrent edit, not just "their copy happened to be newer". Reset to 0
+// whenever the file link changes, so a freshly-linked file never reports
+// false conflicts against edits made before it was ever connected.
+let lastSyncedAt = 0;
+// Plain-English audit trail of conflicts mergeData() has resolved
+// automatically (see its own comment) — session-only, not persisted, since
+// this is a heads-up for whoever's at the keyboard right now, not a
+// permanent record. reportSyncConflicts() appends to it and surfaces a
+// toast; the small badge next to the file-sync indicator (see
+// updateSyncConflictsUI()) is what makes it discoverable if that toast is
+// missed.
+let syncConflictLog = [];
+function reportSyncConflicts(conflicts) {
+  if (!conflicts || !conflicts.length) return;
+  const now = Date.now();
+  syncConflictLog.push(...conflicts.map(c => ({ ...c, at: now })));
+  updateSyncConflictsUI();
+  showToast(
+    `${conflicts.length} conflicting edit${conflicts.length === 1 ? '' : 's'} resolved automatically`,
+    false, () => openSyncConflictsModal(), 'Review'
+  );
+}
 // save() fires a file write on every single change (a keystroke, a status
 // cycle, a rename) without waiting for the previous one to finish — with no
 // queuing, two overlapping writes could finish in either order, and if the
@@ -2747,7 +2955,7 @@ async function doFileSyncWrite() {
   if (!fileHandle) return;
   const data = {
     programme, workstreams, items, categories, reviewCycles, mode, view, theme,
-    filterWorkstreamId, deletedWorkstreamIds, deletedItemIds
+    filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds
   };
   try {
     const perm = await fileHandle.requestPermission({ mode: 'readwrite' });
@@ -2759,14 +2967,15 @@ async function doFileSyncWrite() {
       if (currentText.trim() && currentText !== lastSyncedSnapshot) {
         let externalData; try { externalData = JSON.parse(currentText); } catch (_) { externalData = null; }
         if (externalData && externalData.workstreams && externalData.items) {
-          const { added, updated } = mergeData(externalData);
+          const { added, updated, conflicts } = mergeData(externalData);
           if (added || updated) {
             normalizeData();
-            payload = { ...data, workstreams, items, categories, reviewCycles };
+            payload = { ...data, workstreams, items, categories, reviewCycles, deletedMilestoneIds };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
             render();
             showToast(`Synced changes from another tab/device (${added} added, ${updated} updated)`);
           }
+          reportSyncConflicts(conflicts);
         }
       }
     }
@@ -2775,6 +2984,7 @@ async function doFileSyncWrite() {
     await w.write(text);
     await w.close();
     lastSyncedSnapshot = text;
+    lastSyncedAt = Date.now();
     updateFileSyncUI();
   } catch (e) {
     // localStorage remains the authoritative fallback, but a silent failure
@@ -2784,9 +2994,57 @@ async function doFileSyncWrite() {
     showToast('Could not save to the linked file — it will keep retrying on the next change', true);
   }
 }
+// Background polling — without this, an external change (a teammate's edit,
+// synced down by OneDrive/SharePoint) only gets noticed the next time *this*
+// browser itself writes, i.e. the next time the person sitting here makes an
+// edit. Someone who's just reading the board, or has it open in an idle tab,
+// would otherwise never see anything new until they touched something or
+// reloaded. Deliberately a separate, lighter path from doFileSyncWrite()
+// rather than just calling queueFileSyncWrite() on a timer — that would
+// unconditionally rewrite the file (bumping its mtime, re-triggering
+// SharePoint/OneDrive sync) every interval even when nothing changed at all;
+// this only touches the file when there's something worth merging.
+const FILE_SYNC_POLL_MS = 45000;
+let fileSyncPollTimer = null;
+function startFileSyncPolling() {
+  stopFileSyncPolling();
+  fileSyncPollTimer = setInterval(pollFileSync, FILE_SYNC_POLL_MS);
+}
+function stopFileSyncPolling() {
+  if (fileSyncPollTimer) { clearInterval(fileSyncPollTimer); fileSyncPollTimer = null; }
+}
+async function pollFileSync() {
+  if (!fileHandle) return;
+  try {
+    // queryPermission, not requestPermission — a background timer has no
+    // user gesture behind it, so this must never risk popping an OS
+    // permission prompt on its own; if permission was lost, the existing
+    // "Reconnect" affordance (see updateFileSyncUI()) is what re-grants it.
+    const perm = await fileHandle.queryPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') return;
+    const currentText = await (await fileHandle.getFile()).text();
+    if (!currentText.trim() || currentText === lastSyncedSnapshot) return; // nothing external changed
+    let externalData; try { externalData = JSON.parse(currentText); } catch (_) { return; }
+    if (!externalData || !externalData.workstreams || !externalData.items) return;
+    const { added, updated, conflicts } = mergeData(externalData);
+    lastSyncedAt = Date.now();
+    if (added || updated) {
+      normalizeData();
+      save(); render();
+      showToast(`Synced changes from another tab/device (${added} added, ${updated} updated)`);
+    } else {
+      // Nothing we track changed (e.g. only mode/view/theme differ) — still
+      // remember this text so the next poll doesn't keep re-parsing it.
+      lastSyncedSnapshot = currentText;
+    }
+    reportSyncConflicts(conflicts);
+  } catch (_) { /* transient read failure — next interval tries again */ }
+}
 async function _clearFileLink() {
   fileHandle = null;
   lastSyncedSnapshot = null;
+  lastSyncedAt = 0;
+  stopFileSyncPolling();
   await _fsDel().catch(() => {});
   updateFileSyncUI();
 }
@@ -2801,6 +3059,7 @@ async function createNewLinkedFile() {
     try { await _fsPut(handle); } catch (_) {}
     await doFileSyncWrite();
     updateFileSyncUI();
+    startFileSyncPolling();
     showToast(`Linked — auto-saving to ${handle.name}`);
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not create file', true); }
 }
@@ -2822,12 +3081,15 @@ async function linkFile() {
       if (data && data.workstreams && data.items) {
         if (isFreshLocalState()) {
           replaceFromFileData(data);
-          save(); render(); updateFileSyncUI();
+          lastSyncedSnapshot = existingText; lastSyncedAt = Date.now();
+          save(); render(); updateFileSyncUI(); startFileSyncPolling();
           showToast(`Restored from ${handle.name} — auto-saving enabled`);
         } else {
-          const { added, updated } = mergeData(data);
+          const { added, updated, conflicts } = mergeData(data);
           normalizeData();
-          save(); render(); updateFileSyncUI();
+          lastSyncedSnapshot = existingText; lastSyncedAt = Date.now();
+          save(); render(); updateFileSyncUI(); startFileSyncPolling();
+          reportSyncConflicts(conflicts);
           const parts = []; if (added) parts.push(`${added} added`); if (updated) parts.push(`${updated} updated`);
           showToast(`Merged from ${handle.name} — ${parts.length ? parts.join(', ') : 'nothing new'} — auto-saving enabled`);
         }
@@ -2839,6 +3101,7 @@ async function linkFile() {
     }
     await doFileSyncWrite();
     updateFileSyncUI();
+    startFileSyncPolling();
     showToast(`Linked — auto-saving to ${handle.name}`);
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not link file', true); }
 }
@@ -2856,16 +3119,17 @@ async function reconnectFile() {
     if (data.workstreams && data.items) {
       if (isFreshLocalState()) {
         replaceFromFileData(data);
-        lastSyncedSnapshot = text;
-        save(); render(); updateFileSyncUI();
+        lastSyncedSnapshot = text; lastSyncedAt = Date.now();
+        save(); render(); updateFileSyncUI(); startFileSyncPolling();
         showToast(`Reconnected to ${fileHandle.name} — restored from file`);
         return;
       }
-      const { added, updated } = mergeData(data);
+      const { added, updated, conflicts } = mergeData(data);
       normalizeData();
-      lastSyncedSnapshot = text;
+      lastSyncedSnapshot = text; lastSyncedAt = Date.now();
       save(); render();
-      updateFileSyncUI();
+      updateFileSyncUI(); startFileSyncPolling();
+      reportSyncConflicts(conflicts);
       const parts = []; if (added) parts.push(`${added} added`); if (updated) parts.push(`${updated} updated`);
       showToast(`Reconnected to ${fileHandle.name}${parts.length ? ` — ${parts.join(', ')}` : ''}`);
       return;
@@ -2916,15 +3180,18 @@ async function initFileSync() {
         const text = await (await handle.getFile()).text();
         const data = JSON.parse(text);
         if (data.workstreams && data.items) {
+          let conflicts = [];
           if (isFreshLocalState()) {
             replaceFromFileData(data);
           } else {
-            mergeData(data);
+            ({ conflicts } = mergeData(data));
             normalizeData();
           }
-          lastSyncedSnapshot = text;
+          lastSyncedSnapshot = text; lastSyncedAt = Date.now();
           save(); render();
+          reportSyncConflicts(conflicts);
         }
+        startFileSyncPolling();
       } catch (_) { /* read failed — keep localStorage data */ }
     } else {
       openFileSyncModal(handle);
@@ -2967,9 +3234,10 @@ document.getElementById('categoryModalBg').addEventListener('click', (e) => { if
 document.getElementById('confirmModalBg').addEventListener('click', (e) => { if (e.target.id === 'confirmModalBg') closeConfirmModal(); });
 document.getElementById('importModalBg').addEventListener('click', (e) => { if (e.target.id === 'importModalBg') closeImportModal(); });
 document.getElementById('backupsModalBg').addEventListener('click', (e) => { if (e.target.id === 'backupsModalBg') closeBackupsModal(); });
+document.getElementById('syncConflictsModalBg').addEventListener('click', (e) => { if (e.target.id === 'syncConflictsModalBg') closeSyncConflictsModal(); });
 document.getElementById('fileSyncModalBg').addEventListener('click', (e) => { if (e.target.id === 'fileSyncModalBg') closeFileSyncModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeCategoryModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeFileSyncModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeCategoryModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); }
 });
 
 // ---------- Init ----------
