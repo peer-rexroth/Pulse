@@ -326,11 +326,19 @@
      Items spanning both columns on row 2 (it needs the width for its three
      table columns), Decisions/Next Steps on row 3. */
   .minutes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
-  .minutes-grid .field textarea { min-height: 84px; }
+  /* Direct-child combinator matters here: without it, this also matches the
+     per-row Action Item <textarea>s (nested a few levels deeper inside
+     .minutes-action-items-field, which is itself a .field) and forces every
+     row to 84px regardless of content — that was the real cause of rows
+     looking multi-line-tall even for a one-line action item. */
+  .minutes-grid .field > textarea { min-height: 84px; }
+  .minutes-dropzone { border-radius: 8px; transition: background .1s ease; }
+  .minutes-dropzone.drag-over { background: var(--accent-bg); }
+  .minutes-dropzone.drag-over textarea { outline: 2px dashed var(--accent); outline-offset: -2px; }
   .minutes-action-items-field { grid-column: 1 / -1; }
   .minutes-action-items { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .minutes-action-item-row {
-    display: grid; grid-template-columns: 1fr 78px 96px 22px; gap: 6px; align-items: center;
+    display: grid; grid-template-columns: 1fr 100px 100px 22px; gap: 6px; align-items: center;
     padding: 5px 8px; border-bottom: 1px solid var(--border);
   }
   .minutes-action-item-row:last-child { border-bottom: none; }
@@ -342,14 +350,23 @@
      look, since these already sit inside a bordered row of a bordered
      table; a focus highlight is the only visual affordance. The Action
      Item cell is a <textarea>, not an <input>, so multi-line descriptions
-     aren't clipped — it grows with content via autoGrowMinutesTextarea()
-     rather than getting its own scrollbar or a manual resize handle. */
+     aren't clipped. */
   .minutes-action-item-row input[type="text"],
   .minutes-action-item-row textarea {
     width: 100%; box-sizing: border-box; padding: 5px 6px; margin: 0; border: none; border-radius: 5px;
     background: transparent; color: var(--text); font-size: 12px; font-family: inherit; line-height: 1.4;
   }
-  .minutes-action-item-row textarea { resize: none; overflow: hidden; min-height: 26px; }
+  /* field-sizing:content (Chrome/Edge 123+ — the browsers this app already
+     targets for File System Access sync) lets the browser itself size the
+     box to its content, growing line-by-line as text wraps and shrinking
+     back down if it's edited shorter — no JS height/scrollHeight
+     measurement involved, which is what kept making this look taller than
+     one line at rest despite CSS min-height and a manual auto-grow
+     handler. min-height is still the floor for a short/empty value. */
+  .minutes-action-item-row textarea {
+    resize: none; overflow: hidden; min-height: 26px;
+    field-sizing: content;
+  }
   .minutes-action-item-row input[type="text"]:focus,
   .minutes-action-item-row textarea:focus { outline: none; background: var(--panel-2); }
   .minutes-action-item-row .date-pill { background: transparent; padding: 3px 2px; }
@@ -613,8 +630,13 @@
     <h3>Meeting Minutes</h3>
     <div class="minutes-grid">
       <div class="field">
-        <label>Paste minutes to auto-fill</label>
-        <textarea id="minutesPasteInput" style="min-height:56px" placeholder="Paste raw meeting notes here — lines starting with Summary, Action Items, Decisions, or Next Steps are split into the fields alongside automatically."></textarea>
+        <label>Paste or drop a minutes file to auto-fill</label>
+        <div class="minutes-dropzone" id="minutesDropzone"
+          ondragover="event.preventDefault(); this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="handleMinutesFileDrop(event)">
+          <textarea id="minutesPasteInput" style="min-height:56px" placeholder="Paste raw meeting notes here, or drag a .txt/.md/.docx file onto this box — lines starting with Summary, Action Items, Decisions, or Next Steps are split into the fields alongside automatically."></textarea>
+        </div>
         <button class="btn btn-sm" style="margin-top:8px" onclick="parseMinutesPaste()"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fill from pasted text</button>
       </div>
       <div class="field">
@@ -2360,31 +2382,18 @@ let editingMinutesActionItems = [];
 // A <textarea>, not an <input> — an action item's own description is
 // frequently long enough to wrap onto more than one line, and clipping it
 // to a single line (as a plain input would) hides the second half of what
-// someone typed. Grows with content rather than scrolling internally or
-// exposing a manual resize handle — see autoGrowMinutesTextarea().
+// someone typed. Sizing to content (grow/shrink) is handled entirely by
+// CSS `field-sizing: content` on .minutes-action-item-row textarea — no JS
+// height measurement here; an earlier scrollHeight-based approach kept
+// measuring unreliably and left rows looking taller than one line at rest.
 function renderMinutesActionItemsRows() {
-  const el = document.getElementById('minutesActionItemsRows');
-  el.innerHTML = editingMinutesActionItems.map((a, idx) => `
+  document.getElementById('minutesActionItemsRows').innerHTML = editingMinutesActionItems.map((a, idx) => `
     <div class="minutes-action-item-row">
-      <textarea rows="1" placeholder="Action item" oninput="editingMinutesActionItems[${idx}].text = this.value; autoGrowMinutesTextarea(this)">${esc(a.text)}</textarea>
+      <textarea rows="1" placeholder="Action item" oninput="editingMinutesActionItems[${idx}].text = this.value">${esc(a.text)}</textarea>
       <input type="text" value="${esc(a.owner || '')}" placeholder="Owner" oninput="editingMinutesActionItems[${idx}].owner = this.value">
       ${dateInputHtml(a.dueDate, `onblur="editingMinutesActionItems[${idx}].dueDate = this.value || null"`)}
       <button class="row-icon-btn" onclick="removeMinutesActionItemRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>
     </div>`).join('');
-  el.querySelectorAll('textarea').forEach(autoGrowMinutesTextarea);
-}
-// Resets to 'auto' first so shrinking a row (e.g. after deleting a line)
-// actually shrinks the textarea back down, not just grows monotonically.
-function autoGrowMinutesTextarea(el) {
-  // Collapse to 0 first, not 'auto' — 'auto' can leave some browsers
-  // reporting scrollHeight against the box's previous (already-grown)
-  // size instead of truly re-measuring from empty, so a row that no longer
-  // needs multiple lines wouldn't shrink back down, and a fresh short row
-  // could start taller than one line. Collapsing all the way to 0 forces a
-  // real re-measurement every time; CSS min-height is what keeps a
-  // single-line row from actually rendering at 0.
-  el.style.height = '0px';
-  el.style.height = el.scrollHeight + 'px';
 }
 function addMinutesActionItemRow() {
   editingMinutesActionItems.push({ id: genId(), text: '', owner: '', dueDate: null });
@@ -2421,6 +2430,97 @@ function parseMinutesPaste() {
   document.getElementById('minutesNextStepsInput').value = parsed.nextSteps;
   editingMinutesActionItems = linesToActionItems(parsed.actionItems);
   renderMinutesActionItemsRows();
+}
+// A .docx is a zip archive — its actual text sits inside a compressed
+// word/document.xml entry, so reading the raw bytes as text (a plain
+// FileReader.readAsText()) just produces binary/XML noise. zipFindEntry()
+// is a minimal, read-only zip reader — just enough to locate one named
+// entry via the End Of Central Directory record and central directory
+// (not a general-purpose zip library, and not needed to be one for this).
+// Deliberately no library/dependency for any of this (matches this app's
+// zero-dependency, no-build-step design): DecompressionStream('deflate-raw')
+// (native in Chrome/Edge, the same browsers this app already requires for
+// File System Access sync) handles the actual deflate decompression —
+// zip's compression method 8 — and DOMParser handles the resulting XML.
+function zipFindEntry(buf, entryName) {
+  const view = new DataView(buf);
+  // End Of Central Directory: fixed 22-byte record, optionally followed by
+  // up to a 65535-byte comment, so it isn't always exactly 22 bytes from
+  // the end — found by scanning backward for its signature instead.
+  let eocd = -1;
+  const scanFrom = Math.max(0, buf.byteLength - 22 - 65535);
+  for (let i = buf.byteLength - 22; i >= scanFrom; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd === -1) throw new Error('Not a valid .docx (zip) file');
+  const entryCount = view.getUint16(eocd + 10, true);
+  let offset = view.getUint32(eocd + 16, true);
+  for (let i = 0; i < entryCount; i++) {
+    if (view.getUint32(offset, true) !== 0x02014b50) break; // central directory entry signature
+    const method = view.getUint16(offset + 10, true);
+    const compSize = view.getUint32(offset + 20, true);
+    const nameLen = view.getUint16(offset + 28, true);
+    const extraLen = view.getUint16(offset + 30, true);
+    const commentLen = view.getUint16(offset + 32, true);
+    const localHeaderOffset = view.getUint32(offset + 42, true);
+    const name = new TextDecoder().decode(new Uint8Array(buf, offset + 46, nameLen));
+    if (name === entryName) {
+      // The local file header repeats (and can't be trusted to exactly
+      // match) the name/extra field lengths — read them again from the
+      // local header itself to find where the actual entry data starts.
+      const localView = new DataView(buf, localHeaderOffset);
+      const localNameLen = localView.getUint16(26, true);
+      const localExtraLen = localView.getUint16(28, true);
+      const dataStart = localHeaderOffset + 30 + localNameLen + localExtraLen;
+      return { method, data: new Uint8Array(buf, dataStart, compSize) };
+    }
+    offset += 46 + nameLen + extraLen + commentLen; // 46 = fixed central-directory-entry header size
+  }
+  return null;
+}
+async function inflateRaw(bytes) {
+  const ds = new DecompressionStream('deflate-raw');
+  const writer = ds.writable.getWriter();
+  writer.write(bytes);
+  writer.close();
+  return new Uint8Array(await new Response(ds.readable).arrayBuffer());
+}
+// Word paragraphs are <w:p> elements, each containing one or more <w:r>
+// (run) elements, each containing the actual visible text in <w:t>. This
+// only reconstructs paragraph breaks (one <w:p> per line) — a manual
+// mid-paragraph line break (<w:br/>) isn't distinguished from a plain
+// space, which is a fine tradeoff for section-header detection purposes
+// (real section headers are their own paragraph, not a mid-paragraph break).
+async function extractDocxText(arrayBuffer) {
+  const entry = zipFindEntry(arrayBuffer, 'word/document.xml');
+  if (!entry) throw new Error('Could not find document text inside this .docx');
+  const bytes = entry.method === 0 ? entry.data : await inflateRaw(entry.data);
+  const xml = new TextDecoder('utf-8').decode(bytes);
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.querySelector('parsererror')) throw new Error('Could not parse this .docx\'s document content');
+  return Array.from(doc.getElementsByTagName('w:p'))
+    .map(p => Array.from(p.getElementsByTagName('w:t')).map(t => t.textContent).join(''))
+    .join('\n');
+}
+// Drag-and-drop a minutes file straight onto the paste box — .docx gets the
+// real zip/XML extraction above; anything else is read as plain text
+// (.txt/.md/…). No upload, no network, same local-only spirit as
+// everything else in this app. Drops the resulting text into the paste
+// textarea and immediately auto-fills from it, same as clicking "Auto-fill
+// from pasted text" would. Legacy binary .doc (not .docx) isn't a zip file
+// at all and isn't supported — there's no parser for that older format here.
+async function handleMinutesFileDrop(event) {
+  event.preventDefault();
+  document.getElementById('minutesDropzone').classList.remove('drag-over');
+  const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+  if (!file) return;
+  try {
+    const text = /\.docx$/i.test(file.name) ? await extractDocxText(await file.arrayBuffer()) : await file.text();
+    document.getElementById('minutesPasteInput').value = text;
+    parseMinutesPaste();
+  } catch (e) {
+    showToast('Could not read that file', true);
+  }
 }
 function saveMinutes() {
   const cycle = reviewCycles.find(c => c.id === minutesModalCycleId);
