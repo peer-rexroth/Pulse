@@ -785,6 +785,23 @@ test('addMinutesActionItemRow/removeMinutesActionItemRow add and remove rows fro
   assertEqual(editingMinutesActionItems.length, 1);
 });
 
+test('clearMinutesFields blanks the whole working form without touching anything already saved', function () {
+  const cycle = addCompletedReviewCycle();
+  cycle.minutes = { summary: 'Saved summary', actionItems: [{ id: 'a1', text: 'Saved item', owner: 'Alice', dueDate: null }], decisions: 'Saved decision', nextSteps: 'Saved next step', importedAt: 1 };
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesPasteInput').value = 'some pasted text';
+  clearMinutesFields();
+  assertEqual(document.getElementById('minutesPasteInput').value, '');
+  assertEqual(document.getElementById('minutesSummaryInput').value, '');
+  assertEqual(document.getElementById('minutesDecisionsInput').value, '');
+  assertEqual(document.getElementById('minutesNextStepsInput').value, '');
+  assertEqual(editingMinutesActionItems.length, 0);
+  // The already-saved minutes on the cycle itself must be untouched — only
+  // the open modal's working form was cleared, and nothing was saved yet.
+  assertEqual(cycle.minutes.summary, 'Saved summary');
+  assertEqual(cycle.minutes.actionItems.length, 1);
+});
+
 test('the Action Item cell renders as a <textarea>, not a single-line <input>, so a multi-line description isn\'t clipped', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);

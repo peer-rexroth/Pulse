@@ -638,6 +638,7 @@
           <textarea id="minutesPasteInput" style="min-height:56px" placeholder="Paste raw meeting notes here, or drag a .txt/.md/.docx file onto this box — lines starting with Summary, Action Items, Decisions, or Next Steps are split into the fields alongside automatically."></textarea>
         </div>
         <button class="btn btn-sm" style="margin-top:8px" onclick="parseMinutesPaste()"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fill from pasted text</button>
+        <button class="btn btn-sm" style="margin-top:8px" onclick="clearMinutesFields()" title="Clear every field below — does not affect anything already saved"><i class="fa-solid fa-eraser"></i> Clear all fields</button>
       </div>
       <div class="field">
         <label>Meeting Summary</label>
@@ -2444,6 +2445,23 @@ function parseMinutesPaste() {
   document.getElementById('minutesDecisionsInput').value = parsed.decisions;
   document.getElementById('minutesNextStepsInput').value = parsed.nextSteps;
   editingMinutesActionItems = linesToActionItems(parsed.actionItems);
+  renderMinutesActionItemsRows();
+}
+// Resets the modal's working form back to blank — the paste box, all three
+// plain-text fields, and the Action Items table. Deliberately distinct from
+// removeMinutes(): this only clears whatever's currently typed/parsed into
+// the open modal (nothing saved yet is affected, and there's nothing to
+// confirm), whereas removeMinutes() deletes already-saved minutes from the
+// cycle and goes through the confirm modal since that's a real, hard-to-undo
+// action. Useful either to start over after a messy auto-fill, or to blank
+// out an existing cycle's minutes in the modal before typing fresh ones
+// (still requires clicking Save to actually commit the empty state).
+function clearMinutesFields() {
+  document.getElementById('minutesPasteInput').value = '';
+  document.getElementById('minutesSummaryInput').value = '';
+  document.getElementById('minutesDecisionsInput').value = '';
+  document.getElementById('minutesNextStepsInput').value = '';
+  editingMinutesActionItems = [];
   renderMinutesActionItemsRows();
 }
 // A .docx is a zip archive — its actual text sits inside a compressed
