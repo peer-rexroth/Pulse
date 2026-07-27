@@ -87,6 +87,275 @@
     --stat-complete: #8fa8f2;    --stat-complete-bg: #1f2c4d;
   }
 
+  /* ── Color scheme system ────────────────────────────────────────────────
+     Ported from this author's mytasks app (see its CLAUDE.md's "Color
+     scheme system"). Two independent axes: data-theme (light/dark, the
+     existing sun/moon toggle, unchanged) and data-scheme (picked from the
+     palette-icon button's modal, setColorScheme()). Each scheme below
+     defines its own light *and* dark block, so the two axes combine freely
+     (e.g. [data-scheme="dracula"][data-theme="dark"]). THEME_SCHEMES (in
+     the inline script block below) is the single source of truth for which
+     schemes exist; a scheme's id must match its [data-scheme="..."] selector here.
+     "Standard" is untouched — it's just the original :root/bare-dark blocks
+     above, so an app with no data-scheme attribute looks exactly as it
+     always has. A scheme only overrides the tokens that actually differ by
+     hue — --radius/--shadow/--item-grid-cols/--font-ish structural values
+     are deliberately left undeclared here and keep cascading from the
+     blocks above, since they're not part of "color scheme". Real product
+     colors (VS Code, Dracula/Alucard, GitHub Primer) are the same verified
+     values mytasks already fetched and documented, not reconstructed from
+     memory; Pulse's own extra per-workstream slots that don't exist in
+     mytasks' 6-slot system (ws-pink, ws-grey, stat-not-started) are noted
+     per-scheme as either a real extra token where one exists (GitHub's own
+     Primer data-viz pink) or a deliberate, honestly-labeled derivation
+     where the source product's spec has no separate token for it. */
+
+  /* Modern: VS Code's actual Dark Modern / Light Modern themes (same real
+     values mytasks verified — extensions/theme-defaults/themes/*.json in
+     microsoft/vscode). Light Modern doesn't tonally separate primary from
+     secondary text (fg and descriptionForeground are both #3b3b3b), so
+     ws-grey/text-dim share that same flat value here rather than an
+     invented differentiation VS Code's own theme doesn't make. ws-pink has
+     no VS Code equivalent at all — derived as an even blend of this
+     scheme's own real purple and red tones, not a separately-sourced value. */
+  html[data-scheme="modern"] {
+    --bg: #f8f8f8; --panel: #ffffff; --panel-2: #e8e8e8;
+    --border: rgba(59,59,59,0.12);
+    --text: #3b3b3b; --text-dim: #3b3b3b; --text-faint: #8a8a8a;
+    --accent: #005fb8; --accent-bg: #e3edf7; --danger: #cd3131;
+
+    --ws-blue: #005fb8;   --ws-blue-bg: #e3edf7;
+    --ws-teal: #0598bc;   --ws-teal-bg: #dcf0f5;
+    --ws-purple: #af00db; --ws-purple-bg: #f5e0fa;
+    --ws-amber: #bf8803;  --ws-amber-bg: #faf0d0;
+    --ws-pink: #be1986;   --ws-pink-bg: #fbe6f2;
+    --ws-green: #388a34;  --ws-green-bg: #e2f0e0;
+    --ws-red: #cd3131;    --ws-red-bg: #fbe7e6;
+    --ws-grey: #3b3b3b;   --ws-grey-bg: #e8e8e8;
+
+    --stat-not-started: #8a8a8a; --stat-not-started-bg: #e8e8e8;
+    --stat-green: #388a34;       --stat-green-bg: #e2f0e0;
+    --stat-amber: #bf8803;       --stat-amber-bg: #faf0d0;
+    --stat-red: #cd3131;         --stat-red-bg: #fbe7e6;
+    --stat-complete: #005fb8;    --stat-complete-bg: #e3edf7;
+  }
+  html[data-scheme="modern"][data-theme="dark"] {
+    --bg: #181818; --panel: #1f1f1f; --panel-2: #2a2d2e;
+    --border: rgba(204,204,204,0.10);
+    --text: #cccccc; --text-dim: #9d9d9d; --text-faint: #6a6a6a;
+    --accent: #3794ff; --accent-bg: #0d2d4a; --danger: #f14c4c;
+
+    --ws-blue: #3794ff;   --ws-blue-bg: #0d2d4a;
+    --ws-teal: #29b8db;   --ws-teal-bg: #0d2e38;
+    --ws-purple: #c586c0; --ws-purple-bg: #2e2036;
+    --ws-amber: #cca700;  --ws-amber-bg: #3a3010;
+    --ws-pink: #db6986;   --ws-pink-bg: #3a2030;
+    --ws-green: #89d185;  --ws-green-bg: #1c3320;
+    --ws-red: #f14c4c;    --ws-red-bg: #4a1414;
+    --ws-grey: #9d9d9d;   --ws-grey-bg: #2a2d2e;
+
+    --stat-not-started: #6a6a6a; --stat-not-started-bg: #2a2d2e;
+    --stat-green: #89d185;       --stat-green-bg: #1c3320;
+    --stat-amber: #cca700;       --stat-amber-bg: #3a3010;
+    --stat-red: #f14c4c;         --stat-red-bg: #4a1414;
+    --stat-complete: #3794ff;    --stat-complete-bg: #0d2d4a;
+  }
+
+  /* Dracula: the official palette (same verified values mytasks already
+     uses) — #282a36 with #6272a4 comments, #bd93f9 purple, #ff79c6 pink,
+     #8be9fd cyan, #50fa7b green, #ffb86c orange, #ff5555 red. Light mode is
+     Alucard, Dracula Pro's own official light theme (draculatheme.com/spec).
+     Unlike mytasks (which only needed 3 cool-hue slots and so folded
+     Dracula's real Pink into its "purple" variable), Pulse has separate
+     ws-purple and ws-pink slots — ws-purple uses Dracula's real Purple
+     here and ws-pink uses Dracula's real Pink, both literal spec values,
+     no compromise needed. ws-grey uses Dracula's real named "Comment"
+     tone (#6272a4/#6c664b) — an authentic Dracula color, not an
+     invention. The one true gap: Dracula's spec has no second magenta
+     hue, so ws-pink itself would just duplicate Purple/Pink's own family —
+     there isn't one to duplicate here since pink already has its own real
+     value; no derivation was actually needed for this scheme. */
+  html[data-scheme="dracula"] {
+    --bg: #f5efd7; --panel: #fffbeb; --panel-2: #cfcfde;
+    --border: rgba(31,31,31,0.12);
+    --text: #1f1f1f; --text-dim: #6c664b; --text-faint: #a39d7a;
+    --accent: #644ac9; --accent-bg: #e7e0f7; --danger: #cb3a2a;
+
+    --ws-blue: #644ac9;   --ws-blue-bg: #e7e0f7;
+    --ws-teal: #036a96;   --ws-teal-bg: #d8f0f3;
+    --ws-purple: #a3144d; --ws-purple-bg: #f7dce8;
+    --ws-amber: #a34d14;  --ws-amber-bg: #f5e2ce;
+    --ws-pink: #98427a;   --ws-pink-bg: #f6e2ea;
+    --ws-green: #14710a;  --ws-green-bg: #dcf0d8;
+    --ws-red: #cb3a2a;    --ws-red-bg: #fbe2df;
+    --ws-grey: #6c664b;   --ws-grey-bg: #cfcfde;
+
+    --stat-not-started: #a39d7a; --stat-not-started-bg: #cfcfde;
+    --stat-green: #14710a;       --stat-green-bg: #dcf0d8;
+    --stat-amber: #a34d14;       --stat-amber-bg: #f5e2ce;
+    --stat-red: #cb3a2a;         --stat-red-bg: #fbe2df;
+    --stat-complete: #644ac9;    --stat-complete-bg: #e7e0f7;
+  }
+  html[data-scheme="dracula"][data-theme="dark"] {
+    --bg: #21222c; --panel: #282a36; --panel-2: #44475a;
+    --border: rgba(248,248,242,0.10);
+    --text: #f8f8f2; --text-dim: #6272a4; --text-faint: #4d5673;
+    --accent: #bd93f9; --accent-bg: #3a3355; --danger: #ff5555;
+
+    --ws-blue: #bd93f9;   --ws-blue-bg: #3a3355;
+    --ws-teal: #8be9fd;   --ws-teal-bg: #1c3a42;
+    --ws-purple: #ff79c6; --ws-purple-bg: #4a2740;
+    --ws-amber: #ffb86c;  --ws-amber-bg: #4a3820;
+    --ws-pink: #de74a7;   --ws-pink-bg: #452a3d;
+    --ws-green: #50fa7b;  --ws-green-bg: #1c3a26;
+    --ws-red: #ff5555;    --ws-red-bg: #47272a;
+    --ws-grey: #6272a4;   --ws-grey-bg: #44475a;
+
+    --stat-not-started: #4d5673; --stat-not-started-bg: #44475a;
+    --stat-green: #50fa7b;       --stat-green-bg: #1c3a26;
+    --stat-amber: #ffb86c;       --stat-amber-bg: #4a3820;
+    --stat-red: #ff5555;         --stat-red-bg: #47272a;
+    --stat-complete: #bd93f9;    --stat-complete-bg: #3a3355;
+  }
+
+  /* GitHub: Primer's actual semantic colors (same verified values mytasks
+     already uses) — #0969da/#4493f8 accent blue, #1a7f37/#3fb950 success
+     green, #cf222e/#f85149 danger red, #8250df/#a371f7 "merged" purple,
+     #9a6700/#d29922 attention amber. ws-pink uses Primer's own real
+     data-visualization pink token (--data-pink-color-emphasis: #ce2c85,
+     --data-pink-color-muted: #ffe5f1 — fetched directly from
+     primer.style/primitives/colors/, not reconstructed from memory); its
+     dark-mode pair isn't published on that page, so the dark value here is
+     extrapolated using the same lightening Primer applies to its other
+     tokens going from GitHub Light Default to GitHub Dark Default (e.g.
+     red #cf222e → #f85149) — flagged here as an extrapolation, not a
+     separately-verified spec value. */
+  html[data-scheme="github"] {
+    --bg: #f6f8fa; --panel: #ffffff; --panel-2: #eaeef2;
+    --border: rgba(31,35,40,0.12);
+    --text: #1f2328; --text-dim: #656d76; --text-faint: #8c959f;
+    --accent: #0969da; --accent-bg: #ddf4ff; --danger: #cf222e;
+
+    --ws-blue: #0969da;   --ws-blue-bg: #ddf4ff;
+    --ws-teal: #1b7c83;   --ws-teal-bg: #daf1f1;
+    --ws-purple: #8250df; --ws-purple-bg: #fbefff;
+    --ws-amber: #9a6700;  --ws-amber-bg: #fff8c5;
+    --ws-pink: #ce2c85;   --ws-pink-bg: #ffe5f1;
+    --ws-green: #1a7f37;  --ws-green-bg: #dafbe1;
+    --ws-red: #cf222e;    --ws-red-bg: #ffebe9;
+    --ws-grey: #656d76;   --ws-grey-bg: #eaeef2;
+
+    --stat-not-started: #8c959f; --stat-not-started-bg: #eaeef2;
+    --stat-green: #1a7f37;       --stat-green-bg: #dafbe1;
+    --stat-amber: #9a6700;       --stat-amber-bg: #fff8c5;
+    --stat-red: #cf222e;         --stat-red-bg: #ffebe9;
+    --stat-complete: #0969da;    --stat-complete-bg: #ddf4ff;
+  }
+  html[data-scheme="github"][data-theme="dark"] {
+    --bg: #161b22; --panel: #0d1117; --panel-2: #21262d;
+    --border: rgba(230,237,243,0.10);
+    --text: #e6edf3; --text-dim: #9198a1; --text-faint: #6e7681;
+    --accent: #4493f8; --accent-bg: #0c2d6b; --danger: #f85149;
+
+    --ws-blue: #4493f8;   --ws-blue-bg: #0c2d6b;
+    --ws-teal: #39c5cf;   --ws-teal-bg: #0d2d32;
+    --ws-purple: #a371f7; --ws-purple-bg: #2e2140;
+    --ws-amber: #d29922;  --ws-amber-bg: #3b2900;
+    --ws-pink: #e85aad;   --ws-pink-bg: #47182f;
+    --ws-green: #3fb950;  --ws-green-bg: #14261d;
+    --ws-red: #f85149;    --ws-red-bg: #3c1618;
+    --ws-grey: #9198a1;   --ws-grey-bg: #21262d;
+
+    --stat-not-started: #6e7681; --stat-not-started-bg: #21262d;
+    --stat-green: #3fb950;       --stat-green-bg: #14261d;
+    --stat-amber: #d29922;       --stat-amber-bg: #3b2900;
+    --stat-red: #f85149;         --stat-red-bg: #3c1618;
+    --stat-complete: #4493f8;    --stat-complete-bg: #0c2d6b;
+  }
+
+  /* GitHub Dimmed: GitHub Dark Dimmed's real compiled values (same values
+     mytasks fetched from @primer/primitives directly — canvas #212830,
+     canvas-muted #262c36, fg #d1d7e0/#9198a1, accent #478be6, danger
+     #e5534b, attention #c69026, success #57ab5a). NOT the same background
+     as GitHub Dark Default's near-black #0d1117 — that's the whole point
+     of "dimmed". Light mode reuses GitHub Light Default exactly, unchanged
+     from the regular GitHub scheme above (including its real Primer pink).
+     ws-pink's dark value follows the same "dimmed = less saturated" shift
+     GitHub Dimmed's other real tokens show relative to GitHub Dark
+     Default's — derived the same way GitHub's own dark pink was, since
+     Primer has no separately-published Dimmed pink either. */
+  html[data-scheme="githubdimmed"] {
+    --bg: #f6f8fa; --panel: #ffffff; --panel-2: #eaeef2;
+    --border: rgba(31,35,40,0.12);
+    --text: #1f2328; --text-dim: #656d76; --text-faint: #8c959f;
+    --accent: #0969da; --accent-bg: #ddf4ff; --danger: #cf222e;
+
+    --ws-blue: #0969da;   --ws-blue-bg: #ddf4ff;
+    --ws-teal: #1b7c83;   --ws-teal-bg: #daf1f1;
+    --ws-purple: #8250df; --ws-purple-bg: #fbefff;
+    --ws-amber: #9a6700;  --ws-amber-bg: #fff8c5;
+    --ws-pink: #ce2c85;   --ws-pink-bg: #ffe5f1;
+    --ws-green: #1a7f37;  --ws-green-bg: #dafbe1;
+    --ws-red: #cf222e;    --ws-red-bg: #ffebe9;
+    --ws-grey: #656d76;   --ws-grey-bg: #eaeef2;
+
+    --stat-not-started: #8c959f; --stat-not-started-bg: #eaeef2;
+    --stat-green: #1a7f37;       --stat-green-bg: #dafbe1;
+    --stat-amber: #9a6700;       --stat-amber-bg: #fff8c5;
+    --stat-red: #cf222e;         --stat-red-bg: #ffebe9;
+    --stat-complete: #0969da;    --stat-complete-bg: #ddf4ff;
+  }
+  html[data-scheme="githubdimmed"][data-theme="dark"] {
+    --bg: #262c36; --panel: #212830; --panel-2: #2d3640;
+    --border: rgba(209,215,224,0.10);
+    --text: #d1d7e0; --text-dim: #9198a1; --text-faint: #6b7280;
+    --accent: #478be6; --accent-bg: #16324f; --danger: #e5534b;
+
+    --ws-blue: #478be6;   --ws-blue-bg: #16324f;
+    --ws-teal: #4cb6c4;   --ws-teal-bg: #163338;
+    --ws-purple: #986ee2; --ws-purple-bg: #2e2246;
+    --ws-amber: #c69026;  --ws-amber-bg: #3a2e14;
+    --ws-pink: #c96b96;   --ws-pink-bg: #3d2732;
+    --ws-green: #57ab5a;  --ws-green-bg: #1c3320;
+    --ws-red: #e5534b;    --ws-red-bg: #3d211d;
+    --ws-grey: #9198a1;   --ws-grey-bg: #2d3640;
+
+    --stat-not-started: #6b7280; --stat-not-started-bg: #2d3640;
+    --stat-green: #57ab5a;       --stat-green-bg: #1c3320;
+    --stat-amber: #c69026;       --stat-amber-bg: #3a2e14;
+    --stat-red: #e5534b;         --stat-red-bg: #3d211d;
+    --stat-complete: #478be6;    --stat-complete-bg: #16324f;
+  }
+
+  /* Signature touches — one small, recognizable flourish per scheme beyond
+     the color swap, same idea as mytasks' own scheme-scoped signature rules
+     (kept in their own block, separate from the variable definitions above,
+     per that convention). Numerics-in-monospace suits every one of these
+     four (a code editor, a syntax-highlighting theme, and a dev platform
+     built around commit SHAs/diffs) the same way mytasks applies it. */
+  html[data-scheme="modern"] .milestone-count-badge,
+  html[data-scheme="modern"] .rag-pill,
+  html[data-scheme="modern"] .review-progress,
+  html[data-scheme="dracula"] .milestone-count-badge,
+  html[data-scheme="dracula"] .rag-pill,
+  html[data-scheme="dracula"] .review-progress,
+  html[data-scheme="github"] .milestone-count-badge,
+  html[data-scheme="github"] .rag-pill,
+  html[data-scheme="github"] .review-progress,
+  html[data-scheme="githubdimmed"] .milestone-count-badge,
+  html[data-scheme="githubdimmed"] .rag-pill,
+  html[data-scheme="githubdimmed"] .review-progress {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  /* Dracula: a soft accent-colored glow on the brand icon — a small nod to
+     the palette's neon-on-dark character, same touch mytasks applies. */
+  html[data-scheme="dracula"] .brand i { text-shadow: 0 0 8px var(--accent); }
+  /* GitHub / GitHub Dimmed: the primary button becomes GitHub's solid
+     green — its single most recognizable UI element ("Merge pull
+     request", "New", etc.) — same as mytasks' own GitHub scheme. */
+  html[data-scheme="github"] .btn-primary,
+  html[data-scheme="githubdimmed"] .btn-primary { background: var(--stat-green); border-color: var(--stat-green); }
+
   * { box-sizing: border-box; }
   body { margin: 0; }
   html, body { height: 100%; }
@@ -292,6 +561,19 @@
   .field-row { display: flex; gap: 10px; }
   .field-row .field { flex: 1; }
   .modal-wide { width: 600px; }
+
+  /* Color scheme picker modal — ported from mytasks (see THEME_SCHEMES). */
+  .theme-options { display: flex; flex-direction: column; gap: 10px; }
+  .theme-option { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border); cursor: pointer; }
+  .theme-option:hover { background: var(--panel-2); }
+  .theme-option.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .theme-option-swatches { display: flex; gap: 3px; flex-shrink: 0; }
+  .theme-option-swatch { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--border); }
+  .theme-option-body { flex: 1; min-width: 0; }
+  .theme-option-name { font-size: 13px; font-weight: 600; }
+  .theme-option-desc { font-size: 12px; color: var(--text-dim); margin-top: 1px; }
+  .theme-option-check { color: var(--accent); font-size: 15px; opacity: 0; flex-shrink: 0; }
+  .theme-option.selected .theme-option-check { opacity: 1; }
 
   /* Meeting minutes modal — Input+Buttons/Meeting Summary on row 1, Action
      Items spanning both columns on row 2 (it needs the width for its three
@@ -540,6 +822,7 @@
   </div>
   <button class="btn btn-sm" id="tabAdmin" onclick="setMode('admin')"><i class="fa-solid fa-sliders"></i> Admin</button>
   <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileImport(event)">
+  <button class="icon-btn" onclick="openThemeModal()" title="Color scheme"><i class="fa-solid fa-palette"></i></button>
   <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-circle-half-stroke"></i></button>
 </div>
 
@@ -750,6 +1033,15 @@
   </div>
 </div>
 
+<!-- Color scheme modal -->
+<div class="modal-bg" id="themeModalBg">
+  <div class="modal" style="width:400px">
+    <h3>Color scheme</h3>
+    <div class="theme-options" id="themeOptions"></div>
+    <div class="modal-actions" style="justify-content:flex-end"><button class="btn btn-primary" onclick="closeThemeModal()">Done</button></div>
+  </div>
+</div>
+
 <!-- Backups modal -->
 <div class="modal-bg" id="backupsModalBg">
   <div class="modal" style="width:420px">
@@ -849,6 +1141,19 @@ const TAG_FIELD_ICONS = { itStatus: 'fa-laptop-code', businessStatus: 'fa-briefc
 
 const WS_COLORS = ['blue', 'teal', 'purple', 'amber', 'pink', 'green', 'red', 'grey'];
 
+// Color scheme picker — ported from this author's mytasks app (see its
+// CLAUDE.md's "Color scheme system"). The single source of truth for which
+// schemes exist; each id must exactly match a [data-scheme="..."] selector
+// in the <style> block above. "Standard" (the untouched original palette)
+// is always first, matching mytasks' own ordering.
+const THEME_SCHEMES = [
+  { id: 'standard', name: 'Standard', desc: 'Neutral gray and white, with one blue accent.', swatches: ['#f5f6f8', '#3b6fe0', '#d13c3c'] },
+  { id: 'modern', name: 'Modern', desc: 'Clean graphite and white, with a confident accent blue.', swatches: ['#e8e8e8', '#005fb8', '#cd3131'] },
+  { id: 'dracula', name: 'Dracula', desc: 'Deep purple-gray, lit by vivid pink, cyan and green.', swatches: ['#f8f8f2', '#644ac9', '#cb3a2a'] },
+  { id: 'github', name: 'GitHub', desc: 'Crisp neutral gray-white, with a solid green action button.', swatches: ['#f6f8fa', '#0969da', '#cf222e'] },
+  { id: 'githubdimmed', name: 'GitHub Dimmed', desc: 'The same crisp palette, dimmed to a softer graphite.', swatches: ['#f6f8fa', '#478be6', '#e5534b'] }
+];
+
 // Seeds the one default category ("Development") the first time a programme
 // has none — see normalizeData(). New categories created afterward define
 // their own milestone template from scratch; this constant only matters at
@@ -876,6 +1181,7 @@ let categories = [];
 let reviewCycles = [];
 let mode = 'planning'; // 'planning' | 'review' | 'dashboard' | 'admin'
 let theme = 'light';
+let colorScheme = 'standard'; // one of THEME_SCHEMES' ids — see toggleTheme() vs setColorScheme()
 // The single shared workstream selector — used by Planning (status board),
 // Review (which workstream's cycle to show), and Dashboard (scopes the rollup)
 // alike. null means "All workstreams" for Planning/Dashboard; Review mode
@@ -938,6 +1244,12 @@ function load() {
     reviewCycles = raw.reviewCycles || [];
     mode = raw.mode || 'planning';
     theme = raw.theme || 'light';
+    // Same "ignore an unrecognized value rather than crash" caution as
+    // mode/theme — a hand-edited import or a file synced from an older
+    // version of this app (before a given scheme existed, or with a typo'd
+    // id) should just keep whatever scheme was already active, not set a
+    // data-scheme attribute with no matching CSS block behind it.
+    if (raw.colorScheme && THEME_SCHEMES.some(s => s.id === raw.colorScheme)) colorScheme = raw.colorScheme;
     filterWorkstreamId = raw.filterWorkstreamId || null;
     deletedWorkstreamIds = raw.deletedWorkstreamIds || [];
     deletedItemIds = raw.deletedItemIds || [];
@@ -950,7 +1262,7 @@ function load() {
 
 function save() {
   const data = {
-    programme, workstreams, items, categories, reviewCycles, mode, theme,
+    programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
     filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -1699,6 +2011,36 @@ function cancelRenameProgramme() {
 function toggleTheme() {
   theme = theme === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', theme);
+  save();
+}
+// Color scheme picker (data-scheme) — independent of light/dark (data-theme,
+// toggleTheme() above); see THEME_SCHEMES and "Color scheme system" in
+// CLAUDE.md. renderThemeModal() rebuilds the option list from scratch each
+// time (cheap — THEME_SCHEMES is a handful of entries) rather than trying to
+// patch just the selected state in place.
+function renderThemeModal() {
+  document.getElementById('themeOptions').innerHTML = THEME_SCHEMES.map(s => `
+    <div class="theme-option ${s.id === colorScheme ? 'selected' : ''}" onclick="setColorScheme('${s.id}')">
+      <div class="theme-option-swatches">${s.swatches.map(c => `<div class="theme-option-swatch" style="background:${c}"></div>`).join('')}</div>
+      <div class="theme-option-body">
+        <div class="theme-option-name">${esc(s.name)}</div>
+        <div class="theme-option-desc">${esc(s.desc)}</div>
+      </div>
+      <i class="fa-solid fa-check theme-option-check"></i>
+    </div>
+  `).join('');
+}
+function openThemeModal() {
+  renderThemeModal();
+  document.getElementById('themeModalBg').classList.add('open');
+}
+function closeThemeModal() {
+  document.getElementById('themeModalBg').classList.remove('open');
+}
+function setColorScheme(scheme) {
+  colorScheme = scheme;
+  document.documentElement.setAttribute('data-scheme', scheme);
+  renderThemeModal();
   save();
 }
 
@@ -2839,6 +3181,17 @@ function actionLogHtml(w) {
     return `<div class="attention-empty">No action items yet — they're added automatically when meeting minutes with action items are attached to a review cycle.</div>`;
   }
   const openCount = list.filter(a => !a.completed).length;
+  // The trailing grid-column:12 placeholder matters even though it's
+  // invisible: column 12 isn't one of the 11 explicit tracks in
+  // --item-grid-cols, so it only exists as an implicit track in rows that
+  // actually place something there. Every data row does (the complete
+  // toggle in actionLogRowHtml()); without a matching placeholder here,
+  // this header row would have one fewer implicit column and one fewer
+  // gap, so its flexible Action Item column (col 2) would resolve wider
+  // than the data rows' — shifting every column after it out of alignment.
+  // Same fix milestoneHeaderHtml() already applies for the same reason
+  // (its own "Confirm" label at grid-column:12) — see "Column layout is a
+  // real CSS grid" in CLAUDE.md.
   return `<div class="review-progress">${openCount} open of ${list.length} action item${list.length === 1 ? '' : 's'}</div>
     <div class="action-log-list">
       <div class="item-row action-log-row action-log-header">
@@ -2847,6 +3200,7 @@ function actionLogHtml(w) {
         <span style="grid-column:8">Owner</span>
         <span style="grid-column:9">Due Date</span>
         <span style="grid-column:10">Source</span>
+        <span class="review-confirm-toggle item-level" style="grid-column:12;visibility:hidden"><i class="fa-solid fa-circle-check"></i></span>
       </div>
       ${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}
     </div>`;
@@ -3657,7 +4011,7 @@ function queueFileSyncWrite() {
 async function doFileSyncWrite() {
   if (!fileHandle) return;
   const data = {
-    programme, workstreams, items, categories, reviewCycles, mode, theme,
+    programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
     filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds
   };
   try {
@@ -3736,8 +4090,8 @@ async function pollFileSync() {
       save(); render();
       showToast(`Synced changes from another tab/device (${added} added, ${updated} updated)`);
     } else {
-      // Nothing we track changed (e.g. only mode/view/theme differ) — still
-      // remember this text so the next poll doesn't keep re-parsing it.
+      // Nothing we track changed (e.g. only mode/theme/colorScheme differ) —
+      // still remember this text so the next poll doesn't keep re-parsing it.
       lastSyncedSnapshot = currentText;
     }
     reportSyncConflicts(conflicts);
@@ -3940,13 +4294,15 @@ document.getElementById('importModalBg').addEventListener('click', (e) => { if (
 document.getElementById('backupsModalBg').addEventListener('click', (e) => { if (e.target.id === 'backupsModalBg') closeBackupsModal(); });
 document.getElementById('syncConflictsModalBg').addEventListener('click', (e) => { if (e.target.id === 'syncConflictsModalBg') closeSyncConflictsModal(); });
 document.getElementById('fileSyncModalBg').addEventListener('click', (e) => { if (e.target.id === 'fileSyncModalBg') closeFileSyncModal(); });
+document.getElementById('themeModalBg').addEventListener('click', (e) => { if (e.target.id === 'themeModalBg') closeThemeModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeThemeModal(); }
 });
 
 // ---------- Init ----------
 load();
 document.documentElement.setAttribute('data-theme', theme);
+document.documentElement.setAttribute('data-scheme', colorScheme);
 render();
 initFileSync();
 

@@ -1296,6 +1296,27 @@ test('actionLogHtml shows a header row (Action Item / Owner / Due Date / Source)
   assertIncludes(html, 'Source');
 });
 
+// Regression test: the header row is missing a grid-column:12 element
+// unless it reserves one — see actionLogHtml()'s own comment. Without it,
+// column 12 (an implicit track, not one of the 11 explicit --item-grid-cols
+// tracks) doesn't exist in the header row at all, so its flexible Action
+// Item column resolves wider than the data rows' — visibly shifting Owner/
+// Due Date/Source to the right of where they sit in the rows below.
+test('actionLogHtml\'s header row reserves an (invisible) grid-column:12 slot so it doesn\'t shift out of alignment with the data rows below it', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Update runbook';
+  saveMinutes();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('actionLog');
+  const html = document.getElementById('main').innerHTML;
+  const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 800);
+  assertIncludes(headerRow, 'grid-column:12', 'the header row must place something at column 12 to match the data rows\' implicit toggle column');
+  assertIncludes(headerRow, 'visibility:hidden', 'the col-12 placeholder should reserve space without actually being visible in the header');
+});
+
 test('sortedActionLog puts open items first (soonest due date first, undated last) and sinks completed items to the bottom', function () {
   const list = [
     { id: 'a', text: 'Undated open', completed: false, dueDate: null },
