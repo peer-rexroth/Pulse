@@ -2248,6 +2248,10 @@ function openRoleModal() {
 function closeRoleModal() {
   if (!userRole) return; // mandatory first pick — nothing to dismiss back to
   document.getElementById('roleModalBg').classList.remove('open');
+  // Surfaces initFileSync()'s deferred link/reconnect prompt (see
+  // pendingFileSyncPrompt) now that a role actually exists — a no-op if
+  // there's nothing pending or the chosen role isn't Admin.
+  maybeShowPendingFileSyncPrompt();
 }
 function setUserRole(role) {
   userRole = role;
@@ -4275,6 +4279,21 @@ function restoreBackup(date) {
 
 // ---------- File System Access API ----------
 let fileHandle = null;
+// On a brand-new browser (userRole still null), initFileSync() runs
+// concurrently with the mandatory first-launch role-picker gate — opening
+// the file-sync modal right then would race the (undismissable) role modal
+// and either get buried behind it or render its Admin-only content against
+// a role that isn't chosen yet. Instead of opening it immediately in that
+// case, initFileSync() parks what it wanted to show here ('link', or a
+// handle needing reconnect), and closeRoleModal() surfaces it once the user
+// actually has a role (see maybeShowPendingFileSyncPrompt()).
+let pendingFileSyncPrompt = null;
+function maybeShowPendingFileSyncPrompt() {
+  if (!pendingFileSyncPrompt || !hasRole('admin')) { pendingFileSyncPrompt = null; return; }
+  const p = pendingFileSyncPrompt;
+  pendingFileSyncPrompt = null;
+  openFileSyncModal(p === 'link' ? undefined : p);
+}
 const _FS = { db: 'pulse-fs', store: 'handles', key: 'linked-file' };
 function _fsIdb(mode, fn) {
   return new Promise((res, rej) => {
@@ -4568,10 +4587,13 @@ async function initFileSync() {
   try {
     const handle = await _fsGet();
     // Only auto-prompts an Admin — anyone else can't act on it anyway (see
-    // openFileSyncModal()'s own admin-notice branch), and on a brand-new
-    // browser (no role chosen yet, userRole still null) this would otherwise
-    // pop up behind/alongside the mandatory role picker every single launch.
-    if (!handle) { if (hasRole('admin')) openFileSyncModal(); return; }
+    // openFileSyncModal()'s own admin-notice branch). On a brand-new browser
+    // (no role chosen yet, userRole still null) this is parked in
+    // pendingFileSyncPrompt instead of opened immediately, since opening it
+    // here would race the mandatory role-picker gate below and either get
+    // buried behind it or render its Admin-only content before any role —
+    // let alone Admin — has actually been chosen.
+    if (!handle) { if (!userRole) pendingFileSyncPrompt = 'link'; else if (hasRole('admin')) openFileSyncModal(); return; }
     fileHandle = handle;
     const perm = await handle.queryPermission({ mode: 'readwrite' });
     if (perm === 'granted') {
@@ -4592,6 +4614,8 @@ async function initFileSync() {
         }
         startFileSyncPolling();
       } catch (_) { /* read failed — keep localStorage data */ }
+    } else if (!userRole) {
+      pendingFileSyncPrompt = handle; // same race as the !handle branch above
     } else {
       openFileSyncModal(handle);
     }
@@ -4600,7 +4624,7 @@ async function initFileSync() {
     fileHandle = null;
     _fsDel().catch(() => {});
     updateFileSyncUI();
-    openFileSyncModal();
+    if (!userRole) pendingFileSyncPrompt = 'link'; else openFileSyncModal();
   }
 }
 function openFileSyncModal(reconnectHandle) {

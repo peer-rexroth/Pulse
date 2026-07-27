@@ -293,3 +293,30 @@ test('openFileSyncModal shows the admin notice and hides the sync options below 
   assertEqual(document.getElementById('fileSyncOptions').style.display, '');
   assertEqual(document.getElementById('fileSyncAdminNotice').style.display, 'none');
 });
+
+// Regression test: on a brand-new browser, initFileSync() runs concurrently
+// with the mandatory first-launch role-picker gate. It used to call
+// openFileSyncModal() (link, or reconnect a lapsed-permission handle)
+// immediately whenever it found something to prompt about — racing the
+// (undismissable) role modal that opens right after it in the init
+// sequence, so the prompt either got buried behind the role modal or (since
+// openFileSyncModal()'s own content gates on hasRole('admin')) rendered its
+// "Admin required" notice instead of the real prompt, before any role had
+// even been chosen yet. The fix: initFileSync() parks what it wanted to
+// show in pendingFileSyncPrompt when userRole is still null, and
+// closeRoleModal() surfaces it once the mandatory gate actually resolves.
+test('closeRoleModal surfaces a pending file-sync prompt once a role is chosen for the first time, but only for Admin', function () {
+  userRole = null; // simulates the brand-new-browser, pre-choice state
+  pendingFileSyncPrompt = 'link';
+  setUserRole('editor'); // a non-Admin choice — file sync stays Admin-only
+  closeRoleModal();
+  assertFalse(document.getElementById('fileSyncModalBg').classList.contains('open'), 'a non-Admin pick must not surface the file-sync prompt');
+  assertEqual(pendingFileSyncPrompt, null, 'the pending prompt is consumed either way, not left to fire later');
+
+  userRole = null;
+  pendingFileSyncPrompt = 'link';
+  setUserRole('admin');
+  closeRoleModal();
+  assertTrue(document.getElementById('fileSyncModalBg').classList.contains('open'), 'picking Admin for the first time must surface the deferred link/reconnect prompt');
+  assertEqual(document.getElementById('fileSyncOptions').style.display, '', 'an Admin should see the real prompt, not the admin-only notice');
+});
