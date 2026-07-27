@@ -149,7 +149,7 @@ async function run(argv) {
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set();
   editingCategoryId = null; editingCategoryMilestones = [];
-  minutesModalCycleId = null; editingMinutesActionItems = [];
+  minutesModalCycleId = null; editingMinutesActionItems = []; reviewTab = 'scope';
   renamingProgramme = false;
   pendingImportData = null; modalTarget = null; toastUndoAction = null;
   fileHandle = null; lastSyncedSnapshot = null; lastSyncedAt = 0; syncConflictLog = [];

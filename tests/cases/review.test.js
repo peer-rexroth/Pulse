@@ -1078,3 +1078,138 @@ test('editing a milestone\'s Actual date mid-review keeps showing the Review che
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'review-checklist');
 });
+
+// ---------- Action Log (Review's second tab) ----------
+
+test('saveMinutes syncs saved action items into the workstream\'s own actionLog, unstarted', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Update runbook';
+  editingMinutesActionItems[0].owner = 'Alice';
+  editingMinutesActionItems[0].dueDate = '2026-08-01';
+  saveMinutes();
+  const log = workstreams[0].actionLog;
+  assertEqual(log.length, 1);
+  assertEqual(log[0].text, 'Update runbook');
+  assertEqual(log[0].owner, 'Alice');
+  assertEqual(log[0].dueDate, '2026-08-01');
+  assertEqual(log[0].completed, false);
+  assertEqual(log[0].cycleId, cycle.id);
+});
+
+test('re-saving minutes updates a matching actionLog entry\'s text/owner/due date in place without resetting completed', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Update runbook';
+  saveMinutes();
+  const entryId = workstreams[0].actionLog[0].id;
+  toggleActionLogItem(workstreams[0].id, entryId);
+  assertEqual(workstreams[0].actionLog[0].completed, true);
+
+  openMinutesModal(cycle.id);
+  editingMinutesActionItems[0].text = 'Update runbook v2';
+  saveMinutes();
+  assertEqual(workstreams[0].actionLog.length, 1, 'the same action item id should update the existing log row, not add a second one');
+  assertEqual(workstreams[0].actionLog[0].text, 'Update runbook v2');
+  assertEqual(workstreams[0].actionLog[0].completed, true, 'completing a log entry must survive re-saving the minutes it came from');
+});
+
+test('saving a second review cycle\'s minutes appends to the same workstream actionLog rather than replacing it', function () {
+  const cycle1 = addCompletedReviewCycle();
+  openMinutesModal(cycle1.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'From cycle 1';
+  saveMinutes();
+
+  startReviewCycle(workstreams[0].id);
+  const cycle2 = activeReviewCycle(workstreams[0].id);
+  completeReviewCycle(cycle2.id);
+  openMinutesModal(cycle2.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'From cycle 2';
+  saveMinutes();
+
+  assertEqual(workstreams[0].actionLog.length, 2);
+  assertEqual(workstreams[0].actionLog.map(a => a.text).sort().join(','), 'From cycle 1,From cycle 2');
+});
+
+test('toggleActionLogItem flips completed and stamps/clears completedAt', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  saveMinutes();
+  const id = workstreams[0].actionLog[0].id;
+
+  toggleActionLogItem(workstreams[0].id, id);
+  assertEqual(workstreams[0].actionLog[0].completed, true);
+  assertTrue(typeof workstreams[0].actionLog[0].completedAt === 'number');
+
+  toggleActionLogItem(workstreams[0].id, id);
+  assertEqual(workstreams[0].actionLog[0].completed, false);
+  assertEqual(workstreams[0].actionLog[0].completedAt, null);
+});
+
+test('normalizeData backfills a missing/malformed workstream.actionLog to an empty array, and fills in a hand-built row', function () {
+  workstreams[0].actionLog = 'not an array';
+  normalizeData();
+  assertDeepEqual(workstreams[0].actionLog, []);
+
+  workstreams[0].actionLog = [{ text: 'X' }];
+  normalizeData();
+  const a = workstreams[0].actionLog[0];
+  assertTrue(isSafeId(a.id));
+  assertEqual(a.text, 'X');
+  assertEqual(a.owner, '');
+  assertEqual(a.dueDate, null);
+  assertEqual(a.completed, false);
+  assertEqual(a.completedAt, null);
+  assertTrue(typeof a.addedAt === 'number');
+});
+
+test('setReviewTab switches renderReview between the Scope Review checklist and the Action Log', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Update runbook';
+  saveMinutes();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+
+  assertEqual(reviewTab, 'scope', 'Review should default to the Scope Review tab');
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Start review cycle', 'the completed cycle from addCompletedReviewCycle() has no active cycle left, so Scope Review falls back to its "start a new one" state');
+  assertNotIncludes(html, 'action-log-list');
+
+  setReviewTab('actionLog');
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'action-log-list');
+  assertIncludes(html, 'Update runbook');
+  assertNotIncludes(html, 'Start review cycle');
+
+  setReviewTab('scope');
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Start review cycle');
+});
+
+test('actionLogHtml shows an empty state when the workstream has no action items yet', function () {
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('actionLog');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'No action items yet');
+});
+
+test('sortedActionLog puts open items first (soonest due date first, undated last) and sinks completed items to the bottom', function () {
+  const list = [
+    { id: 'a', text: 'Undated open', completed: false, dueDate: null },
+    { id: 'b', text: 'Due later', completed: false, dueDate: '2026-09-01' },
+    { id: 'c', text: 'Due sooner', completed: false, dueDate: '2026-08-01' },
+    { id: 'd', text: 'Done recently', completed: true, completedAt: 200 },
+    { id: 'e', text: 'Done earlier', completed: true, completedAt: 100 }
+  ];
+  const sorted = sortedActionLog(list).map(a => a.id);
+  assertDeepEqual(sorted, ['c', 'b', 'a', 'd', 'e']);
+});

@@ -484,6 +484,19 @@
   .review-change-arrow { color: var(--text-faint); font-size: 11px; flex: 0 0 auto; }
   .review-cycle-badge { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; flex: 0 0 auto; }
   .review-cycle-badge.completed { background: var(--stat-green-bg); color: var(--stat-green); }
+  /* Action Log (Review's second tab) — a workstream-wide, review-cycle-
+     spanning list of action items imported from attached meeting minutes
+     (see syncActionLogFromMinutes()). Same card look as .review-checklist
+     and the same icon-only complete toggle as a review confirm checkmark
+     (.review-confirm-toggle), just persisted independently of any one
+     cycle's own confirm state. */
+  .action-log-list { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; overflow: hidden; }
+  .action-log-row { display: grid; grid-template-columns: 30px 1fr 130px 100px 120px; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .action-log-row:last-child { border-bottom: none; }
+  .action-log-row.completed { background: var(--stat-green-bg); }
+  .action-log-row.completed .action-log-text { color: var(--text-faint); text-decoration: line-through; }
+  .action-log-text { white-space: pre-wrap; }
+  .action-log-source { color: var(--text-faint); font-size: 11.5px; text-align: right; }
   .section-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin: 20px 0 8px; }
   .section-label:first-child { margin-top: 0; }
 
@@ -573,6 +586,12 @@
         <button class="view-tab" id="tabTimeline" onclick="setView('timeline')"><i class="fa-solid fa-timeline"></i> Timeline</button>
       </div>
     </div>
+    <div class="planning-toolbar" id="reviewToolbar" style="display:none">
+      <div class="view-tabs">
+        <button class="view-tab" id="tabReviewScope" onclick="setReviewTab('scope')"><i class="fa-solid fa-clipboard-check"></i> Scope Review</button>
+        <button class="view-tab" id="tabReviewActionLog" onclick="setReviewTab('actionLog')"><i class="fa-solid fa-list-check"></i> Action Log</button>
+      </div>
+    </div>
     <div class="main" id="main"></div>
   </div>
 </div>
@@ -637,7 +656,7 @@
           ondrop="handleMinutesFileDrop(event)">
           <textarea id="minutesPasteInput" style="min-height:56px" placeholder="Paste raw meeting notes here, or drag a .txt/.md/.docx file onto this box — lines starting with Summary, Action Items, Decisions, or Next Steps are split into the fields alongside automatically."></textarea>
         </div>
-        <button class="btn btn-sm" style="margin-top:8px" onclick="parseMinutesPaste()"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fill from pasted text</button>
+        <button class="btn btn-sm" style="margin-top:8px" onclick="parseMinutesPaste()"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fill</button>
         <button class="btn btn-sm" style="margin-top:8px" onclick="clearMinutesFields()" title="Clear every field below — does not affect anything already saved"><i class="fa-solid fa-eraser"></i> Clear all fields</button>
       </div>
       <div class="field">
@@ -922,6 +941,10 @@ let historyShowAllWs = new Set();
 // starts hidden behind a "+" affordance instead of looking like a blank
 // field waiting to be filled in.
 let revealedActualIds = new Set();
+// Review mode's own two sub-tabs: 'scope' (the existing checklist + cycle
+// history) or 'actionLog' (the workstream-wide action log) — UI-only, not
+// persisted, same as view above but scoped one level deeper.
+let reviewTab = 'scope';
 const HISTORY_PAGE_SIZE = 5;
 
 // Deletion tombstones: {id, deletedAt}[] — records "this id used to exist and
@@ -1017,6 +1040,20 @@ function normalizeData() {
     if (!isSafeId(w.id)) w.id = genId();
     if (!w.color) w.color = WS_COLORS[i % WS_COLORS.length];
     if (typeof w.order !== 'number') w.order = i;
+    // actionLog is the workstream-wide, review-cycle-spanning list action
+    // items land in once imported from a cycle's minutes (see
+    // syncActionLogFromMinutes()) — independent of any one cycle's own
+    // confirm/complete state.
+    if (!Array.isArray(w.actionLog)) w.actionLog = [];
+    w.actionLog.forEach(a => {
+      if (!isSafeId(a.id)) a.id = genId();
+      if (typeof a.text !== 'string') a.text = '';
+      if (typeof a.owner !== 'string') a.owner = '';
+      if (typeof a.dueDate !== 'string') a.dueDate = null;
+      if (typeof a.completed !== 'boolean') a.completed = false;
+      if (typeof a.completedAt !== 'number') a.completedAt = null;
+      if (typeof a.addedAt !== 'number') a.addedAt = Date.now();
+    });
   });
   workstreams.sort((a, b) => a.order - b.order);
   const wsIds = new Set(workstreams.map(w => w.id));
@@ -1232,12 +1269,15 @@ function render() {
   document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
   document.getElementById('planningToolbar').style.display = mode === 'planning' ? '' : 'none';
+  document.getElementById('reviewToolbar').style.display = mode === 'review' ? '' : 'none';
   renderSidebar();
   if (mode === 'planning') {
     document.getElementById('tabStatus').classList.toggle('active', view === 'status');
     document.getElementById('tabTimeline').classList.toggle('active', view === 'timeline');
     renderMain();
   } else if (mode === 'review') {
+    document.getElementById('tabReviewScope').classList.toggle('active', reviewTab === 'scope');
+    document.getElementById('tabReviewActionLog').classList.toggle('active', reviewTab === 'actionLog');
     renderReview();
   } else if (mode === 'dashboard') {
     renderDashboard();
@@ -1728,6 +1768,7 @@ function renderTimelineView(main) {
 
 // ---------- View / filter / theme ----------
 function setView(v) { view = v; save(); render(); }
+function setReviewTab(t) { reviewTab = t; render(); }
 function setFilterWorkstream(id) {
   filterWorkstreamId = id;
   // Switching to "All workstreams" while Review mode is showing a specific
@@ -2437,15 +2478,22 @@ function closeMinutesModal() {
   document.getElementById('minutesModalBg').classList.remove('open');
   minutesModalCycleId = null;
 }
-function parseMinutesPaste() {
-  const text = document.getElementById('minutesPasteInput').value;
-  if (!text.trim()) return;
+// Shared by the paste-and-click flow (parseMinutesPaste(), text still
+// visible in the paste box) and the file-drop flow (handleMinutesFileDrop(),
+// where the raw extracted text is deliberately never shown — see that
+// function's own comment for why).
+function applyParsedMinutesText(text) {
   const parsed = parseMeetingMinutes(text);
   document.getElementById('minutesSummaryInput').value = parsed.summary;
   document.getElementById('minutesDecisionsInput').value = parsed.decisions;
   document.getElementById('minutesNextStepsInput').value = parsed.nextSteps;
   editingMinutesActionItems = linesToActionItems(parsed.actionItems);
   renderMinutesActionItemsRows();
+}
+function parseMinutesPaste() {
+  const text = document.getElementById('minutesPasteInput').value;
+  if (!text.trim()) return;
+  applyParsedMinutesText(text);
 }
 // Resets the modal's working form back to blank — the paste box, all three
 // plain-text fields, and the Action Items table. Deliberately distinct from
@@ -2686,10 +2734,13 @@ async function extractDocxText(arrayBuffer) {
 // Drag-and-drop a minutes file straight onto the paste box — .docx gets the
 // real zip/XML extraction above; anything else is read as plain text
 // (.txt/.md/…). No upload, no network, same local-only spirit as
-// everything else in this app. Drops the resulting text into the paste
-// textarea and immediately auto-fills from it, same as clicking "Auto-fill
-// from pasted text" would. Legacy binary .doc (not .docx) isn't a zip file
-// at all and isn't supported — there's no parser for that older format here.
+// everything else in this app. The raw extracted text is deliberately never
+// shown in the paste box — it's applied straight to the other fields
+// (applyParsedMinutesText(), the same logic parseMinutesPaste() uses) and
+// the box itself is left with a short "processed" confirmation instead, so
+// a large/messy raw dump (especially from a .docx) never has to be looked
+// at or scrolled past. Legacy binary .doc (not .docx) isn't a zip file at
+// all and isn't supported — there's no parser for that older format here.
 async function handleMinutesFileDrop(event) {
   event.preventDefault();
   document.getElementById('minutesDropzone').classList.remove('drag-over');
@@ -2697,8 +2748,8 @@ async function handleMinutesFileDrop(event) {
   if (!file) return;
   try {
     const text = /\.docx$/i.test(file.name) ? await extractDocxText(await file.arrayBuffer()) : await file.text();
-    document.getElementById('minutesPasteInput').value = text;
-    parseMinutesPaste();
+    applyParsedMinutesText(text);
+    document.getElementById('minutesPasteInput').value = `✓ ${file.name} processed`;
   } catch (e) {
     showToast('Could not read that file', true);
   }
@@ -2716,6 +2767,7 @@ function saveMinutes() {
   // importedAt is set once, on the first save, and kept from then on — it
   // marks when minutes were first attached to this cycle, not last edited.
   cycle.minutes = { summary, actionItems, decisions, nextSteps, importedAt: (cycle.minutes && cycle.minutes.importedAt) || Date.now() };
+  syncActionLogFromMinutes(cycle, actionItems);
   save(); closeMinutesModal(); render();
   showToast('Meeting minutes saved');
 }
@@ -2842,6 +2894,69 @@ function reviewHistoryRowHtml(c) {
       <span style="color:var(--text-faint)">${fmtDate(dateStrFromTs(c.completedAt))}</span>
     </div>${changeRows}`;
 }
+// Sorts an action log for display: open items first (each group sorted by
+// due date, undated last), completed items sunk to the bottom (most
+// recently completed first) rather than disappearing — this is a running
+// log, not a checklist that empties out.
+function sortedActionLog(list) {
+  const open = list.filter(a => !a.completed).sort((a, b) => (a.dueDate || '9999-99-99').localeCompare(b.dueDate || '9999-99-99'));
+  const done = list.filter(a => a.completed).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  return open.concat(done);
+}
+function actionLogRowHtml(w, a) {
+  const cycle = reviewCycles.find(c => c.id === a.cycleId);
+  const source = cycle ? `From review started ${fmtDate(dateStrFromTs(cycle.startedAt))}` : '';
+  return `<div class="action-log-row ${a.completed ? 'completed' : ''}">
+      <button class="review-confirm-toggle ${a.completed ? 'confirmed' : ''}" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
+        <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
+      </button>
+      <span class="action-log-text">${esc(a.text)}</span>
+      <span>${esc(a.owner)}</span>
+      <span>${a.dueDate ? fmtDate(a.dueDate) : ''}</span>
+      <span class="action-log-source">${esc(source)}</span>
+    </div>`;
+}
+// The workstream-wide action log — every action item ever imported from a
+// meeting minutes attachment across every review cycle for this workstream
+// (see syncActionLogFromMinutes()), completable independently of the review
+// checklist itself. Rendered as Review's second tab (see renderReview()).
+function actionLogHtml(w) {
+  const list = Array.isArray(w.actionLog) ? w.actionLog : [];
+  if (!list.length) {
+    return `<div class="attention-empty">No action items yet — they're added automatically when meeting minutes with action items are attached to a review cycle.</div>`;
+  }
+  const openCount = list.filter(a => !a.completed).length;
+  return `<div class="review-progress">${openCount} open of ${list.length} action item${list.length === 1 ? '' : 's'}</div>
+    <div class="action-log-list">${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}</div>`;
+}
+function toggleActionLogItem(wsId, itemId) {
+  const w = wsById(wsId);
+  if (!w) return;
+  const a = w.actionLog.find(x => x.id === itemId);
+  if (!a) return;
+  a.completed = !a.completed;
+  a.completedAt = a.completed ? Date.now() : null;
+  save(); render();
+}
+// Action items attached to a review cycle's minutes also flow into the
+// workstream's own action log — a running list that outlives any single
+// cycle and is completable on its own, independent of the review's confirm
+// checkmarks. Re-saving minutes updates an existing log entry's text/owner/
+// due date in place (matched by action item id) without touching its
+// completed state; a brand new action item id is appended.
+function syncActionLogFromMinutes(cycle, actionItems) {
+  const w = wsById(cycle.workstreamId);
+  if (!w) return;
+  if (!Array.isArray(w.actionLog)) w.actionLog = [];
+  actionItems.forEach(a => {
+    const existing = w.actionLog.find(x => x.id === a.id);
+    if (existing) {
+      existing.text = a.text; existing.owner = a.owner; existing.dueDate = a.dueDate;
+    } else {
+      w.actionLog.push({ id: a.id, text: a.text, owner: a.owner, dueDate: a.dueDate, completed: false, completedAt: null, cycleId: cycle.id, addedAt: Date.now() });
+    }
+  });
+}
 // Review has no workstream picker of its own any more — it reads the same
 // filterWorkstreamId the sidebar (shared with Planning/Dashboard) sets.
 // setMode()/setFilterWorkstream() already keep mode from ever being 'review'
@@ -2859,6 +2974,10 @@ function renderReview() {
   }
   const w = wsById(filterWorkstreamId);
   if (!w) { filterWorkstreamId = null; renderReview(); return; }
+  if (reviewTab === 'actionLog') {
+    el.innerHTML = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2></div>${actionLogHtml(w)}`;
+    return;
+  }
   const cycle = activeReviewCycle(filterWorkstreamId);
   // Same manual order as Planning's status board (see renderStatusView) —
   // Review should read as the exact same list, not its own independent
