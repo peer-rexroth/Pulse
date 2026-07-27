@@ -589,9 +589,15 @@
      row to 84px regardless of content — that was the real cause of rows
      looking multi-line-tall even for a one-line action item. */
   .minutes-grid .field > textarea { min-height: 84px; }
-  .minutes-dropzone { border-radius: 8px; transition: background .1s ease; }
+  .minutes-dropzone { position: relative; border-radius: 8px; transition: background .1s ease; }
   .minutes-dropzone.drag-over { background: var(--accent-bg); }
   .minutes-dropzone.drag-over textarea { outline: 2px dashed var(--accent); outline-offset: -2px; }
+  .minutes-dropzone-status {
+    position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 5px;
+    max-width: calc(100% - 16px); padding: 3px 9px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--stat-green); font-size: 11px; font-weight: 700;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
+  }
   .minutes-action-items-field { grid-column: 1 / -1; }
   .minutes-action-items { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .minutes-action-item-row {
@@ -899,7 +905,7 @@
 
 <!-- Meeting minutes modal (per completed review cycle — see reviewHistoryRowHtml()) -->
 <div class="modal-bg" id="minutesModalBg">
-  <div class="modal" style="width:700px">
+  <div class="modal" style="width:900px">
     <h3>Meeting Minutes</h3>
     <div class="minutes-grid">
       <div class="field">
@@ -908,7 +914,8 @@
           ondragover="event.preventDefault(); this.classList.add('drag-over')"
           ondragleave="this.classList.remove('drag-over')"
           ondrop="handleMinutesFileDrop(event)">
-          <textarea id="minutesPasteInput" style="min-height:56px" placeholder="Paste raw meeting notes here, or drag a .txt/.md/.docx file onto this box — lines starting with Summary, Action Items, Decisions, or Next Steps are split into the fields alongside automatically."></textarea>
+          <textarea id="minutesPasteInput" style="min-height:130px" oninput="setMinutesDropzoneStatus(null)" placeholder="Paste raw meeting notes here, or drag a .txt/.md/.docx file onto this box — lines starting with Summary, Action Items, Decisions, or Next Steps are split into the fields alongside automatically."></textarea>
+          <span class="minutes-dropzone-status" id="minutesDropzoneStatus" style="display:none"><i class="fa-solid fa-circle-check"></i><span id="minutesDropzoneStatusText"></span></span>
         </div>
         <button class="btn btn-sm" style="margin-top:8px" onclick="parseMinutesPaste()"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fill</button>
         <button class="btn btn-sm" style="margin-top:8px" onclick="clearMinutesFields()" title="Clear every field below — does not affect anything already saved"><i class="fa-solid fa-eraser"></i> Clear all fields</button>
@@ -2711,6 +2718,7 @@ function openMinutesModal(cycleId) {
   minutesModalCycleId = cycleId;
   const m = cycle.minutes;
   document.getElementById('minutesPasteInput').value = '';
+  setMinutesDropzoneStatus(null);
   document.getElementById('minutesSummaryInput').value = m ? m.summary : '';
   document.getElementById('minutesDecisionsInput').value = m ? m.decisions : '';
   document.getElementById('minutesNextStepsInput').value = m ? m.nextSteps : '';
@@ -2751,6 +2759,7 @@ function parseMinutesPaste() {
 // (still requires clicking Save to actually commit the empty state).
 function clearMinutesFields() {
   document.getElementById('minutesPasteInput').value = '';
+  setMinutesDropzoneStatus(null);
   document.getElementById('minutesSummaryInput').value = '';
   document.getElementById('minutesDecisionsInput').value = '';
   document.getElementById('minutesNextStepsInput').value = '';
@@ -2982,10 +2991,16 @@ async function extractDocxText(arrayBuffer) {
 // everything else in this app. The raw extracted text is deliberately never
 // shown in the paste box — it's applied straight to the other fields
 // (applyParsedMinutesText(), the same logic parseMinutesPaste() uses) and
-// the box itself is left with a short "processed" confirmation instead, so
-// a large/messy raw dump (especially from a .docx) never has to be looked
-// at or scrolled past. Legacy binary .doc (not .docx) isn't a zip file at
-// all and isn't supported — there's no parser for that older format here.
+// the box itself is left blank with a small "processed" checkmark badge
+// (setMinutesDropzoneStatus()) overlaid in its corner instead, so a
+// large/messy raw dump (especially from a .docx) never has to be looked at
+// or scrolled past, and the box stays free to paste something else into.
+// Legacy binary .doc (not .docx) isn't a zip file at all and isn't
+// supported — there's no parser for that older format here.
+function setMinutesDropzoneStatus(filename) {
+  document.getElementById('minutesDropzoneStatus').style.display = filename ? 'flex' : 'none';
+  document.getElementById('minutesDropzoneStatusText').textContent = filename ? `${filename} processed` : '';
+}
 async function handleMinutesFileDrop(event) {
   event.preventDefault();
   document.getElementById('minutesDropzone').classList.remove('drag-over');
@@ -2994,7 +3009,8 @@ async function handleMinutesFileDrop(event) {
   try {
     const text = /\.docx$/i.test(file.name) ? await extractDocxText(await file.arrayBuffer()) : await file.text();
     applyParsedMinutesText(text);
-    document.getElementById('minutesPasteInput').value = `✓ ${file.name} processed`;
+    document.getElementById('minutesPasteInput').value = '';
+    setMinutesDropzoneStatus(file.name);
   } catch (e) {
     showToast('Could not read that file', true);
   }
@@ -3027,6 +3043,7 @@ function removeMinutes() {
     confirmLabel: 'Remove',
     action: () => {
       cycle.minutes = null;
+      removeActionLogForCycle(cycle);
       save(); render();
       showToast('Meeting minutes removed');
     }
@@ -3269,6 +3286,14 @@ function syncActionLogFromMinutes(cycle, actionItems) {
       w.actionLog.push({ id: a.id, text: a.text, owner: a.owner, dueDate: a.dueDate, completed: false, completedAt: null, cycleId: cycle.id, addedAt: Date.now() });
     }
   });
+}
+// Counterpart to syncActionLogFromMinutes() — called from removeMinutes()
+// so a cycle's action items don't linger, orphaned, on the workstream's
+// Action Log once the minutes they came from are gone.
+function removeActionLogForCycle(cycle) {
+  const w = wsById(cycle.workstreamId);
+  if (!w || !Array.isArray(w.actionLog)) return;
+  w.actionLog = w.actionLog.filter(a => a.cycleId !== cycle.id);
 }
 // Review has no workstream picker of its own any more — it reads the same
 // filterWorkstreamId the sidebar (shared with Planning/Dashboard) sets.

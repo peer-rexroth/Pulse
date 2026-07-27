@@ -809,6 +809,49 @@ test('openMinutesModal pre-fills the fields (including the Action Items table) f
   assertEqual(document.getElementById('minutesRemoveBtn').style.display, 'inline-flex');
 });
 
+// ---------- Drop-zone "processed" status badge ----------
+// The dropped/parsed raw text is deliberately never shown in the paste box
+// (see handleMinutesFileDrop()'s own comment) — instead the box is left
+// blank and a small checkmark badge (setMinutesDropzoneStatus()) shows the
+// filename. These tests exercise that badge directly, plus the full
+// file-drop flow with a fake File-like object (no real browser File API in
+// this harness).
+
+test('setMinutesDropzoneStatus(name) shows the badge with that filename; setMinutesDropzoneStatus(null) hides it', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  setMinutesDropzoneStatus('notes.txt');
+  assertEqual(document.getElementById('minutesDropzoneStatus').style.display, 'flex');
+  assertIncludes(document.getElementById('minutesDropzoneStatusText').textContent, 'notes.txt');
+  setMinutesDropzoneStatus(null);
+  assertEqual(document.getElementById('minutesDropzoneStatus').style.display, 'none');
+});
+
+test('openMinutesModal and clearMinutesFields both hide any leftover "processed" badge from a previous drop', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  setMinutesDropzoneStatus('notes.txt');
+  clearMinutesFields();
+  assertEqual(document.getElementById('minutesDropzoneStatus').style.display, 'none');
+
+  setMinutesDropzoneStatus('notes.txt');
+  openMinutesModal(cycle.id);
+  assertEqual(document.getElementById('minutesDropzoneStatus').style.display, 'none');
+});
+
+test('handleMinutesFileDrop parses the dropped file into the fields, clears the paste box, and shows the processed badge instead of dumping raw text into it', async function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  const fakeFile = { name: 'notes.txt', text: async () => 'Summary\nAll good.\nAction Items\nAlice to update the runbook.' };
+  const fakeEvent = { preventDefault: () => {}, dataTransfer: { files: [fakeFile] } };
+  await handleMinutesFileDrop(fakeEvent);
+  assertEqual(document.getElementById('minutesSummaryInput').value, 'All good.');
+  assertEqual(editingMinutesActionItems.length, 1);
+  assertEqual(document.getElementById('minutesPasteInput').value, '', 'the raw dropped text must never land in the paste box');
+  assertEqual(document.getElementById('minutesDropzoneStatus').style.display, 'flex');
+  assertIncludes(document.getElementById('minutesDropzoneStatusText').textContent, 'notes.txt');
+});
+
 test('addMinutesActionItemRow/removeMinutesActionItemRow add and remove rows from the working table', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
@@ -905,6 +948,43 @@ test('removeMinutes clears a cycle\'s minutes after confirmation', function () {
   removeMinutes();
   confirmModalAction();
   assertEqual(cycle.minutes, null);
+});
+
+test('removeMinutes also deletes that cycle\'s action items from the workstream actionLog, so none linger orphaned', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Update runbook';
+  saveMinutes();
+  assertEqual(workstreams[0].actionLog.length, 1, 'sanity check — saving minutes should have synced one action log entry');
+
+  openMinutesModal(cycle.id);
+  removeMinutes();
+  confirmModalAction();
+  assertEqual(workstreams[0].actionLog.length, 0);
+});
+
+test('removeMinutes only deletes action items from its own cycle, leaving other cycles\' entries on the same workstream alone', function () {
+  const cycle1 = addCompletedReviewCycle();
+  openMinutesModal(cycle1.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'From cycle 1';
+  saveMinutes();
+
+  startReviewCycle(workstreams[0].id);
+  const cycle2 = activeReviewCycle(workstreams[0].id);
+  completeReviewCycle(cycle2.id);
+  openMinutesModal(cycle2.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'From cycle 2';
+  saveMinutes();
+  assertEqual(workstreams[0].actionLog.length, 2);
+
+  openMinutesModal(cycle1.id);
+  removeMinutes();
+  confirmModalAction();
+  assertEqual(workstreams[0].actionLog.length, 1);
+  assertEqual(workstreams[0].actionLog[0].text, 'From cycle 2');
 });
 
 test('reviewHistoryRowHtml shows an outline "Add meeting minutes" icon when none exist, and a filled "View" icon once they do', function () {
