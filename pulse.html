@@ -330,7 +330,7 @@
   .minutes-action-items-field { grid-column: 1 / -1; }
   .minutes-action-items { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .minutes-action-item-row {
-    display: grid; grid-template-columns: 1fr 78px 96px 22px; gap: 6px; align-items: start;
+    display: grid; grid-template-columns: 1fr 78px 96px 22px; gap: 6px; align-items: center;
     padding: 5px 8px; border-bottom: 1px solid var(--border);
   }
   .minutes-action-item-row:last-child { border-bottom: none; }
@@ -2376,7 +2376,14 @@ function renderMinutesActionItemsRows() {
 // Resets to 'auto' first so shrinking a row (e.g. after deleting a line)
 // actually shrinks the textarea back down, not just grows monotonically.
 function autoGrowMinutesTextarea(el) {
-  el.style.height = 'auto';
+  // Collapse to 0 first, not 'auto' — 'auto' can leave some browsers
+  // reporting scrollHeight against the box's previous (already-grown)
+  // size instead of truly re-measuring from empty, so a row that no longer
+  // needs multiple lines wouldn't shrink back down, and a fresh short row
+  // could start taller than one line. Collapsing all the way to 0 forces a
+  // real re-measurement every time; CSS min-height is what keeps a
+  // single-line row from actually rendering at 0.
+  el.style.height = '0px';
   el.style.height = el.scrollHeight + 'px';
 }
 function addMinutesActionItemRow() {
