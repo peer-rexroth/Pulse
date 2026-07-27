@@ -607,15 +607,19 @@
   .minutes-action-items-field { grid-column: 1 / -1; }
   .minutes-action-items { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .minutes-action-item-row {
-    display: grid; grid-template-columns: 1fr 100px 132px 30px; gap: 6px; align-items: center;
+    display: grid; grid-template-columns: 1fr 100px auto 30px; gap: 6px; align-items: center;
     padding: 5px 8px; border-bottom: 1px solid var(--border);
   }
-  /* The Due Date column is wider than a bare .date-pill needs (~113px) so
-     the pill — icon + up-to-10-char "dd.mm.yyyy" input — never clips
-     against this table's own overflow:hidden edge (see the earlier bug
-     where "22.07.2026" rendered as "22.07.202"). The pill itself centers
-     in the extra room rather than stretching. */
-  .minutes-action-item-row .date-pill { justify-self: start; }
+  /* The Due Date column is `auto` (shrinks to the pill's own content width,
+     icon + up-to-10-char "dd.mm.yyyy" input) rather than a fixed px value,
+     so it always sizes to its minimum instead of leaving dead space or
+     clipping — the pill previously had a background/padding "chip" look
+     here like every other date field in the app, but that's deliberately
+     stripped below to match this table's flat Action Item/Owner cells. */
+  .minutes-action-item-row .date-pill {
+    justify-self: start; background: none; padding: 0; border-radius: 0;
+  }
+  .minutes-action-item-row .date-pill:hover { background: none; }
   .minutes-action-item-row:last-child { border-bottom: none; }
   .minutes-action-items-header {
     font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
