@@ -607,9 +607,15 @@
   .minutes-action-items-field { grid-column: 1 / -1; }
   .minutes-action-items { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .minutes-action-item-row {
-    display: grid; grid-template-columns: 1fr 100px 100px 30px; gap: 6px; align-items: center;
+    display: grid; grid-template-columns: 1fr 100px 132px 30px; gap: 6px; align-items: center;
     padding: 5px 8px; border-bottom: 1px solid var(--border);
   }
+  /* The Due Date column is wider than a bare .date-pill needs (~113px) so
+     the pill — icon + up-to-10-char "dd.mm.yyyy" input — never clips
+     against this table's own overflow:hidden edge (see the earlier bug
+     where "22.07.2026" rendered as "22.07.202"). The pill itself centers
+     in the extra room rather than stretching. */
+  .minutes-action-item-row .date-pill { justify-self: start; }
   .minutes-action-item-row:last-child { border-bottom: none; }
   .minutes-action-items-header {
     font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
