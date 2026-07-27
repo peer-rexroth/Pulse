@@ -1186,6 +1186,48 @@ test('toggleActionLogItem flips completed and stamps/clears completedAt', functi
   assertEqual(workstreams[0].actionLog[0].completedAt, null);
 });
 
+test('deleteActionLogItem removes the entry only after confirmation', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  saveMinutes();
+  const id = workstreams[0].actionLog[0].id;
+
+  deleteActionLogItem(workstreams[0].id, id);
+  assertEqual(workstreams[0].actionLog.length, 1, 'opening the confirm modal must not delete anything by itself');
+  confirmModalAction();
+  assertEqual(workstreams[0].actionLog.length, 0);
+});
+
+test('deleteActionLogItem does not touch the source cycle\'s own saved minutes', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  saveMinutes();
+  const id = workstreams[0].actionLog[0].id;
+
+  deleteActionLogItem(workstreams[0].id, id);
+  confirmModalAction();
+  assertEqual(cycle.minutes.actionItems.length, 1, 'deleting from the log is separate from the cycle\'s own minutes.actionItems');
+});
+
+test('actionLogRowHtml renders a Delete button wired to deleteActionLogItem', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Update runbook';
+  saveMinutes();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('actionLog');
+  const html = document.getElementById('main').innerHTML;
+  const id = workstreams[0].actionLog[0].id;
+  assertIncludes(html, `deleteActionLogItem('${workstreams[0].id}','${id}')`);
+  assertIncludes(html, 'fa-trash');
+});
+
 test('normalizeData backfills a missing/malformed workstream.actionLog to an empty array, and fills in a hand-built row', function () {
   workstreams[0].actionLog = 'not an array';
   normalizeData();

@@ -458,12 +458,13 @@
   /* Action Log (Review's second tab) — a workstream-wide, review-cycle-
      spanning list of action items imported from attached meeting minutes
      (see syncActionLogFromMinutes()). Deliberately reuses .item-row's own
-     --item-grid-cols grid (rather than a bespoke column layout) so its
-     columns line up visually with Scope Item Review's checklist directly
-     above it — Action Item under Name, Owner under Owner, Due Date under
-     Plan-dates, and the complete toggle at the same explicit grid-column:12
-     slot the Scope Item Review tab's own item-level confirm toggle uses.
-     A completed row gets the exact same .review-confirmed green tint a
+     --item-grid-cols grid (rather than a bespoke column layout) so it lines
+     up visually with Scope Item Review's checklist directly above it —
+     see actionLogRowHtml()'s own comment for the exact column mapping
+     (Action Item spans 2-5, Owner at 6, Due Date at 7, Source spans 8-10,
+     Delete at 11, the complete toggle at the same explicit grid-column:12
+     the Scope Item Review tab's own item-level confirm toggle uses). A
+     completed row gets the exact same .review-confirmed green tint a
      confirmed checklist row gets, not a bespoke "done" style. */
   .action-log-list { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; overflow: hidden; }
   .action-log-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); }
@@ -2802,24 +2803,25 @@ function sortedActionLog(list) {
   return open.concat(done);
 }
 // Column slots deliberately mirror itemRowHtml()'s own --item-grid-cols
-// positions: col2 (Name) holds the Action Item text, col4 (Owner) the
-// owner, col5 (Plan-dates) the due date, col8/11 (Milestone-Due/Tags/
-// Status, merged) the source cycle, and the confirm toggle sits at the
-// same explicit grid-column:12 the Scope Item Review tab's own item-level
-// toggle uses — see the .action-log-row comment above for why.
+// positions, per an explicit later layout request (delete button at 11,
+// Owner at 6, Due Date at 7, Action Item merged across 2-5): the Action
+// Item text spans columns 2-5 (grid-column:2/6 — Name/Milestones-badge/
+// Owner/Plan-dates, all otherwise unused by this row), Owner sits at
+// column 6, the due date at column 7, Source still spans columns 8-10
+// (Milestone-Due/Tags/Status, merged), a Delete button now occupies
+// column 11 (the same Actions column Scope Item Review's own Edit/Delete
+// live in), and the confirm toggle sits at the same explicit
+// grid-column:12 the Scope Item Review tab's own item-level toggle uses.
 function actionLogRowHtml(w, a) {
   const cycle = reviewCycles.find(c => c.id === a.cycleId);
   const source = cycle ? `From review started ${fmtDate(dateStrFromTs(cycle.startedAt))}` : '';
   return `<div class="item-row action-log-row ${a.completed ? 'review-confirmed' : ''}">
       <span style="grid-column:1"></span>
-      <span class="action-log-text" style="grid-column:2">${esc(a.text)}</span>
-      <span style="grid-column:3"></span>
-      <span class="item-owner" style="grid-column:4">${esc(a.owner)}</span>
-      <span class="item-dates-computed" style="grid-column:5">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>
-      <span style="grid-column:6"></span>
-      <span style="grid-column:7"></span>
+      <span class="action-log-text" style="grid-column:2/6">${esc(a.text)}</span>
+      <span class="item-owner" style="grid-column:6">${esc(a.owner)}</span>
+      <span class="item-dates-computed" style="grid-column:7">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>
       <span class="action-log-source" style="grid-column:8/11" title="${esc(source)}">${esc(source)}</span>
-      <span style="grid-column:11"></span>
+      <button class="row-icon-btn" style="grid-column:11" onclick="deleteActionLogItem('${w.id}','${a.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
       <button class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
         <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
       </button>
@@ -2839,12 +2841,9 @@ function actionLogHtml(w) {
     <div class="action-log-list">
       <div class="item-row action-log-row action-log-header">
         <span style="grid-column:1"></span>
-        <span style="grid-column:2">Action Item</span>
-        <span style="grid-column:3"></span>
-        <span style="grid-column:4">Owner</span>
-        <span style="grid-column:5">Due Date</span>
-        <span style="grid-column:6"></span>
-        <span style="grid-column:7"></span>
+        <span style="grid-column:2/6">Action Item</span>
+        <span style="grid-column:6">Owner</span>
+        <span style="grid-column:7">Due Date</span>
         <span style="grid-column:8/11">Source</span>
       </div>
       ${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}
@@ -2858,6 +2857,30 @@ function toggleActionLogItem(wsId, itemId) {
   a.completed = !a.completed;
   a.completedAt = a.completed ? Date.now() : null;
   save(); render();
+}
+// Deleting a log entry only removes it from the workstream's actionLog —
+// it does not touch the source cycle's own cycle.minutes.actionItems, so
+// re-saving that cycle's minutes unchanged would just re-add it via
+// syncActionLogFromMinutes()'s id match. Same confirm-modal-only pattern
+// (no undo toast) as removeMinutes(), since this is a lightweight leaf
+// record, not something that cascades into other data the way deleteItem()'s
+// milestones do.
+function deleteActionLogItem(wsId, itemId) {
+  const w = wsById(wsId);
+  if (!w) return;
+  const a = w.actionLog.find(x => x.id === itemId);
+  if (!a) return;
+  openConfirmModal({
+    title: 'Delete this action item?',
+    body: 'This cannot be undone.',
+    action: () => {
+      const idx = w.actionLog.findIndex(x => x.id === itemId);
+      if (idx === -1) return;
+      w.actionLog.splice(idx, 1);
+      save(); render();
+      showToast('Action item deleted');
+    }
+  });
 }
 // Action items attached to a review cycle's minutes also flow into the
 // workstream's own action log — a running list that outlives any single
