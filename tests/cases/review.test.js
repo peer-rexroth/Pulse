@@ -505,6 +505,21 @@ test('parseMeetingMinutes recognizes "Meeting Summary" as well as bare "Summary"
   assertEqual(parsed.summary, 'Kickoff went well.');
 });
 
+test('parseMeetingMinutes excludes an Open Points section entirely, rather than leaking it into whichever section precedes it', function () {
+  const text = 'Action Items\nAlice to update the runbook.\nOpen Points\nStill need sign-off from Legal.\nAnother open point.\nDecisions\nGo live on the 15th.';
+  const parsed = parseMeetingMinutes(text);
+  assertEqual(parsed.actionItems, 'Alice to update the runbook.', 'Open Points content must not be appended to the section before it');
+  assertEqual(parsed.decisions, 'Go live on the 15th.', 'parsing should resume normally once a real header follows Open Points');
+  assertFalse(parsed.actionItems.includes('Legal'));
+  assertFalse(parsed.decisions.includes('Legal'));
+});
+
+test('parseMeetingMinutes excludes inline content on the "Open Points:" header line itself', function () {
+  const parsed = parseMeetingMinutes('Action Items\nAlice to update the runbook.\nOpen Points: none\nDecisions\nGo live on the 15th.');
+  assertEqual(parsed.actionItems, 'Alice to update the runbook.');
+  assertFalse(parsed.actionItems.includes('none'));
+});
+
 test('parseMeetingMinutes recognizes a header with inline content after a colon', function () {
   const parsed = parseMeetingMinutes('Summary: Kickoff went well.\nAction Items: Nothing yet.');
   assertEqual(parsed.summary, 'Kickoff went well.');
@@ -627,6 +642,101 @@ test('parseFlexibleDate returns null for blank or unrecognized text, rather than
   assertEqual(parseFlexibleDate('   '), null);
   assertEqual(parseFlexibleDate('TBD'), null);
   assertEqual(parseFlexibleDate('Someday'), null);
+});
+
+// ---------- docxParagraphText / list numbering (re-adds markers Word doesn't store as text) ----------
+// docxParagraphText() only ever calls p.getElementsByTagName(...) (and, on
+// whatever that returns, .getAttribute()/.textContent) — a plain object
+// literal graph is enough to stand in for real DOM elements, without
+// needing an actual DOMParser (unavailable in this harness — see the
+// "Testing caveat" in CLAUDE.md for why the rest of the .docx extraction
+// pipeline can't be exercised this way).
+function fakeAttrEl(val) { return { getAttribute: () => val }; }
+function fakeDocxParagraph(texts, numPrInfo) {
+  const numPrEl = numPrInfo ? {
+    getElementsByTagName(tag) {
+      if (tag === 'w:numId') return [fakeAttrEl(numPrInfo.numId)];
+      if (tag === 'w:ilvl') return numPrInfo.ilvl != null ? [fakeAttrEl(numPrInfo.ilvl)] : [];
+      return [];
+    }
+  } : null;
+  return {
+    getElementsByTagName(tag) {
+      if (tag === 'w:t') return texts.map(t => ({ textContent: t }));
+      if (tag === 'w:numPr') return numPrEl ? [numPrEl] : [];
+      return [];
+    }
+  };
+}
+
+test('docxParagraphText falls back to a flat bullet for a list paragraph when numbering info isn\'t available', function () {
+  assertEqual(docxParagraphText(fakeDocxParagraph(['Discuss timeline'], { numId: '1', ilvl: '0' })), '• Discuss timeline');
+});
+
+test('docxParagraphText leaves an ordinary paragraph (no <w:numPr>) alone', function () {
+  assertEqual(docxParagraphText(fakeDocxParagraph(['Discuss timeline'], null)), 'Discuss timeline');
+});
+
+test('docxParagraphText joins multiple runs within one paragraph before adding the marker', function () {
+  assertEqual(docxParagraphText(fakeDocxParagraph(['Alice ', 'to update ', 'the runbook'], { numId: '1', ilvl: '0' })), '• Alice to update the runbook');
+});
+
+test('docxParagraphText renders a real bullet-format list using the numbering map, not the raw lvlText character', function () {
+  const numbering = { numToAbstract: { '1': 'a' }, abstractFormats: { a: { '0': { numFmt: 'bullet', lvlText: '' } } } };
+  const getNextCount = makeListCounterTracker();
+  assertEqual(docxParagraphText(fakeDocxParagraph(['First'], { numId: '1', ilvl: '0' }), numbering, getNextCount), '• First');
+});
+
+test('docxParagraphText renders a decimal-format list with real incrementing numbers', function () {
+  const numbering = { numToAbstract: { '1': 'a' }, abstractFormats: { a: { '0': { numFmt: 'decimal', lvlText: '%1.' } } } };
+  const getNextCount = makeListCounterTracker();
+  assertEqual(docxParagraphText(fakeDocxParagraph(['First'], { numId: '1', ilvl: '0' }), numbering, getNextCount), '1. First');
+  assertEqual(docxParagraphText(fakeDocxParagraph(['Second'], { numId: '1', ilvl: '0' }), numbering, getNextCount), '2. Second');
+});
+
+test('docxParagraphText renders lowerLetter/upperRoman formats correctly', function () {
+  const numbering = {
+    numToAbstract: { '1': 'a' },
+    abstractFormats: { a: { '0': { numFmt: 'lowerLetter', lvlText: '%1)' }, '1': { numFmt: 'upperRoman', lvlText: '%1.' } } }
+  };
+  const getNextCount = makeListCounterTracker();
+  assertEqual(docxParagraphText(fakeDocxParagraph(['One'], { numId: '1', ilvl: '0' }), numbering, getNextCount), 'a) One');
+  assertEqual(docxParagraphText(fakeDocxParagraph(['Two'], { numId: '1', ilvl: '0' }), numbering, getNextCount), 'b) Two');
+  assertEqual(docxParagraphText(fakeDocxParagraph(['Sub'], { numId: '1', ilvl: '1' }), numbering, getNextCount), 'I. Sub');
+});
+
+test('makeListCounterTracker resets a deeper level\'s counter once a shallower item appears again', function () {
+  const getNextCount = makeListCounterTracker();
+  assertEqual(getNextCount('1', '0'), 1);
+  assertEqual(getNextCount('1', '1'), 1);
+  assertEqual(getNextCount('1', '1'), 2);
+  assertEqual(getNextCount('1', '0'), 2, 'a second top-level item continues its own counter');
+  assertEqual(getNextCount('1', '1'), 1, 'the sub-level counter should have reset when the top-level item reappeared');
+});
+
+test('makeListCounterTracker tracks separate lists (different numId) independently', function () {
+  const getNextCount = makeListCounterTracker();
+  assertEqual(getNextCount('1', '0'), 1);
+  assertEqual(getNextCount('2', '0'), 1);
+  assertEqual(getNextCount('1', '0'), 2);
+});
+
+test('formatListCounter renders decimal, letter, and roman-numeral formats', function () {
+  assertEqual(formatListCounter('decimal', 3), '3');
+  assertEqual(formatListCounter('lowerLetter', 1), 'a');
+  assertEqual(formatListCounter('lowerLetter', 27), 'aa');
+  assertEqual(formatListCounter('upperLetter', 2), 'B');
+  assertEqual(formatListCounter('lowerRoman', 9), 'ix');
+  assertEqual(formatListCounter('upperRoman', 4), 'IV');
+});
+
+test('docxListMarker always renders "•" for a bullet format, ignoring the literal lvlText character', function () {
+  assertEqual(docxListMarker('bullet', '', 5), '•');
+});
+
+test('docxListMarker substitutes the formatted counter into the lvlText template', function () {
+  assertEqual(docxListMarker('decimal', '(%1)', 3), '(3)');
+  assertEqual(docxListMarker('decimal', null, 3), '3.', 'a missing lvlText should fall back to a plain "N." template');
 });
 
 test('parseMinutesPaste fills the Action Items table (not a single textarea) from the pasted text', function () {

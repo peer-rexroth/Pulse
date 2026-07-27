@@ -2243,10 +2243,19 @@ function toggleHistoryShowAll(wsId) {
 // point of an action item and a free-text blob buries that. Every field
 // stays fully hand-editable regardless of how (or whether) auto-fill split
 // it — paste-and-parse is a convenience, not the source of truth.
+// 'openPoints' is recognized as a header but deliberately has no bucket of
+// its own below — there is no Open Points field anywhere in this app (see
+// the meeting-minutes modal). Without recognizing the header at all,
+// "Open Points" in a real source document wouldn't be seen as a section
+// boundary, and everything under it would keep getting appended to
+// whichever *real* section came before it (Action Items, typically) instead
+// of being excluded — this was a real bug, reported by a user whose source
+// document had an Open Points section between Action Items and Decisions.
 const MINUTES_SECTIONS = [
   { key: 'summary', re: /^(?:meeting\s*)?summary\b[:\-–—]?\s*/i },
   { key: 'actionItems', re: /^action\s*items?\b[:\-–—]?\s*/i },
   { key: 'decisions', re: /^decisions?\b[:\-–—]?\s*/i },
+  { key: 'openPoints', re: /^open\s*points?\b[:\-–—]?\s*/i },
   { key: 'nextSteps', re: /^next\s*steps?\b[:\-–—]?\s*/i }
 ];
 function parseMeetingMinutes(text) {
@@ -2268,10 +2277,16 @@ function parseMeetingMinutes(text) {
     if (section) {
       current = section.key;
       anyHeaderFound = true;
-      const rest = cleaned.replace(section.re, '').trim();
-      if (rest) buckets[current].push(rest);
+      // Open Points has no bucket — its own inline "rest" text (on the
+      // header line itself, e.g. "Open Points: none") is excluded too, same
+      // as every line that follows until the next recognized header.
+      if (current !== 'openPoints') {
+        const rest = cleaned.replace(section.re, '').trim();
+        if (rest) buckets[current].push(rest);
+      }
       return;
     }
+    if (current === 'openPoints') return; // excluded — see MINUTES_SECTIONS' comment
     (current ? buckets[current] : preamble).push(rawLine);
   });
   // Only a completely unstructured paste (no headers recognized anywhere)
@@ -2491,8 +2506,126 @@ async function inflateRaw(bytes) {
 // mid-paragraph line break (<w:br/>) isn't distinguished from a plain
 // space, which is a fine tradeoff for section-header detection purposes
 // (real section headers are their own paragraph, not a mid-paragraph break).
-function docxParagraphText(p) {
-  return Array.from(p.getElementsByTagName('w:t')).map(t => t.textContent).join('');
+
+// ---- List numbering (bullets AND real numbers/letters/roman numerals) ----
+// A list item's rendered marker ("•", "1.", "a)", "iii.") is never part of
+// its <w:t> run content — Word computes it at render time from the
+// paragraph's numbering properties (<w:pPr><w:numPr><w:numId/><w:ilvl/>
+// </w:numPr></w:pPr>) plus a *separate* file, word/numbering.xml, which maps
+// numId -> abstractNumId -> per-level {numFmt, lvlText}. Reconstructing it
+// for real (not just flattening every list to "•") means parsing that
+// second file and tracking a running counter per (numId, level) ourselves,
+// exactly like Word does internally.
+function toRomanNumeral(num) {
+  const table = [[1000,'m'],[900,'cm'],[500,'d'],[400,'cd'],[100,'c'],[90,'xc'],[50,'l'],[40,'xl'],[10,'x'],[9,'ix'],[5,'v'],[4,'iv'],[1,'i']];
+  let result = '';
+  table.forEach(([value, letters]) => { while (num >= value) { result += letters; num -= value; } });
+  return result;
+}
+// 1->a, 2->b, ..., 26->z, 27->aa, ... — same bijective base-26 scheme
+// spreadsheets use for column letters, since there's no "zero" letter.
+function toLetterSequence(num) {
+  let s = '';
+  while (num > 0) { num--; s = String.fromCharCode(97 + (num % 26)) + s; num = Math.floor(num / 26); }
+  return s;
+}
+function formatListCounter(numFmt, count) {
+  switch (numFmt) {
+    case 'lowerLetter': return toLetterSequence(count);
+    case 'upperLetter': return toLetterSequence(count).toUpperCase();
+    case 'lowerRoman': return toRomanNumeral(count);
+    case 'upperRoman': return toRomanNumeral(count).toUpperCase();
+    default: return String(count); // 'decimal' and anything unrecognized
+  }
+}
+// lvlText is Word's own marker template, e.g. "%1." or "(%1)" — %1 is
+// replaced with the formatted counter. A genuine bullet-format level's
+// lvlText is typically a single character from a symbol font (Wingdings'
+// private-use-area encoding for "•", not literally the "•" glyph) — using
+// that raw character outside its symbol font would show the wrong glyph
+// entirely, so a bullet level always renders as a plain "•" instead of
+// whatever lvlText literally contains.
+function docxListMarker(numFmt, lvlText, count) {
+  if (numFmt === 'bullet') return '•';
+  return (lvlText || '%1.').replace(/%\d/, formatListCounter(numFmt, count));
+}
+// Per (numId, level) counters, incrementing once per call — mirrors how
+// Word itself numbers a list top to bottom. A shallower-level item (e.g. a
+// level-0 item appearing after some level-1 sub-items) resets every deeper
+// level's counter for that same list, matching Word's own restart-on-outdent
+// behavior for the common case; true w:lvlOverride/startOverride semantics
+// aren't modeled (they're a per-document customization on top of the base
+// numbering.xml definition), an acceptable gap for meeting-minutes-style
+// lists, which are usually flat or at most one level of nesting.
+function makeListCounterTracker() {
+  const counts = {};
+  return function nextListCount(numId, ilvl) {
+    Object.keys(counts).forEach(key => {
+      const [kNumId, kIlvl] = key.split(':');
+      if (kNumId === String(numId) && Number(kIlvl) > Number(ilvl)) delete counts[key];
+    });
+    const key = `${numId}:${ilvl}`;
+    counts[key] = (counts[key] || 0) + 1;
+    return counts[key];
+  };
+}
+// Reads word/numbering.xml (a *second* zip entry, alongside document.xml)
+// into { numToAbstract: {numId: abstractNumId}, abstractFormats: {abstractNumId: {ilvl: {numFmt, lvlText}}} }.
+// Returns null (rather than throwing) for any failure — a missing or
+// unparseable numbering.xml means list items fall back to a flat bullet
+// instead of the whole minutes import failing outright, same "degrade
+// gracefully" spirit as the rest of this feature's error handling.
+async function parseDocxNumbering(arrayBuffer) {
+  try {
+    const entry = zipFindEntry(arrayBuffer, 'word/numbering.xml');
+    if (!entry) return null;
+    const bytes = entry.method === 0 ? entry.data : await inflateRaw(entry.data);
+    const xml = new TextDecoder('utf-8').decode(bytes);
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    if (doc.querySelector('parsererror')) return null;
+    const abstractFormats = {};
+    Array.from(doc.getElementsByTagName('w:abstractNum')).forEach(an => {
+      const abstractId = an.getAttribute('w:abstractNumId');
+      const levels = {};
+      Array.from(an.getElementsByTagName('w:lvl')).forEach(lvl => {
+        const ilvl = lvl.getAttribute('w:ilvl');
+        const numFmtEl = lvl.getElementsByTagName('w:numFmt')[0];
+        const lvlTextEl = lvl.getElementsByTagName('w:lvlText')[0];
+        levels[ilvl] = {
+          numFmt: numFmtEl ? numFmtEl.getAttribute('w:val') : 'decimal',
+          lvlText: lvlTextEl ? lvlTextEl.getAttribute('w:val') : '%1.'
+        };
+      });
+      abstractFormats[abstractId] = levels;
+    });
+    const numToAbstract = {};
+    Array.from(doc.getElementsByTagName('w:num')).forEach(n => {
+      const numId = n.getAttribute('w:numId');
+      const abstractIdEl = n.getElementsByTagName('w:abstractNumId')[0];
+      if (abstractIdEl) numToAbstract[numId] = abstractIdEl.getAttribute('w:val');
+    });
+    return { numToAbstract, abstractFormats };
+  } catch (e) { return null; }
+}
+function docxParagraphNumPr(p) {
+  const numPr = p.getElementsByTagName('w:numPr')[0];
+  if (!numPr) return null;
+  const numIdEl = numPr.getElementsByTagName('w:numId')[0];
+  const ilvlEl = numPr.getElementsByTagName('w:ilvl')[0];
+  return { numId: numIdEl ? numIdEl.getAttribute('w:val') : null, ilvl: ilvlEl ? ilvlEl.getAttribute('w:val') : '0' };
+}
+// numbering/getNextCount are both optional so this still works (falling
+// back to a flat bullet on any list item) when called without them, or when
+// numbering.xml couldn't be read/parsed at all.
+function docxParagraphText(p, numbering, getNextCount) {
+  const text = Array.from(p.getElementsByTagName('w:t')).map(t => t.textContent).join('');
+  const numPr = docxParagraphNumPr(p);
+  if (!numPr) return text;
+  const abstractId = numbering && numPr.numId != null ? numbering.numToAbstract[numPr.numId] : null;
+  const levelInfo = abstractId != null ? (numbering.abstractFormats[abstractId] || {})[numPr.ilvl] : null;
+  if (!levelInfo || !getNextCount) return `• ${text}`;
+  const marker = docxListMarker(levelInfo.numFmt, levelInfo.lvlText, getNextCount(numPr.numId, numPr.ilvl));
+  return `${marker} ${text}`;
 }
 // A real Word table (<w:tbl>, e.g. an Action Items table with Action
 // Item/Owner/Due Date columns) must NOT be flattened by just grabbing every
@@ -2507,10 +2640,10 @@ function docxParagraphText(p) {
 // table dropped in as a .docx and one pasted as plain text both funnel
 // through the exact same splitActionItemLine() logic. A cell with more than
 // one paragraph joins them with a space (still one cell's worth of text).
-function docxTableRowsToText(tbl) {
+function docxTableRowsToText(tbl, numbering, getNextCount) {
   return Array.from(tbl.getElementsByTagName('w:tr')).map(tr =>
     Array.from(tr.getElementsByTagName('w:tc'))
-      .map(tc => Array.from(tc.getElementsByTagName('w:p')).map(docxParagraphText).join(' ').trim())
+      .map(tc => Array.from(tc.getElementsByTagName('w:p')).map(p => docxParagraphText(p, numbering, getNextCount)).join(' ').trim())
       .join('\t')
   );
 }
@@ -2523,10 +2656,12 @@ async function extractDocxText(arrayBuffer) {
   if (doc.querySelector('parsererror')) throw new Error('Could not parse this .docx\'s document content');
   const body = doc.getElementsByTagName('w:body')[0];
   if (!body) return '';
+  const numbering = await parseDocxNumbering(arrayBuffer);
+  const getNextCount = makeListCounterTracker();
   const lines = [];
   Array.from(body.children).forEach(child => {
-    if (child.tagName === 'w:p') lines.push(docxParagraphText(child));
-    else if (child.tagName === 'w:tbl') lines.push(...docxTableRowsToText(child));
+    if (child.tagName === 'w:p') lines.push(docxParagraphText(child, numbering, getNextCount));
+    else if (child.tagName === 'w:tbl') lines.push(...docxTableRowsToText(child, numbering, getNextCount));
   });
   return lines.join('\n');
 }
