@@ -495,6 +495,7 @@
   .action-log-row:last-child { border-bottom: none; }
   .action-log-row.completed { background: var(--stat-green-bg); }
   .action-log-row.completed .action-log-text { color: var(--text-faint); text-decoration: line-through; }
+  .action-log-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); }
   .action-log-text { white-space: pre-wrap; }
   .action-log-source { color: var(--text-faint); font-size: 11.5px; text-align: right; }
   .section-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin: 20px 0 8px; }
@@ -588,7 +589,7 @@
     </div>
     <div class="planning-toolbar" id="reviewToolbar" style="display:none">
       <div class="view-tabs">
-        <button class="view-tab" id="tabReviewScope" onclick="setReviewTab('scope')"><i class="fa-solid fa-clipboard-check"></i> Scope Review</button>
+        <button class="view-tab" id="tabReviewScope" onclick="setReviewTab('scope')"><i class="fa-solid fa-clipboard-check"></i> Scope Item Review</button>
         <button class="view-tab" id="tabReviewActionLog" onclick="setReviewTab('actionLog')"><i class="fa-solid fa-list-check"></i> Action Log</button>
       </div>
     </div>
@@ -2422,11 +2423,25 @@ function splitActionItemLine(line) {
   }
   return [line];
 }
+// Shortens a full name to "<first initial>. <rest>" ("Peer Rexroth" -> "P.
+// Rexroth") for the Owner column specifically — minutes list full names,
+// but the table reads more compactly this way. A single-word name (no space
+// to split on) has nothing to shorten and passes through unchanged, and a
+// name that already looks shortened ("P." or bare "P" as its first word)
+// is left alone rather than re-shortened into "P.. Rexroth".
+function shortenOwnerName(name) {
+  const s = (name || '').trim();
+  if (!s) return s;
+  const parts = s.split(/\s+/);
+  if (parts.length < 2) return s;
+  if (/^[A-Za-z]\.?$/.test(parts[0])) return s;
+  return parts[0][0].toUpperCase() + '. ' + parts.slice(1).join(' ');
+}
 function linesToActionItems(text) {
   return (text || '').split('\n').map(l => l.trim()).filter(Boolean)
     .map(splitActionItemLine)
     .filter(cols => !looksLikeActionItemsHeaderRow(cols))
-    .map(cols => ({ id: genId(), text: cols[0] || '', owner: (cols[1] || '').trim(), dueDate: parseFlexibleDate(cols[2]) }))
+    .map(cols => ({ id: genId(), text: cols[0] || '', owner: shortenOwnerName(cols[1]), dueDate: parseFlexibleDate(cols[2]) }))
     .filter(a => a.text);
 }
 
@@ -2927,7 +2942,10 @@ function actionLogHtml(w) {
   }
   const openCount = list.filter(a => !a.completed).length;
   return `<div class="review-progress">${openCount} open of ${list.length} action item${list.length === 1 ? '' : 's'}</div>
-    <div class="action-log-list">${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}</div>`;
+    <div class="action-log-list">
+      <div class="action-log-row action-log-header"><span></span><span>Action Item</span><span>Owner</span><span>Due Date</span><span>Source</span></div>
+      ${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}
+    </div>`;
 }
 function toggleActionLogItem(wsId, itemId) {
   const w = wsById(wsId);

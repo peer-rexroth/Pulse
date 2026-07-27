@@ -573,9 +573,9 @@ test('linesToActionItems splits a tab-separated table into text/owner/dueDate, s
   const rows = linesToActionItems(table);
   assertEqual(rows.length, 3, 'the header row should be recognized and skipped, not turned into a 4th row');
   assertEqual(rows[0].text, 'Send simplified transition specs to Tom');
-  assertEqual(rows[0].owner, 'Sofia Bergman');
+  assertEqual(rows[0].owner, 'S. Bergman', 'a full name from an imported table should be shortened to "first initial. last name"');
   assertTrue(!!rows[0].dueDate, 'a bare "Jul 22" due date should resolve to a real ISO date, not stay null');
-  assertEqual(rows[1].owner, 'Marcus Webb');
+  assertEqual(rows[1].owner, 'M. Webb');
   assertEqual(rows[1].dueDate, null, 'a row whose due-date column was empty in the source table should stay unset, not error');
 });
 
@@ -584,7 +584,7 @@ test('linesToActionItems also splits a markdown-style pipe table', function () {
   const rows = linesToActionItems(table);
   assertEqual(rows.length, 2);
   assertEqual(rows[0].text, 'Update the runbook');
-  assertEqual(rows[0].owner, 'Alice');
+  assertEqual(rows[0].owner, 'Alice', 'a single-word name has nothing to shorten and passes through unchanged');
   assertEqual(rows[0].dueDate, '2026-08-01');
   assertEqual(rows[1].owner, 'Bob');
   assertEqual(rows[1].dueDate, null);
@@ -601,10 +601,44 @@ test('parseMinutesPaste extracts owner and due date from a pasted table under th
   ].join('\n');
   parseMinutesPaste();
   assertEqual(editingMinutesActionItems.length, 2, 'the table header row must not survive into the working rows either');
-  assertEqual(editingMinutesActionItems[0].owner, 'Sofia Bergman');
+  assertEqual(editingMinutesActionItems[0].owner, 'S. Bergman');
   assertTrue(!!editingMinutesActionItems[0].dueDate);
-  assertEqual(editingMinutesActionItems[1].owner, 'Marcus Webb');
+  assertEqual(editingMinutesActionItems[1].owner, 'M. Webb');
   assertEqual(editingMinutesActionItems[1].dueDate, null);
+});
+
+// ---------- Owner name shortening ("Peer Rexroth" -> "P. Rexroth") ----------
+
+test('shortenOwnerName shortens a two-word name to "first initial. last name"', function () {
+  assertEqual(shortenOwnerName('Peer Rexroth'), 'P. Rexroth');
+});
+
+test('shortenOwnerName keeps every word after the first for a multi-word name', function () {
+  assertEqual(shortenOwnerName('Mary Jane Watson'), 'M. Jane Watson');
+});
+
+test('shortenOwnerName leaves a single-word name unchanged — nothing to shorten', function () {
+  assertEqual(shortenOwnerName('Alice'), 'Alice');
+});
+
+test('shortenOwnerName leaves blank/empty input unchanged', function () {
+  assertEqual(shortenOwnerName(''), '');
+  assertEqual(shortenOwnerName(undefined), '');
+});
+
+test('shortenOwnerName does not re-shorten a name that already looks shortened', function () {
+  assertEqual(shortenOwnerName('P. Rexroth'), 'P. Rexroth');
+  assertEqual(shortenOwnerName('P Rexroth'), 'P Rexroth');
+});
+
+test('shortenOwnerName is only applied on import (linesToActionItems), not to a name typed directly into the modal', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  editingMinutesActionItems[0].owner = 'Peer Rexroth';
+  saveMinutes();
+  assertEqual(cycle.minutes.actionItems[0].owner, 'Peer Rexroth', 'manually typed/edited owners in the modal are stored verbatim, not shortened');
 });
 
 // ---------- Flexible due-date parsing ----------
@@ -1169,7 +1203,7 @@ test('normalizeData backfills a missing/malformed workstream.actionLog to an emp
   assertTrue(typeof a.addedAt === 'number');
 });
 
-test('setReviewTab switches renderReview between the Scope Review checklist and the Action Log', function () {
+test('setReviewTab switches renderReview between the Scope Item Review checklist and the Action Log', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
   addMinutesActionItemRow();
@@ -1178,9 +1212,9 @@ test('setReviewTab switches renderReview between the Scope Review checklist and 
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
 
-  assertEqual(reviewTab, 'scope', 'Review should default to the Scope Review tab');
+  assertEqual(reviewTab, 'scope', 'Review should default to the Scope Item Review tab');
   let html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'Start review cycle', 'the completed cycle from addCompletedReviewCycle() has no active cycle left, so Scope Review falls back to its "start a new one" state');
+  assertIncludes(html, 'Start review cycle', 'the completed cycle from addCompletedReviewCycle() has no active cycle left, so Scope Item Review falls back to its "start a new one" state');
   assertNotIncludes(html, 'action-log-list');
 
   setReviewTab('actionLog');
@@ -1200,6 +1234,24 @@ test('actionLogHtml shows an empty state when the workstream has no action items
   setReviewTab('actionLog');
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'No action items yet');
+  assertNotIncludes(html, 'action-log-header', 'no header row without any actual rows to label');
+});
+
+test('actionLogHtml shows a header row (Action Item / Owner / Due Date / Source) once there is at least one action item', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Update runbook';
+  saveMinutes();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('actionLog');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'action-log-header');
+  assertIncludes(html, 'Action Item');
+  assertIncludes(html, 'Owner');
+  assertIncludes(html, 'Due Date');
+  assertIncludes(html, 'Source');
 });
 
 test('sortedActionLog puts open items first (soonest due date first, undated last) and sinks completed items to the bottom', function () {
