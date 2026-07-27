@@ -675,6 +675,24 @@ test('addMinutesActionItemRow/removeMinutesActionItemRow add and remove rows fro
   assertEqual(editingMinutesActionItems.length, 1);
 });
 
+test('the Action Item cell renders as a <textarea>, not a single-line <input>, so a multi-line description isn\'t clipped', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  const html = document.getElementById('minutesActionItemsRows').innerHTML;
+  assertIncludes(html, '<textarea');
+  assertEqual((html.match(/type="text"/g) || []).length, 1, 'only Owner should be a plain single-line input — Action Item is the textarea');
+});
+
+test('a multi-line action item description round-trips through save intact', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Line one\nLine two';
+  saveMinutes();
+  assertEqual(cycle.minutes.actionItems[0].text, 'Line one\nLine two');
+});
+
 test('saveMinutes stores Summary/Decisions/Next Steps plus a structured Action Items table, and stamps importedAt once', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);

@@ -330,7 +330,7 @@
   .minutes-action-items-field { grid-column: 1 / -1; }
   .minutes-action-items { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .minutes-action-item-row {
-    display: grid; grid-template-columns: 1fr 78px 96px 22px; gap: 6px; align-items: center;
+    display: grid; grid-template-columns: 1fr 78px 96px 22px; gap: 6px; align-items: start;
     padding: 5px 8px; border-bottom: 1px solid var(--border);
   }
   .minutes-action-item-row:last-child { border-bottom: none; }
@@ -338,10 +338,20 @@
     font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
     color: var(--text-faint); background: var(--panel-2);
   }
-  .minutes-action-item-row input[type="text"] {
-    width: 100%; box-sizing: border-box; padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px;
-    background: var(--panel-2); color: var(--text); font-size: 12px;
+  /* Flat, table-cell inputs — no per-cell border/background/radius "pill"
+     look, since these already sit inside a bordered row of a bordered
+     table; a focus highlight is the only visual affordance. The Action
+     Item cell is a <textarea>, not an <input>, so multi-line descriptions
+     aren't clipped — it grows with content via autoGrowMinutesTextarea()
+     rather than getting its own scrollbar or a manual resize handle. */
+  .minutes-action-item-row input[type="text"],
+  .minutes-action-item-row textarea {
+    width: 100%; box-sizing: border-box; padding: 5px 6px; margin: 0; border: none; border-radius: 5px;
+    background: transparent; color: var(--text); font-size: 12px; font-family: inherit; line-height: 1.4;
   }
+  .minutes-action-item-row textarea { resize: none; overflow: hidden; min-height: 26px; }
+  .minutes-action-item-row input[type="text"]:focus,
+  .minutes-action-item-row textarea:focus { outline: none; background: var(--panel-2); }
   .minutes-action-item-row .date-pill { background: transparent; padding: 3px 2px; }
   .minutes-action-item-row .inline-date-input { width: 100%; }
   .milestone-row { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--border); }
@@ -2347,14 +2357,27 @@ let minutesModalCycleId = null;
 // row inputs write directly into this via oninput/onblur (no re-render on
 // every keystroke), and only add/remove a row re-renders the table.
 let editingMinutesActionItems = [];
+// A <textarea>, not an <input> — an action item's own description is
+// frequently long enough to wrap onto more than one line, and clipping it
+// to a single line (as a plain input would) hides the second half of what
+// someone typed. Grows with content rather than scrolling internally or
+// exposing a manual resize handle — see autoGrowMinutesTextarea().
 function renderMinutesActionItemsRows() {
-  document.getElementById('minutesActionItemsRows').innerHTML = editingMinutesActionItems.map((a, idx) => `
+  const el = document.getElementById('minutesActionItemsRows');
+  el.innerHTML = editingMinutesActionItems.map((a, idx) => `
     <div class="minutes-action-item-row">
-      <input type="text" value="${esc(a.text)}" placeholder="Action item" oninput="editingMinutesActionItems[${idx}].text = this.value">
+      <textarea rows="1" placeholder="Action item" oninput="editingMinutesActionItems[${idx}].text = this.value; autoGrowMinutesTextarea(this)">${esc(a.text)}</textarea>
       <input type="text" value="${esc(a.owner || '')}" placeholder="Owner" oninput="editingMinutesActionItems[${idx}].owner = this.value">
       ${dateInputHtml(a.dueDate, `onblur="editingMinutesActionItems[${idx}].dueDate = this.value || null"`)}
       <button class="row-icon-btn" onclick="removeMinutesActionItemRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>
     </div>`).join('');
+  el.querySelectorAll('textarea').forEach(autoGrowMinutesTextarea);
+}
+// Resets to 'auto' first so shrinking a row (e.g. after deleting a line)
+// actually shrinks the textarea back down, not just grows monotonically.
+function autoGrowMinutesTextarea(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
 }
 function addMinutesActionItemRow() {
   editingMinutesActionItems.push({ id: genId(), text: '', owner: '', dueDate: null });
