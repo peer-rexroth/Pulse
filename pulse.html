@@ -322,9 +322,12 @@
   .field-row .field { flex: 1; }
   .modal-wide { width: 600px; }
 
-  /* Meeting minutes modal — 2x2 grid of sections below the full-width paste box */
+  /* Meeting minutes modal — Input+Buttons/Meeting Summary on row 1, Action
+     Items spanning both columns on row 2 (it needs the width for its three
+     table columns), Decisions/Next Steps on row 3. */
   .minutes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
   .minutes-grid .field textarea { min-height: 84px; }
+  .minutes-action-items-field { grid-column: 1 / -1; }
   .minutes-action-items { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .minutes-action-item-row {
     display: grid; grid-template-columns: 1fr 78px 96px 22px; gap: 6px; align-items: center;
@@ -601,14 +604,14 @@
     <div class="minutes-grid">
       <div class="field">
         <label>Paste minutes to auto-fill</label>
-        <textarea id="minutesPasteInput" style="min-height:56px" placeholder="Paste raw meeting notes here — lines starting with Summary, Action Items, Next Steps, Decisions, or Open Points are split into the fields alongside automatically."></textarea>
+        <textarea id="minutesPasteInput" style="min-height:56px" placeholder="Paste raw meeting notes here — lines starting with Summary, Action Items, Decisions, or Next Steps are split into the fields alongside automatically."></textarea>
         <button class="btn btn-sm" style="margin-top:8px" onclick="parseMinutesPaste()"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fill from pasted text</button>
       </div>
       <div class="field">
         <label>Meeting Summary</label>
         <textarea id="minutesSummaryInput"></textarea>
       </div>
-      <div class="field">
+      <div class="field minutes-action-items-field">
         <label>Action Items</label>
         <div class="minutes-action-items">
           <div class="minutes-action-item-row minutes-action-items-header">
@@ -621,10 +624,6 @@
       <div class="field">
         <label>Decisions</label>
         <textarea id="minutesDecisionsInput"></textarea>
-      </div>
-      <div class="field">
-        <label>Open Points</label>
-        <textarea id="minutesOpenPointsInput"></textarea>
       </div>
       <div class="field">
         <label>Next Steps</label>
@@ -1019,7 +1018,6 @@ function normalizeData() {
     } else {
       if (typeof c.minutes.summary !== 'string') c.minutes.summary = '';
       if (typeof c.minutes.decisions !== 'string') c.minutes.decisions = '';
-      if (typeof c.minutes.openPoints !== 'string') c.minutes.openPoints = '';
       if (typeof c.minutes.nextSteps !== 'string') c.minutes.nextSteps = '';
       if (typeof c.minutes.importedAt !== 'number') c.minutes.importedAt = Date.now();
       // actionItems used to be a single free-text field (pre-table design) —
@@ -2196,33 +2194,34 @@ function toggleHistoryShowAll(wsId) {
 // ---------- Meeting minutes (per completed review cycle) ----------
 // A cycle's minutes are a plain-text record, not free-form notes — split
 // into the same four buckets most written minutes already use (Summary,
-// Action Items, Next Steps, Decisions) so they read consistently across
+// Action Items, Decisions, Next Steps) so they read consistently across
 // cycles/workstreams. There's no AI/network call involved in "processing" a
 // paste (this app makes none, anywhere): parseMeetingMinutes() is a small
 // heuristic line-scanner that recognizes a line naming one of the four
 // sections (optionally bolded/heading-decorated, optionally with the rest
 // of that section's first line inline after a colon) and buckets every
-// following line under it, until the next recognized header. Text before
-// the first recognized header falls back into Summary rather than being
-// discarded, so a plain "just tell me what happened" paste with no headers
-// at all still lands somewhere sensible (entirely in Summary) instead of
-// silently vanishing. Summary/Next Steps/Decisions stay plain text; Action
-// Items is structured (one row per item, with Owner/Due Date — see below),
-// since "who owns this by when" is the whole point of an action item and a
-// free-text blob buries that. Every field stays fully hand-editable
-// regardless of how (or whether) auto-fill split it — paste-and-parse is a
-// convenience, not the source of truth.
+// following line under it, until the next recognized header. Summary only
+// ever contains text that was genuinely under a Summary/Meeting Summary
+// header — text before the first recognized header is *not* folded into it
+// (a lead-in paragraph isn't necessarily the summary), unless the pasted
+// text has no recognizable headers at all, in which case there's nowhere
+// else for it to go and the whole paste becomes the summary rather than
+// silently vanishing. Action Items is structured (one row per item, with
+// Owner/Due Date — see below), since "who owns this by when" is the whole
+// point of an action item and a free-text blob buries that. Every field
+// stays fully hand-editable regardless of how (or whether) auto-fill split
+// it — paste-and-parse is a convenience, not the source of truth.
 const MINUTES_SECTIONS = [
   { key: 'summary', re: /^(?:meeting\s*)?summary\b[:\-–—]?\s*/i },
   { key: 'actionItems', re: /^action\s*items?\b[:\-–—]?\s*/i },
   { key: 'decisions', re: /^decisions?\b[:\-–—]?\s*/i },
-  { key: 'openPoints', re: /^open\s*points?\b[:\-–—]?\s*/i },
   { key: 'nextSteps', re: /^next\s*steps?\b[:\-–—]?\s*/i }
 ];
 function parseMeetingMinutes(text) {
-  const buckets = { summary: [], actionItems: [], decisions: [], openPoints: [], nextSteps: [] };
+  const buckets = { summary: [], actionItems: [], decisions: [], nextSteps: [] };
   const preamble = [];
   let current = null;
+  let anyHeaderFound = false;
   (text || '').split('\n').forEach(rawLine => {
     // Stripped only for header matching — markdown heading/bold/bullet
     // decoration (#, *, _, -, >) around a header line, never the stored content.
@@ -2236,15 +2235,20 @@ function parseMeetingMinutes(text) {
     const section = (rawLine.includes('\t') || rawLine.includes('|')) ? null : MINUTES_SECTIONS.find(s => s.re.test(cleaned));
     if (section) {
       current = section.key;
+      anyHeaderFound = true;
       const rest = cleaned.replace(section.re, '').trim();
       if (rest) buckets[current].push(rest);
       return;
     }
     (current ? buckets[current] : preamble).push(rawLine);
   });
-  if (preamble.some(l => l.trim())) buckets.summary = preamble.concat(buckets.summary);
+  // Only a completely unstructured paste (no headers recognized anywhere)
+  // falls back to "the whole thing is the summary" — once any real section
+  // header is present, unlabeled lead-in text is dropped rather than
+  // silently attributed to Summary.
+  if (!anyHeaderFound && preamble.some(l => l.trim())) buckets.summary = preamble;
   const join = lines => lines.join('\n').trim();
-  return { summary: join(buckets.summary), actionItems: join(buckets.actionItems), decisions: join(buckets.decisions), openPoints: join(buckets.openPoints), nextSteps: join(buckets.nextSteps) };
+  return { summary: join(buckets.summary), actionItems: join(buckets.actionItems), decisions: join(buckets.decisions), nextSteps: join(buckets.nextSteps) };
 }
 // Free-form prose has no reliable way to parse Owner/Due Date out of it
 // ("Alice — due Friday", "[Bob] 08/01", "Action: ..." are all genuinely
@@ -2368,7 +2372,6 @@ function openMinutesModal(cycleId) {
   document.getElementById('minutesPasteInput').value = '';
   document.getElementById('minutesSummaryInput').value = m ? m.summary : '';
   document.getElementById('minutesDecisionsInput').value = m ? m.decisions : '';
-  document.getElementById('minutesOpenPointsInput').value = m ? m.openPoints : '';
   document.getElementById('minutesNextStepsInput').value = m ? m.nextSteps : '';
   editingMinutesActionItems = (m && m.actionItems ? m.actionItems : []).map(a => ({ ...a }));
   renderMinutesActionItemsRows();
@@ -2385,7 +2388,6 @@ function parseMinutesPaste() {
   const parsed = parseMeetingMinutes(text);
   document.getElementById('minutesSummaryInput').value = parsed.summary;
   document.getElementById('minutesDecisionsInput').value = parsed.decisions;
-  document.getElementById('minutesOpenPointsInput').value = parsed.openPoints;
   document.getElementById('minutesNextStepsInput').value = parsed.nextSteps;
   editingMinutesActionItems = linesToActionItems(parsed.actionItems);
   renderMinutesActionItemsRows();
@@ -2395,15 +2397,14 @@ function saveMinutes() {
   if (!cycle) return;
   const summary = document.getElementById('minutesSummaryInput').value.trim();
   const decisions = document.getElementById('minutesDecisionsInput').value.trim();
-  const openPoints = document.getElementById('minutesOpenPointsInput').value.trim();
   const nextSteps = document.getElementById('minutesNextStepsInput').value.trim();
   const actionItems = editingMinutesActionItems
     .map(a => ({ id: a.id, text: (a.text || '').trim(), owner: (a.owner || '').trim(), dueDate: a.dueDate || null }))
     .filter(a => a.text || a.owner || a.dueDate);
-  if (!summary && !actionItems.length && !decisions && !openPoints && !nextSteps) { showToast('Nothing to save — fill in at least one section', true); return; }
+  if (!summary && !actionItems.length && !decisions && !nextSteps) { showToast('Nothing to save — fill in at least one section', true); return; }
   // importedAt is set once, on the first save, and kept from then on — it
   // marks when minutes were first attached to this cycle, not last edited.
-  cycle.minutes = { summary, actionItems, decisions, openPoints, nextSteps, importedAt: (cycle.minutes && cycle.minutes.importedAt) || Date.now() };
+  cycle.minutes = { summary, actionItems, decisions, nextSteps, importedAt: (cycle.minutes && cycle.minutes.importedAt) || Date.now() };
   save(); closeMinutesModal(); render();
   showToast('Meeting minutes saved');
 }

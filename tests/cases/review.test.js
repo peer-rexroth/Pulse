@@ -492,12 +492,11 @@ test('renderReview shows a collapsed history entry with a chevron, expanding to 
 // ---------- Meeting minutes ----------
 
 test('parseMeetingMinutes splits recognized section headers into their own buckets', function () {
-  const text = `Summary\nWe discussed the migration timeline.\n\nAction Items\nAlice to update the runbook.\nBob to schedule the cutover.\n\nDecisions\nGo live on the 15th.\n\nOpen Points\nStill need sign-off from Legal.\n\nNext Steps\nConfirm go-live date.`;
+  const text = `Summary\nWe discussed the migration timeline.\n\nAction Items\nAlice to update the runbook.\nBob to schedule the cutover.\n\nDecisions\nGo live on the 15th.\n\nNext Steps\nConfirm go-live date.`;
   const parsed = parseMeetingMinutes(text);
   assertEqual(parsed.summary, 'We discussed the migration timeline.');
   assertEqual(parsed.actionItems, 'Alice to update the runbook.\nBob to schedule the cutover.');
   assertEqual(parsed.decisions, 'Go live on the 15th.');
-  assertEqual(parsed.openPoints, 'Still need sign-off from Legal.');
   assertEqual(parsed.nextSteps, 'Confirm go-live date.');
 });
 
@@ -507,10 +506,9 @@ test('parseMeetingMinutes recognizes "Meeting Summary" as well as bare "Summary"
 });
 
 test('parseMeetingMinutes recognizes a header with inline content after a colon', function () {
-  const parsed = parseMeetingMinutes('Summary: Kickoff went well.\nAction Items: Nothing yet.\nOpen Points: None.');
+  const parsed = parseMeetingMinutes('Summary: Kickoff went well.\nAction Items: Nothing yet.');
   assertEqual(parsed.summary, 'Kickoff went well.');
   assertEqual(parsed.actionItems, 'Nothing yet.');
-  assertEqual(parsed.openPoints, 'None.');
 });
 
 test('parseMeetingMinutes ignores markdown bold/heading decoration around a header line', function () {
@@ -527,9 +525,15 @@ test('parseMeetingMinutes falls back to putting everything in Summary when no he
   assertEqual(parsed.decisions, '');
 });
 
-test('parseMeetingMinutes keeps text before the first header as part of Summary', function () {
+test('parseMeetingMinutes drops unlabeled text before the first header rather than folding it into Summary', function () {
   const parsed = parseMeetingMinutes('Quick context up top.\nDecisions\nApproved budget.');
-  assertEqual(parsed.summary, 'Quick context up top.');
+  assertEqual(parsed.summary, '', 'lead-in text with no Summary header of its own should not end up in Summary');
+  assertEqual(parsed.decisions, 'Approved budget.');
+});
+
+test('parseMeetingMinutes still uses an explicit Summary header even when it isn\'t first', function () {
+  const parsed = parseMeetingMinutes('Decisions\nApproved budget.\nSummary\nKickoff went well.');
+  assertEqual(parsed.summary, 'Kickoff went well.');
   assertEqual(parsed.decisions, 'Approved budget.');
 });
 
@@ -652,10 +656,9 @@ test('openMinutesModal pre-fills the fields (including the Action Items table) f
   assertEqual(editingMinutesActionItems.length, 0);
   assertEqual(document.getElementById('minutesRemoveBtn').style.display, 'none');
 
-  cycle.minutes = { summary: 'S', actionItems: [{ id: 'a1', text: 'Update runbook', owner: 'Alice', dueDate: '2026-08-01' }], decisions: 'D', openPoints: 'O', nextSteps: 'N', importedAt: Date.now() };
+  cycle.minutes = { summary: 'S', actionItems: [{ id: 'a1', text: 'Update runbook', owner: 'Alice', dueDate: '2026-08-01' }], decisions: 'D', nextSteps: 'N', importedAt: Date.now() };
   openMinutesModal(cycle.id);
   assertEqual(document.getElementById('minutesSummaryInput').value, 'S');
-  assertEqual(document.getElementById('minutesOpenPointsInput').value, 'O');
   assertEqual(editingMinutesActionItems.length, 1);
   assertEqual(editingMinutesActionItems[0].text, 'Update runbook');
   assertEqual(editingMinutesActionItems[0].owner, 'Alice');
@@ -672,12 +675,11 @@ test('addMinutesActionItemRow/removeMinutesActionItemRow add and remove rows fro
   assertEqual(editingMinutesActionItems.length, 1);
 });
 
-test('saveMinutes stores Summary/Decisions/Open Points/Next Steps plus a structured Action Items table, and stamps importedAt once', function () {
+test('saveMinutes stores Summary/Decisions/Next Steps plus a structured Action Items table, and stamps importedAt once', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
   document.getElementById('minutesSummaryInput').value = 'Discussed timeline';
   document.getElementById('minutesDecisionsInput').value = 'Go live 15th';
-  document.getElementById('minutesOpenPointsInput').value = 'Still need Legal sign-off';
   document.getElementById('minutesNextStepsInput').value = 'Confirm date';
   addMinutesActionItemRow();
   editingMinutesActionItems[0].text = 'Update runbook';
@@ -686,7 +688,6 @@ test('saveMinutes stores Summary/Decisions/Open Points/Next Steps plus a structu
   saveMinutes();
   assertEqual(cycle.minutes.summary, 'Discussed timeline');
   assertEqual(cycle.minutes.decisions, 'Go live 15th');
-  assertEqual(cycle.minutes.openPoints, 'Still need Legal sign-off');
   assertEqual(cycle.minutes.nextSteps, 'Confirm date');
   assertEqual(cycle.minutes.actionItems.length, 1);
   assertEqual(cycle.minutes.actionItems[0].text, 'Update runbook');
@@ -720,7 +721,7 @@ test('saveMinutes refuses to save when every field (including the action items t
 
 test('removeMinutes clears a cycle\'s minutes after confirmation', function () {
   const cycle = addCompletedReviewCycle();
-  cycle.minutes = { summary: 'S', actionItems: [], decisions: '', openPoints: '', nextSteps: '', importedAt: Date.now() };
+  cycle.minutes = { summary: 'S', actionItems: [], decisions: '', nextSteps: '', importedAt: Date.now() };
   openMinutesModal(cycle.id);
   removeMinutes();
   confirmModalAction();
@@ -736,7 +737,7 @@ test('reviewHistoryRowHtml shows an outline "Add meeting minutes" icon when none
   assertIncludes(html, 'Add meeting minutes');
   assertIncludes(html, 'fa-regular fa-file-lines');
 
-  cycle.minutes = { summary: 'S', actionItems: [], decisions: '', openPoints: '', nextSteps: '', importedAt: Date.now() };
+  cycle.minutes = { summary: 'S', actionItems: [], decisions: '', nextSteps: '', importedAt: Date.now() };
   renderReview();
   html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'View meeting minutes');

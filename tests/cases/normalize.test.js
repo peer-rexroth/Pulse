@@ -29,17 +29,10 @@ test('normalizeData backfills a missing/malformed reviewCycle.minutes to null', 
   assertEqual(reviewCycles[1].minutes, null, 'a malformed minutes value should be reset, not kept as-is');
 });
 
-test('normalizeData backfills a missing reviewCycle.minutes.openPoints to an empty string', function () {
-  reviewCycles.push({ id: 'rc3b', workstreamId: workstreams[0].id, minutes: { summary: 'S', actionItems: [], nextSteps: '', decisions: '', importedAt: 123 } });
-  normalizeData();
-  assertEqual(reviewCycles[0].minutes.openPoints, '');
-});
-
 test('normalizeData leaves a well-formed reviewCycle.minutes alone', function () {
-  reviewCycles.push({ id: 'rc3', workstreamId: workstreams[0].id, minutes: { summary: 'S', actionItems: [{ id: 'a1', text: 'Do X', owner: 'Alice', dueDate: '2026-08-01' }], decisions: '', openPoints: 'Pending Legal', nextSteps: '', importedAt: 123 } });
+  reviewCycles.push({ id: 'rc3', workstreamId: workstreams[0].id, minutes: { summary: 'S', actionItems: [{ id: 'a1', text: 'Do X', owner: 'Alice', dueDate: '2026-08-01' }], decisions: '', nextSteps: '', importedAt: 123 } });
   normalizeData();
   assertEqual(reviewCycles[0].minutes.summary, 'S');
-  assertEqual(reviewCycles[0].minutes.openPoints, 'Pending Legal');
   assertEqual(reviewCycles[0].minutes.actionItems.length, 1);
   assertEqual(reviewCycles[0].minutes.actionItems[0].owner, 'Alice');
 });
