@@ -71,6 +71,21 @@ test('setUserRole updates state, persists it, and re-renders the picker', functi
   assertEqual(localStorage.getItem('pulse-role-v1'), 'reviewer');
 });
 
+// Regression test: the topbar shield icon (#roleBtn) used to be a hardcoded
+// fa-user-shield glyph regardless of the actual role, so switching roles
+// visibly changed nothing there. updateRoleBtn() (called from render(),
+// not just setUserRole()) keeps its icon/title in sync with ROLE_META.
+test('the topbar role button\'s icon and title reflect the current role, and update when the role changes', function () {
+  setUserRole('visitor');
+  assertIncludes(document.getElementById('roleBtnIcon').className, ROLE_META.visitor.icon);
+  assertIncludes(document.getElementById('roleBtn').title, 'Visitor');
+
+  setUserRole('admin');
+  assertIncludes(document.getElementById('roleBtnIcon').className, ROLE_META.admin.icon);
+  assertIncludes(document.getElementById('roleBtn').title, 'Admin');
+  assertNotIncludes(document.getElementById('roleBtnIcon').className, ROLE_META.visitor.icon, 'the previous role\'s icon class must not linger');
+});
+
 // ---------- Role modal: mandatory first-launch gate vs. anytime switcher ----------
 
 test('closeRoleModal is a no-op while no role has ever been chosen — there is no way to dismiss the mandatory first pick', function () {

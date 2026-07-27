@@ -865,7 +865,7 @@
   </div>
   <button class="btn btn-sm" id="tabAdmin" onclick="setMode('admin')"><i class="fa-solid fa-sliders"></i> Admin</button>
   <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileImport(event)">
-  <button class="icon-btn" id="roleBtn" onclick="openRoleModal()" title="Switch role"><i class="fa-solid fa-user-shield"></i></button>
+  <button class="icon-btn" id="roleBtn" onclick="openRoleModal()" title="Switch role"><i class="fa-solid" id="roleBtnIcon"></i></button>
   <button class="icon-btn" onclick="openThemeModal()" title="Color scheme"><i class="fa-solid fa-palette"></i></button>
   <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-circle-half-stroke"></i></button>
 </div>
@@ -1659,6 +1659,7 @@ function categoryById(id) { return categories.find(c => c.id === id); }
 // expanding an item to see its milestones).
 function render() {
   document.getElementById('programmeNameDisplay').textContent = programme.name;
+  updateRoleBtn();
   MODES.forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
   document.getElementById('tabReview').classList.toggle('disabled', !filterWorkstreamId);
   document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
@@ -2238,6 +2239,18 @@ function setUserRole(role) {
   saveRole();
   renderRoleModal();
   render();
+}
+// Keeps the topbar shield icon in sync with the actual current role (it
+// used to be a hardcoded fa-user-shield regardless of role — a user-
+// reported bug, since switching roles visibly changed nothing there).
+// Called from render() rather than only from setUserRole() so it's also
+// correct right after the very first pick and after a page reload.
+function updateRoleBtn() {
+  const btn = document.getElementById('roleBtn');
+  const icon = document.getElementById('roleBtnIcon');
+  const meta = ROLE_META[userRole];
+  icon.className = `fa-solid ${meta ? meta.icon : 'fa-user-shield'}`;
+  btn.title = meta ? `Role: ${meta.label} (click to switch)` : 'Switch role';
 }
 
 // ---------- Workstream modal ----------
