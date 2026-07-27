@@ -589,14 +589,15 @@
      row to 84px regardless of content — that was the real cause of rows
      looking multi-line-tall even for a one-line action item. */
   .minutes-grid .field > textarea { min-height: 84px; }
-  .minutes-dropzone { position: relative; border-radius: 8px; transition: background .1s ease; }
+  .minutes-dropzone { border-radius: 8px; transition: background .1s ease; }
   .minutes-dropzone.drag-over { background: var(--accent-bg); }
   .minutes-dropzone.drag-over textarea { outline: 2px dashed var(--accent); outline-offset: -2px; }
+  /* Sits below the textarea, in normal flow — not overlaid on top of it, which
+     used to visually collide with the placeholder text (or anything typed)
+     showing through underneath the badge. */
   .minutes-dropzone-status {
-    position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 5px;
-    max-width: calc(100% - 16px); padding: 3px 9px; border-radius: 20px; border: 1px solid var(--border);
-    background: var(--panel); color: var(--stat-green); font-size: 11px; font-weight: 700;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
+    display: flex; align-items: center; gap: 5px; margin-top: 6px;
+    color: var(--stat-green); font-size: 11px; font-weight: 700;
   }
   .minutes-action-items-field { grid-column: 1 / -1; }
   .minutes-action-items { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
