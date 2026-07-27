@@ -766,8 +766,20 @@
      date without clipping it, which is exactly why this doesn't try to
      reuse it. A completed row gets the exact same .review-confirmed green
      tint a confirmed checklist row gets, not a bespoke "done" style. */
-  .action-log-list { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; overflow: hidden; }
-  .action-log-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); }
+  /* No overflow:hidden here — same reasoning as .review-checklist just above
+     it: this row is now wide enough (14 columns, Created/Closed added and
+     Delete/Confirm sitting after them) to exceed the card's own width on a
+     narrower window, and overflow:hidden would silently clip Delete/Confirm
+     off the right edge entirely rather than leave them reachable. .main's
+     own overflow:auto is what makes a too-wide row scrollable instead —
+     the exact "Status board" incident CLAUDE.md already documents, which
+     this table apparently never inherited the fix for until now. */
+  .action-log-list { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; }
+  /* Rounds its own top corners (rather than relying on the parent's
+     overflow:hidden, now removed above) so the header's --panel-2
+     background doesn't square off past .action-log-list's rounded card —
+     same pattern .ws-section-header already uses for the same reason. */
+  .action-log-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); border-radius: var(--radius) var(--radius) 0 0; }
   .action-log-text { white-space: pre-wrap; }
   .action-log-source { color: var(--text-faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* A full explicit override of grid-template-columns (not just extra
