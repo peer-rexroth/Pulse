@@ -1449,7 +1449,14 @@ test('actionLogRowHtml shows a Created date (from addedAt) and a Closed date onl
 // tracks) doesn't exist in the header row at all, so its flexible Action
 // Item column resolves wider than the data rows' — visibly shifting Owner/
 // Due Date/Source to the right of where they sit in the rows below.
-test('actionLogHtml\'s header row reserves an (invisible) grid-column:12 slot so it doesn\'t shift out of alignment with the data rows below it', function () {
+// Regression guard for the column reorder: Created/Closed sit right after
+// Source (columns 11/12), with Delete/the confirm toggle trailing at 13/14
+// — both the header row and every data row must agree on this exact
+// mapping, since .action-log-row/.action-log-header's CSS pins each
+// column's width via a fully explicit grid-template-columns override (see
+// CLAUDE.md), which only stays aligned if header and data rows place their
+// content at the same column numbers.
+test('actionLogHtml\'s header and data rows agree on where Source/Created/Closed/Delete/Confirm sit (columns 10-14)', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
   addMinutesActionItemRow();
@@ -1459,9 +1466,16 @@ test('actionLogHtml\'s header row reserves an (invisible) grid-column:12 slot so
   setMode('review');
   setReviewTab('actionLog');
   const html = document.getElementById('main').innerHTML;
-  const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 800);
-  assertIncludes(headerRow, 'grid-column:12', 'the header row must place something at column 12 to match the data rows\' implicit toggle column');
-  assertIncludes(headerRow, 'visibility:hidden', 'the col-12 placeholder should reserve space without actually being visible in the header');
+  const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 500);
+  assertIncludes(headerRow, 'grid-column:10">Source');
+  assertIncludes(headerRow, 'grid-column:11">Created');
+  assertIncludes(headerRow, 'grid-column:12">Closed');
+
+  const id = workstreams[0].actionLog[0].id;
+  const dataRow = html.slice(html.indexOf('action-log-text')); // first data row onward — the only one in this test
+  assertIncludes(dataRow, 'grid-column:10"', 'Source must sit at column 10 on the data row too');
+  assertIncludes(dataRow, `grid-column:13" onclick="deleteActionLogItem('${workstreams[0].id}','${id}')"`, 'Delete must sit at column 13, after Created/Closed');
+  assertIncludes(dataRow, `grid-column:14" onclick="toggleActionLogItem('${workstreams[0].id}','${id}')"`, 'the confirm toggle must sit at column 14, last');
 });
 
 // Regression test: the same shape of bug as actionLogHtml()'s header above,

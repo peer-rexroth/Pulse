@@ -753,33 +753,36 @@
   .review-cycle-badge.completed { background: var(--stat-green-bg); color: var(--stat-green); }
   /* Action Log (Review's second tab) — a workstream-wide, review-cycle-
      spanning list of action items imported from attached meeting minutes
-     (see syncActionLogFromMinutes()). Deliberately reuses .item-row's own
-     --item-grid-cols grid (rather than a bespoke column layout) so it lines
-     up visually with Scope Item Review's checklist directly above it —
-     see actionLogRowHtml()'s own comment for the exact column mapping
-     (Action Item spans 2-5, Owner at 8, Due Date at 9, Source at 10,
-     Delete at 11, the complete toggle at the same explicit grid-column:12
-     the Scope Item Review tab's own item-level confirm toggle uses). A
-     completed row gets the exact same .review-confirmed green tint a
-     confirmed checklist row gets, not a bespoke "done" style. */
+     (see syncActionLogFromMinutes()). Columns 1-9 deliberately match
+     --item-grid-cols' own leading tracks (chevron/name-span/blanks/Owner/
+     Due Date) so it lines up visually with Scope Item Review's checklist
+     directly above it — see actionLogRowHtml()'s own comment for the exact
+     column mapping. Columns 10-14 (Source/Created/Closed/Delete/Confirm)
+     are a bespoke trailing section specific to this table, not reused from
+     --item-grid-cols at all: Action Log genuinely needs more distinct
+     trailing columns than Scope Item Review does (which only ever has
+     Actions + Confirm there), and the shared property's own column 11 is a
+     fixed 56px (sized for an icon button) — nowhere near wide enough for a
+     date without clipping it, which is exactly why this doesn't try to
+     reuse it. A completed row gets the exact same .review-confirmed green
+     tint a confirmed checklist row gets, not a bespoke "done" style. */
   .action-log-list { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; overflow: hidden; }
   .action-log-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); }
   .action-log-text { white-space: pre-wrap; }
   .action-log-source { color: var(--text-faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* Columns 12 (complete toggle), 13 (Created), 14 (Closed) are all implicit
-     grid tracks — none of them are part of --item-grid-cols' 11 explicit
-     columns — so without this, each one's width is "auto": sized from
-     whatever that one row happens to put there. That's harmless for column
-     12 (every row always renders the same icon glyph, confirmed or not), but
-     Created/Closed genuinely differ row to row (a date string vs. nothing,
-     for a still-open item) — left as "auto" the Action Item column (2, the
-     grid's one flexible track) would resolve to a different width on every
-     row depending on whether that row's own Closed cell happened to be empty,
-     making the whole table's left edge look inconsistent, not just its
-     header. Pinning explicit widths for every implicit column this table
-     ever uses removes the "auto" sizing that causes it, the same way the 11
-     explicit columns already never re-flow based on content. */
-  .action-log-row, .action-log-header { grid-auto-columns: 56px 90px 90px; }
+  /* A full explicit override of grid-template-columns (not just extra
+     implicit tracks via grid-auto-columns) — every column this table uses,
+     including the 9 it shares visually with --item-grid-cols, gets a
+     pinned width this way, so nothing is ever "auto"-sized from a given
+     row's own content. That matters most for Created/Closed: Closed is
+     only ever populated for a completed item, and an "auto" column would
+     genuinely render narrower for a still-open row than a closed one,
+     making the Action Item column (2, the grid's one flexible track)
+     resolve to a different width row to row — not just a header-vs-body
+     mismatch, every row potentially disagreeing with every other one. */
+  .action-log-row, .action-log-header {
+    grid-template-columns: 20px minmax(140px,1.3fr) 90px 160px 190px 20px 20px 115px 100px 90px 90px 90px 56px 56px;
+  }
   .section-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin: 20px 0 8px; }
   .section-label:first-child { margin-top: 0; }
 
@@ -3390,20 +3393,16 @@ function sortedActionLog(list) {
   const done = list.filter(a => a.completed).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
   return open.concat(done);
 }
-// Column slots deliberately mirror itemRowHtml()'s own --item-grid-cols
-// positions, per a series of explicit layout requests: the Action Item
-// text spans columns 2-5 (grid-column:2/6 — Name/Milestones-badge/Owner/
-// Plan-dates, all otherwise unused by this row), columns 6-7 (Actual-
-// placeholder/spacer) are blank, Owner sits at column 8 (Milestone-Due),
-// the due date at column 9 (Tags), Source sits alone at column 10
-// (Status), a Delete button occupies column 11 (the same Actions column
-// Scope Item Review's own Edit/Delete live in), the confirm toggle sits
-// at the same explicit grid-column:12 the Scope Item Review tab's own
-// item-level toggle uses, and Created/Closed sit at columns 13/14 — two
-// implicit columns beyond the shared 11-column --item-grid-cols, same as
-// column 12 already is, so Scope Item Review's own layout is untouched
-// (see .action-log-row's grid-auto-columns rule for why these need a
-// pinned width, unlike column 12).
+// Columns 1-9 mirror itemRowHtml()'s own --item-grid-cols positions: the
+// Action Item text spans columns 2-5 (grid-column:2/6 — Name/Milestones-
+// badge/Owner/Plan-dates, all otherwise unused by this row), columns 6-7
+// (Actual-placeholder/spacer) are blank, Owner sits at column 8
+// (Milestone-Due), the due date at column 9 (Tags). Columns 10-14 are this
+// table's own bespoke trailing section (see .action-log-row's CSS comment
+// for why it isn't --item-grid-cols' own column 11 onward): Source at 10,
+// then Created/Closed at 11/12 — reading left to right as "when this was
+// logged, then when it was closed" right next to where it came from — and
+// Delete/the confirm toggle at 13/14, kept last since they're actions, not data.
 function actionLogRowHtml(w, a) {
   const cycle = reviewCycles.find(c => c.id === a.cycleId);
   // Every action item today is transcribed from a review's meeting minutes
@@ -3422,18 +3421,18 @@ function actionLogRowHtml(w, a) {
       <span class="item-owner" style="grid-column:8">${esc(a.owner)}</span>
       <span class="item-dates-computed" style="grid-column:9">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>
       <span class="action-log-source" style="grid-column:10" title="${esc(sourceTitle)}">${esc(source)}</span>
+      <span class="item-dates-computed" style="grid-column:11">${fmtDate(dateStrFromTs(a.addedAt))}</span>
+      <span class="item-dates-computed" style="grid-column:12">${a.completedAt ? fmtDate(dateStrFromTs(a.completedAt)) : ''}</span>
       ${canManage
-        ? `<button class="row-icon-btn" style="grid-column:11" onclick="deleteActionLogItem('${w.id}','${a.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>`
-        : `<span style="grid-column:11"></span>`}
+        ? `<button class="row-icon-btn" style="grid-column:13" onclick="deleteActionLogItem('${w.id}','${a.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>`
+        : `<span style="grid-column:13"></span>`}
       ${canManage
-        ? `<button class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
+        ? `<button class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:14" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
         <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
       </button>`
-        : `<span class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:12" title="${a.completed ? 'Completed' : 'Not completed'}">
+        : `<span class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:14" title="${a.completed ? 'Completed' : 'Not completed'}">
         <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
       </span>`}
-      <span class="item-dates-computed" style="grid-column:13">${fmtDate(dateStrFromTs(a.addedAt))}</span>
-      <span class="item-dates-computed" style="grid-column:14">${a.completedAt ? fmtDate(dateStrFromTs(a.completedAt)) : ''}</span>
     </div>`;
 }
 // The "<X> open of <Y> action items" count — shown next to the workstream
@@ -3456,23 +3455,13 @@ function actionLogHtml(w) {
   if (!list.length) {
     return `<div class="attention-empty">No action items yet — they're added automatically when meeting minutes with action items are attached to a review cycle.</div>`;
   }
-  // The trailing grid-column:12 placeholder matters even though it's
-  // invisible: column 12 isn't one of the 11 explicit tracks in
-  // --item-grid-cols, so it only exists as an implicit track in rows that
-  // actually place something there. Every data row does (the complete
-  // toggle in actionLogRowHtml()); without a matching placeholder here,
-  // this header row would have one fewer implicit column and one fewer
-  // gap, so its flexible Action Item column (col 2) would resolve wider
-  // than the data rows' — shifting every column after it out of alignment.
-  // Same fix milestoneHeaderHtml() applies for the same reason (its own
-  // "Confirm" column) — see "Column layout is a real CSS grid" in
-  // CLAUDE.md. Columns 13/14 (Created/Closed) don't need this same
-  // invisible-placeholder trick — unlike column 12 (always some icon),
-  // their content genuinely varies row to row (a date vs. nothing for a
-  // still-open item), so instead they're pinned to a fixed width via
-  // .action-log-row's own grid-auto-columns rule, which keeps every row's
-  // (and this header's) implicit columns exactly the same width regardless
-  // of what each one actually contains.
+  // Unlike Scope Item Review's own rows, none of this table's columns are
+  // implicit grid tracks any more — .action-log-row/.action-log-header both
+  // override grid-template-columns outright with a fully explicit 14-column
+  // list (see that CSS rule's own comment), so every column here has a
+  // pinned width regardless of whether a given row (or this header) puts
+  // anything in it. Delete/the confirm toggle (13/14) are left unlabeled
+  // here, same as Scope Item Review's own Actions column has no header text.
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header">
         <span style="grid-column:1"></span>
@@ -3480,9 +3469,8 @@ function actionLogHtml(w) {
         <span style="grid-column:8">Owner</span>
         <span style="grid-column:9">Due Date</span>
         <span style="grid-column:10">Source</span>
-        <span class="review-confirm-toggle item-level" style="grid-column:12;visibility:hidden"><i class="fa-solid fa-circle-check"></i></span>
-        <span style="grid-column:13">Created</span>
-        <span style="grid-column:14">Closed</span>
+        <span style="grid-column:11">Created</span>
+        <span style="grid-column:12">Closed</span>
       </div>
       ${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}
     </div>`;
