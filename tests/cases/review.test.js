@@ -1270,6 +1270,31 @@ test('setReviewTab switches renderReview between the Scope Item Review checklist
   assertIncludes(html, 'Start review cycle');
 });
 
+test('the "X open of Y action items" count sits in the section header (next to the workstream name), not floating above the table', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Update runbook';
+  saveMinutes();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('actionLog');
+  const html = document.getElementById('main').innerHTML;
+  const headerEnd = html.indexOf('</div>'); // .review-header is the very first element renderReview() writes
+  const countIdx = html.indexOf('open of 1 action item');
+  const tableIdx = html.indexOf('action-log-list');
+  assertTrue(countIdx >= 0 && countIdx < headerEnd, 'the count should render inside .review-header, before its closing tag');
+  assertTrue(countIdx < tableIdx, 'the count should appear before the table in document order too');
+});
+
+test('actionLogCountHtml renders nothing when the workstream has no action items yet — no empty "0 open of 0" badge in the header', function () {
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('actionLog');
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'open of');
+});
+
 test('actionLogHtml shows an empty state when the workstream has no action items yet', function () {
   setFilterWorkstream(workstreams[0].id);
   setMode('review');

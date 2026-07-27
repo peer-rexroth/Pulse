@@ -461,7 +461,11 @@
      every cell lines up vertically regardless of which optional content
      (owner, milestones) a given row has. */
   .item-row {
-    display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border);
+    /* Right padding is deliberately wider than the left (20px vs 14px) —
+       the trailing Actions column (and, in Review/Action Log, the confirm/
+       complete toggle beyond it) otherwise reads as uncomfortably flush
+       against the card's own right edge, a user-reported visual issue. */
+    display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px; padding: 9px 20px 9px 14px; border-bottom: 1px solid var(--border);
   }
   .item-row:last-child { border-bottom: none; }
   .item-row:hover { background: var(--panel-2); }
@@ -533,11 +537,11 @@
      milestone. */
   .milestone-header {
     display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px;
-    padding: 5px 14px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    padding: 5px 20px 5px 14px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
     color: var(--text-faint); background: var(--panel-2); border-bottom: 1px solid var(--border);
   }
   .milestone-sub-row {
-    display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px; padding: 7px 14px; border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px; padding: 7px 20px 7px 14px; border-bottom: 1px solid var(--border);
     font-size: 12.5px; background: var(--panel-2);
   }
   .milestone-sub-name { font-weight: 600; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3171,6 +3175,17 @@ function actionLogRowHtml(w, a) {
       </button>
     </div>`;
 }
+// The "<X> open of <Y> action items" count — shown next to the workstream
+// name in the shared .review-header (see renderReview()), not floating
+// disconnected above the table. .review-header's <h2> is flex:1, so
+// anything placed after it in that flex row lands at the header's far
+// right automatically, the same way a section-wide status badge would.
+function actionLogCountHtml(w) {
+  const list = Array.isArray(w.actionLog) ? w.actionLog : [];
+  if (!list.length) return '';
+  const openCount = list.filter(a => !a.completed).length;
+  return `<span class="review-progress" style="margin:0;flex:0 0 auto">${openCount} open of ${list.length} action item${list.length === 1 ? '' : 's'}</span>`;
+}
 // The workstream-wide action log — every action item ever imported from a
 // meeting minutes attachment across every review cycle for this workstream
 // (see syncActionLogFromMinutes()), completable independently of the review
@@ -3180,7 +3195,6 @@ function actionLogHtml(w) {
   if (!list.length) {
     return `<div class="attention-empty">No action items yet — they're added automatically when meeting minutes with action items are attached to a review cycle.</div>`;
   }
-  const openCount = list.filter(a => !a.completed).length;
   // The trailing grid-column:12 placeholder matters even though it's
   // invisible: column 12 isn't one of the 11 explicit tracks in
   // --item-grid-cols, so it only exists as an implicit track in rows that
@@ -3192,8 +3206,7 @@ function actionLogHtml(w) {
   // Same fix milestoneHeaderHtml() already applies for the same reason
   // (its own "Confirm" label at grid-column:12) — see "Column layout is a
   // real CSS grid" in CLAUDE.md.
-  return `<div class="review-progress">${openCount} open of ${list.length} action item${list.length === 1 ? '' : 's'}</div>
-    <div class="action-log-list">
+  return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header">
         <span style="grid-column:1"></span>
         <span style="grid-column:2/6">Action Item</span>
@@ -3275,7 +3288,7 @@ function renderReview() {
   const w = wsById(filterWorkstreamId);
   if (!w) { filterWorkstreamId = null; renderReview(); return; }
   if (reviewTab === 'actionLog') {
-    el.innerHTML = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2></div>${actionLogHtml(w)}`;
+    el.innerHTML = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2>${actionLogCountHtml(w)}</div>${actionLogHtml(w)}`;
     return;
   }
   const cycle = activeReviewCycle(filterWorkstreamId);
