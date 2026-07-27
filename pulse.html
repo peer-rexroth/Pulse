@@ -321,6 +321,26 @@
   .field-row { display: flex; gap: 10px; }
   .field-row .field { flex: 1; }
   .modal-wide { width: 600px; }
+
+  /* Meeting minutes modal — 2x2 grid of sections below the full-width paste box */
+  .minutes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .minutes-grid .field textarea { min-height: 84px; }
+  .minutes-action-items { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .minutes-action-item-row {
+    display: grid; grid-template-columns: 1fr 78px 96px 22px; gap: 6px; align-items: center;
+    padding: 5px 8px; border-bottom: 1px solid var(--border);
+  }
+  .minutes-action-item-row:last-child { border-bottom: none; }
+  .minutes-action-items-header {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--text-faint); background: var(--panel-2);
+  }
+  .minutes-action-item-row input[type="text"] {
+    width: 100%; box-sizing: border-box; padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--panel-2); color: var(--text); font-size: 12px;
+  }
+  .minutes-action-item-row .date-pill { background: transparent; padding: 3px 2px; }
+  .minutes-action-item-row .inline-date-input { width: 100%; }
   .milestone-row { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--border); }
   .milestone-row:last-child { border-bottom: none; }
   .milestone-row input[type="text"] {
@@ -569,6 +589,53 @@
       <div class="modal-actions-right">
         <button class="btn" onclick="closeCategoryModal()">Cancel</button>
         <button class="btn btn-primary" onclick="saveCategory()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Meeting minutes modal (per completed review cycle — see reviewHistoryRowHtml()) -->
+<div class="modal-bg" id="minutesModalBg">
+  <div class="modal" style="width:700px">
+    <h3>Meeting Minutes</h3>
+    <div class="minutes-grid">
+      <div class="field">
+        <label>Paste minutes to auto-fill</label>
+        <textarea id="minutesPasteInput" style="min-height:56px" placeholder="Paste raw meeting notes here — lines starting with Summary, Action Items, Next Steps, Decisions, or Open Points are split into the fields alongside automatically."></textarea>
+        <button class="btn btn-sm" style="margin-top:8px" onclick="parseMinutesPaste()"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fill from pasted text</button>
+      </div>
+      <div class="field">
+        <label>Meeting Summary</label>
+        <textarea id="minutesSummaryInput"></textarea>
+      </div>
+      <div class="field">
+        <label>Action Items</label>
+        <div class="minutes-action-items">
+          <div class="minutes-action-item-row minutes-action-items-header">
+            <span>Action Item</span><span>Owner</span><span>Due Date</span><span></span>
+          </div>
+          <div id="minutesActionItemsRows"></div>
+        </div>
+        <button class="btn btn-sm" style="margin-top:8px" onclick="addMinutesActionItemRow()"><i class="fa-solid fa-plus"></i> Add action item</button>
+      </div>
+      <div class="field">
+        <label>Decisions</label>
+        <textarea id="minutesDecisionsInput"></textarea>
+      </div>
+      <div class="field">
+        <label>Open Points</label>
+        <textarea id="minutesOpenPointsInput"></textarea>
+      </div>
+      <div class="field">
+        <label>Next Steps</label>
+        <textarea id="minutesNextStepsInput"></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="minutesRemoveBtn" onclick="removeMinutes()" style="display:none"><i class="fa-solid fa-trash"></i> Remove</button>
+      <div class="modal-actions-right">
+        <button class="btn" onclick="closeMinutesModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveMinutes()">Save</button>
       </div>
     </div>
   </div>
@@ -947,6 +1014,28 @@ function normalizeData() {
     if (!Array.isArray(c.confirmations)) c.confirmations = [];
     if (!Array.isArray(c.milestoneConfirmations)) c.milestoneConfirmations = [];
     if (!Array.isArray(c.changeLog)) c.changeLog = [];
+    if (!c.minutes || typeof c.minutes !== 'object') {
+      c.minutes = null;
+    } else {
+      if (typeof c.minutes.summary !== 'string') c.minutes.summary = '';
+      if (typeof c.minutes.decisions !== 'string') c.minutes.decisions = '';
+      if (typeof c.minutes.openPoints !== 'string') c.minutes.openPoints = '';
+      if (typeof c.minutes.nextSteps !== 'string') c.minutes.nextSteps = '';
+      if (typeof c.minutes.importedAt !== 'number') c.minutes.importedAt = Date.now();
+      // actionItems used to be a single free-text field (pre-table design) —
+      // fold a leftover string into one row rather than dropping it.
+      if (typeof c.minutes.actionItems === 'string') {
+        c.minutes.actionItems = c.minutes.actionItems.trim()
+          ? [{ id: genId(), text: c.minutes.actionItems.trim(), owner: '', dueDate: null }] : [];
+      }
+      if (!Array.isArray(c.minutes.actionItems)) c.minutes.actionItems = [];
+      c.minutes.actionItems.forEach(a => {
+        if (!isSafeId(a.id)) a.id = genId();
+        if (typeof a.text !== 'string') a.text = '';
+        if (typeof a.owner !== 'string') a.owner = '';
+        if (typeof a.dueDate !== 'string') a.dueDate = null;
+      });
+    }
   });
   // Migrate pre-nested-milestone data: a standalone item with type:'milestone'
   // used to be its own top-level row. Fold each one into its own single-milestone
@@ -1983,7 +2072,7 @@ function reviewCyclesForWs(wsId) {
 }
 function startReviewCycle(wsId) {
   if (activeReviewCycle(wsId)) return;
-  reviewCycles.push({ id: genId(), workstreamId: wsId, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [], changeLog: [] });
+  reviewCycles.push({ id: genId(), workstreamId: wsId, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null });
   save(); render();
   showToast('Review cycle started');
 }
@@ -2103,6 +2192,150 @@ function toggleHistoryShowAll(wsId) {
   if (historyShowAllWs.has(wsId)) historyShowAllWs.delete(wsId); else historyShowAllWs.add(wsId);
   render();
 }
+
+// ---------- Meeting minutes (per completed review cycle) ----------
+// A cycle's minutes are a plain-text record, not free-form notes — split
+// into the same four buckets most written minutes already use (Summary,
+// Action Items, Next Steps, Decisions) so they read consistently across
+// cycles/workstreams. There's no AI/network call involved in "processing" a
+// paste (this app makes none, anywhere): parseMeetingMinutes() is a small
+// heuristic line-scanner that recognizes a line naming one of the four
+// sections (optionally bolded/heading-decorated, optionally with the rest
+// of that section's first line inline after a colon) and buckets every
+// following line under it, until the next recognized header. Text before
+// the first recognized header falls back into Summary rather than being
+// discarded, so a plain "just tell me what happened" paste with no headers
+// at all still lands somewhere sensible (entirely in Summary) instead of
+// silently vanishing. Summary/Next Steps/Decisions stay plain text; Action
+// Items is structured (one row per item, with Owner/Due Date — see below),
+// since "who owns this by when" is the whole point of an action item and a
+// free-text blob buries that. Every field stays fully hand-editable
+// regardless of how (or whether) auto-fill split it — paste-and-parse is a
+// convenience, not the source of truth.
+const MINUTES_SECTIONS = [
+  { key: 'summary', re: /^(?:meeting\s*)?summary\b[:\-–—]?\s*/i },
+  { key: 'actionItems', re: /^action\s*items?\b[:\-–—]?\s*/i },
+  { key: 'decisions', re: /^decisions?\b[:\-–—]?\s*/i },
+  { key: 'openPoints', re: /^open\s*points?\b[:\-–—]?\s*/i },
+  { key: 'nextSteps', re: /^next\s*steps?\b[:\-–—]?\s*/i }
+];
+function parseMeetingMinutes(text) {
+  const buckets = { summary: [], actionItems: [], decisions: [], openPoints: [], nextSteps: [] };
+  const preamble = [];
+  let current = null;
+  (text || '').split('\n').forEach(rawLine => {
+    // Stripped only for header matching — markdown heading/bold/bullet
+    // decoration (#, *, _, -, >) around a header line, never the stored content.
+    const cleaned = rawLine.replace(/^[\s#*_>-]+/, '').replace(/[\s*_]+$/, '');
+    const section = MINUTES_SECTIONS.find(s => s.re.test(cleaned));
+    if (section) {
+      current = section.key;
+      const rest = cleaned.replace(section.re, '').trim();
+      if (rest) buckets[current].push(rest);
+      return;
+    }
+    (current ? buckets[current] : preamble).push(rawLine);
+  });
+  if (preamble.some(l => l.trim())) buckets.summary = preamble.concat(buckets.summary);
+  const join = lines => lines.join('\n').trim();
+  return { summary: join(buckets.summary), actionItems: join(buckets.actionItems), decisions: join(buckets.decisions), openPoints: join(buckets.openPoints), nextSteps: join(buckets.nextSteps) };
+}
+// Action Items has no reliable way to parse Owner/Due Date out of free text
+// (minutes phrase these too inconsistently — "Alice — due Friday", "[Bob]
+// 08/01", "Action: ..."), so auto-fill only extracts *what* the action item
+// is, one row per non-blank line, and leaves Owner/Due Date blank for the
+// user to fill in by hand.
+function linesToActionItems(text) {
+  return (text || '').split('\n').map(l => l.trim()).filter(Boolean)
+    .map(line => ({ id: genId(), text: line, owner: '', dueDate: null }));
+}
+
+let minutesModalCycleId = null;
+// Working copy of the Action Items table, mirroring editingMilestones' own
+// "detached array, edited in place, only committed on Save" pattern —
+// row inputs write directly into this via oninput/onblur (no re-render on
+// every keystroke), and only add/remove a row re-renders the table.
+let editingMinutesActionItems = [];
+function renderMinutesActionItemsRows() {
+  document.getElementById('minutesActionItemsRows').innerHTML = editingMinutesActionItems.map((a, idx) => `
+    <div class="minutes-action-item-row">
+      <input type="text" value="${esc(a.text)}" placeholder="Action item" oninput="editingMinutesActionItems[${idx}].text = this.value">
+      <input type="text" value="${esc(a.owner || '')}" placeholder="Owner" oninput="editingMinutesActionItems[${idx}].owner = this.value">
+      ${dateInputHtml(a.dueDate, `onblur="editingMinutesActionItems[${idx}].dueDate = this.value || null"`)}
+      <button class="row-icon-btn" onclick="removeMinutesActionItemRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>
+    </div>`).join('');
+}
+function addMinutesActionItemRow() {
+  editingMinutesActionItems.push({ id: genId(), text: '', owner: '', dueDate: null });
+  renderMinutesActionItemsRows();
+}
+function removeMinutesActionItemRow(idx) {
+  editingMinutesActionItems.splice(idx, 1);
+  renderMinutesActionItemsRows();
+}
+function openMinutesModal(cycleId) {
+  const cycle = reviewCycles.find(c => c.id === cycleId);
+  if (!cycle) return;
+  minutesModalCycleId = cycleId;
+  const m = cycle.minutes;
+  document.getElementById('minutesPasteInput').value = '';
+  document.getElementById('minutesSummaryInput').value = m ? m.summary : '';
+  document.getElementById('minutesDecisionsInput').value = m ? m.decisions : '';
+  document.getElementById('minutesOpenPointsInput').value = m ? m.openPoints : '';
+  document.getElementById('minutesNextStepsInput').value = m ? m.nextSteps : '';
+  editingMinutesActionItems = (m && m.actionItems ? m.actionItems : []).map(a => ({ ...a }));
+  renderMinutesActionItemsRows();
+  document.getElementById('minutesRemoveBtn').style.display = m ? 'inline-flex' : 'none';
+  document.getElementById('minutesModalBg').classList.add('open');
+}
+function closeMinutesModal() {
+  document.getElementById('minutesModalBg').classList.remove('open');
+  minutesModalCycleId = null;
+}
+function parseMinutesPaste() {
+  const text = document.getElementById('minutesPasteInput').value;
+  if (!text.trim()) return;
+  const parsed = parseMeetingMinutes(text);
+  document.getElementById('minutesSummaryInput').value = parsed.summary;
+  document.getElementById('minutesDecisionsInput').value = parsed.decisions;
+  document.getElementById('minutesOpenPointsInput').value = parsed.openPoints;
+  document.getElementById('minutesNextStepsInput').value = parsed.nextSteps;
+  editingMinutesActionItems = linesToActionItems(parsed.actionItems);
+  renderMinutesActionItemsRows();
+}
+function saveMinutes() {
+  const cycle = reviewCycles.find(c => c.id === minutesModalCycleId);
+  if (!cycle) return;
+  const summary = document.getElementById('minutesSummaryInput').value.trim();
+  const decisions = document.getElementById('minutesDecisionsInput').value.trim();
+  const openPoints = document.getElementById('minutesOpenPointsInput').value.trim();
+  const nextSteps = document.getElementById('minutesNextStepsInput').value.trim();
+  const actionItems = editingMinutesActionItems
+    .map(a => ({ id: a.id, text: (a.text || '').trim(), owner: (a.owner || '').trim(), dueDate: a.dueDate || null }))
+    .filter(a => a.text || a.owner || a.dueDate);
+  if (!summary && !actionItems.length && !decisions && !openPoints && !nextSteps) { showToast('Nothing to save — fill in at least one section', true); return; }
+  // importedAt is set once, on the first save, and kept from then on — it
+  // marks when minutes were first attached to this cycle, not last edited.
+  cycle.minutes = { summary, actionItems, decisions, openPoints, nextSteps, importedAt: (cycle.minutes && cycle.minutes.importedAt) || Date.now() };
+  save(); closeMinutesModal(); render();
+  showToast('Meeting minutes saved');
+}
+function removeMinutes() {
+  const cycleId = minutesModalCycleId;
+  const cycle = reviewCycles.find(c => c.id === cycleId);
+  if (!cycle) return;
+  closeMinutesModal();
+  openConfirmModal({
+    title: 'Remove meeting minutes?',
+    body: 'This cannot be undone.',
+    confirmLabel: 'Remove',
+    action: () => {
+      cycle.minutes = null;
+      save(); render();
+      showToast('Meeting minutes removed');
+    }
+  });
+}
 // changeLog entries (see logReviewChange()) are what let a history entry
 // show the actual changes made while that cycle was active — "Development
 // completed: Changed actual date to 26 Jul 2026" — not just a confirmed
@@ -2195,11 +2428,18 @@ function reviewHistoryRowHtml(c) {
       </div>`;
       }).join('')
     : '';
+  // Filled (solid, accent-colored) once minutes exist — same open/edit
+  // modal either way (openMinutesModal()), just pre-filled — vs. an outline
+  // icon inviting you to add them for a cycle that doesn't have any yet.
+  const minutesBtn = c.minutes
+    ? `<button class="row-icon-btn" style="color:var(--accent)" onclick="openMinutesModal('${c.id}')" title="View meeting minutes"><i class="fa-solid fa-file-lines"></i></button>`
+    : `<button class="row-icon-btn" onclick="openMinutesModal('${c.id}')" title="Add meeting minutes"><i class="fa-regular fa-file-lines"></i></button>`;
   return `<div class="review-history-row">
       ${chevron}
       <span style="flex:1">Started ${fmtDate(dateStrFromTs(c.startedAt))}</span>
       ${summary}
       ${badge}
+      ${minutesBtn}
       <span style="color:var(--text-faint)">${fmtDate(dateStrFromTs(c.completedAt))}</span>
     </div>${changeRows}`;
 }
@@ -3230,13 +3470,14 @@ document.addEventListener('click', (e) => {
 document.getElementById('wsModalBg').addEventListener('click', (e) => { if (e.target.id === 'wsModalBg') closeWorkstreamModal(); });
 document.getElementById('itemModalBg').addEventListener('click', (e) => { if (e.target.id === 'itemModalBg') closeItemModal(); });
 document.getElementById('categoryModalBg').addEventListener('click', (e) => { if (e.target.id === 'categoryModalBg') closeCategoryModal(); });
+document.getElementById('minutesModalBg').addEventListener('click', (e) => { if (e.target.id === 'minutesModalBg') closeMinutesModal(); });
 document.getElementById('confirmModalBg').addEventListener('click', (e) => { if (e.target.id === 'confirmModalBg') closeConfirmModal(); });
 document.getElementById('importModalBg').addEventListener('click', (e) => { if (e.target.id === 'importModalBg') closeImportModal(); });
 document.getElementById('backupsModalBg').addEventListener('click', (e) => { if (e.target.id === 'backupsModalBg') closeBackupsModal(); });
 document.getElementById('syncConflictsModalBg').addEventListener('click', (e) => { if (e.target.id === 'syncConflictsModalBg') closeSyncConflictsModal(); });
 document.getElementById('fileSyncModalBg').addEventListener('click', (e) => { if (e.target.id === 'fileSyncModalBg') closeFileSyncModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeCategoryModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); }
 });
 
 // ---------- Init ----------

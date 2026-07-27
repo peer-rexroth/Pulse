@@ -489,6 +489,177 @@ test('renderReview shows a collapsed history entry with a chevron, expanding to 
   assertIncludes(html, 'Actual:');
 });
 
+// ---------- Meeting minutes ----------
+
+test('parseMeetingMinutes splits recognized section headers into their own buckets', function () {
+  const text = `Summary\nWe discussed the migration timeline.\n\nAction Items\nAlice to update the runbook.\nBob to schedule the cutover.\n\nDecisions\nGo live on the 15th.\n\nOpen Points\nStill need sign-off from Legal.\n\nNext Steps\nConfirm go-live date.`;
+  const parsed = parseMeetingMinutes(text);
+  assertEqual(parsed.summary, 'We discussed the migration timeline.');
+  assertEqual(parsed.actionItems, 'Alice to update the runbook.\nBob to schedule the cutover.');
+  assertEqual(parsed.decisions, 'Go live on the 15th.');
+  assertEqual(parsed.openPoints, 'Still need sign-off from Legal.');
+  assertEqual(parsed.nextSteps, 'Confirm go-live date.');
+});
+
+test('parseMeetingMinutes recognizes "Meeting Summary" as well as bare "Summary"', function () {
+  const parsed = parseMeetingMinutes('Meeting Summary\nKickoff went well.');
+  assertEqual(parsed.summary, 'Kickoff went well.');
+});
+
+test('parseMeetingMinutes recognizes a header with inline content after a colon', function () {
+  const parsed = parseMeetingMinutes('Summary: Kickoff went well.\nAction Items: Nothing yet.\nOpen Points: None.');
+  assertEqual(parsed.summary, 'Kickoff went well.');
+  assertEqual(parsed.actionItems, 'Nothing yet.');
+  assertEqual(parsed.openPoints, 'None.');
+});
+
+test('parseMeetingMinutes ignores markdown bold/heading decoration around a header line', function () {
+  const parsed = parseMeetingMinutes('## Summary\nAll good.\n**Decisions**\nShip it.');
+  assertEqual(parsed.summary, 'All good.');
+  assertEqual(parsed.decisions, 'Ship it.');
+});
+
+test('parseMeetingMinutes falls back to putting everything in Summary when no headers are recognized', function () {
+  const parsed = parseMeetingMinutes('Just a plain note with no structure at all.');
+  assertEqual(parsed.summary, 'Just a plain note with no structure at all.');
+  assertEqual(parsed.actionItems, '');
+  assertEqual(parsed.nextSteps, '');
+  assertEqual(parsed.decisions, '');
+});
+
+test('parseMeetingMinutes keeps text before the first header as part of Summary', function () {
+  const parsed = parseMeetingMinutes('Quick context up top.\nDecisions\nApproved budget.');
+  assertEqual(parsed.summary, 'Quick context up top.');
+  assertEqual(parsed.decisions, 'Approved budget.');
+});
+
+test('linesToActionItems turns each non-blank line into its own row with Owner/Due Date left blank', function () {
+  const rows = linesToActionItems('Alice to update the runbook.\n\nBob to schedule the cutover.');
+  assertEqual(rows.length, 2);
+  assertEqual(rows[0].text, 'Alice to update the runbook.');
+  assertEqual(rows[0].owner, '');
+  assertEqual(rows[0].dueDate, null);
+  assertEqual(rows[1].text, 'Bob to schedule the cutover.');
+});
+
+test('parseMinutesPaste fills the Action Items table (not a single textarea) from the pasted text', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesPasteInput').value = 'Summary\nAll good.\nAction Items\nAlice to update the runbook.\nBob to schedule the cutover.';
+  parseMinutesPaste();
+  assertEqual(document.getElementById('minutesSummaryInput').value, 'All good.');
+  assertEqual(editingMinutesActionItems.length, 2);
+  assertEqual(editingMinutesActionItems[0].text, 'Alice to update the runbook.');
+  assertEqual(editingMinutesActionItems[1].text, 'Bob to schedule the cutover.');
+});
+
+function addCompletedReviewCycle() {
+  const it = addReviewItem({});
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleReviewConfirm(cycle.id, it.id);
+  completeReviewCycle(cycle.id);
+  return reviewCycles[0];
+}
+
+test('openMinutesModal pre-fills the fields (including the Action Items table) from existing minutes, or blank for a cycle with none yet', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  assertEqual(document.getElementById('minutesSummaryInput').value, '');
+  assertEqual(editingMinutesActionItems.length, 0);
+  assertEqual(document.getElementById('minutesRemoveBtn').style.display, 'none');
+
+  cycle.minutes = { summary: 'S', actionItems: [{ id: 'a1', text: 'Update runbook', owner: 'Alice', dueDate: '2026-08-01' }], decisions: 'D', openPoints: 'O', nextSteps: 'N', importedAt: Date.now() };
+  openMinutesModal(cycle.id);
+  assertEqual(document.getElementById('minutesSummaryInput').value, 'S');
+  assertEqual(document.getElementById('minutesOpenPointsInput').value, 'O');
+  assertEqual(editingMinutesActionItems.length, 1);
+  assertEqual(editingMinutesActionItems[0].text, 'Update runbook');
+  assertEqual(editingMinutesActionItems[0].owner, 'Alice');
+  assertEqual(document.getElementById('minutesRemoveBtn').style.display, 'inline-flex');
+});
+
+test('addMinutesActionItemRow/removeMinutesActionItemRow add and remove rows from the working table', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  addMinutesActionItemRow();
+  assertEqual(editingMinutesActionItems.length, 2);
+  removeMinutesActionItemRow(0);
+  assertEqual(editingMinutesActionItems.length, 1);
+});
+
+test('saveMinutes stores Summary/Decisions/Open Points/Next Steps plus a structured Action Items table, and stamps importedAt once', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesSummaryInput').value = 'Discussed timeline';
+  document.getElementById('minutesDecisionsInput').value = 'Go live 15th';
+  document.getElementById('minutesOpenPointsInput').value = 'Still need Legal sign-off';
+  document.getElementById('minutesNextStepsInput').value = 'Confirm date';
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Update runbook';
+  editingMinutesActionItems[0].owner = 'Alice';
+  editingMinutesActionItems[0].dueDate = '2026-08-01';
+  saveMinutes();
+  assertEqual(cycle.minutes.summary, 'Discussed timeline');
+  assertEqual(cycle.minutes.decisions, 'Go live 15th');
+  assertEqual(cycle.minutes.openPoints, 'Still need Legal sign-off');
+  assertEqual(cycle.minutes.nextSteps, 'Confirm date');
+  assertEqual(cycle.minutes.actionItems.length, 1);
+  assertEqual(cycle.minutes.actionItems[0].text, 'Update runbook');
+  assertEqual(cycle.minutes.actionItems[0].owner, 'Alice');
+  assertEqual(cycle.minutes.actionItems[0].dueDate, '2026-08-01');
+  assertTrue(typeof cycle.minutes.importedAt === 'number');
+  const firstImportedAt = cycle.minutes.importedAt;
+
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesSummaryInput').value = 'Updated summary';
+  saveMinutes();
+  assertEqual(cycle.minutes.summary, 'Updated summary');
+  assertEqual(cycle.minutes.importedAt, firstImportedAt, 'importedAt should be set once, on first save, not bumped on every edit');
+});
+
+test('saveMinutes drops a blank action-item row (no text, owner, or due date)', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesSummaryInput').value = 'Something';
+  addMinutesActionItemRow(); // left entirely blank
+  saveMinutes();
+  assertEqual(cycle.minutes.actionItems.length, 0);
+});
+
+test('saveMinutes refuses to save when every field (including the action items table) is blank', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  saveMinutes();
+  assertEqual(cycle.minutes, null);
+});
+
+test('removeMinutes clears a cycle\'s minutes after confirmation', function () {
+  const cycle = addCompletedReviewCycle();
+  cycle.minutes = { summary: 'S', actionItems: [], decisions: '', openPoints: '', nextSteps: '', importedAt: Date.now() };
+  openMinutesModal(cycle.id);
+  removeMinutes();
+  confirmModalAction();
+  assertEqual(cycle.minutes, null);
+});
+
+test('reviewHistoryRowHtml shows an outline "Add meeting minutes" icon when none exist, and a filled "View" icon once they do', function () {
+  const cycle = addCompletedReviewCycle();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  renderReview();
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Add meeting minutes');
+  assertIncludes(html, 'fa-regular fa-file-lines');
+
+  cycle.minutes = { summary: 'S', actionItems: [], decisions: '', openPoints: '', nextSteps: '', importedAt: Date.now() };
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'View meeting minutes');
+  assertIncludes(html, 'fa-solid fa-file-lines');
+});
+
 // ---------- Milestone-level confirmation ----------
 
 function addReviewItemWithMilestones(names) {

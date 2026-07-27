@@ -21,6 +21,53 @@ test('normalizeData backfills missing fields on a hand-built milestone', functio
   assertEqual(m.dueDate, '2026-08-01', 'a milestone missing its own date should fall back to the parent item due date');
 });
 
+test('normalizeData backfills a missing/malformed reviewCycle.minutes to null', function () {
+  reviewCycles.push({ id: 'rc1', workstreamId: workstreams[0].id });
+  reviewCycles.push({ id: 'rc2', workstreamId: workstreams[0].id, minutes: 'not an object' });
+  normalizeData();
+  assertEqual(reviewCycles[0].minutes, null);
+  assertEqual(reviewCycles[1].minutes, null, 'a malformed minutes value should be reset, not kept as-is');
+});
+
+test('normalizeData backfills a missing reviewCycle.minutes.openPoints to an empty string', function () {
+  reviewCycles.push({ id: 'rc3b', workstreamId: workstreams[0].id, minutes: { summary: 'S', actionItems: [], nextSteps: '', decisions: '', importedAt: 123 } });
+  normalizeData();
+  assertEqual(reviewCycles[0].minutes.openPoints, '');
+});
+
+test('normalizeData leaves a well-formed reviewCycle.minutes alone', function () {
+  reviewCycles.push({ id: 'rc3', workstreamId: workstreams[0].id, minutes: { summary: 'S', actionItems: [{ id: 'a1', text: 'Do X', owner: 'Alice', dueDate: '2026-08-01' }], decisions: '', openPoints: 'Pending Legal', nextSteps: '', importedAt: 123 } });
+  normalizeData();
+  assertEqual(reviewCycles[0].minutes.summary, 'S');
+  assertEqual(reviewCycles[0].minutes.openPoints, 'Pending Legal');
+  assertEqual(reviewCycles[0].minutes.actionItems.length, 1);
+  assertEqual(reviewCycles[0].minutes.actionItems[0].owner, 'Alice');
+});
+
+test('normalizeData migrates a legacy free-text actionItems string into a one-row table', function () {
+  reviewCycles.push({ id: 'rc4', workstreamId: workstreams[0].id, minutes: { summary: '', actionItems: 'Alice to update the runbook.', nextSteps: '', decisions: '', importedAt: 123 } });
+  normalizeData();
+  assertEqual(reviewCycles[0].minutes.actionItems.length, 1);
+  assertEqual(reviewCycles[0].minutes.actionItems[0].text, 'Alice to update the runbook.');
+  assertEqual(reviewCycles[0].minutes.actionItems[0].owner, '');
+});
+
+test('normalizeData migrates a blank legacy actionItems string to an empty table, not a blank row', function () {
+  reviewCycles.push({ id: 'rc5', workstreamId: workstreams[0].id, minutes: { summary: 'S', actionItems: '   ', nextSteps: '', decisions: '', importedAt: 123 } });
+  normalizeData();
+  assertEqual(reviewCycles[0].minutes.actionItems.length, 0);
+});
+
+test('normalizeData backfills id/text/owner/dueDate on a hand-built action item row', function () {
+  reviewCycles.push({ id: 'rc6', workstreamId: workstreams[0].id, minutes: { summary: 'S', actionItems: [{}], nextSteps: '', decisions: '', importedAt: 123 } });
+  normalizeData();
+  const a = reviewCycles[0].minutes.actionItems[0];
+  assertTrue(isSafeId(a.id));
+  assertEqual(a.text, '');
+  assertEqual(a.owner, '');
+  assertEqual(a.dueDate, null);
+});
+
 test('normalizeData reassigns an item whose workstream no longer exists', function () {
   items.push({ id: 'x2', workstreamId: 'does-not-exist', name: 'Orphan', dueDate: todayStr(), milestones: [] });
   normalizeData();
