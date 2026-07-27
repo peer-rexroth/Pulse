@@ -2491,6 +2491,29 @@ async function inflateRaw(bytes) {
 // mid-paragraph line break (<w:br/>) isn't distinguished from a plain
 // space, which is a fine tradeoff for section-header detection purposes
 // (real section headers are their own paragraph, not a mid-paragraph break).
+function docxParagraphText(p) {
+  return Array.from(p.getElementsByTagName('w:t')).map(t => t.textContent).join('');
+}
+// A real Word table (<w:tbl>, e.g. an Action Items table with Action
+// Item/Owner/Due Date columns) must NOT be flattened by just grabbing every
+// <w:p> in document order — every table cell (<w:tc>) has its own paragraph
+// too, so naively doing that turns one 3-column row into 3 separate
+// one-column lines, destroying exactly the structure linesToActionItems()
+// depends on to split Action Item/Owner/Due Date apart. Instead this walks
+// the body's direct children in document order: an ordinary paragraph stays
+// one line; a table becomes one line per <w:tr>, its cells joined with a
+// real tab character — deliberately the same shape linesToActionItems()
+// already expects from a tab-separated Excel/Word clipboard paste, so a
+// table dropped in as a .docx and one pasted as plain text both funnel
+// through the exact same splitActionItemLine() logic. A cell with more than
+// one paragraph joins them with a space (still one cell's worth of text).
+function docxTableRowsToText(tbl) {
+  return Array.from(tbl.getElementsByTagName('w:tr')).map(tr =>
+    Array.from(tr.getElementsByTagName('w:tc'))
+      .map(tc => Array.from(tc.getElementsByTagName('w:p')).map(docxParagraphText).join(' ').trim())
+      .join('\t')
+  );
+}
 async function extractDocxText(arrayBuffer) {
   const entry = zipFindEntry(arrayBuffer, 'word/document.xml');
   if (!entry) throw new Error('Could not find document text inside this .docx');
@@ -2498,9 +2521,14 @@ async function extractDocxText(arrayBuffer) {
   const xml = new TextDecoder('utf-8').decode(bytes);
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
   if (doc.querySelector('parsererror')) throw new Error('Could not parse this .docx\'s document content');
-  return Array.from(doc.getElementsByTagName('w:p'))
-    .map(p => Array.from(p.getElementsByTagName('w:t')).map(t => t.textContent).join(''))
-    .join('\n');
+  const body = doc.getElementsByTagName('w:body')[0];
+  if (!body) return '';
+  const lines = [];
+  Array.from(body.children).forEach(child => {
+    if (child.tagName === 'w:p') lines.push(docxParagraphText(child));
+    else if (child.tagName === 'w:tbl') lines.push(...docxTableRowsToText(child));
+  });
+  return lines.join('\n');
 }
 // Drag-and-drop a minutes file straight onto the paste box — .docx gets the
 // real zip/XML extraction above; anything else is read as plain text
