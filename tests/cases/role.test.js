@@ -232,6 +232,16 @@ test('toggleActionLogItem and deleteActionLogItem are both blocked below Reviewe
   assertEqual(w.actionLog.length, 1, 'deleting must have been blocked below Reviewer');
 });
 
+test('deleteDecisionLogItem is blocked below Reviewer', function () {
+  const w = workstreams[0];
+  w.decisionLog = [{ id: genId(), text: 'Go live on the 15th.', cycleId: null, addedAt: Date.now() }];
+  const itemId = w.decisionLog[0].id;
+
+  userRole = 'visitor';
+  deleteDecisionLogItem(w.id, itemId);
+  assertEqual(w.decisionLog.length, 1, 'deleting must have been blocked below Reviewer');
+});
+
 test('the Review "Start review cycle" button is replaced with an explanatory line below Reviewer, and a real button at Reviewer+', function () {
   setFilterWorkstream(workstreams[0].id);
   setMode('review');

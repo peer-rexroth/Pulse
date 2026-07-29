@@ -824,6 +824,19 @@
     grid-template-columns: minmax(160px,1fr) 130px 100px 90px 80px 90px 90px 40px 40px;
   }
   .action-log-ws { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Decision Log (Review's third tab) — Action Log's counterpart for the
+     Decisions section of meeting minutes (see syncDecisionLogFromMinutes()).
+     Shares .action-log-list's card chrome and .action-log-header/-text/
+     -source/-ws's text styling (identical look), but needs its own, shorter
+     grid-template-columns: a decision has no owner/due date/completed state
+     of its own, so there's no Owner/Due Date/Closed/confirm-toggle column
+     here — just Decision / Source / Logged / Delete. */
+  .decision-log-row, .decision-log-header {
+    grid-template-columns: minmax(260px,1fr) 90px 90px 40px;
+  }
+  .decision-log-row.with-ws, .decision-log-header.with-ws {
+    grid-template-columns: minmax(220px,1fr) 130px 90px 90px 40px;
+  }
   .section-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin: 20px 0 8px; }
   .section-label:first-child { margin-top: 0; }
 
@@ -913,6 +926,7 @@
       <div class="view-tabs">
         <button class="view-tab" id="tabReviewScope" onclick="setReviewTab('scope')"><i class="fa-solid fa-clipboard-check"></i> Scope Item Review</button>
         <button class="view-tab" id="tabReviewActionLog" onclick="setReviewTab('actionLog')"><i class="fa-solid fa-list-check"></i> Action Log</button>
+        <button class="view-tab" id="tabReviewDecisionLog" onclick="setReviewTab('decisionLog')"><i class="fa-solid fa-gavel"></i> Decision Log</button>
       </div>
     </div>
     <div class="main" id="main"></div>
@@ -1478,6 +1492,16 @@ function normalizeData() {
       if (typeof a.completedAt !== 'number') a.completedAt = null;
       if (typeof a.addedAt !== 'number') a.addedAt = Date.now();
     });
+    // decisionLog is actionLog's counterpart for the Decisions section of
+    // meeting minutes (see syncDecisionLogFromMinutes()) — same "workstream-
+    // wide, review-cycle-spanning log" shape, but a decision has no owner/
+    // due date/completed state of its own, just text and when it was logged.
+    if (!Array.isArray(w.decisionLog)) w.decisionLog = [];
+    w.decisionLog.forEach(d => {
+      if (!isSafeId(d.id)) d.id = genId();
+      if (typeof d.text !== 'string') d.text = '';
+      if (typeof d.addedAt !== 'number') d.addedAt = Date.now();
+    });
   });
   workstreams.sort((a, b) => a.order - b.order);
   const wsIds = new Set(workstreams.map(w => w.id));
@@ -1709,6 +1733,7 @@ function render() {
     // the Action Log tab (below) stopped needing one at all.
     document.getElementById('tabReviewScope').classList.toggle('disabled', !filterWorkstreamId);
     document.getElementById('tabReviewActionLog').classList.toggle('active', reviewTab === 'actionLog');
+    document.getElementById('tabReviewDecisionLog').classList.toggle('active', reviewTab === 'decisionLog');
     renderReview();
   } else if (mode === 'dashboard') {
     renderDashboard();
@@ -3334,6 +3359,7 @@ function saveMinutes() {
   // marks when minutes were first attached to this cycle, not last edited.
   cycle.minutes = { summary, actionItems, decisions, nextSteps, importedAt: (cycle.minutes && cycle.minutes.importedAt) || Date.now() };
   syncActionLogFromMinutes(cycle, actionItems);
+  syncDecisionLogFromMinutes(cycle, decisions);
   save(); closeMinutesModal(); render();
   showToast('Meeting minutes saved');
 }
@@ -3350,6 +3376,7 @@ function removeMinutes() {
     action: () => {
       cycle.minutes = null;
       removeActionLogForCycle(cycle);
+      removeDecisionLogForCycle(cycle);
       save(); render();
       showToast('Meeting minutes removed');
     }
@@ -3653,6 +3680,150 @@ function removeActionLogForCycle(cycle) {
   if (!w || !Array.isArray(w.actionLog)) return;
   w.actionLog = w.actionLog.filter(a => a.cycleId !== cycle.id);
 }
+// Splits a meeting's raw Decisions text into individual decisions — one per
+// non-blank line, same "each line is its own record" convention as
+// linesToActionItems(), but with no columns to split on (a decision has no
+// owner/due date), so this just strips a leading bullet marker (the minutes
+// parser leaves "•"/"-" prefixes in place — see parseMeetingMinutes()) and
+// trims. Used only by syncDecisionLogFromMinutes(); the Decisions field
+// itself is still saved to cycle.minutes.decisions as one plain block, this
+// splitting only happens on the way into decisionLog.
+function linesToDecisions(text) {
+  return (text || '').split('\n').map(l => l.trim()).filter(Boolean)
+    .map(l => l.replace(/^[•*\-–—]\s*/, '').trim())
+    .filter(Boolean);
+}
+// Decision Log sorts by when each decision was logged, most recent first —
+// unlike Action Log, a decision has no due date or open/closed state to sort
+// by first, it's a plain historical record.
+function sortedDecisionLog(list, keyFn) {
+  keyFn = keyFn || (x => x);
+  return list.slice().sort((x, y) => (keyFn(y).addedAt || 0) - (keyFn(x).addedAt || 0));
+}
+// Decision Log's counterpart to actionLogRowHtml() — same Source/showWs
+// shape, but no Owner/Due Date/Closed columns and no confirm toggle, since a
+// decision has none of those.
+function decisionLogRowHtml(w, d, showWs) {
+  const cycle = reviewCycles.find(c => c.id === d.cycleId);
+  const source = cycle ? 'Review' : '';
+  const sourceTitle = cycle ? `From review started ${fmtDate(dateStrFromTs(cycle.startedAt))}` : '';
+  const canManage = hasRole('reviewer');
+  const off = showWs ? 1 : 0;
+  const wsCellHtml = showWs
+    ? `<span class="action-log-ws" style="grid-column:2" title="${esc(w.name)}"><span class="ws-dot" style="background:var(--ws-${w.color})"></span>${esc(w.name)}</span>`
+    : '';
+  return `<div class="item-row decision-log-row ${showWs ? 'with-ws' : ''}">
+      <span class="action-log-text" style="grid-column:1">${esc(d.text)}</span>
+      ${wsCellHtml}
+      <span class="action-log-source" style="grid-column:${2 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
+      <span class="item-dates-computed" style="grid-column:${3 + off}">${fmtDate(dateStrFromTs(d.addedAt))}</span>
+      ${canManage
+        ? `<button class="row-icon-btn" style="grid-column:${4 + off}" onclick="deleteDecisionLogItem('${w.id}','${d.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>`
+        : `<span style="grid-column:${4 + off}"></span>`}
+    </div>`;
+}
+// Decision Log's counterpart to actionLogCountHtml() — a plain count, since
+// there's no open/closed split to report.
+function decisionLogCountHtml(list) {
+  if (!list.length) return '';
+  return `<span class="review-progress" style="margin:0;flex:0 0 auto">${list.length} decision${list.length === 1 ? '' : 's'}</span>`;
+}
+// The workstream-wide decision log — every decision ever imported from a
+// meeting minutes attachment across every review cycle for this workstream
+// (see syncDecisionLogFromMinutes()). Rendered as Review's third tab (see
+// renderReview()).
+function decisionLogHtml(w) {
+  const list = Array.isArray(w.decisionLog) ? w.decisionLog : [];
+  if (!list.length) {
+    return `<div class="attention-empty">No decisions yet — they're added automatically when meeting minutes with decisions are attached to a review cycle.</div>`;
+  }
+  return `<div class="action-log-list">
+      <div class="item-row decision-log-row decision-log-header">
+        <span style="grid-column:1">Decision</span>
+        <span style="grid-column:2">Source</span>
+        <span style="grid-column:3">Logged</span>
+        <span style="grid-column:4"></span>
+      </div>
+      ${sortedDecisionLog(list).map(d => decisionLogRowHtml(w, d)).join('')}
+    </div>`;
+}
+// The "All workstreams" Decision Log — allWorkstreamsActionLogHtml()'s
+// counterpart, reachable from Review mode's Decision Log tab with "All
+// workstreams" selected in the sidebar.
+function allWorkstreamsDecisionLogHtml() {
+  const entries = [];
+  workstreams.forEach(w => {
+    (Array.isArray(w.decisionLog) ? w.decisionLog : []).forEach(d => entries.push({ w, d }));
+  });
+  if (!entries.length) {
+    return `<div class="attention-empty">No decisions yet — they're added automatically when meeting minutes with decisions are attached to a review cycle.</div>`;
+  }
+  return `<div class="action-log-list">
+      <div class="item-row decision-log-row decision-log-header with-ws">
+        <span style="grid-column:1">Decision</span>
+        <span style="grid-column:2">Workstream</span>
+        <span style="grid-column:3">Source</span>
+        <span style="grid-column:4">Logged</span>
+        <span style="grid-column:5"></span>
+      </div>
+      ${sortedDecisionLog(entries, x => x.d).map(({ w, d }) => decisionLogRowHtml(w, d, true)).join('')}
+    </div>`;
+}
+// Deleting a log entry only removes it from the workstream's decisionLog —
+// same lightweight, one-directional, confirm-modal-only pattern as
+// deleteActionLogItem() (no undo toast, and re-saving the source cycle's
+// minutes unchanged would re-add it via syncDecisionLogFromMinutes()'s own
+// text match).
+function deleteDecisionLogItem(wsId, itemId) {
+  if (!requireRole('reviewer')) return;
+  const w = wsById(wsId);
+  if (!w) return;
+  const d = w.decisionLog.find(x => x.id === itemId);
+  if (!d) return;
+  openConfirmModal({
+    title: 'Delete this decision?',
+    body: 'This cannot be undone.',
+    action: () => {
+      const idx = w.decisionLog.findIndex(x => x.id === itemId);
+      if (idx === -1) return;
+      w.decisionLog.splice(idx, 1);
+      save(); render();
+      showToast('Decision deleted');
+    }
+  });
+}
+// syncActionLogFromMinutes()'s counterpart for Decisions, called at the same
+// point in saveMinutes(). Action items match existing log rows by their own
+// stable id (each row keeps the same id across edits within the minutes
+// modal); a decision has no such id of its own — it's just a line of text
+// inside one plain textarea — so this matches by exact text instead, scoped
+// to this cycle's own existing rows only (a decision reworded elsewhere in
+// the same text, or one that happens to read identically in another cycle,
+// is never confused with this one). An unchanged line keeps its original
+// row (and addedAt); a line that doesn't match anything still on this
+// cycle's rows is a new decision and gets a fresh id/addedAt; any of this
+// cycle's rows whose text no longer appears in the resaved text is dropped.
+function syncDecisionLogFromMinutes(cycle, decisionsText) {
+  const w = wsById(cycle.workstreamId);
+  if (!w) return;
+  if (!Array.isArray(w.decisionLog)) w.decisionLog = [];
+  const existingForCycle = w.decisionLog.filter(d => d.cycleId === cycle.id);
+  const used = new Set();
+  const kept = linesToDecisions(decisionsText).map(text => {
+    const match = existingForCycle.find(d => d.text === text && !used.has(d.id));
+    if (match) { used.add(match.id); return match; }
+    return { id: genId(), text, cycleId: cycle.id, addedAt: Date.now() };
+  });
+  w.decisionLog = w.decisionLog.filter(d => d.cycleId !== cycle.id).concat(kept);
+}
+// Counterpart to syncDecisionLogFromMinutes() — called from removeMinutes()
+// so a cycle's decisions don't linger, orphaned, on the workstream's
+// Decision Log once the minutes they came from are gone.
+function removeDecisionLogForCycle(cycle) {
+  const w = wsById(cycle.workstreamId);
+  if (!w || !Array.isArray(w.decisionLog)) return;
+  w.decisionLog = w.decisionLog.filter(d => d.cycleId !== cycle.id);
+}
 // Review has no workstream picker of its own any more — it reads the same
 // filterWorkstreamId the sidebar (shared with Planning/Dashboard) sets.
 // setMode()/setFilterWorkstream() already steer away from a state this
@@ -3671,6 +3842,10 @@ function renderReview() {
       el.innerHTML = `<div class="review-header"><h2>All workstreams</h2>${actionLogCountHtml(workstreams.flatMap(w => Array.isArray(w.actionLog) ? w.actionLog : []))}</div>${allWorkstreamsActionLogHtml()}`;
       return;
     }
+    if (reviewTab === 'decisionLog') {
+      el.innerHTML = `<div class="review-header"><h2>All workstreams</h2>${decisionLogCountHtml(workstreams.flatMap(w => Array.isArray(w.decisionLog) ? w.decisionLog : []))}</div>${allWorkstreamsDecisionLogHtml()}`;
+      return;
+    }
     el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-clipboard-check"></i><div>Select a workstream in the sidebar to review its scope.</div></div>`;
     return;
   }
@@ -3678,6 +3853,10 @@ function renderReview() {
   if (!w) { filterWorkstreamId = null; renderReview(); return; }
   if (reviewTab === 'actionLog') {
     el.innerHTML = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2>${actionLogCountHtml(Array.isArray(w.actionLog) ? w.actionLog : [])}</div>${actionLogHtml(w)}`;
+    return;
+  }
+  if (reviewTab === 'decisionLog') {
+    el.innerHTML = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2>${decisionLogCountHtml(Array.isArray(w.decisionLog) ? w.decisionLog : [])}</div>${decisionLogHtml(w)}`;
     return;
   }
   const cycle = activeReviewCycle(filterWorkstreamId);

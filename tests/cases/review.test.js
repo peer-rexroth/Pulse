@@ -1716,3 +1716,278 @@ test('a completed action item on the "All workstreams" view is excluded from the
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, '0 open of 1 action item');
 });
+
+// ---------- Decision Log (Review's third tab) ----------
+// Action Log's counterpart for the Decisions section of meeting minutes. A
+// decision has no owner/due date/completed state of its own — it's one line
+// of free text — so linesToDecisions() splits a meeting's whole Decisions
+// block into individual lines, and syncDecisionLogFromMinutes() matches
+// existing rows by exact text (there's no per-line id the way action items
+// have) rather than by id.
+
+test('linesToDecisions splits a Decisions block into individual lines, stripping bullet markers and blank lines', function () {
+  const lines = linesToDecisions('• Go live on the 15th.\n- Freeze scope after Friday.\n\n  Revisit budget next quarter.  ');
+  assertDeepEqual(lines, ['Go live on the 15th.', 'Freeze scope after Friday.', 'Revisit budget next quarter.']);
+});
+
+test('saveMinutes syncs each line of the saved Decisions text into the workstream\'s own decisionLog', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = '• Go live on the 15th.\n• Freeze scope after Friday.';
+  saveMinutes();
+  const log = workstreams[0].decisionLog;
+  assertEqual(log.length, 2);
+  assertEqual(log[0].text, 'Go live on the 15th.');
+  assertEqual(log[1].text, 'Freeze scope after Friday.');
+  assertEqual(log[0].cycleId, cycle.id);
+});
+
+test('re-saving minutes with an unchanged decision line keeps that line\'s same log entry (same id/addedAt), not a new one', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.';
+  saveMinutes();
+  const entryId = workstreams[0].decisionLog[0].id;
+  const addedAt = workstreams[0].decisionLog[0].addedAt;
+
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.\nFreeze scope after Friday.';
+  saveMinutes();
+  assertEqual(workstreams[0].decisionLog.length, 2, 'the unchanged line must not be duplicated');
+  const unchanged = workstreams[0].decisionLog.find(d => d.text === 'Go live on the 15th.');
+  assertEqual(unchanged.id, entryId);
+  assertEqual(unchanged.addedAt, addedAt);
+  assertTrue(workstreams[0].decisionLog.some(d => d.text === 'Freeze scope after Friday.'));
+});
+
+test('re-saving minutes with a decision line removed drops just that line\'s log entry, leaving the rest', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.\nFreeze scope after Friday.';
+  saveMinutes();
+  assertEqual(workstreams[0].decisionLog.length, 2, 'sanity check');
+
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.';
+  saveMinutes();
+  assertEqual(workstreams[0].decisionLog.length, 1);
+  assertEqual(workstreams[0].decisionLog[0].text, 'Go live on the 15th.');
+});
+
+test('saving a second review cycle\'s minutes appends to the same workstream decisionLog rather than replacing it', function () {
+  const cycle1 = addCompletedReviewCycle();
+  openMinutesModal(cycle1.id);
+  document.getElementById('minutesDecisionsInput').value = 'From cycle 1';
+  saveMinutes();
+
+  startReviewCycle(workstreams[0].id);
+  const cycle2 = activeReviewCycle(workstreams[0].id);
+  completeReviewCycle(cycle2.id);
+  openMinutesModal(cycle2.id);
+  document.getElementById('minutesDecisionsInput').value = 'From cycle 2';
+  saveMinutes();
+
+  assertEqual(workstreams[0].decisionLog.length, 2);
+  assertEqual(workstreams[0].decisionLog.map(d => d.text).sort().join(','), 'From cycle 1,From cycle 2');
+});
+
+test('removeMinutes also deletes that cycle\'s decisions from the workstream decisionLog, so none linger orphaned', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.';
+  saveMinutes();
+  assertEqual(workstreams[0].decisionLog.length, 1, 'sanity check — saving minutes should have synced one decision log entry');
+
+  openMinutesModal(cycle.id);
+  removeMinutes();
+  confirmModalAction();
+  assertEqual(workstreams[0].decisionLog.length, 0);
+});
+
+test('removeMinutes only deletes decisions from its own cycle, leaving other cycles\' entries on the same workstream alone', function () {
+  const cycle1 = addCompletedReviewCycle();
+  openMinutesModal(cycle1.id);
+  document.getElementById('minutesDecisionsInput').value = 'From cycle 1';
+  saveMinutes();
+
+  startReviewCycle(workstreams[0].id);
+  const cycle2 = activeReviewCycle(workstreams[0].id);
+  completeReviewCycle(cycle2.id);
+  openMinutesModal(cycle2.id);
+  document.getElementById('minutesDecisionsInput').value = 'From cycle 2';
+  saveMinutes();
+  assertEqual(workstreams[0].decisionLog.length, 2);
+
+  openMinutesModal(cycle1.id);
+  removeMinutes();
+  confirmModalAction();
+  assertEqual(workstreams[0].decisionLog.length, 1);
+  assertEqual(workstreams[0].decisionLog[0].text, 'From cycle 2');
+});
+
+test('deleteDecisionLogItem removes the entry only after confirmation, and does not touch the source cycle\'s own saved minutes', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.';
+  saveMinutes();
+  const id = workstreams[0].decisionLog[0].id;
+
+  deleteDecisionLogItem(workstreams[0].id, id);
+  assertEqual(workstreams[0].decisionLog.length, 1, 'opening the confirm modal must not delete anything by itself');
+  confirmModalAction();
+  assertEqual(workstreams[0].decisionLog.length, 0);
+  assertEqual(cycle.minutes.decisions, 'Go live on the 15th.', 'deleting from the log is separate from the cycle\'s own saved minutes');
+});
+
+test('normalizeData backfills a missing/malformed workstream.decisionLog to an empty array, and fills in a hand-built row', function () {
+  workstreams[0].decisionLog = 'not an array';
+  normalizeData();
+  assertDeepEqual(workstreams[0].decisionLog, []);
+
+  workstreams[0].decisionLog = [{ text: 'X' }];
+  normalizeData();
+  const d = workstreams[0].decisionLog[0];
+  assertTrue(isSafeId(d.id));
+  assertEqual(d.text, 'X');
+  assertTrue(typeof d.addedAt === 'number');
+});
+
+test('setReviewTab switches renderReview to the Decision Log, alongside Scope Item Review and Action Log', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.';
+  saveMinutes();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+
+  setReviewTab('decisionLog');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'decision-log-row');
+  assertIncludes(html, 'Go live on the 15th.');
+  assertNotIncludes(html, 'Start review cycle');
+});
+
+test('decisionLogHtml shows an empty state when the workstream has no decisions yet, and a header row (Decision / Source / Logged) once there is at least one', function () {
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('decisionLog');
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'No decisions yet');
+  assertNotIncludes(html, 'decision-log-header', 'no header row without any actual rows to label');
+
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.';
+  saveMinutes();
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'decision-log-header');
+  assertIncludes(html, '>Decision<');
+  assertIncludes(html, '>Source<');
+  assertIncludes(html, '>Logged<');
+  assertNotIncludes(html, '>Owner<', 'a decision has no owner column, unlike an action item');
+});
+
+test('decisionLogRowHtml renders a Delete button wired to deleteDecisionLogItem, with no confirm/complete toggle — a decision has no done state', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.';
+  saveMinutes();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('decisionLog');
+  const html = document.getElementById('main').innerHTML;
+  const id = workstreams[0].decisionLog[0].id;
+  assertIncludes(html, `deleteDecisionLogItem('${workstreams[0].id}','${id}')`);
+  assertIncludes(html, 'fa-trash');
+  assertNotIncludes(html, 'review-confirm-toggle');
+});
+
+test('decisionLogCountHtml renders "N decisions" and nothing when the workstream has none yet', function () {
+  assertEqual(decisionLogCountHtml([]), '');
+  assertIncludes(decisionLogCountHtml([{ addedAt: 1 }]), '1 decision');
+  assertIncludes(decisionLogCountHtml([{ addedAt: 1 }, { addedAt: 2 }]), '2 decisions');
+});
+
+test('sortedDecisionLog orders decisions most-recently-logged first', function () {
+  const list = [
+    { id: 'a', text: 'Oldest', addedAt: 100 },
+    { id: 'b', text: 'Newest', addedAt: 300 },
+    { id: 'c', text: 'Middle', addedAt: 200 }
+  ];
+  const sorted = sortedDecisionLog(list).map(d => d.id);
+  assertDeepEqual(sorted, ['b', 'c', 'a']);
+});
+
+test('sortedDecisionLog\'s keyFn param sorts a list of wrapped {w, d} pairs by the wrapped item\'s own addedAt, same ordering as the plain-list case', function () {
+  const list = [
+    { w: 'ws1', d: { id: 'a', addedAt: 100 } },
+    { w: 'ws2', d: { id: 'b', addedAt: 300 } }
+  ];
+  const sorted = sortedDecisionLog(list, x => x.d).map(x => x.d.id);
+  assertDeepEqual(sorted, ['b', 'a']);
+});
+
+// ---------- "All workstreams" Decision Log ----------
+
+test('allWorkstreamsDecisionLogHtml merges every workstream\'s own decision log into one list, each row tagged with its source workstream', function () {
+  const cycle1 = addCompletedReviewCycle();
+  openMinutesModal(cycle1.id);
+  document.getElementById('minutesDecisionsInput').value = 'From workstream 1';
+  saveMinutes();
+
+  const cycle2 = addSecondWorkstreamWithCompletedCycle();
+  openMinutesModal(cycle2.id);
+  document.getElementById('minutesDecisionsInput').value = 'From workstream 2';
+  saveMinutes();
+
+  const html = allWorkstreamsDecisionLogHtml();
+  assertIncludes(html, 'From workstream 1');
+  assertIncludes(html, 'From workstream 2');
+  assertIncludes(html, esc(workstreams[0].name));
+  assertIncludes(html, esc(workstreams[1].name));
+  assertIncludes(html, 'decision-log-row with-ws', 'each data row must carry the with-ws modifier so its CSS grid gets the extra Workstream column');
+});
+
+test('allWorkstreamsDecisionLogHtml\'s header includes a Workstream column and shifts Source/Logged/Delete one slot right', function () {
+  addCompletedReviewCycle();
+  const w = workstreams[0];
+  w.decisionLog = [{ id: 'd1', text: 'X', cycleId: null, addedAt: Date.now() }];
+  const html = allWorkstreamsDecisionLogHtml();
+  const headerRow = html.slice(html.indexOf('decision-log-header'), html.indexOf('decision-log-header') + 400);
+  assertIncludes(headerRow, 'grid-column:1">Decision');
+  assertIncludes(headerRow, 'grid-column:2">Workstream');
+  assertIncludes(headerRow, 'grid-column:3">Source');
+  assertIncludes(headerRow, 'grid-column:4">Logged');
+
+  const dataRow = html.slice(html.indexOf('action-log-text'));
+  assertIncludes(dataRow, 'grid-column:2"', 'the Workstream cell must sit at column 2 on the data row too');
+  assertIncludes(dataRow, `grid-column:5" onclick="deleteDecisionLogItem('${w.id}','d1')"`, 'Delete shifts to column 5 (one slot right of the plain 4-column layout) to make room for Workstream');
+});
+
+test('allWorkstreamsDecisionLogHtml shows the same empty state as the per-workstream table when no workstream has any decisions', function () {
+  const html = allWorkstreamsDecisionLogHtml();
+  assertIncludes(html, 'No decisions yet');
+});
+
+test('renderReview shows the "All workstreams" Decision Log when no workstream is filtered and reviewTab is "decisionLog", with an aggregate count', function () {
+  const cycle1 = addCompletedReviewCycle();
+  openMinutesModal(cycle1.id);
+  document.getElementById('minutesDecisionsInput').value = 'Decision one';
+  saveMinutes();
+
+  const cycle2 = addSecondWorkstreamWithCompletedCycle();
+  openMinutesModal(cycle2.id);
+  document.getElementById('minutesDecisionsInput').value = 'Decision two';
+  saveMinutes();
+
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('decisionLog');
+  setFilterWorkstream(null);
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '>All workstreams<');
+  assertIncludes(html, '2 decisions');
+  assertIncludes(html, 'Decision one');
+  assertIncludes(html, 'Decision two');
+});
