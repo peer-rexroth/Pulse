@@ -328,6 +328,21 @@ test('a milestone row\'s Not Applicable toggle sits immediately before its Statu
   assertTrue(naIdx !== -1 && statusIdx !== -1 && naIdx < statusIdx, 'the Not Applicable toggle must render before the Status badge in DOM order');
 });
 
+test('the Not Applicable toggle and Status badge share one flex cell spanning both trailing columns, rather than the toggle claiming a whole 90px track on its own', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'green', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  const cellIdx = html.indexOf('milestone-status-cell', html.indexOf('milestone-sub-row'));
+  assertTrue(cellIdx !== -1, 'a .milestone-status-cell wrapper should exist on the data row');
+  const cellSlice = html.slice(cellIdx, cellIdx + 600);
+  assertIncludes(cellSlice, `toggleMilestoneNotApplicable('${it.id}','m1')`, 'the toggle must live inside the spanning cell');
+  assertIncludes(cellSlice, `cycleMilestoneStatus('${it.id}','m1')`, 'the status badge must live inside the same spanning cell');
+});
+
 test('a notApplicable milestone row freezes its status badge to a plain "N/A" label instead of its own RAG color, and is no longer cycleable', function () {
   const it = addItem({
     name: 'Parent',

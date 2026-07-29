@@ -545,6 +545,21 @@
     font-size: 12.5px; background: var(--panel-2);
   }
   .milestone-sub-name { font-weight: 600; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The Not Applicable toggle + Status badge share one cell spanning both
+     of the row's trailing tracks (10/12 — the Status and Actions tracks,
+     90px + 56px) instead of each claiming a whole track on its own — a
+     user-reported "the N/A column is too broad" bug: giving the icon-only
+     toggle a full 90px track (matching item rows' own Status column, sized
+     for a text label) left it stretched or floating in mostly-empty space
+     no matter how it was aligned within that track, since the track itself
+     was still 90px regardless. A flex row sizes each child to its own
+     content instead — the toggle stays tight, and Status gets whatever
+     room is left. This only changes the *milestone* row's markup;
+     itemRowHtml() still separately auto-places its own Status/Actions
+     content into tracks 10/11 untouched, so nothing here affects the item
+     row's own column widths. milestoneHeaderHtml()'s "N/A"/"Status" labels
+     span the identical 10/12 range for the same reason. */
+  .milestone-status-cell { display: flex; align-items: center; gap: 6px; }
 
   /* Modal */
   .modal-bg {
@@ -2037,14 +2052,15 @@ function milestoneHeaderHtml(reviewCycle) {
   // hidden, is the same fix already applied to the Action Log's own header
   // for the identical reason — see actionLogHtml() in CLAUDE.md.
   const reviewLabel = reviewCycle ? `<span class="review-confirm-toggle" style="grid-column:12;visibility:hidden"><i class="fa-solid fa-circle-check"></i></span>` : '';
-  // Column 10 (the Not Applicable toggle) and column 11 (Status) are in that
-  // order specifically because milestoneRowsHtml()'s data rows put them in
-  // that order too (a user-requested swap from the original Status-then-N/A
-  // layout) — this header must keep matching whatever order the data rows
-  // actually use, the same alignment invariant every other column here
-  // already depends on.
+  // "N/A" then "Status" share one flex cell spanning columns 10/12 (both
+  // trailing tracks, 90px + 56px) — matching milestoneRowsHtml()'s own
+  // .milestone-status-cell exactly, rather than each claiming a whole
+  // track, so the toggle doesn't inherit a full 90px track sized for a
+  // text label (see that class's own comment). This header must keep
+  // matching whatever the data rows actually use, the same alignment
+  // invariant every other column here already depends on.
   return `<div class="milestone-header">
-      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span>N/A</span><span>Status</span>${reviewLabel}
+      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span class="milestone-status-cell" style="grid-column:10/12"><span>N/A</span><span>Status</span></span>${reviewLabel}
     </div>`;
 }
 // Emits the same 11 grid cells itemRowHtml() does (chevron|name|milestones|
@@ -2136,15 +2152,18 @@ function milestoneRowsHtml(it, reviewCycle) {
       : (hasRole('editor')
           ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(statusLabel(m.status))}</button>`
           : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`);
-    // The Not Applicable toggle sits at column 10 (the row's own Status
-    // track, 90px — see --item-grid-cols), one slot *before* the Status
-    // badge itself at column 11 (the Actions track, 56px) — a user-
-    // requested swap from the original Status-then-N/A order. Always shows
-    // an icon (outline when off, filled when on) rather than being omitted
-    // when off, same "always a real, visible icon, just not clickable below
-    // the gating role" convention .review-confirm-toggle already uses.
-    // milestoneHeaderHtml()'s own column 10/11 labels ("N/A" / "Status")
-    // must keep matching this order.
+    // The Not Applicable toggle sits immediately before the Status badge — a
+    // user-requested swap from the original Status-then-N/A order — inside
+    // one shared .milestone-status-cell spanning columns 10/12 (both
+    // trailing tracks, 90px + 56px — see that class's own CSS comment for
+    // why: a whole 90px track sized for Status's text label would leave the
+    // icon-only toggle stretched/floating no matter how it's aligned within
+    // it, a user-reported "too broad" bug). Always shows an icon (outline
+    // when off, filled when on) rather than being omitted when off, same
+    // "always a real, visible icon, just not clickable below the gating
+    // role" convention .review-confirm-toggle already uses.
+    // milestoneHeaderHtml()'s own "N/A"/"Status" labels must keep matching
+    // this order and span.
     const naHtml = hasRole('editor')
       ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></button>`
       : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></span>`;
@@ -2158,8 +2177,10 @@ function milestoneRowsHtml(it, reviewCycle) {
       <span class="milestone-sub-actual-inline" title="Actual completion date">
         ${actualHtml}
       </span>
-      ${naHtml}
-      ${statusHtml}
+      <span class="milestone-status-cell" style="grid-column:10/12">
+        ${naHtml}
+        ${statusHtml}
+      </span>
       ${reviewCellHtml}
     </div>`;
   }).join('');
