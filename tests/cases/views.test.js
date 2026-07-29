@@ -220,6 +220,53 @@ test('a milestone sub-row\'s Due input snaps back to the stored date on an incom
   assertIncludes(html, `onblur="if(this.value) updateMilestoneDateField('${it.id}','m1','dueDate',this.value); else this.value='2026-08-15'"`);
 });
 
+// ---------- Date inputs also commit on 'change', not just blur ----------
+// A screen recording of the reported bug showed that picking a date from
+// the native calendar popup (showPicker()) updates the input's displayed
+// value immediately, but doesn't reliably fire blur afterward — so onblur,
+// the only thing wired to actually write the value into `items`/`milestones`,
+// never ran. The edit looked saved (right value on screen) until some later,
+// unrelated render (switching modes) rebuilt the row from the real,
+// never-updated stored date. `onchange` fires the moment the popup commits
+// a value, regardless of that focus/blur quirk, so every date input now
+// wires it up alongside onblur.
+
+test('an item with no milestones — its inline Due input also commits on change, not just blur', function () {
+  const it = addItem({ name: 'No milestones', milestones: [] });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `onchange="if(this.value) updateItemDateField('${it.id}','dueDate',this.value)"`);
+});
+
+test('an item with no milestones — its inline Start input also commits on change', function () {
+  const it = addItem({ name: 'No milestones', milestones: [] });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `onchange="if(this.value) updateItemDateField('${it.id}','startDate',this.value)"`);
+});
+
+test('a milestone sub-row\'s Due input also commits on change', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `onchange="if(this.value) updateMilestoneDateField('${it.id}','m1','dueDate',this.value)"`);
+});
+
+test('a milestone sub-row\'s Actual input also commits on change', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: '2026-06-01' }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `onchange="if(this.value) updateMilestoneDateField('${it.id}','m1','actualDate',this.value)"`);
+});
+
 test('an item row shows IT/Business/Budget tag badges colored by their current value', function () {
   const it = addItem({ name: 'Tagged', itStatus: 'red', businessStatus: 'amber', budgetStatus: 'green' });
   renderMain();

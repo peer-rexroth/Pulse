@@ -2108,12 +2108,27 @@ function itemRowHtml(it, reviewCycle) {
   // spontaneous revert. The `else` branch now snaps the input back
   // immediately on blur instead, so an incomplete edit is visibly rejected
   // right away rather than silently and invisibly discarded.
+  // A second, separate bug shared the same "silent revert" symptom but a
+  // different cause: picking a date from the native calendar popup
+  // (showPicker(), opened via the pill's own calendar icon) updates the
+  // input's own displayed value immediately, but a screen recording proved
+  // that click, unlike a normal focus change, doesn't reliably fire this
+  // input's blur afterward — so onblur, the only thing that ever wrote the
+  // new value into `items`, never ran at all. The display looked correct
+  // (and stayed correct through further interaction) right up until the
+  // next full re-render (switching to Review and back, in the reported
+  // case) rebuilt the row from the real, never-updated stored date. `onchange`
+  // fires reliably the moment the popup commits a value, independent of
+  // whatever focus/blur quirks that popup has, so it's now wired up
+  // alongside onblur (same guarded call) on every date input in this app —
+  // onblur stays too, since it's still what a completed keyboard edit relies
+  // on and what resets an incomplete one (see above).
   const planDatesHtml = (total || reviewCycle)
     ? `<span class="item-dates-computed" title="${total ? 'Computed from the earliest and latest milestone date (due or actual)' : 'Not editable during a review'}">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>`
     : `<span class="item-dates-inline">
-      ${dateInputHtml(it.startDate, `title="Start date" ${hasRole('editor') ? `onblur="if(this.value) updateItemDateField('${it.id}','startDate',this.value); else this.value='${it.startDate}'"` : 'disabled'}`)}
+      ${dateInputHtml(it.startDate, `title="Start date" ${hasRole('editor') ? `onchange="if(this.value) updateItemDateField('${it.id}','startDate',this.value)" onblur="if(this.value) updateItemDateField('${it.id}','startDate',this.value); else this.value='${it.startDate}'"` : 'disabled'}`)}
       <span class="item-dates-arrow">→</span>
-      ${dateInputHtml(it.dueDate, `title="Due date" ${hasRole('editor') ? `onblur="if(this.value) updateItemDateField('${it.id}','dueDate',this.value); else this.value='${it.dueDate}'"` : 'disabled'}`)}
+      ${dateInputHtml(it.dueDate, `title="Due date" ${hasRole('editor') ? `onchange="if(this.value) updateItemDateField('${it.id}','dueDate',this.value)" onblur="if(this.value) updateItemDateField('${it.id}','dueDate',this.value); else this.value='${it.dueDate}'"` : 'disabled'}`)}
     </span>`;
   // The item's own actualDate is still a real field (editable in the item
   // modal), just no longer shown/edited inline on the row — the "Actual"
@@ -2311,7 +2326,7 @@ function milestoneRowsHtml(it, reviewCycle) {
       : (reviewCycle
           ? `<span class="item-dates-computed" ${dueOverdue ? 'style="color:var(--stat-red)"' : ''} title="${dueOverdue ? 'Overdue — ' : ''}Not editable during a review">${fmtDate(m.dueDate)}</span>`
           : `<span class="item-dates-inline">
-            ${dateInputHtml(m.dueDate, `title="${dueOverdue ? 'Overdue — ' : ''}Due date" ${dueEditable ? `onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value); else this.value='${m.dueDate || ''}'"` : 'disabled'}`, dueOverdue ? 'pill-overdue' : '')}
+            ${dateInputHtml(m.dueDate, `title="${dueOverdue ? 'Overdue — ' : ''}Due date" ${dueEditable ? `onchange="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)" onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value); else this.value='${m.dueDate || ''}'"` : 'disabled'}`, dueOverdue ? 'pill-overdue' : '')}
           </span>`);
     // An unset Actual date starts hidden behind a muted "+" — it only needs
     // a value when a milestone actually finishes on a different date than
@@ -2329,7 +2344,7 @@ function milestoneRowsHtml(it, reviewCycle) {
     const actualLate = !m.notApplicable && m.actualDate && m.dueDate && m.actualDate > m.dueDate;
     const actualHtml = (!m.actualDate && !revealedActualIds.has(m.id))
       ? (actualEditable ? `<button class="actual-date-ghost" title="Set an actual date — only needed if this milestone finished on a different date than planned" onclick="revealActualDate('${m.id}')"><i class="fa-solid fa-plus"></i></button>` : '')
-      : dateInputHtml(m.actualDate, `id="actual-input-${m.id}" ${actualLate ? 'title="Finished after its Due date"' : ''} ${actualEditable ? `onblur="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)" ${isRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealActualDate('${m.id}')"` : ''}` : 'disabled'}`, actualLate ? 'pill-overdue' : '');
+      : dateInputHtml(m.actualDate, `id="actual-input-${m.id}" ${actualLate ? 'title="Finished after its Due date"' : ''} ${actualEditable ? `onchange="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value)" onblur="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)" ${isRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealActualDate('${m.id}')"` : ''}` : 'disabled'}`, actualLate ? 'pill-overdue' : '');
     // The status badge freezes to a plain "N/A" while notApplicable — never
     // cycleable, and deliberately not showing whatever RAG color m.status
     // still holds underneath (see toggleMilestoneNotApplicable()'s own
