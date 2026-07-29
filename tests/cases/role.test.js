@@ -114,15 +114,248 @@ test('renderRoleModal disables the Done button while no role is chosen yet, and 
   assertEqual(document.getElementById('roleModalDoneBtn').disabled, false);
 });
 
-test('renderRoleModal renders one option per ROLES entry, wired to setUserRole, with the current role marked selected', function () {
+test('renderRoleModal renders one option per ROLES entry, wired to pickRole, with the current role marked selected', function () {
   userRole = 'reviewer';
   renderRoleModal();
   const html = document.getElementById('roleOptions').innerHTML;
   ROLES.forEach(r => {
     assertIncludes(html, ROLE_META[r].label);
-    assertIncludes(html, `setUserRole('${r}')`);
+    assertIncludes(html, `pickRole('${r}')`);
   });
   assertIncludes(html, 'theme-option selected', 'the current role should render marked as selected');
+});
+
+// ---------- Role passwords: pickRole()'s password gate ----------
+// A soft deterrent, not real access control (see pickRole()'s own comment) —
+// Reviewer/Editor/Admin can each optionally require a password (set by an
+// Admin via saveRolePasswords()); Visitor never does, and a role with no
+// password set (the default — see normalizeData()) still switches
+// immediately, same as before this existed. A set password is stored as a
+// salted hash ({salt, hash}), never the plain password — hashRolePassword()/
+// verifyRolePassword() are exercised directly below, and every test that
+// needs a role "password-protected" builds a real hash via
+// hashRolePassword() rather than faking the shape by hand, so these tests
+// also double as coverage of the hashing round-trip itself.
+
+test('hashRolePassword/verifyRolePassword round-trip: the same password verifies, a different one doesn\'t, and two hashes of the same password differ (distinct random salts)', async function () {
+  const stored = await hashRolePassword('correct-horse');
+  assertTrue(await verifyRolePassword('correct-horse', stored));
+  assertFalse(await verifyRolePassword('wrong-guess', stored));
+
+  const stored2 = await hashRolePassword('correct-horse');
+  assertTrue(stored.salt !== stored2.salt, 'each hash should get its own random salt');
+  assertTrue(stored.hash !== stored2.hash, 'a different salt means a different hash, even for the same password');
+});
+
+test('verifyRolePassword returns false against a null/missing stored value, rather than throwing', async function () {
+  assertFalse(await verifyRolePassword('anything', null));
+  assertFalse(await verifyRolePassword('anything', undefined));
+});
+
+test('normalizeData backfills a missing/malformed programme.rolePasswords to {reviewer:null, editor:null, admin:null}, resets an invalid per-role entry to null, and leaves a real {salt,hash} alone', async function () {
+  delete programme.rolePasswords;
+  normalizeData();
+  assertDeepEqual(programme.rolePasswords, { reviewer: null, editor: null, admin: null });
+
+  programme.rolePasswords = 'not an object';
+  normalizeData();
+  assertDeepEqual(programme.rolePasswords, { reviewer: null, editor: null, admin: null });
+
+  // The old plain-string shape (from before hashing existed) is exactly the
+  // kind of malformed per-role entry this should reset, not trust as-is.
+  const hash = await hashRolePassword('a-pass');
+  programme.rolePasswords = { reviewer: 'plain-string-leftover', editor: { salt: 'x' }, admin: hash };
+  normalizeData();
+  assertEqual(programme.rolePasswords.reviewer, null, 'a plain string is not a valid {salt,hash} — reset to null');
+  assertEqual(programme.rolePasswords.editor, null, 'missing hash field — reset to null');
+  assertDeepEqual(programme.rolePasswords.admin, hash, 'a genuinely valid {salt,hash} must be left alone');
+});
+
+test('pickRole switches immediately, with no password step, for Visitor regardless of any passwords set', async function () {
+  const hash = await hashRolePassword('x');
+  programme.rolePasswords = { reviewer: hash, editor: hash, admin: hash };
+  userRole = 'admin';
+  openRoleModal();
+  pickRole('visitor');
+  assertEqual(userRole, 'visitor');
+  assertEqual(document.getElementById('roleModalPasswordStep').style.display, 'none');
+});
+
+test('pickRole switches immediately for a role with no password set (the default)', function () {
+  assertEqual(programme.rolePasswords.reviewer, null, 'sanity check — no password set by default');
+  userRole = 'visitor';
+  openRoleModal();
+  pickRole('reviewer');
+  assertEqual(userRole, 'reviewer');
+  assertEqual(document.getElementById('roleModalPasswordStep').style.display, 'none');
+});
+
+test('pickRole does not switch roles yet for a password-protected role — it shows the password step instead', async function () {
+  programme.rolePasswords.editor = await hashRolePassword('secret123');
+  userRole = 'visitor';
+  openRoleModal();
+  pickRole('editor');
+  assertEqual(userRole, 'visitor', 'must not switch until the password is actually submitted and correct');
+  assertEqual(document.getElementById('roleModalPasswordStep').style.display, '', 'the password step must be shown');
+  assertEqual(document.getElementById('roleOptions').style.display, 'none', 'the tile grid should be hidden while entering a password');
+  assertIncludes(document.getElementById('roleModalPasswordLabel').textContent, 'Editor');
+});
+
+test('submitRolePassword rejects a wrong password, leaving the role unchanged and showing an error', async function () {
+  programme.rolePasswords.admin = await hashRolePassword('correct-horse');
+  userRole = 'visitor';
+  pickRole('admin');
+  document.getElementById('roleModalPasswordInput').value = 'wrong-guess';
+  await submitRolePassword();
+  assertEqual(userRole, 'visitor');
+  assertEqual(document.getElementById('roleModalPasswordError').style.display, '');
+  assertIncludes(document.getElementById('roleModalPasswordError').textContent, 'Incorrect');
+  assertEqual(document.getElementById('roleModalPasswordStep').style.display, '', 'the password step should stay open after a wrong guess, not close');
+});
+
+test('submitRolePassword switches roles on a correct password and closes the password step', async function () {
+  programme.rolePasswords.admin = await hashRolePassword('correct-horse');
+  userRole = 'visitor';
+  pickRole('admin');
+  document.getElementById('roleModalPasswordInput').value = 'correct-horse';
+  await submitRolePassword();
+  assertEqual(userRole, 'admin');
+  assertEqual(document.getElementById('roleModalPasswordStep').style.display, 'none');
+  assertEqual(document.getElementById('roleOptions').style.display, '', 'the tile grid should be showing again');
+});
+
+test('submitRolePassword shows a clear error instead of throwing when crypto.subtle is unavailable (e.g. a non-secure context)', async function () {
+  programme.rolePasswords.admin = await hashRolePassword('correct-horse');
+  userRole = 'visitor';
+  pickRole('admin');
+  document.getElementById('roleModalPasswordInput').value = 'correct-horse';
+  const savedCrypto = globalThis.crypto;
+  delete globalThis.crypto;
+  try {
+    await submitRolePassword();
+    assertEqual(userRole, 'visitor', 'must not switch roles when the password can\'t actually be checked');
+    assertIncludes(document.getElementById('roleModalPasswordError').textContent, 'secure context');
+  } finally {
+    globalThis.crypto = savedCrypto;
+  }
+});
+
+test('cancelRolePasswordStep backs out of the password step without changing the current role', async function () {
+  programme.rolePasswords.editor = await hashRolePassword('secret123');
+  userRole = 'visitor';
+  pickRole('editor');
+  cancelRolePasswordStep();
+  assertEqual(userRole, 'visitor', 'canceling must not switch roles');
+  assertEqual(document.getElementById('roleModalPasswordStep').style.display, 'none');
+  assertEqual(document.getElementById('roleOptions').style.display, '');
+});
+
+test('openRoleModal always resets any lingering password step back to the tile grid', async function () {
+  programme.rolePasswords.editor = await hashRolePassword('secret123');
+  userRole = 'visitor';
+  pickRole('editor'); // leaves the password step open
+  openRoleModal();
+  assertEqual(document.getElementById('roleModalPasswordStep').style.display, 'none');
+  assertEqual(document.getElementById('roleOptions').style.display, '');
+});
+
+test('renderRoleModal shows a lock icon only on a role that currently has a password set, never on Visitor', async function () {
+  programme.rolePasswords = { reviewer: null, editor: await hashRolePassword('secret123'), admin: null };
+  renderRoleModal();
+  const html = document.getElementById('roleOptions').innerHTML;
+  const editorTile = html.slice(html.indexOf('pickRole(\'editor\')'), html.indexOf('pickRole(\'admin\')'));
+  const reviewerTile = html.slice(html.indexOf('pickRole(\'reviewer\')'), html.indexOf('pickRole(\'editor\')'));
+  const visitorTile = html.slice(html.indexOf('pickRole(\'visitor\')'), html.indexOf('pickRole(\'reviewer\')'));
+  assertIncludes(editorTile, 'fa-lock', 'Editor has a password set, so its tile should show a lock');
+  assertNotIncludes(reviewerTile, 'fa-lock', 'Reviewer has no password set');
+  assertNotIncludes(visitorTile, 'fa-lock', 'Visitor is never password-gated, even if it somehow had a value set');
+});
+
+// ---------- Role Passwords admin settings ----------
+
+test('rolePasswordsSectionHtml (rendered as part of renderAdmin) is admin-only — invisible to every other role', function () {
+  ['visitor', 'reviewer', 'editor'].forEach(r => {
+    userRole = r;
+    assertEqual(rolePasswordsSectionHtml(), '', `${r} must not see the Role Passwords section`);
+  });
+  userRole = 'admin';
+  assertIncludes(rolePasswordsSectionHtml(), 'Role Passwords');
+});
+
+test('rolePasswordsSectionHtml names which roles currently have a password set, never the password values themselves', async function () {
+  userRole = 'admin';
+  programme.rolePasswords = { reviewer: null, editor: await hashRolePassword('secret123'), admin: null };
+  let html = rolePasswordsSectionHtml();
+  assertIncludes(html, 'Editor');
+  assertNotIncludes(html, 'secret123', 'the actual password must never render into the page');
+  assertNotIncludes(html, programme.rolePasswords.editor.hash, 'not even the hash should render into the page');
+
+  programme.rolePasswords = { reviewer: null, editor: null, admin: null };
+  html = rolePasswordsSectionHtml();
+  assertIncludes(html, 'No passwords set yet');
+});
+
+test('openRolePasswordsModal and saveRolePasswords are both blocked below Admin', async function () {
+  userRole = 'editor';
+  openRolePasswordsModal();
+  assertEqual(document.getElementById('rolePasswordsModalBg').classList.contains('open'), false);
+
+  const original = await hashRolePassword('unchanged');
+  programme.rolePasswords.admin = original;
+  document.getElementById('rolePasswordAdminInput').value = 'hijacked';
+  await saveRolePasswords();
+  assertDeepEqual(programme.rolePasswords.admin, original, 'a sub-Admin role must not be able to change the Admin password');
+});
+
+test('openRolePasswordsModal always opens the three fields blank (no plain password to pre-fill) with a placeholder naming the current state', async function () {
+  userRole = 'admin';
+  programme.rolePasswords = { reviewer: await hashRolePassword('r-pass'), editor: null, admin: null };
+  openRolePasswordsModal();
+  assertEqual(document.getElementById('rolePasswordReviewerInput').value, '');
+  assertEqual(document.getElementById('rolePasswordEditorInput').value, '');
+  assertIncludes(document.getElementById('rolePasswordReviewerInput').placeholder, 'Currently set');
+  assertIncludes(document.getElementById('rolePasswordEditorInput').placeholder, 'No password set');
+  assertEqual(document.getElementById('rolePasswordReviewerClear').checked, false, 'the Remove checkbox must not carry over from a previous open');
+});
+
+test('saveRolePasswords hashes a non-blank field into that role\'s password, and leaves a blank field (Remove unchecked) untouched', async function () {
+  userRole = 'admin';
+  const oldReviewerHash = await hashRolePassword('old-reviewer-pass');
+  programme.rolePasswords = { reviewer: oldReviewerHash, editor: null, admin: null };
+  openRolePasswordsModal();
+  // Reviewer field left blank — its existing password must survive untouched.
+  document.getElementById('rolePasswordEditorInput').value = '  new-editor-pass  ';
+  await saveRolePasswords();
+  assertDeepEqual(programme.rolePasswords.reviewer, oldReviewerHash, 'a blank field with Remove unchecked must leave the existing password alone');
+  assertTrue(await verifyRolePassword('new-editor-pass', programme.rolePasswords.editor), 'the trimmed value should have been hashed in');
+  assertEqual(document.getElementById('rolePasswordsModalBg').classList.contains('open'), false, 'saving should close the modal');
+});
+
+test('saveRolePasswords clears a role\'s password when its "Remove" checkbox is checked, regardless of anything typed alongside it', async function () {
+  userRole = 'admin';
+  programme.rolePasswords.admin = await hashRolePassword('old-admin-pass');
+  openRolePasswordsModal();
+  document.getElementById('rolePasswordAdminInput').value = 'ignored-because-removing';
+  document.getElementById('rolePasswordAdminClear').checked = true;
+  await saveRolePasswords();
+  assertEqual(programme.rolePasswords.admin, null, 'Remove wins outright, even with text also typed in');
+});
+
+test('saveRolePasswords shows a clear error instead of throwing when crypto.subtle is unavailable', async function () {
+  userRole = 'admin';
+  const original = await hashRolePassword('unchanged');
+  programme.rolePasswords.admin = original;
+  openRolePasswordsModal();
+  document.getElementById('rolePasswordAdminInput').value = 'new-pass';
+  const savedCrypto = globalThis.crypto;
+  delete globalThis.crypto;
+  try {
+    await saveRolePasswords();
+    assertDeepEqual(programme.rolePasswords.admin, original, 'must not silently corrupt the stored password when hashing is unavailable');
+    assertIncludes(document.getElementById('toastMsg').textContent, 'secure context');
+  } finally {
+    globalThis.crypto = savedCrypto;
+  }
 });
 
 // ---------- Editor-tier gating: workstreams, scope items, milestones, categories ----------

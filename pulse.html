@@ -1129,9 +1129,47 @@
 <div class="modal-bg" id="roleModalBg">
   <div class="modal" style="width:440px">
     <h3>Choose your role</h3>
-    <p>This is a workflow setting, not a security boundary — Pulse has no accounts or server, so it only guides what's shown/enabled in the UI. Saved to this browser only, never written to a shared/synced data file.</p>
+    <p>This is a workflow setting, not a security boundary — Pulse has no accounts or server, so it only guides what's shown/enabled in the UI. The role you pick is saved to this browser only, never written to a shared/synced data file — but Reviewer/Editor/Admin can each optionally require a password (set by an Admin, under Admin &gt; Role Passwords) to cut down on accidental switches. Only a salted hash of that password is stored in the shared data file, not the password itself — but the check still runs in this page's own code, so it's a soft deterrent, not real access control.</p>
     <div class="theme-options" id="roleOptions"></div>
-    <div class="modal-actions" style="justify-content:flex-end"><button class="btn btn-primary" id="roleModalDoneBtn" onclick="closeRoleModal()">Done</button></div>
+    <div id="roleModalPasswordStep" style="display:none">
+      <div class="field">
+        <label id="roleModalPasswordLabel">Password</label>
+        <input type="password" id="roleModalPasswordInput" onkeydown="if(event.key==='Enter') submitRolePassword(); if(event.key==='Escape') cancelRolePasswordStep();">
+      </div>
+      <div id="roleModalPasswordError" style="display:none;color:var(--stat-red);font-size:12.5px;margin:-6px 0 12px"></div>
+      <div class="modal-actions" style="justify-content:flex-end">
+        <button class="btn" onclick="cancelRolePasswordStep()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitRolePassword()">Unlock</button>
+      </div>
+    </div>
+    <div class="modal-actions" style="justify-content:flex-end" id="roleModalDoneRow"><button class="btn btn-primary" id="roleModalDoneBtn" onclick="closeRoleModal()">Done</button></div>
+  </div>
+</div>
+
+<!-- Role Passwords modal (Admin only) -->
+<div class="modal-bg" id="rolePasswordsModalBg">
+  <div class="modal" style="width:420px">
+    <h3>Role Passwords</h3>
+    <p>Required to switch into that role from the role picker. Only a salted hash is stored, never the password itself, so these fields always start blank — type a new password to set or change one, leave it blank to leave that role unchanged, or check "Remove" to drop its password requirement.</p>
+    <div class="field">
+      <label>Reviewer password</label>
+      <input type="text" id="rolePasswordReviewerInput">
+      <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400"><input type="checkbox" id="rolePasswordReviewerClear"> Remove password requirement</label>
+    </div>
+    <div class="field">
+      <label>Editor password</label>
+      <input type="text" id="rolePasswordEditorInput">
+      <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400"><input type="checkbox" id="rolePasswordEditorClear"> Remove password requirement</label>
+    </div>
+    <div class="field">
+      <label>Admin password</label>
+      <input type="text" id="rolePasswordAdminInput">
+      <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400"><input type="checkbox" id="rolePasswordAdminClear"> Remove password requirement</label>
+    </div>
+    <div class="modal-actions" style="justify-content:flex-end">
+      <button class="btn" onclick="closeRolePasswordsModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRolePasswords()">Save</button>
+    </div>
   </div>
 </div>
 
@@ -1467,6 +1505,23 @@ function getBackups() {
 }
 
 function normalizeData() {
+  // rolePasswords gates picking Reviewer/Editor/Admin in the role modal (see
+  // pickRole()) — null means "no password set for this role", the default
+  // for a brand-new programme (and for any role an Admin hasn't set one for
+  // yet), so a fresh install can freely reach Admin and set passwords for
+  // the others without a bootstrapping deadlock. A set password is stored
+  // as a salted hash ({salt, hash}, both hex strings — see
+  // hashRolePassword()/verifyRolePassword()), never the plain password
+  // itself, so a malformed/hand-edited entry (missing either field, or the
+  // old plain-string shape from before hashing existed) is reset to null
+  // rather than trusted as-is.
+  if (!programme.rolePasswords || typeof programme.rolePasswords !== 'object') programme.rolePasswords = {};
+  ROLES.forEach(r => {
+    if (r === 'visitor') return;
+    const v = programme.rolePasswords[r];
+    const valid = v === null || (v && typeof v === 'object' && typeof v.salt === 'string' && typeof v.hash === 'string');
+    if (!valid) programme.rolePasswords[r] = null;
+  });
   if (!Array.isArray(deletedWorkstreamIds)) deletedWorkstreamIds = [];
   if (!Array.isArray(deletedItemIds)) deletedItemIds = [];
   if (!Array.isArray(deletedMilestoneIds)) deletedMilestoneIds = [];
@@ -2274,10 +2329,11 @@ function setColorScheme(scheme) {
 function renderRoleModal() {
   document.getElementById('roleOptions').innerHTML = ROLES.map(r => {
     const m = ROLE_META[r];
-    return `<div class="theme-option ${r === userRole ? 'selected' : ''}" onclick="setUserRole('${r}')">
+    const locked = r !== 'visitor' && programme.rolePasswords[r];
+    return `<div class="theme-option ${r === userRole ? 'selected' : ''}" onclick="pickRole('${r}')">
       <div class="theme-option-swatches"><i class="fa-solid ${m.icon}" style="font-size:16px;width:16px;text-align:center;color:var(--text-dim)"></i></div>
       <div class="theme-option-body">
-        <div class="theme-option-name">${esc(m.label)}</div>
+        <div class="theme-option-name">${esc(m.label)}${locked ? ' <i class="fa-solid fa-lock" style="font-size:11px;color:var(--text-faint)" title="Password required"></i>' : ''}</div>
         <div class="theme-option-desc">${esc(m.desc)}</div>
       </div>
       <i class="fa-solid fa-check theme-option-check"></i>
@@ -2291,6 +2347,7 @@ function renderRoleModal() {
   doneBtn.style.opacity = userRole ? '' : '.5';
 }
 function openRoleModal() {
+  cancelRolePasswordStep();
   renderRoleModal();
   document.getElementById('roleModalBg').classList.add('open');
 }
@@ -2307,6 +2364,96 @@ function setUserRole(role) {
   saveRole();
   renderRoleModal();
   render();
+}
+// ---------- Role password hashing ----------
+// Real Web Crypto (crypto.subtle), not a hand-rolled hash — but this app
+// still has no server, so this only ever protects the password's own
+// storage, not the check itself (see pickRole()'s own comment for that
+// distinction). crypto.subtle only exists in a "secure context" (https, or
+// a localhost/127.0.0.1 origin — which is exactly how start-pulse.command
+// already serves this app, but NOT a plain file:// open); hasSecureCrypto()
+// is checked before ever relying on it, rather than letting a missing
+// crypto.subtle throw from deep inside an async chain.
+function hasSecureCrypto() { return typeof crypto !== 'undefined' && !!crypto.subtle; }
+function bytesToHex(buf) {
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function randomSaltHex() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return bytesToHex(bytes.buffer);
+}
+async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return bytesToHex(digest);
+}
+// A fresh random salt per password (not reused across roles, and re-rolled
+// every time a password is changed) — without one, two roles given the same
+// password would store identical hashes, visibly revealing the match to
+// anyone comparing the two even without knowing either password.
+async function hashRolePassword(password) {
+  const salt = randomSaltHex();
+  const hash = await sha256Hex(salt + ':' + password);
+  return { salt, hash };
+}
+async function verifyRolePassword(password, stored) {
+  if (!stored) return false;
+  return (await sha256Hex(stored.salt + ':' + password)) === stored.hash;
+}
+// Reviewer/Editor/Admin can each optionally require a password (set by an
+// Admin — see saveRolePasswords()) before switching into them; Visitor never
+// does (it's the base, view-only role — nothing to gate), and any role an
+// Admin hasn't set a password for yet (programme.rolePasswords[role] ===
+// null) switches immediately, same as before this existed. This is a soft
+// deterrent, not real access control: the check itself still runs in this
+// same page's own client-side JS, readable (or bypassable — e.g. calling
+// setUserRole() directly from the console) by anyone technical enough to
+// look, no matter how the password is stored. Storing a salted hash rather
+// than the plain password (see hashRolePassword()/verifyRolePassword())
+// only closes the *narrower* gap of it being readable in plain text the
+// moment someone opens the shared/synced data file it lives in (see
+// normalizeData()) — a real, worthwhile improvement, just not a different
+// category of protection. Only the actual *picked* role stays
+// browser-local (see ROLE_STORAGE_KEY's own comment).
+let pendingRolePick = null;
+function pickRole(role) {
+  if (role === 'visitor' || !programme.rolePasswords[role]) { setUserRole(role); return; }
+  pendingRolePick = role;
+  document.getElementById('roleOptions').style.display = 'none';
+  document.getElementById('roleModalDoneRow').style.display = 'none';
+  document.getElementById('roleModalPasswordLabel').textContent = `${ROLE_META[role].label} password`;
+  document.getElementById('roleModalPasswordError').style.display = 'none';
+  const input = document.getElementById('roleModalPasswordInput');
+  input.value = '';
+  document.getElementById('roleModalPasswordStep').style.display = '';
+  input.focus();
+}
+async function submitRolePassword() {
+  const role = pendingRolePick;
+  if (!role) return;
+  const input = document.getElementById('roleModalPasswordInput');
+  const err = document.getElementById('roleModalPasswordError');
+  if (!hasSecureCrypto()) {
+    err.textContent = 'Password check unavailable — this page needs a secure context (the local server, or https — not a plain file).';
+    err.style.display = '';
+    return;
+  }
+  const ok = await verifyRolePassword(input.value, programme.rolePasswords[role]);
+  if (!ok) {
+    err.textContent = 'Incorrect password.';
+    err.style.display = '';
+    input.value = '';
+    input.focus();
+    return;
+  }
+  cancelRolePasswordStep();
+  setUserRole(role);
+}
+function cancelRolePasswordStep() {
+  pendingRolePick = null;
+  document.getElementById('roleModalPasswordStep').style.display = 'none';
+  document.getElementById('roleOptions').style.display = '';
+  document.getElementById('roleModalDoneRow').style.display = '';
 }
 // Keeps the topbar shield icon in sync with the actual current role (it
 // used to be a hardcoded fa-user-shield regardless of role — a user-
@@ -4033,7 +4180,74 @@ function renderAdmin() {
             </span>
           </div>`;
       }).join('')}
-    </div>`;
+    </div>
+    ${rolePasswordsSectionHtml()}`;
+}
+// Admin-only (both to view and to manage) — a Reviewer/Editor able to see
+// *which* roles are password-protected, even without the passwords
+// themselves, would narrow down what to guess against; keeping the whole
+// section admin-only sidesteps that rather than trying to redact just the
+// values. Only names which roles currently have a password set (never the
+// values) — the actual editing happens in rolePasswordsModalBg, a real
+// modal rather than inputs living directly in this section, since renderAdmin()
+// re-renders on every render() call (including background ones, like the
+// file-sync poll's) and a live input sitting directly in that output would
+// have its in-progress, unsaved keystrokes (and focus) wiped out from under
+// whoever's mid-typing — the same reason every other editable field in this
+// app (categories included, just above) lives in a modal instead.
+function rolePasswordsSectionHtml() {
+  if (!hasRole('admin')) return '';
+  const set = ROLES.filter(r => r !== 'visitor' && programme.rolePasswords[r]);
+  return `
+    <div class="admin-header" style="margin-top:24px">
+      <h2>Role Passwords</h2>
+      <button class="btn btn-primary" onclick="openRolePasswordsModal()"><i class="fa-solid fa-key"></i> Manage</button>
+    </div>
+    <p style="margin-bottom:16px">Optional per-role password required to switch into Reviewer, Editor, or Admin from the role picker. ${set.length ? `Currently set for: ${set.map(r => esc(ROLE_META[r].label)).join(', ')}.` : 'No passwords set yet — anyone can switch to any role.'}</p>`;
+}
+// Plain text inputs, not type="password" — this is an Admin setting the
+// values (not someone else entering one to unlock a role, which does mask
+// via pickRole()'s own password step), so showing them in the clear here
+// avoids typo'd passwords no one can proofread. They always open blank,
+// though — only a salted hash is stored (see hashRolePassword()), so
+// there's no plain password to pre-fill even for a role that already has
+// one set; the placeholder says which state it's actually in instead.
+function openRolePasswordsModal() {
+  if (!requireRole('admin')) return;
+  [['reviewer', 'rolePasswordReviewerInput', 'rolePasswordReviewerClear'],
+   ['editor', 'rolePasswordEditorInput', 'rolePasswordEditorClear'],
+   ['admin', 'rolePasswordAdminInput', 'rolePasswordAdminClear']].forEach(([role, inputId, clearId]) => {
+    const input = document.getElementById(inputId);
+    input.value = '';
+    input.placeholder = programme.rolePasswords[role] ? 'Currently set — type a new password to change it' : 'No password set — type one to require it';
+    document.getElementById(clearId).checked = false;
+  });
+  document.getElementById('rolePasswordsModalBg').classList.add('open');
+}
+function closeRolePasswordsModal() {
+  document.getElementById('rolePasswordsModalBg').classList.remove('open');
+}
+// For each role: the "Remove" checkbox wins outright (drops the password
+// requirement back to null, regardless of anything typed alongside it); a
+// non-blank field hashes and replaces that role's password; a field left
+// blank with "Remove" unchecked leaves that role's existing password (set
+// or not) untouched — there's nothing to compare it against to detect "no
+// real change" the way a plain-text field could, so blank has to mean
+// "leave alone" rather than "clear", with "Remove" as the explicit way to
+// actually do that.
+async function saveRolePasswords() {
+  if (!requireRole('admin')) return;
+  if (!hasSecureCrypto()) { showToast('Could not save — password hashing needs a secure context (the local server, or https — not a plain file)', true); return; }
+  async function applyOne(role, inputId, clearId) {
+    if (document.getElementById(clearId).checked) { programme.rolePasswords[role] = null; return; }
+    const value = document.getElementById(inputId).value.trim();
+    if (value) programme.rolePasswords[role] = await hashRolePassword(value);
+  }
+  await applyOne('reviewer', 'rolePasswordReviewerInput', 'rolePasswordReviewerClear');
+  await applyOne('editor', 'rolePasswordEditorInput', 'rolePasswordEditorClear');
+  await applyOne('admin', 'rolePasswordAdminInput', 'rolePasswordAdminClear');
+  save(); closeRolePasswordsModal(); render();
+  showToast('Role passwords saved');
 }
 function openCategoryModal(id) {
   editingCategoryId = id || null;
@@ -4926,8 +5140,9 @@ document.getElementById('syncConflictsModalBg').addEventListener('click', (e) =>
 document.getElementById('fileSyncModalBg').addEventListener('click', (e) => { if (e.target.id === 'fileSyncModalBg') closeFileSyncModal(); });
 document.getElementById('themeModalBg').addEventListener('click', (e) => { if (e.target.id === 'themeModalBg') closeThemeModal(); });
 document.getElementById('roleModalBg').addEventListener('click', (e) => { if (e.target.id === 'roleModalBg') closeRoleModal(); });
+document.getElementById('rolePasswordsModalBg').addEventListener('click', (e) => { if (e.target.id === 'rolePasswordsModalBg') closeRolePasswordsModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeThemeModal(); closeRoleModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); }
 });
 
 // ---------- Init ----------

@@ -114,6 +114,50 @@ async function run(argv) {
   globalThis.confirm = function () { return true; };
   globalThis.Blob = function (parts, opts) { this.parts = parts; this.opts = opts; globalThis.__lastBlob = this; };
   globalThis.URL = { createObjectURL() { return 'blob:mock'; }, revokeObjectURL() {} };
+  // JXA's JavaScriptCore has no Web Crypto (unlike every real browser this
+  // app targets) — pulse.html's role password hashing (hashRolePassword()/
+  // verifyRolePassword()) calls crypto.subtle.digest()/crypto.getRandomValues()
+  // and new TextEncoder(), so this stubs just enough for that code to run
+  // under test. NOT real SHA-256 (a proper UTF-8 encoder feeding a
+  // deliberately simple, non-cryptographic mixing function instead) —
+  // nothing here depends on matching an actual browser's digest bytes, only
+  // on hashing being deterministic (same input, same output) and different
+  // inputs almost never colliding, which is all a hash-then-compare
+  // round-trip needs to test correctly.
+  globalThis.TextEncoder = function () {};
+  globalThis.TextEncoder.prototype.encode = function (str) {
+    const bytes = [];
+    for (let i = 0; i < str.length; i++) {
+      const code = str.charCodeAt(i);
+      if (code < 0x80) bytes.push(code);
+      else if (code < 0x800) bytes.push(0xC0 | (code >> 6), 0x80 | (code & 0x3F));
+      else bytes.push(0xE0 | (code >> 12), 0x80 | ((code >> 6) & 0x3F), 0x80 | (code & 0x3F));
+    }
+    return new Uint8Array(bytes);
+  };
+  globalThis.crypto = {
+    getRandomValues(arr) {
+      for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
+      return arr;
+    },
+    subtle: {
+      async digest(algo, data) {
+        const bytes = new Uint8Array(data.buffer || data);
+        let h1 = 0x811c9dc5, h2 = 0x9e3779b9;
+        for (let i = 0; i < bytes.length; i++) {
+          h1 = ((h1 ^ bytes[i]) * 0x01000193) >>> 0;
+          h2 = (((h2 << 5) - h2) + bytes[i]) >>> 0;
+        }
+        const out = new Uint8Array(32);
+        for (let i = 0; i < 32; i++) {
+          h1 = (h1 * 0x01000193 + i) >>> 0;
+          h2 = (((h2 << 5) - h2) + i) >>> 0;
+          out[i] = (h1 ^ h2) & 0xFF;
+        }
+        return out.buffer;
+      }
+    }
+  };
 
   // ---- test registration + assertions (real globals, visible from the eval'd code too) ----
   globalThis.__TESTS__ = [];
