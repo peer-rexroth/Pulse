@@ -1171,6 +1171,59 @@ test('a milestone added mid-cycle to an already-confirmed item un-confirms it, w
   assertFalse(isItemConfirmedInCycle(cycle, it), 'the newly added milestone has no confirmation yet');
 });
 
+// ---------- Not Applicable milestones are excluded from review confirmation ----------
+
+test('isItemConfirmedInCycle ignores notApplicable milestones — confirming just the applicable ones is enough', function () {
+  const it = addReviewItemWithMilestones(['A', 'B']);
+  it.milestones[1].notApplicable = true;
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  assertFalse(isItemConfirmedInCycle(cycle, it));
+  toggleMilestoneConfirm(cycle.id, it.milestones[0].id);
+  assertTrue(isItemConfirmedInCycle(cycle, it), 'the notApplicable milestone must not block confirmation');
+});
+
+test('isItemConfirmedInCycle reads an item as already confirmed when every one of its milestones is notApplicable', function () {
+  const it = addReviewItemWithMilestones(['A', 'B']);
+  it.milestones.forEach(m => { m.notApplicable = true; });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  assertTrue(isItemConfirmedInCycle(cycle, it), 'nothing left to confirm — vacuously confirmed');
+});
+
+test('toggleConfirmAllMilestones only confirms the applicable milestones, leaving notApplicable ones with no confirmation entry at all', function () {
+  const it = addReviewItemWithMilestones(['A', 'B', 'C']);
+  it.milestones[2].notApplicable = true;
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  assertEqual(reviewCycles[0].milestoneConfirmations.length, 2, 'only the two applicable milestones should get an entry');
+  assertFalse(isMilestoneConfirmedInCycle(cycle, it.milestones[2].id));
+  assertTrue(isItemConfirmedInCycle(cycle, it));
+});
+
+test('toggleConfirmAllMilestones is a no-op when every milestone on the item is notApplicable', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  it.milestones[0].notApplicable = true;
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  assertEqual(reviewCycles[0].milestoneConfirmations.length, 0, 'nothing to confirm — already vacuously confirmed');
+});
+
+test('milestoneRowsHtml shows an inert placeholder, not a real confirm toggle, for a notApplicable milestone during a review', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  it.milestones[0].notApplicable = true;
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  toggleItemExpanded(it.id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, `toggleMilestoneConfirm`, 'a notApplicable milestone must not offer a real confirm toggle');
+  assertIncludes(html, 'excluded from this review');
+});
+
 test('renderReview locks Plan dates as read-only, even for an item with zero milestones', function () {
   addReviewItem({ name: 'No milestones yet' });
   setFilterWorkstream(workstreams[0].id);

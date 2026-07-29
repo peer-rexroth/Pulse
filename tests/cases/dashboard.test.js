@@ -43,6 +43,30 @@ test('renderDashboard reports milestone completion percentage', function () {
   assertIncludes(html, '1 of 2 milestones complete');
 });
 
+test('renderDashboard excludes notApplicable milestones from the completion percentage entirely, on both sides of the fraction', function () {
+  addDashItem({ milestones: [
+    { id: 'm1', name: 'A', dueDate: todayStr(), status: 'complete' },
+    { id: 'm2', name: 'B', dueDate: todayStr(), status: 'not-started' },
+    { id: 'm3', name: 'C', dueDate: todayStr(), status: 'red', notApplicable: true }
+  ] });
+  renderDashboard();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '50%', 'still 1 of 2 applicable milestones — the notApplicable one must not count toward the denominator');
+  assertIncludes(html, '1 of 2 milestones complete');
+});
+
+test('an overdue notApplicable milestone does not appear in the Overdue feed', function () {
+  addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Skipped milestone', dueDate: isoDaysFromNow(-1), status: 'not-started', notApplicable: true }] });
+  renderDashboard();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Skipped milestone');
+});
+
+test('a notApplicable milestone due within the next 7 days does not appear in the Upcoming feed', function () {
+  addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Skipped soon', dueDate: isoDaysFromNow(3), status: 'not-started', notApplicable: true }] });
+  renderDashboard();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Skipped soon');
+});
+
 test('an overdue item (past due, not complete) appears in the Overdue feed', function () {
   addDashItem({ name: 'Late task', status: 'red', dueDate: isoDaysFromNow(-3) });
   renderDashboard();

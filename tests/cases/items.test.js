@@ -362,6 +362,154 @@ test('the computed date range preview updates live when a milestone\'s date chan
   assertEqual(document.getElementById('itemDueInput').value, editingMilestones.reduce((max, m) => m.dueDate > max ? m.dueDate : max, editingMilestones[0].dueDate));
 });
 
+// ---------- Not Applicable milestones ----------
+// A milestone marked notApplicable is excluded from every roll-up it would
+// otherwise feed into — the item's computed status, its computed plan date
+// range, the "X/Y milestones" badge, Dashboard completion %/Overdue/
+// Upcoming, and a review cycle's per-milestone confirmation requirement
+// (see review.test.js/dashboard.test.js for those) — without touching its
+// own status value, so un-marking it restores whatever status it had.
+
+test('computedStatusFromMilestones excludes notApplicable milestones from the weakest-link comparison', function () {
+  assertEqual(computedStatusFromMilestones([{ status: 'green' }, { status: 'red', notApplicable: true }]), 'green', 'the notApplicable red milestone must not drag the result down to red');
+  assertEqual(computedStatusFromMilestones([{ status: 'complete', notApplicable: true }, { status: 'amber' }]), 'amber');
+});
+
+test('computedStatusFromMilestones falls back to "not-started" when every milestone is notApplicable — not null, since the item still has milestones', function () {
+  assertEqual(computedStatusFromMilestones([{ status: 'red', notApplicable: true }, { status: 'complete', notApplicable: true }]), 'not-started');
+});
+
+test('computedStatusFromMilestones still returns null for a genuinely empty list, same as before notApplicable existed', function () {
+  assertEqual(computedStatusFromMilestones([]), null);
+});
+
+test('computedDateRangeFromMilestones excludes notApplicable milestones\' dates from the range', function () {
+  assertDeepEqual(
+    computedDateRangeFromMilestones([
+      { dueDate: '2026-03-10', actualDate: null },
+      { dueDate: '2099-01-01', actualDate: null, notApplicable: true } // would otherwise blow the range out to 2099
+    ]),
+    { startDate: '2026-03-10', dueDate: '2026-03-10' }
+  );
+});
+
+test('computedDateRangeFromMilestones returns null when every milestone is notApplicable, leaving the item\'s existing plan dates untouched by its callers', function () {
+  assertEqual(computedDateRangeFromMilestones([{ dueDate: '2026-03-10', actualDate: null, notApplicable: true }]), null);
+});
+
+test('toggleMilestoneNotApplicable flips the flag without touching the milestone\'s own status, and recomputes the item\'s rolled-up status/dates', function () {
+  openItemModal(null);
+  editingMilestones[0].status = 'red';
+  editingMilestones[1].dueDate = '2099-12-31'; // would otherwise be the item's computed due date
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  assertEqual(it.status, 'red', 'sanity check');
+
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id);
+  assertEqual(items[0].milestones[0].notApplicable, true);
+  assertEqual(items[0].milestones[0].status, 'red', 'status itself must be untouched — only excluded from the roll-up');
+  assertTrue(items[0].status !== 'red', 'the item\'s own computed status should no longer be dragged down by the now-excluded milestone');
+
+  toggleMilestoneNotApplicable(it.id, it.milestones[1].id);
+  assertTrue(items[0].dueDate !== '2099-12-31', 'the item\'s computed due date should no longer include the now-excluded milestone\'s date');
+
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id); // un-mark
+  assertEqual(items[0].milestones[0].notApplicable, false);
+  assertEqual(items[0].status, 'red', 'un-marking should restore the milestone\'s own preserved status to the roll-up');
+});
+
+test('toggleMilestoneNotApplicable is blocked below Editor', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  userRole = 'reviewer';
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id);
+  assertEqual(items[0].milestones[0].notApplicable, false, 'toggling must have been blocked below Editor');
+});
+
+test('toggleMilestoneNotApplicable logs a plain-text review change entry', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  startReviewCycle(it.workstreamId);
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id);
+  const cycle = activeReviewCycle(it.workstreamId);
+  const entry = cycle.changeLog[cycle.changeLog.length - 1];
+  assertEqual(entry.change, 'Marked as Not Applicable');
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id);
+  const cycle2 = activeReviewCycle(it.workstreamId);
+  assertEqual(cycle2.changeLog[cycle2.changeLog.length - 1].change, 'Marked as Applicable again');
+});
+
+test('addMilestoneRow seeds a new milestone with notApplicable: false', function () {
+  openItemModal(null);
+  addMilestoneRow();
+  assertEqual(editingMilestones[editingMilestones.length - 1].notApplicable, false);
+});
+
+test('saveItem carries notApplicable through from the editor, both true and false', function () {
+  openItemModal(null);
+  editingMilestones[0].notApplicable = true;
+  fillItemForm({});
+  saveItem();
+  assertEqual(items[0].milestones[0].notApplicable, true);
+  assertEqual(items[0].milestones[1].notApplicable, false);
+});
+
+test('renderMilestonesEditor freezes the status field to a plain "N/A" label and disables Due/Actual while notApplicable, and restores them when un-marked', function () {
+  openItemModal(null);
+  editingMilestones[0].notApplicable = true;
+  renderMilestonesEditor();
+  let html = document.getElementById('milestonesEditor').innerHTML;
+  const firstIdx = html.indexOf('milestone-row');
+  const secondIdx = html.indexOf('milestone-row', firstIdx + 1);
+  const firstRow = html.slice(firstIdx, secondIdx === -1 ? undefined : secondIdx);
+  assertIncludes(firstRow, '>N/A<');
+  assertNotIncludes(firstRow, '<select', 'the real status <select> must not render for a notApplicable row');
+  assertIncludes(firstRow, 'disabled', 'Due/Actual should be disabled while notApplicable');
+
+  editingMilestones[0].notApplicable = false;
+  renderMilestonesEditor();
+  html = document.getElementById('milestonesEditor').innerHTML;
+  assertIncludes(html, '<select', 'the real status <select> should be back once un-marked');
+});
+
+test('the item modal\'s Not Applicable toggle is wired to toggleEditingMilestoneNotApplicable and is blocked below Editor', function () {
+  openItemModal(null);
+  const html = document.getElementById('milestonesEditor').innerHTML;
+  assertIncludes(html, 'toggleEditingMilestoneNotApplicable(0)');
+
+  userRole = 'reviewer';
+  openItemModal(null);
+  toggleEditingMilestoneNotApplicable(0);
+  assertEqual(editingMilestones[0].notApplicable, false, 'toggling must have been blocked below Editor');
+});
+
+test('normalizeData backfills a missing/malformed milestone.notApplicable to false', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  delete it.milestones[0].notApplicable;
+  it.milestones[1].notApplicable = 'yes'; // malformed — not a real boolean
+  normalizeData();
+  assertEqual(it.milestones[0].notApplicable, false);
+  assertEqual(it.milestones[1].notApplicable, false);
+});
+
+test('stampChangedMilestones treats a notApplicable-only edit as a real change, bumping updatedAt', function () {
+  const prev = [{ id: 'm1', name: 'X', dueDate: '2026-01-01', status: 'not-started', actualDate: null, notApplicable: false, updatedAt: 100 }];
+  const same = [{ id: 'm1', name: 'X', dueDate: '2026-01-01', status: 'not-started', actualDate: null, notApplicable: false }];
+  const changed = [{ id: 'm1', name: 'X', dueDate: '2026-01-01', status: 'not-started', actualDate: null, notApplicable: true }];
+  const stampedSame = stampChangedMilestones(same, prev);
+  assertEqual(stampedSame[0].updatedAt, 100, 'no real change — updatedAt should be carried over from prev, not bumped');
+  const stampedChanged = stampChangedMilestones(changed, prev);
+  assertTrue(stampedChanged[0].updatedAt !== 100, 'a notApplicable-only change should still count as a real change');
+});
+
 // ---------- IT/Business/Budget tags ----------
 
 test('a new item defaults its IT/Business/Budget tags to green', function () {

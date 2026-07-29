@@ -282,3 +282,88 @@ test('a milestone sub-row reuses the item-chevron column slot (in place of the c
   const count = (html.match(/class="item-chevron"/g) || []).length;
   assertTrue(count >= 2, 'both the item\'s chevron and the milestone\'s diamond should use the shared column class');
 });
+
+// ---------- Not Applicable milestone toggle (status board) ----------
+
+test('milestoneRowsHtml renders the Not Applicable toggle wired to toggleMilestoneNotApplicable, outline when off and filled when on', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [
+      { id: 'm1', name: 'Regular', dueDate: todayStr(), status: 'not-started', actualDate: null, notApplicable: false },
+      { id: 'm2', name: 'Skipped', dueDate: todayStr(), status: 'red', actualDate: null, notApplicable: true }
+    ]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `toggleMilestoneNotApplicable('${it.id}','m1')`);
+  assertIncludes(html, `toggleMilestoneNotApplicable('${it.id}','m2')`);
+  assertIncludes(html, 'fa-regular fa-ban', 'the not-yet-marked milestone should show the outline icon');
+  assertIncludes(html, 'fa-solid fa-ban', 'the marked milestone should show the filled icon');
+});
+
+test('a notApplicable milestone row freezes its status badge to a plain "N/A" label instead of its own RAG color, and is no longer cycleable', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Skipped', dueDate: todayStr(), status: 'red', actualDate: null, notApplicable: true }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '>N/A<');
+  assertNotIncludes(html, '>Off Track<', 'the underlying red status must not show while notApplicable');
+  assertNotIncludes(html, `cycleMilestoneStatus('${it.id}','m1')`, 'the frozen badge must not still be clickable to cycle status');
+});
+
+test('a notApplicable milestone\'s Due/Actual date inputs are disabled', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Skipped', dueDate: todayStr(), status: 'not-started', actualDate: '2026-01-01', notApplicable: true }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  const dateInputCount = (html.match(/<input type="date"[^>]*disabled/g) || []).length;
+  assertTrue(dateInputCount >= 2, 'both Due and Actual inputs should render disabled while notApplicable');
+});
+
+test('the Not Applicable toggle renders as an inert (non-clickable) icon below Editor, still showing the correct on/off state', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Skipped', dueDate: todayStr(), status: 'not-started', actualDate: null, notApplicable: true }]
+  });
+  toggleItemExpanded(it.id);
+  userRole = 'reviewer';
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, `onclick="toggleMilestoneNotApplicable`, 'below Editor, the toggle must not be clickable');
+  assertIncludes(html, 'fa-solid fa-ban', 'the on state should still be visibly shown, just inert');
+});
+
+test('the "X/Y milestones" badge excludes notApplicable milestones from both sides of the fraction', function () {
+  addItem({
+    name: 'Mixed',
+    milestones: [
+      { id: 'm1', name: 'Done', dueDate: todayStr(), status: 'complete', actualDate: null, notApplicable: false },
+      { id: 'm2', name: 'Open', dueDate: todayStr(), status: 'not-started', actualDate: null, notApplicable: false },
+      { id: 'm3', name: 'Skipped', dueDate: todayStr(), status: 'red', actualDate: null, notApplicable: true }
+    ]
+  });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '1/2 milestones', 'the notApplicable milestone should count toward neither the numerator nor the denominator');
+});
+
+test('an item whose milestones are all notApplicable shows an empty milestone badge but is still expandable', function () {
+  const it = addItem({
+    name: 'All skipped',
+    milestones: [{ id: 'm1', name: 'Skipped', dueDate: todayStr(), status: 'red', actualDate: null, notApplicable: true }]
+  });
+  renderMain();
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'class="milestone-count-badge"></span>', 'no applicable milestones — the badge should render empty, not "0/0 milestones"');
+  toggleItemExpanded(it.id);
+  renderMain();
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Skipped', 'the milestone should still be reachable when expanded, so it can be un-marked');
+});
