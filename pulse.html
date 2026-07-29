@@ -410,15 +410,7 @@
     padding: 7px 12px; border-radius: 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
   }
   .btn:hover { background: var(--panel-2); }
-  /* transform: translateZ(0) forces its own GPU-composited layer immediately
-     rather than on first interaction — a user-reported bug where this
-     button's solid background (same color as its border) rendered as a
-     blank interior with only the border visible until hovered/repainted,
-     specifically on a modal that goes straight from display:none to flex
-     with no transition. Reproduced in both Chrome and Safari, so it's a
-     background/border paint-race on first frame, not an engine-specific
-     quirk; forcing layer promotion up front avoids the race. */
-  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; transform: translateZ(0); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .btn-primary:hover { filter: brightness(1.06); }
   .btn:disabled, .btn-primary:disabled { opacity: .4; cursor: not-allowed; filter: none; }
   .btn-danger { color: var(--danger); }
@@ -5957,6 +5949,35 @@ document.getElementById('roleModalBg').addEventListener('click', (e) => { if (e.
 document.getElementById('rolePasswordsModalBg').addEventListener('click', (e) => { if (e.target.id === 'rolePasswordsModalBg') closeRolePasswordsModal(); });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeScopeAssignModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); }
+});
+
+// A user-reported bug on some Chrome/Safari + macOS combinations: a modal's
+// solid-fill .btn-primary (e.g. the Color scheme modal's "Done") sometimes
+// paints with a blank/missing background on the very first frame after the
+// modal goes from display:none to flex — the border is visible but the
+// fill isn't — and stays that way until some unrelated repaint (hovering
+// the button, resizing the window) forces the compositor to catch up.
+// DevTools confirms the computed background-color is already correct the
+// whole time, so this is specifically a paint-not-matching-computed-style
+// glitch, not a CSS/logic bug — an isolated minimal repro page (no Pulse
+// JS, no complex surrounding DOM) never showed it, so it's not a blanket
+// OS/GPU issue either; something about this page's complexity is enough to
+// trigger it on the affected systems. A CSS-only fix (transform:
+// translateZ(0) on the button, tried first) didn't help, since the browser
+// had already computed the right styles — the fix has to force an actual
+// new paint, not just hint at layer promotion. A one-off, imperceptible
+// opacity nudge right after any modal opens forces exactly that: the
+// compositor repaints the now-visible subtree for real, instead of
+// however it already (mis)painted the first frame. Watching for the
+// `open` class via MutationObserver (rather than adding this to every
+// individual open*() function) covers all 13 modals uniformly, including
+// any added later.
+document.querySelectorAll('.modal-bg').forEach((bg) => {
+  new MutationObserver(() => {
+    if (!bg.classList.contains('open')) return;
+    bg.style.opacity = '0.999999';
+    requestAnimationFrame(() => { bg.style.opacity = ''; });
+  }).observe(bg, { attributes: true, attributeFilter: ['class'] });
 });
 
 // ---------- Init ----------
