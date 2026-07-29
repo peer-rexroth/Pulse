@@ -607,12 +607,11 @@
   .minutes-action-items-field { grid-column: 1 / -1; }
   .minutes-action-items { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .minutes-action-item-row {
-    display: grid; grid-template-columns: 1fr 100px 96px 30px; gap: 6px; align-items: center;
+    display: grid; grid-template-columns: 1fr 100px 120px 30px; gap: 6px; align-items: center;
     padding: 5px 8px; border-bottom: 1px solid var(--border);
   }
-  /* The Due Date column is a fixed 96px — the pill's own minimum content
-     width (icon + gap + the 80px-wide "dd.mm.yyyy" input) — NOT `auto`.
-     Each .minutes-action-item-row (including the header row) is its own
+  /* The Due Date column is a fixed px value — NOT `auto`. Each
+     .minutes-action-item-row (including the header row) is its own
      independent CSS Grid instance, so an `auto` track is measured against
      that row's own content only: the header row's content is a plain "Due
      Date" text span, narrower than a data row's icon+input pill, so the
@@ -620,18 +619,18 @@
      column 1 (the only flexible `1fr` track) to absorb a different amount
      of leftover space per row, visibly misaligning every column under the
      header. A fixed px value is identical across every row regardless of
-     its content, which is what actually keeps header and data aligned. */
+     its content, which is what actually keeps header and data aligned.
+     120px is wider than the pill's own minimum content (icon + gap + the
+     80px-wide "dd.mm.yyyy" input, ~96px) — the modal has room to spare, and
+     the extra ~24px of slack before the row's 6px column-gap is what keeps
+     the delete button reading as its own row-level action rather than part
+     of the date pill (a data row's pill content used to nearly fill a
+     96px track with no slack, unlike Owner's 100px column which has enough
+     unused width for the same 6px gap to already read as a clean break). */
   .minutes-action-item-row .date-pill {
     justify-self: start; background: none; padding: 0; border-radius: 0;
   }
   .minutes-action-item-row .date-pill:hover { background: none; }
-  /* The Due Date column's own content (icon + 80px input) nearly fills its
-     96px track, leaving almost no slack before the row's 6px column-gap —
-     unlike the Owner column, which has enough unused width that the same
-     6px gap still reads as a comfortable break. Without this, the delete
-     button sits close enough to the date to read as though it belongs to
-     the date pill rather than the row. */
-  .minutes-action-item-row .row-icon-btn { margin-left: 6px; }
   .minutes-action-item-row:last-child { border-bottom: none; }
   .minutes-action-items-header {
     font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
