@@ -154,6 +154,50 @@ test('deleteItemFromModal is also blocked for a Pending item (same guard, reache
   assertEqual(items.length, 1, 'the item should survive — deleteItem()\'s own guard still applies');
 });
 
+// A user-reported follow-up to the deleteItem() guard above: removing the
+// Pending item's own milestone from inside the full edit modal left it
+// stuck Pending with nothing left for maybeOfferScopeAssign() to watch, the
+// same underlying problem as deleting the whole item.
+
+test('removeMilestoneRow refuses to remove a Pending item\'s milestone from the modal', function () {
+  const it = addPendingItem();
+  openItemModal(it.id);
+  const before = editingMilestones.length;
+  removeMilestoneRow(0);
+  assertEqual(editingMilestones.length, before, 'the milestone should survive the attempted removal');
+});
+
+test('renderMilestonesEditor renders a Pending item\'s Remove button as inert, not clickable', function () {
+  const it = addPendingItem();
+  openItemModal(it.id);
+  const html = document.getElementById('milestonesEditor').innerHTML;
+  assertNotIncludes(html, 'onclick="removeMilestoneRow', 'no clickable Remove control should render for a Pending item\'s milestone');
+});
+
+test('removeMilestoneRow works normally on a non-Pending item\'s milestones', function () {
+  const it = addItem({
+    name: 'Real item',
+    milestones: [
+      { id: 'm1', name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null },
+      { id: 'm2', name: 'B', dueDate: todayStr(), status: 'not-started', actualDate: null }
+    ]
+  });
+  openItemModal(it.id);
+  removeMilestoneRow(0);
+  assertEqual(editingMilestones.length, 1);
+  assertEqual(editingMilestones[0].name, 'B');
+});
+
+test('removeMilestoneRow works again once a Pending item has been scope-assigned to a real category', function () {
+  const it = addPendingItem();
+  const realCat = categories.find(c => !c.pending);
+  applyScopeCategory(it.id, workstreams[0].id, realCat.id);
+  openItemModal(it.id);
+  const before = editingMilestones.length;
+  removeMilestoneRow(0);
+  assertEqual(editingMilestones.length, before - 1);
+});
+
 test('applyScopeCategory sets the item\'s workstream (out of Unassigned) and category, and swaps in that category\'s full milestone template', function () {
   const secondWs = { id: genId(), name: 'Second', color: 'teal', order: 1 };
   workstreams.push(secondWs);

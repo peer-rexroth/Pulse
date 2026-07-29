@@ -2968,8 +2968,20 @@ function closeItemModal() {
 // marked Not Applicable is still a normal edit. The toggle sits *after*
 // the status field (flipped, then flipped back again per user request),
 // matching milestoneRowsHtml()'s own column order on the status board.
+// A Pending item's one milestone ("Scope item confirmed") is what
+// maybeOfferScopeAssign() watches to know when to prompt for a real
+// workstream/category — removing it here would leave the item stuck
+// Pending with nothing left to complete. Blocked the same way deleteItem()
+// itself now refuses to delete the whole item while Pending (an explicit
+// user request, reported right after that fix): the Remove button renders
+// as an inert span instead of a button, matching every other
+// role-gated-below-Editor control in this modal, rather than a
+// click-then-toast — there's no confirm step here to refuse into, unlike a
+// whole-item delete.
 function renderMilestonesEditor() {
   const editable = hasRole('editor');
+  const editingItem = editingItemId ? items.find(i => i.id === editingItemId) : null;
+  const isPendingItem = !!(editingItem && isPendingCategory(editingItem.categoryId));
   const dis = editable ? '' : 'disabled';
   document.getElementById('milestonesEditor').innerHTML = editingMilestones.map((m, idx) => {
     const na = !!m.notApplicable;
@@ -2989,7 +3001,7 @@ function renderMilestonesEditor() {
       <input type="date" value="${esc(m.actualDate || '')}" title="Actual completion date" ${datesDis} oninput="editingMilestones[${idx}].actualDate = this.value || null; updateItemStatusFieldMode();">
       ${statusHtml}
       ${naToggleHtml}
-      ${editable ? `<button class="row-icon-btn" onclick="removeMilestoneRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>` : '<span></span>'}
+      ${(editable && !isPendingItem) ? `<button class="row-icon-btn" onclick="removeMilestoneRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>` : `<span class="row-icon-btn" title="${isPendingItem ? 'Assign a real workstream and category before removing this milestone' : ''}"><i class="fa-solid fa-trash" style="opacity:.35"></i></span>`}
     </div>`;
   }).join('');
   updateItemStatusFieldMode();
@@ -3043,6 +3055,11 @@ function updateItemStatusFieldMode() {
 }
 function removeMilestoneRow(idx) {
   if (!requireRole('editor')) return;
+  // Defense-in-depth alongside renderMilestonesEditor()'s own disabled
+  // button for a Pending item — same guard, so this can't be reached any
+  // other way either.
+  const editingItem = editingItemId ? items.find(i => i.id === editingItemId) : null;
+  if (editingItem && isPendingCategory(editingItem.categoryId)) return;
   editingMilestones.splice(idx, 1);
   renderMilestonesEditor();
 }
