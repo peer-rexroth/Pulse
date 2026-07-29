@@ -333,12 +333,39 @@ test('saveRolePasswords hashes a non-blank field into that role\'s password, and
 
 test('saveRolePasswords clears a role\'s password when its "Remove" checkbox is checked, regardless of anything typed alongside it', async function () {
   userRole = 'admin';
+  programme.rolePasswords.editor = await hashRolePassword('old-editor-pass');
+  openRolePasswordsModal();
+  document.getElementById('rolePasswordEditorInput').value = 'ignored-because-removing';
+  document.getElementById('rolePasswordEditorClear').checked = true;
+  await saveRolePasswords();
+  assertEqual(programme.rolePasswords.editor, null, 'Remove wins outright, even with text also typed in');
+});
+
+// Admin's password requirement is deliberately not deactivatable at all —
+// an explicit user request — unlike Reviewer/Editor, which can be freely
+// turned on and off via the "Remove" checkbox above. saveRolePasswords()'s
+// own applyOne() call for 'admin' hardcodes a null clearId (see its source)
+// rather than looking up any checkbox id, so there is no code path at all
+// that can null out Admin's password, regardless of what markup exists —
+// these two tests exercise exactly that code path directly.
+test('saveRolePasswords never clears Admin\'s password — leaving its field blank leaves the existing password untouched, exactly like any other unchanged field', async function () {
+  userRole = 'admin';
+  const original = await hashRolePassword('old-admin-pass');
+  programme.rolePasswords.admin = original;
+  openRolePasswordsModal();
+  document.getElementById('rolePasswordAdminInput').value = ''; // left blank
+  await saveRolePasswords();
+  assertDeepEqual(programme.rolePasswords.admin, original, 'Admin has no "Remove" path at all — a blank field can only mean "leave unchanged"');
+});
+
+test('saveRolePasswords still lets Admin\'s password be changed to a new one, just never removed', async function () {
+  userRole = 'admin';
   programme.rolePasswords.admin = await hashRolePassword('old-admin-pass');
   openRolePasswordsModal();
-  document.getElementById('rolePasswordAdminInput').value = 'ignored-because-removing';
-  document.getElementById('rolePasswordAdminClear').checked = true;
+  document.getElementById('rolePasswordAdminInput').value = 'new-admin-pass';
   await saveRolePasswords();
-  assertEqual(programme.rolePasswords.admin, null, 'Remove wins outright, even with text also typed in');
+  assertTrue(await verifyRolePassword('new-admin-pass', programme.rolePasswords.admin));
+  assertFalse(await verifyRolePassword('old-admin-pass', programme.rolePasswords.admin));
 });
 
 test('saveRolePasswords shows a clear error instead of throwing when crypto.subtle is unavailable', async function () {

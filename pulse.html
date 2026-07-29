@@ -1150,7 +1150,7 @@
 <div class="modal-bg" id="rolePasswordsModalBg">
   <div class="modal" style="width:420px">
     <h3>Role Passwords</h3>
-    <p>Required to switch into that role from the role picker. Only a salted hash is stored, never the password itself, so these fields always start blank — type a new password to set or change one, leave it blank to leave that role unchanged, or check "Remove" to drop its password requirement.</p>
+    <p>Required to switch into that role from the role picker. Only a salted hash is stored, never the password itself, so these fields always start blank — type a new password to set or change one, and leave it blank to leave that role unchanged.</p>
     <div class="field">
       <label>Reviewer password</label>
       <input type="text" id="rolePasswordReviewerInput">
@@ -1164,7 +1164,7 @@
     <div class="field">
       <label>Admin password</label>
       <input type="text" id="rolePasswordAdminInput">
-      <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400"><input type="checkbox" id="rolePasswordAdminClear"> Remove password requirement</label>
+      <div style="font-size:11.5px;color:var(--text-faint);margin-top:6px">Admin's password requirement can't be removed once set — only changed to a different password.</div>
     </div>
     <div class="modal-actions" style="justify-content:flex-end">
       <button class="btn" onclick="closeRolePasswordsModal()">Cancel</button>
@@ -4214,38 +4214,47 @@ function rolePasswordsSectionHtml() {
 // one set; the placeholder says which state it's actually in instead.
 function openRolePasswordsModal() {
   if (!requireRole('admin')) return;
-  [['reviewer', 'rolePasswordReviewerInput', 'rolePasswordReviewerClear'],
-   ['editor', 'rolePasswordEditorInput', 'rolePasswordEditorClear'],
-   ['admin', 'rolePasswordAdminInput', 'rolePasswordAdminClear']].forEach(([role, inputId, clearId]) => {
-    const input = document.getElementById(inputId);
+  ['reviewer', 'editor', 'admin'].forEach(role => {
+    const input = document.getElementById(`rolePassword${role[0].toUpperCase()}${role.slice(1)}Input`);
     input.value = '';
     input.placeholder = programme.rolePasswords[role] ? 'Currently set — type a new password to change it' : 'No password set — type one to require it';
-    document.getElementById(clearId).checked = false;
   });
+  // Admin has no clear checkbox at all (see saveRolePasswords()) — nothing
+  // to reset here for it.
+  document.getElementById('rolePasswordReviewerClear').checked = false;
+  document.getElementById('rolePasswordEditorClear').checked = false;
   document.getElementById('rolePasswordsModalBg').classList.add('open');
 }
 function closeRolePasswordsModal() {
   document.getElementById('rolePasswordsModalBg').classList.remove('open');
 }
-// For each role: the "Remove" checkbox wins outright (drops the password
-// requirement back to null, regardless of anything typed alongside it); a
-// non-blank field hashes and replaces that role's password; a field left
-// blank with "Remove" unchecked leaves that role's existing password (set
-// or not) untouched — there's nothing to compare it against to detect "no
-// real change" the way a plain-text field could, so blank has to mean
-// "leave alone" rather than "clear", with "Remove" as the explicit way to
-// actually do that.
+// Reviewer/Editor can be freely turned on and off: the "Remove" checkbox
+// wins outright (drops the password requirement back to null, regardless
+// of anything typed alongside it), a non-blank field hashes and replaces
+// the password, and a blank field with "Remove" unchecked leaves the
+// existing password (set or not) untouched — there's nothing to compare it
+// against to detect "no real change" the way a plain-text field could, so
+// blank has to mean "leave alone" rather than "clear", with "Remove" as the
+// explicit way to actually do that. Admin has no such checkbox at all — an
+// explicit user request ("for Admin this should not be deactivatable"):
+// once an Admin password is set, this is the only function that ever
+// touches programme.rolePasswords, and it never has a path that nulls out
+// 'admin', so from here on the only way to change it is to a *different*
+// password, never to no password at all. (It still starts out unset on a
+// brand-new programme — see normalizeData() — so the very first Admin can
+// still freely reach Admin before choosing to lock it down; this only
+// forecloses undoing that choice once made.)
 async function saveRolePasswords() {
   if (!requireRole('admin')) return;
   if (!hasSecureCrypto()) { showToast('Could not save — password hashing needs a secure context (the local server, or https — not a plain file)', true); return; }
   async function applyOne(role, inputId, clearId) {
-    if (document.getElementById(clearId).checked) { programme.rolePasswords[role] = null; return; }
+    if (clearId && document.getElementById(clearId).checked) { programme.rolePasswords[role] = null; return; }
     const value = document.getElementById(inputId).value.trim();
     if (value) programme.rolePasswords[role] = await hashRolePassword(value);
   }
   await applyOne('reviewer', 'rolePasswordReviewerInput', 'rolePasswordReviewerClear');
   await applyOne('editor', 'rolePasswordEditorInput', 'rolePasswordEditorClear');
-  await applyOne('admin', 'rolePasswordAdminInput', 'rolePasswordAdminClear');
+  await applyOne('admin', 'rolePasswordAdminInput', null);
   save(); closeRolePasswordsModal(); render();
   showToast('Role passwords saved');
 }
