@@ -441,6 +441,30 @@ test('an Actual date recorded on or before its own Due date is never flagged', f
   assertNotIncludes(html, 'pill-overdue');
 });
 
+test('an Actual date later than Due but still in the future is not flagged — it\'s a plan, not a late finish yet', function () {
+  const it = addItem({
+    name: 'Parent',
+    // status: 'complete' keeps dueOverdue from also tripping pill-overdue on
+    // the Due pill itself — this test is isolating the Actual-side flag only.
+    milestones: [{ id: 'm1', name: 'Planned ahead', dueDate: '2020-01-01', status: 'complete', actualDate: '2099-01-01' }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'pill-overdue', 'a future Actual date is a plan, not yet a late finish, even if later than Due');
+});
+
+test('an Actual date of today, later than Due, is flagged — today already counts as having happened', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Finished today, late', dueDate: '2020-01-01', status: 'complete', actualDate: todayStr() }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'pill-overdue');
+});
+
 test('a notApplicable milestone is never flagged overdue on Due, even with a past Due date', function () {
   const it = addItem({
     name: 'Parent',

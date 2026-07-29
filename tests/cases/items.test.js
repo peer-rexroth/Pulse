@@ -27,6 +27,57 @@ test('standard milestones default their date to the due date shown when the moda
   editingMilestones.forEach(m => assertEqual(m.dueDate, due));
 });
 
+// ---------- Editing an Unassigned item keeps it Unassigned ----------
+// A user-reported bug: opening an Unassigned (workstreamId: null) item's
+// full edit modal and saving *anything* — even just a due date, never
+// touching the Workstream field at all — silently moved it into the first
+// real workstream. Root cause: populateWorkstreamSelect() only ever built
+// <option>s for real workstreams, so a null selectedId never matched any of
+// them, and the browser defaulted the select to its first option regardless
+// of what the item's own workstreamId actually was. saveItem() then read
+// that default straight out of the select and wrote it back as if the user
+// had chosen it.
+
+test('opening an Unassigned item\'s modal adds a matching, selected "Unassigned" option to the Workstream select', function () {
+  const it = { id: genId(), workstreamId: null, categoryId: categories[0].id, name: 'Unassigned item', owner: '', status: 'not-started', actualDate: null, startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() };
+  items.push(it);
+  openItemModal(it.id);
+  const html = document.getElementById('itemWorkstreamSelect').innerHTML;
+  assertIncludes(html, '<option value="" selected>Unassigned</option>');
+  assertEqual(document.getElementById('itemWorkstreamSelect').value, '', 'the select itself should read as the Unassigned option, not silently default to the first real workstream');
+});
+
+test('opening a new item\'s modal never offers an Unassigned option — only editing an already-Unassigned item does', function () {
+  openItemModal(null);
+  assertNotIncludes(document.getElementById('itemWorkstreamSelect').innerHTML, 'Unassigned');
+});
+
+test('opening an already-assigned item\'s modal never offers an Unassigned option either', function () {
+  const it = { id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'Assigned item', owner: '', status: 'not-started', actualDate: null, startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() };
+  items.push(it);
+  openItemModal(it.id);
+  assertNotIncludes(document.getElementById('itemWorkstreamSelect').innerHTML, 'Unassigned');
+});
+
+test('saveItem keeps an Unassigned item Unassigned when only an unrelated field (like Due) is edited', function () {
+  const it = { id: genId(), workstreamId: null, categoryId: categories[0].id, name: 'Unassigned item', owner: '', status: 'not-started', actualDate: null, startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() };
+  items.push(it);
+  openItemModal(it.id);
+  document.getElementById('itemDueInput').value = '2026-09-01';
+  saveItem();
+  assertEqual(items[0].workstreamId, null, 'saving should never silently reassign an Unassigned item to whatever workstream the select happened to default to');
+  assertEqual(items[0].dueDate, '2026-09-01');
+});
+
+test('saveItem still correctly assigns a real workstream when the user explicitly picks one for a previously-Unassigned item', function () {
+  const it = { id: genId(), workstreamId: null, categoryId: categories[0].id, name: 'Unassigned item', owner: '', status: 'not-started', actualDate: null, startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() };
+  items.push(it);
+  openItemModal(it.id);
+  document.getElementById('itemWorkstreamSelect').value = workstreams[0].id;
+  saveItem();
+  assertEqual(items[0].workstreamId, workstreams[0].id);
+});
+
 test('saveItem creates a scope item carrying the standard milestones through', function () {
   openItemModal(null);
   fillItemForm({});

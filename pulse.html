@@ -2339,9 +2339,13 @@ function milestoneRowsHtml(it, reviewCycle) {
     // notApplicable override as Due above.
     const actualEditable = hasRole('editor') && !m.notApplicable;
     const isRevealedEmpty = !m.actualDate && revealedActualIds.has(m.id);
-    // Flags a late finish — recorded after its own Due date — the other
-    // half of the delayed-milestone signal alongside dueOverdue above.
-    const actualLate = !m.notApplicable && m.actualDate && m.dueDate && m.actualDate > m.dueDate;
+    // Flags a late finish — recorded after its own Due date AND not still in
+    // the future — the other half of the delayed-milestone signal alongside
+    // dueOverdue above. The not-in-the-future half is an explicit user
+    // request: an Actual date that's later than Due but hasn't happened yet
+    // (a planned/logged-ahead completion) isn't a problem yet, just a plan —
+    // red is reserved for a late finish that's already occurred.
+    const actualLate = !m.notApplicable && m.actualDate && m.dueDate && m.actualDate > m.dueDate && m.actualDate <= todayStr();
     const actualHtml = (!m.actualDate && !revealedActualIds.has(m.id))
       ? (actualEditable ? `<button class="actual-date-ghost" title="Set an actual date — only needed if this milestone finished on a different date than planned" onclick="revealActualDate('${m.id}')"><i class="fa-solid fa-plus"></i></button>` : '')
       : dateInputHtml(m.actualDate, `id="actual-input-${m.id}" ${actualLate ? 'title="Finished after its Due date"' : ''} ${actualEditable ? `onchange="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value)" onblur="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)" ${isRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealActualDate('${m.id}')"` : ''}` : 'disabled'}`, actualLate ? 'pill-overdue' : '');
@@ -2892,8 +2896,18 @@ function deleteWorkstreamFromModal() {
 function populateStatusSelect() {
   document.getElementById('itemStatusSelect').innerHTML = STATUSES.map(s => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
 }
-function populateWorkstreamSelect(selectedId, elId) {
-  document.getElementById(elId || 'itemWorkstreamSelect').innerHTML = workstreams.map(w =>
+// includeUnassigned is only ever passed true by openItemModal(), and only
+// for an item that's *already* Unassigned (workstreamId == null) — this
+// isn't a general "move back to Unassigned" affordance, just a way for an
+// already-Unassigned item's own select to have a matching option at all. A
+// user-reported bug: without it, no <option> ever matched a null
+// selectedId, so the browser silently defaulted the (real, populated)
+// select to its first workstream — invisibly reassigning the item away
+// from Unassigned the moment *anything* in the modal was saved, even a
+// plain due-date edit that never touched the workstream field at all.
+function populateWorkstreamSelect(selectedId, elId, includeUnassigned) {
+  const unassignedOption = includeUnassigned ? `<option value="" ${selectedId == null ? 'selected' : ''}>Unassigned</option>` : '';
+  document.getElementById(elId || 'itemWorkstreamSelect').innerHTML = unassignedOption + workstreams.map(w =>
     `<option value="${w.id}" ${w.id === selectedId ? 'selected' : ''}>${esc(w.name)}</option>`
   ).join('');
 }
@@ -2921,7 +2935,7 @@ function openItemModal(id, presetWorkstreamId) {
   const it = id ? items.find(i => i.id === id) : null;
   document.getElementById('itemModalTitle').textContent = it ? 'Edit item' : 'New item';
   populateStatusSelect();
-  populateWorkstreamSelect(it ? it.workstreamId : (presetWorkstreamId || (workstreams[0] && workstreams[0].id)));
+  populateWorkstreamSelect(it ? it.workstreamId : (presetWorkstreamId || (workstreams[0] && workstreams[0].id)), undefined, !!(it && it.workstreamId == null));
   populateCategorySelect(it ? it.categoryId : categories[0].id);
   document.getElementById('itemNameInput').value = it ? it.name : '';
   document.getElementById('itemOwnerInput').value = it ? it.owner : '';
@@ -3049,7 +3063,11 @@ function saveItem() {
   if (!requireRole('editor')) return;
   const name = document.getElementById('itemNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
-  const workstreamId = document.getElementById('itemWorkstreamSelect').value;
+  // Empty string is the "Unassigned" option's own value (see
+  // populateWorkstreamSelect()) — every other option is a real workstream's
+  // id, always non-empty, so this only ever converts that one sentinel back
+  // to the same null every other Unassigned check in the app compares against.
+  const workstreamId = document.getElementById('itemWorkstreamSelect').value || null;
   const categoryId = document.getElementById('itemCategorySelect').value;
   const owner = document.getElementById('itemOwnerInput').value.trim();
   const manualDueDate = document.getElementById('itemDueInput').value || todayStr();
