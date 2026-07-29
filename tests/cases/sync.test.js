@@ -223,11 +223,11 @@ test('mergeData does not report a conflict on the very first merge (lastSyncedAt
 test('mergeData reports a conflict when an item\'s own scalar fields were edited on both sides since the last sync', function () {
   const local = addMergeTestItem({ milestones: [] });
   lastSyncedAt = 5000;
-  local.owner = 'Local Owner'; local.updatedAt = 6000;
-  const incoming = { ...local, owner: 'Incoming Owner', updatedAt: 7000, milestones: [] };
+  local.name = 'Local Name'; local.updatedAt = 6000;
+  const incoming = { ...local, name: 'Incoming Name', updatedAt: 7000, milestones: [] };
   const { conflicts } = mergeData({ workstreams: [], items: [incoming] });
   assertEqual(conflicts.length, 1);
-  assertEqual(items[0].owner, 'Incoming Owner', 'the newer edit should still win');
+  assertEqual(items[0].name, 'Incoming Name', 'the newer edit should still win');
 });
 
 test('showToast defaults its action button label to "Undo" when no custom label is given', function () {

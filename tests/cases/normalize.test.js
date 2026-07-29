@@ -4,7 +4,6 @@ test('normalizeData backfills missing fields on a hand-built item', function () 
   normalizeData();
   const it = items[0];
   assertEqual(it.name, 'Untitled');
-  assertEqual(it.owner, '');
   assertEqual(it.status, 'not-started');
   assertTrue(!!it.startDate, 'item should get a startDate default');
   assertTrue(!!it.dueDate, 'item should get a dueDate default');

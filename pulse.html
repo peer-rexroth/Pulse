@@ -1106,10 +1106,6 @@
         <select id="itemCategorySelect" onchange="onItemCategoryChange()"></select>
       </div>
     </div>
-    <div class="field">
-      <label>Owner</label>
-      <input type="text" id="itemOwnerInput" placeholder="e.g. Jamie">
-    </div>
     <div class="field-row" id="itemDatesManual">
       <div class="field">
         <label>Start date</label>
@@ -1142,7 +1138,6 @@
     <div class="field">
       <label>Milestones</label>
       <div id="milestonesEditor"></div>
-      <button class="btn btn-sm" id="itemAddMilestoneBtn" style="margin-top:8px" onclick="addMilestoneRow()"><i class="fa-solid fa-plus"></i> Add milestone</button>
     </div>
     <div class="modal-actions">
       <button class="btn btn-danger" id="itemDeleteBtn" onclick="deleteItemFromModal()" style="display:none"><i class="fa-solid fa-trash"></i> Delete</button>
@@ -1720,7 +1715,7 @@ function normalizeData() {
       const d = m.dueDate || todayStr();
       items.push({
         id: genId(), workstreamId: m.workstreamId, name: m.name || 'Untitled',
-        owner: m.owner || '', status: 'not-started',
+        status: 'not-started',
         startDate: d, dueDate: d,
         milestones: [{ id: m.id || genId(), name: m.name || 'Untitled', dueDate: d, status: m.status || 'not-started' }]
       });
@@ -1742,7 +1737,6 @@ function normalizeData() {
     if (it.workstreamId === undefined) it.workstreamId = null;
     if (!catIds.has(it.categoryId)) it.categoryId = categories[0].id;
     if (!it.name) it.name = 'Untitled';
-    if (!it.owner) it.owner = '';
     if (!STATUSES.some(s => s.id === it.status)) it.status = 'not-started';
     if (!it.dueDate) it.dueDate = todayStr();
     if (!it.startDate) it.startDate = it.dueDate;
@@ -2201,7 +2195,7 @@ function itemRowHtml(it, reviewCycle) {
       ${chevron}
       <span class="item-name">${esc(it.name)}</span>
       ${milestoneBadge}
-      <span class="item-owner">${it.owner ? '<i class="fa-solid fa-user"></i> ' + esc(it.owner) : ''}</span>
+      <span></span>
       ${planDatesHtml}
       ${actualDateHtml}
       <span></span>
@@ -2938,7 +2932,6 @@ function openItemModal(id, presetWorkstreamId) {
   populateWorkstreamSelect(it ? it.workstreamId : (presetWorkstreamId || (workstreams[0] && workstreams[0].id)), undefined, !!(it && it.workstreamId == null));
   populateCategorySelect(it ? it.categoryId : categories[0].id);
   document.getElementById('itemNameInput').value = it ? it.name : '';
-  document.getElementById('itemOwnerInput').value = it ? it.owner : '';
   document.getElementById('itemStartInput').value = it ? it.startDate : todayStr();
   document.getElementById('itemDueInput').value = it ? it.dueDate : todayStr();
   document.getElementById('itemActualInput').value = it ? (it.actualDate || '') : '';
@@ -2954,10 +2947,9 @@ function openItemModal(id, presetWorkstreamId) {
   // can still read everything, same spirit as Plan dates/tags/status on the
   // row itself (see itemRowHtml()).
   const editable = hasRole('editor');
-  ['itemNameInput', 'itemOwnerInput', 'itemStartInput', 'itemDueInput', 'itemActualInput', 'itemWorkstreamSelect', 'itemCategorySelect', 'itemStatusSelect'].forEach(id => {
+  ['itemNameInput', 'itemStartInput', 'itemDueInput', 'itemActualInput', 'itemWorkstreamSelect', 'itemCategorySelect', 'itemStatusSelect'].forEach(id => {
     document.getElementById(id).disabled = !editable;
   });
-  document.getElementById('itemAddMilestoneBtn').style.display = editable ? '' : 'none';
   document.getElementById('itemSaveBtn').style.display = editable ? '' : 'none';
   document.getElementById('itemModalBg').classList.add('open');
   document.getElementById('itemNameInput').focus();
@@ -3026,8 +3018,8 @@ function toggleEditingMilestoneNotApplicable(idx) {
 // manual; any milestones = both are derived, never hand-set). Called
 // whenever editingMilestones changes shape or a milestone's own status/date
 // changes. Also keeps the (now possibly hidden) itemStartInput/itemDueInput
-// values in sync with the computed range, since addMilestoneRow() still
-// reads itemDueInput's value as a new milestone's default due date.
+// values in sync with the computed range, since onItemCategoryChange() still
+// reads itemDueInput's value as a newly re-seeded milestone's default due date.
 function updateItemStatusFieldMode() {
   const hasMilestones = editingMilestones.length > 0;
   document.getElementById('itemStatusSelect').style.display = hasMilestones ? 'none' : '';
@@ -3049,11 +3041,6 @@ function updateItemStatusFieldMode() {
     }
   }
 }
-function addMilestoneRow() {
-  if (!requireRole('editor')) return;
-  editingMilestones.push({ id: genId(), name: 'New milestone', dueDate: document.getElementById('itemDueInput').value || todayStr(), status: 'not-started', actualDate: null, notApplicable: false });
-  renderMilestonesEditor();
-}
 function removeMilestoneRow(idx) {
   if (!requireRole('editor')) return;
   editingMilestones.splice(idx, 1);
@@ -3069,7 +3056,6 @@ function saveItem() {
   // to the same null every other Unassigned check in the app compares against.
   const workstreamId = document.getElementById('itemWorkstreamSelect').value || null;
   const categoryId = document.getElementById('itemCategorySelect').value;
-  const owner = document.getElementById('itemOwnerInput').value.trim();
   const manualDueDate = document.getElementById('itemDueInput').value || todayStr();
   const manualStartDate = document.getElementById('itemStartInput').value || manualDueDate;
   const actualDate = document.getElementById('itemActualInput').value || null;
@@ -3090,7 +3076,7 @@ function saveItem() {
   const range = milestones.length ? computedDateRangeFromMilestones(milestones) : null;
   const startDate = range ? range.startDate : manualStartDate;
   const dueDate = range ? range.dueDate : manualDueDate;
-  const data = { workstreamId, categoryId, name, owner, status, startDate, dueDate, actualDate, milestones, updatedAt: Date.now() };
+  const data = { workstreamId, categoryId, name, status, startDate, dueDate, actualDate, milestones, updatedAt: Date.now() };
   let savedItem;
   let prevStatus = null;
   if (editingItemId) {
@@ -3176,7 +3162,7 @@ function saveInlineQuickAddItem() {
   const range = computedDateRangeFromMilestones(milestones);
   const order = items.filter(i => i.workstreamId == null).length;
   items.push({
-    id: genId(), workstreamId: null, categoryId: cat.id, name, owner: '',
+    id: genId(), workstreamId: null, categoryId: cat.id, name,
     status: computedStatusFromMilestones(milestones), actualDate: null,
     startDate: range ? range.startDate : today, dueDate: range ? range.dueDate : today,
     milestones, itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
@@ -3321,10 +3307,24 @@ function deleteItemFromModal() {
   closeItemModal();
   deleteItem(id);
 }
+// A Pending-category item (see "Quick-add scope items, the Unassigned
+// bucket, and the Pending category") is only a placeholder waiting on real
+// triage — an explicit user request blocks deleting one outright here
+// (rather than hiding the Delete button, matching how
+// deleteCategoryFromModal() refuses the reserved Pending category itself:
+// a toast, no confirm modal) so it isn't lost before ever getting a real
+// workstream/category. This runs before the confirm modal even opens, and
+// covers both places deleteItem() is called from — the row's own trash icon
+// and the full edit modal's Delete button (deleteItemFromModal()) — since
+// both funnel through this one function.
 function deleteItem(id) {
   if (!requireRole('editor')) return;
   const it = items.find(i => i.id === id);
   if (!it) return;
+  if (isPendingCategory(it.categoryId)) {
+    showToast('Assign a real workstream and category before deleting this item', true);
+    return;
+  }
   openConfirmModal({
     title: `Delete "${it.name}"?`,
     body: 'You can undo this from the toast right after deleting.',

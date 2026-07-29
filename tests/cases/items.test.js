@@ -1,10 +1,9 @@
 function fillItemForm(overrides) {
   const f = Object.assign({
-    name: 'Ship schema v1', owner: 'Jamie', start: '2026-08-01', due: '2026-08-15', actual: '',
+    name: 'Ship schema v1', start: '2026-08-01', due: '2026-08-15', actual: '',
     status: 'amber'
   }, overrides || {});
   document.getElementById('itemNameInput').value = f.name;
-  document.getElementById('itemOwnerInput').value = f.owner;
   document.getElementById('itemStartInput').value = f.start;
   document.getElementById('itemDueInput').value = f.due;
   document.getElementById('itemActualInput').value = f.actual;
@@ -95,6 +94,22 @@ test('saveItem creates a scope item carrying the standard milestones through', f
   assertEqual(it.milestones[0].name, 'Requirements Defined');
 });
 
+// ---------- Owner was removed as a concept — an explicit user request ----------
+test('saveItem never writes an owner field onto a saved item', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  assertFalse(Object.prototype.hasOwnProperty.call(items[0], 'owner'), 'owner should no longer be part of the saved item shape at all');
+});
+
+test('itemRowHtml never shows an owner icon/name, even for a legacy item that still has one from before the field was removed', function () {
+  const it = addItem({ name: 'Legacy item', owner: 'Someone', milestones: [] });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'fa-user', 'the owner icon must never render, regardless of leftover legacy data');
+  assertNotIncludes(html, 'Someone');
+});
+
 test('saveItem rejects an empty name', function () {
   openItemModal(null);
   fillItemForm({ name: '   ' });
@@ -145,15 +160,6 @@ test('saveItem tombstones a milestone that was removed via the modal', function 
   assertTrue(deletedMilestoneIds.some(x => x.id === removedId), 'a merge must be able to tell this milestone was deleted, not just never seen');
 });
 
-test('saveItem stamps a brand-new milestone (added via the modal) with its own updatedAt', function () {
-  openItemModal(null);
-  addMilestoneRow();
-  fillItemForm({});
-  saveItem();
-  const newMilestone = items[0].milestones[items[0].milestones.length - 1];
-  assertTrue(typeof newMilestone.updatedAt === 'number' && newMilestone.updatedAt > 0);
-});
-
 test('removeMilestoneRow removes one row from the in-progress edit without touching saved data yet', function () {
   openItemModal(null);
   assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length);
@@ -161,16 +167,6 @@ test('removeMilestoneRow removes one row from the in-progress edit without touch
   assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length - 1);
   assertEqual(editingMilestones[2].name, 'Build Completed');
   assertEqual(items.length, 0, 'nothing should be saved until Save is clicked');
-});
-
-test('addMilestoneRow appends a custom milestone beyond the standard set', function () {
-  openItemModal(null);
-  addMilestoneRow();
-  assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length + 1);
-  assertEqual(editingMilestones[DEFAULT_CATEGORY_MILESTONES.length].name, 'New milestone');
-  fillItemForm({});
-  saveItem();
-  assertEqual(items[0].milestones.length, DEFAULT_CATEGORY_MILESTONES.length + 1);
 });
 
 test('a milestone with a blanked-out name falls back to a placeholder on save', function () {
@@ -522,12 +518,6 @@ test('toggleMilestoneNotApplicable logs a plain-text review change entry', funct
   toggleMilestoneNotApplicable(it.id, it.milestones[0].id);
   const cycle2 = activeReviewCycle(it.workstreamId);
   assertEqual(cycle2.changeLog[cycle2.changeLog.length - 1].change, 'Marked as Applicable again');
-});
-
-test('addMilestoneRow seeds a new milestone with notApplicable: false', function () {
-  openItemModal(null);
-  addMilestoneRow();
-  assertEqual(editingMilestones[editingMilestones.length - 1].notApplicable, false);
 });
 
 test('saveItem carries notApplicable through from the editor, both true and false', function () {

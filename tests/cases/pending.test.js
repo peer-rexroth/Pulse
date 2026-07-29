@@ -122,6 +122,38 @@ test('openScopeAssignModal populates the workstream select (with nothing presele
   assertNotIncludes(catHtml, `value="${pendingCat.id}"`, 'Pending itself must never be offered as a destination category');
 });
 
+// ---------- A Pending item can't be deleted before it's triaged ----------
+// An explicit user request: deleteItem() is the one function behind both the
+// row's own trash icon and the full edit modal's Delete button (see
+// deleteItemFromModal()), so guarding it here blocks both without needing a
+// second check anywhere else — same "refuse outright with a toast, don't
+// even open the confirm modal" shape deleteCategoryFromModal() already uses
+// for the Pending category itself.
+
+test('deleteItem refuses to delete a Pending-category item outright, with a toast, before the confirm modal ever opens', function () {
+  const it = addPendingItem();
+  const before = items.length;
+  deleteItem(it.id);
+  assertEqual(items.length, before, 'nothing should be removed');
+  assertFalse(!!modalTarget, 'the confirm modal should never even open for a Pending item');
+});
+
+test('deleteItem still works normally once an item has a real category (post scope-assign)', function () {
+  const it = addPendingItem();
+  const realCat = categories.find(c => !c.pending);
+  applyScopeCategory(it.id, workstreams[0].id, realCat.id);
+  deleteItem(it.id);
+  confirmModalAction();
+  assertEqual(items.length, 0);
+});
+
+test('deleteItemFromModal is also blocked for a Pending item (same guard, reached through the modal)', function () {
+  const it = addPendingItem();
+  editingItemId = it.id;
+  deleteItemFromModal();
+  assertEqual(items.length, 1, 'the item should survive — deleteItem()\'s own guard still applies');
+});
+
 test('applyScopeCategory sets the item\'s workstream (out of Unassigned) and category, and swaps in that category\'s full milestone template', function () {
   const secondWs = { id: genId(), name: 'Second', color: 'teal', order: 1 };
   workstreams.push(secondWs);
