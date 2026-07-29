@@ -4253,11 +4253,11 @@ function actionLogHtml(w) {
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header">
         <span style="grid-column:1">Action Item</span>
-        <span style="grid-column:2">Owner</span>
-        <span style="grid-column:3">Due Date</span>
-        <span style="grid-column:4">Source</span>
-        <span style="grid-column:5">Created</span>
-        <span style="grid-column:6">Closed</span>
+        <span style="grid-column:2;text-align:center">Owner</span>
+        <span style="grid-column:3;text-align:center">Due Date</span>
+        <span style="grid-column:4;text-align:center">Source</span>
+        <span style="grid-column:5;text-align:center">Created</span>
+        <span style="grid-column:6;text-align:center">Closed</span>
         <span style="grid-column:7/9;text-align:center">Actions</span>
       </div>
       ${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}
@@ -4281,12 +4281,12 @@ function allWorkstreamsActionLogHtml() {
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header with-ws">
         <span style="grid-column:1">Action Item</span>
-        <span style="grid-column:2">Workstream</span>
-        <span style="grid-column:3">Owner</span>
-        <span style="grid-column:4">Due Date</span>
-        <span style="grid-column:5">Source</span>
-        <span style="grid-column:6">Created</span>
-        <span style="grid-column:7">Closed</span>
+        <span style="grid-column:2;text-align:center">Workstream</span>
+        <span style="grid-column:3;text-align:center">Owner</span>
+        <span style="grid-column:4;text-align:center">Due Date</span>
+        <span style="grid-column:5;text-align:center">Source</span>
+        <span style="grid-column:6;text-align:center">Created</span>
+        <span style="grid-column:7;text-align:center">Closed</span>
         <span style="grid-column:8/10;text-align:center">Actions</span>
       </div>
       ${sortedActionLog(entries, x => x.a).map(({ w, a }) => actionLogRowHtml(w, a, true)).join('')}
@@ -4414,8 +4414,8 @@ function decisionLogHtml(w) {
   return `<div class="action-log-list">
       <div class="item-row decision-log-row decision-log-header">
         <span style="grid-column:1">Decision</span>
-        <span style="grid-column:2">Source</span>
-        <span style="grid-column:3">Logged</span>
+        <span style="grid-column:2;text-align:center">Source</span>
+        <span style="grid-column:3;text-align:center">Logged</span>
         <span style="grid-column:4"></span>
       </div>
       ${sortedDecisionLog(list).map(d => decisionLogRowHtml(w, d)).join('')}
@@ -4435,9 +4435,9 @@ function allWorkstreamsDecisionLogHtml() {
   return `<div class="action-log-list">
       <div class="item-row decision-log-row decision-log-header with-ws">
         <span style="grid-column:1">Decision</span>
-        <span style="grid-column:2">Workstream</span>
-        <span style="grid-column:3">Source</span>
-        <span style="grid-column:4">Logged</span>
+        <span style="grid-column:2;text-align:center">Workstream</span>
+        <span style="grid-column:3;text-align:center">Source</span>
+        <span style="grid-column:4;text-align:center">Logged</span>
         <span style="grid-column:5"></span>
       </div>
       ${sortedDecisionLog(entries, x => x.d).map(({ w, d }) => decisionLogRowHtml(w, d, true)).join('')}
