@@ -59,3 +59,63 @@ test('deleting the currently-filtered workstream clears the filter', function ()
   confirmModalAction();
   assertEqual(filterWorkstreamId, null);
 });
+
+// ---------- Drag-and-drop reordering of workstreams (shared sidebar) ----------
+
+function addWorkstream(name, color) {
+  document.getElementById('wsNameInput').value = name;
+  wsColorChoice = color || 'teal';
+  saveWorkstream();
+  return workstreams[workstreams.length - 1];
+}
+
+test('reorderWorkstream moves a workstream to a new position and reassigns contiguous order values', function () {
+  const a = workstreams[0]; // 'Workstream 1', seeded by resetState()
+  const b = addWorkstream('B');
+  const c = addWorkstream('C');
+  reorderWorkstream(a.id, c.id); // move A to where C is
+  const byOrder = workstreams.slice().sort((x, y) => x.order - y.order).map(w => w.name);
+  assertDeepEqual(byOrder, ['B', 'C', 'Workstream 1'], 'A should now sit where C was, pushing B and C up');
+});
+
+test('reorderWorkstream is blocked below Editor', function () {
+  const a = workstreams[0];
+  const b = addWorkstream('B');
+  const before = workstreams.map(w => w.order);
+  userRole = 'reviewer';
+  reorderWorkstream(a.id, b.id);
+  assertDeepEqual(workstreams.map(w => w.order), before, 'reordering must have been blocked below Editor');
+});
+
+test('dragStartWs/dropOnWs wires the sidebar\'s row drag-and-drop to reorderWorkstream', function () {
+  const a = workstreams[0];
+  const b = addWorkstream('B');
+  const fakeEvent = { dataTransfer: {}, preventDefault: () => {} };
+  dragStartWs(fakeEvent, b.id);
+  dropOnWs(fakeEvent, a.id);
+  assertEqual(workstreams.find(w => w.id === b.id).order, 0, 'B should have moved to where A was');
+  assertEqual(draggedWsId, null, 'the drag state should be cleared after a drop');
+});
+
+test('dropOnWs is a no-op when dropped back on the same workstream it was dragged from', function () {
+  const a = workstreams[0];
+  const before = workstreams.map(w => w.order);
+  const fakeEvent = { dataTransfer: {}, preventDefault: () => {} };
+  dragStartWs(fakeEvent, a.id);
+  dropOnWs(fakeEvent, a.id);
+  assertDeepEqual(workstreams.map(w => w.order), before);
+});
+
+test('renderSidebar renders a drag handle wired to dragStartWs for each real workstream at Editor+, and omits it below Editor', function () {
+  addWorkstream('B');
+  renderSidebar();
+  let html = document.getElementById('wsList').innerHTML;
+  workstreams.forEach(w => assertIncludes(html, `dragStartWs(event,'${w.id}')`));
+  const handleCount = (html.match(/dragStartWs\(event,/g) || []).length;
+  assertEqual(handleCount, workstreams.length, 'exactly one drag handle per real workstream — none for the "All workstreams" pseudo-row');
+
+  userRole = 'reviewer';
+  renderSidebar();
+  html = document.getElementById('wsList').innerHTML;
+  assertNotIncludes(html, 'dragStartWs', 'no drag handle should render below Editor');
+});

@@ -434,6 +434,12 @@
   .ws-row-edit { display: none; border: none; background: transparent; color: var(--text-faint); cursor: pointer; padding: 2px 4px; }
   .ws-row:hover .ws-row-edit { display: inline-flex; }
   .ws-row-edit:hover { color: var(--text); }
+  /* Same hover-reveal treatment as .ws-row-edit, right before it — a
+     persistent grip icon on every row (most of which never get reordered)
+     would just be visual noise at rest. */
+  .ws-row-drag { display: none; border: none; background: transparent; color: var(--text-faint); padding: 2px 4px; }
+  .ws-row:hover .ws-row-drag { display: inline-flex; }
+  .ws-row-drag:hover { color: var(--text); }
 
   .main { flex: 1; min-width: 0; overflow: auto; padding: 20px 24px; }
   .planning-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -1871,11 +1877,22 @@ function renderSidebar() {
     const editBtn = hasRole('editor')
       ? `<button class="ws-row-edit" onclick="event.stopPropagation(); openWorkstreamModal('${w.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>`
       : '';
-    return `<div class="ws-row ${filterWorkstreamId === w.id ? 'active' : ''}" onclick="setFilterWorkstream('${w.id}')">
+    // Drag-and-drop reordering, Editor+ only (workstream CRUD's own tier) —
+    // same pattern as the status board's own item reordering (see
+    // reorderItem()/dragStartItem()), just over the flat `workstreams`
+    // array instead of one grouped by anything. The drop target is the
+    // whole row, same reasoning as an item row's own dragAttrs: an area
+    // this size is a much easier drop target than the grip handle alone.
+    const dragHandle = hasRole('editor')
+      ? `<span class="row-icon-btn drag-handle ws-row-drag" draggable="true" ondragstart="dragStartWs(event,'${w.id}')" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>`
+      : '';
+    const dragAttrs = hasRole('editor') ? ` ondragover="event.preventDefault()" ondrop="dropOnWs(event,'${w.id}')"` : '';
+    return `<div class="ws-row ${filterWorkstreamId === w.id ? 'active' : ''}" onclick="setFilterWorkstream('${w.id}')"${dragAttrs}>
         <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
         <span class="ws-row-name">${esc(w.name)}</span>
         ${reviewBadge}
         <span class="ws-row-count">${count}</span>
+        ${dragHandle}
         ${editBtn}
       </div>`;
   }).join('');
@@ -2956,6 +2973,39 @@ function reorderItem(fromId, targetId) {
   const [moved] = wsItems.splice(fromIdx, 1);
   wsItems.splice(toIdx, 0, moved);
   wsItems.forEach((it, i) => { it.order = i; });
+  save(); render();
+}
+// Drag-and-drop reordering of workstreams in the shared sidebar — the exact
+// same pattern as reorderItem()/dragStartItem()/dropOnItem() above, just
+// over the flat `workstreams` array directly rather than one first filtered
+// down to a shared group — workstreams aren't nested inside anything else
+// to stay grouped by, so there's no equivalent of items' "same workstream
+// only" guard. draggedWsId is plain module-level state, not persisted,
+// exactly like draggedItemId.
+let draggedWsId = null;
+function dragStartWs(e, id) {
+  draggedWsId = id;
+  e.dataTransfer.effectAllowed = 'move';
+}
+function dropOnWs(e, targetId) {
+  e.preventDefault();
+  const fromId = draggedWsId;
+  draggedWsId = null;
+  if (!fromId || fromId === targetId) return;
+  reorderWorkstream(fromId, targetId);
+}
+// Moves the dragged workstream to sit where the drop-target workstream
+// currently is, then reassigns clean, contiguous order values (0,1,2,…) to
+// every workstream afterward — same "never needs a repair pass" reasoning
+// as reorderItem()'s own comment.
+function reorderWorkstream(fromId, targetId) {
+  if (!requireRole('editor')) return;
+  const fromIdx = workstreams.findIndex(w => w.id === fromId);
+  const toIdx = workstreams.findIndex(w => w.id === targetId);
+  if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+  const [moved] = workstreams.splice(fromIdx, 1);
+  workstreams.splice(toIdx, 0, moved);
+  workstreams.forEach((w, i) => { w.order = i; });
   save(); render();
 }
 function deleteItemFromModal() {
