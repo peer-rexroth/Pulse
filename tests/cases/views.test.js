@@ -186,6 +186,40 @@ test('updateMilestoneDateField updates a single date field on one milestone only
   assertEqual(items[0].milestones[1].actualDate, null, 'the other milestone should be untouched');
 });
 
+// ---------- Incomplete date input snaps back on blur (not a silent no-op) ----------
+// A native <input type="date"> reports '' for this.value until every
+// segment (day/month/year) is filled in. onblur only commits when a value
+// is present; a user-reported bug found that leaving an incomplete edit
+// there just did nothing, with no feedback, so the input kept showing
+// whatever partial text was typed — reading as "saved" until some later,
+// unrelated render (a mode switch, a status cycle) quietly snapped it back
+// to the real stored date. The else-branch fix snaps it back immediately.
+
+test('an item with no milestones — its inline Due input snaps back to the stored date on an incomplete edit, instead of silently doing nothing', function () {
+  const it = addItem({ name: 'No milestones', milestones: [], dueDate: '2026-08-01' });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `onblur="if(this.value) updateItemDateField('${it.id}','dueDate',this.value); else this.value='2026-08-01'"`);
+});
+
+test('an item with no milestones — its inline Start input snaps back to the stored date on an incomplete edit', function () {
+  const it = addItem({ name: 'No milestones', milestones: [], startDate: '2026-07-01' });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `onblur="if(this.value) updateItemDateField('${it.id}','startDate',this.value); else this.value='2026-07-01'"`);
+});
+
+test('a milestone sub-row\'s Due input snaps back to the stored date on an incomplete edit', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'A', dueDate: '2026-08-15', status: 'not-started', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `onblur="if(this.value) updateMilestoneDateField('${it.id}','m1','dueDate',this.value); else this.value='2026-08-15'"`);
+});
+
 test('an item row shows IT/Business/Budget tag badges colored by their current value', function () {
   const it = addItem({ name: 'Tagged', itStatus: 'red', businessStatus: 'amber', budgetStatus: 'green' });
   renderMain();

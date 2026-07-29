@@ -2099,12 +2099,21 @@ function itemRowHtml(it, reviewCycle) {
   // here rather than editable inputs; only an item with zero milestones has
   // a plan range worth hand-editing directly on the row, and only outside
   // Review — inside it, reviewCycle forces the read-only form regardless.
+  // onblur's `if(this.value)` guards against committing a still-incomplete
+  // native date (Chrome reports '' for one until every segment is filled) —
+  // but a user-reported bug found that leaving it there silently no-ops:
+  // the input keeps showing whatever partial text was typed, which reads as
+  // "saved" until the next unrelated render (a mode switch, a status cycle)
+  // quietly snaps it back to the real stored date, looking exactly like a
+  // spontaneous revert. The `else` branch now snaps the input back
+  // immediately on blur instead, so an incomplete edit is visibly rejected
+  // right away rather than silently and invisibly discarded.
   const planDatesHtml = (total || reviewCycle)
     ? `<span class="item-dates-computed" title="${total ? 'Computed from the earliest and latest milestone date (due or actual)' : 'Not editable during a review'}">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>`
     : `<span class="item-dates-inline">
-      ${dateInputHtml(it.startDate, `title="Start date" ${hasRole('editor') ? `onblur="if(this.value) updateItemDateField('${it.id}','startDate',this.value)"` : 'disabled'}`)}
+      ${dateInputHtml(it.startDate, `title="Start date" ${hasRole('editor') ? `onblur="if(this.value) updateItemDateField('${it.id}','startDate',this.value); else this.value='${it.startDate}'"` : 'disabled'}`)}
       <span class="item-dates-arrow">→</span>
-      ${dateInputHtml(it.dueDate, `title="Due date" ${hasRole('editor') ? `onblur="if(this.value) updateItemDateField('${it.id}','dueDate',this.value)"` : 'disabled'}`)}
+      ${dateInputHtml(it.dueDate, `title="Due date" ${hasRole('editor') ? `onblur="if(this.value) updateItemDateField('${it.id}','dueDate',this.value); else this.value='${it.dueDate}'"` : 'disabled'}`)}
     </span>`;
   // The item's own actualDate is still a real field (editable in the item
   // modal), just no longer shown/edited inline on the row — the "Actual"
@@ -2289,6 +2298,10 @@ function milestoneRowsHtml(it, reviewCycle) {
     // show (see actualHtml below). Due now matches: a real but empty
     // element, not the date-pill at all, while notApplicable.
     const dueEditable = hasRole('editor') && !m.notApplicable;
+    // onblur's else-branch snaps an incomplete edit back to the stored date
+    // immediately rather than silently no-oping — see planDatesHtml()'s own
+    // comment above for the full rationale (same fix, same bug, one level
+    // deeper).
     // Same "overdue" definition the dashboard already uses for items
     // (status !== 'complete' && dueDate < today) — a milestone still open
     // past its own Due date gets flagged the same way.
@@ -2298,7 +2311,7 @@ function milestoneRowsHtml(it, reviewCycle) {
       : (reviewCycle
           ? `<span class="item-dates-computed" ${dueOverdue ? 'style="color:var(--stat-red)"' : ''} title="${dueOverdue ? 'Overdue — ' : ''}Not editable during a review">${fmtDate(m.dueDate)}</span>`
           : `<span class="item-dates-inline">
-            ${dateInputHtml(m.dueDate, `title="${dueOverdue ? 'Overdue — ' : ''}Due date" ${dueEditable ? `onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)"` : 'disabled'}`, dueOverdue ? 'pill-overdue' : '')}
+            ${dateInputHtml(m.dueDate, `title="${dueOverdue ? 'Overdue — ' : ''}Due date" ${dueEditable ? `onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value); else this.value='${m.dueDate || ''}'"` : 'disabled'}`, dueOverdue ? 'pill-overdue' : '')}
           </span>`);
     // An unset Actual date starts hidden behind a muted "+" — it only needs
     // a value when a milestone actually finishes on a different date than
