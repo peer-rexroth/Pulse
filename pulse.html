@@ -625,6 +625,13 @@
     justify-self: start; background: none; padding: 0; border-radius: 0;
   }
   .minutes-action-item-row .date-pill:hover { background: none; }
+  /* The Due Date column's own content (icon + 80px input) nearly fills its
+     96px track, leaving almost no slack before the row's 6px column-gap —
+     unlike the Owner column, which has enough unused width that the same
+     6px gap still reads as a comfortable break. Without this, the delete
+     button sits close enough to the date to read as though it belongs to
+     the date pill rather than the row. */
+  .minutes-action-item-row .row-icon-btn { margin-left: 6px; }
   .minutes-action-item-row:last-child { border-bottom: none; }
   .minutes-action-items-header {
     font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
@@ -2792,20 +2799,30 @@ function toggleHistoryShowAll(wsId) {
 // point of an action item and a free-text blob buries that. Every field
 // stays fully hand-editable regardless of how (or whether) auto-fill split
 // it — paste-and-parse is a convenience, not the source of truth.
-// 'openPoints' is recognized as a header but deliberately has no bucket of
-// its own below — there is no Open Points field anywhere in this app (see
-// the meeting-minutes modal). Without recognizing the header at all,
-// "Open Points" in a real source document wouldn't be seen as a section
-// boundary, and everything under it would keep getting appended to
-// whichever *real* section came before it (Action Items, typically) instead
-// of being excluded — this was a real bug, reported by a user whose source
-// document had an Open Points section between Action Items and Decisions.
+// 'openPoints'/'attendees'/'discussionPoints' are recognized as headers but
+// deliberately have no bucket of their own below — there's no Open Points/
+// Attendees/Discussion Points field anywhere in this app (see the meeting-
+// minutes modal). Without recognizing a header at all, that section in a
+// real source document wouldn't be seen as a section boundary, and
+// everything under it would keep getting appended to whichever *real*
+// section came before it instead of being excluded. Open Points was a real
+// bug report this way (a source document had one between Action Items and
+// Decisions); Attendees/Discussion Points is the same shape of bug — a
+// narrative-style minutes doc with an "Attendees" list and a "Discussion
+// Points" section but no explicit "Summary" header of its own was landing
+// with *both* of those, plus the actual free-text intro, all lumped into
+// Summary (via the "no headers recognized at all" fallback below, since
+// neither of those two words matched anything) rather than excluded like
+// Open Points already was.
+const MINUTES_EXCLUDED_SECTIONS = new Set(['openPoints', 'attendees', 'discussionPoints']);
 const MINUTES_SECTIONS = [
-  { key: 'summary', re: /^(?:meeting\s*)?summary\b[:\-–—]?\s*/i },
+  { key: 'summary', re: /^(?:(?:meeting|executive)\s*)?summary\b[:\-–—]?\s*/i },
   { key: 'actionItems', re: /^action\s*items?\b[:\-–—]?\s*/i },
   { key: 'decisions', re: /^decisions?\b[:\-–—]?\s*/i },
   { key: 'openPoints', re: /^open\s*points?\b[:\-–—]?\s*/i },
-  { key: 'nextSteps', re: /^next\s*steps?\b[:\-–—]?\s*/i }
+  { key: 'nextSteps', re: /^next\s*steps?\b[:\-–—]?\s*/i },
+  { key: 'attendees', re: /^(?:meeting\s*)?attendees\b[:\-–—]?\s*/i },
+  { key: 'discussionPoints', re: /^discussion(?:\s*points?)?\b[:\-–—]?\s*/i }
 ];
 function parseMeetingMinutes(text) {
   const buckets = { summary: [], actionItems: [], decisions: [], nextSteps: [] };
@@ -2826,16 +2843,16 @@ function parseMeetingMinutes(text) {
     if (section) {
       current = section.key;
       anyHeaderFound = true;
-      // Open Points has no bucket — its own inline "rest" text (on the
-      // header line itself, e.g. "Open Points: none") is excluded too, same
-      // as every line that follows until the next recognized header.
-      if (current !== 'openPoints') {
+      // Excluded sections have no bucket — their own inline "rest" text (on
+      // the header line itself, e.g. "Open Points: none") is excluded too,
+      // same as every line that follows until the next recognized header.
+      if (!MINUTES_EXCLUDED_SECTIONS.has(current)) {
         const rest = cleaned.replace(section.re, '').trim();
         if (rest) buckets[current].push(rest);
       }
       return;
     }
-    if (current === 'openPoints') return; // excluded — see MINUTES_SECTIONS' comment
+    if (MINUTES_EXCLUDED_SECTIONS.has(current)) return; // excluded — see MINUTES_SECTIONS' comment
     (current ? buckets[current] : preamble).push(rawLine);
   });
   // Only a completely unstructured paste (no headers recognized anywhere)

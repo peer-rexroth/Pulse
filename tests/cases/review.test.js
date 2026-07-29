@@ -538,6 +538,22 @@ test('parseMeetingMinutes recognizes "Meeting Summary" as well as bare "Summary"
   assertEqual(parsed.summary, 'Kickoff went well.');
 });
 
+// User-reported: their source minutes templates head the summary section
+// "Meeting Summary" or "Executive Summary" — the latter wasn't recognized
+// at all (only a bare "meeting" prefix was), so an "Executive Summary"
+// document fell through to the same "no headers recognized" trap as the
+// Attendees/Discussion Points case above.
+test('parseMeetingMinutes recognizes "Executive Summary" as well', function () {
+  const parsed = parseMeetingMinutes('Executive Summary\nKickoff went well.');
+  assertEqual(parsed.summary, 'Kickoff went well.');
+});
+
+test('parseMeetingMinutes does not treat "Meeting Executive Summary" as a valid header — the two prefixes are alternatives, not stackable', function () {
+  const parsed = parseMeetingMinutes('Meeting Executive Summary\nKickoff went well.\nDecisions\nApproved budget.');
+  assertEqual(parsed.summary, '', 'not a real heading, so no header should match and this text is unlabeled lead-in — dropped, not folded into Summary');
+  assertEqual(parsed.decisions, 'Approved budget.');
+});
+
 test('parseMeetingMinutes excludes an Open Points section entirely, rather than leaking it into whichever section precedes it', function () {
   const text = 'Action Items\nAlice to update the runbook.\nOpen Points\nStill need sign-off from Legal.\nAnother open point.\nDecisions\nGo live on the 15th.';
   const parsed = parseMeetingMinutes(text);
@@ -583,6 +599,50 @@ test('parseMeetingMinutes still uses an explicit Summary header even when it isn
   const parsed = parseMeetingMinutes('Decisions\nApproved budget.\nSummary\nKickoff went well.');
   assertEqual(parsed.summary, 'Kickoff went well.');
   assertEqual(parsed.decisions, 'Approved budget.');
+});
+
+// Regression test: a narrative-style minutes doc with an "Attendees" list
+// and a "Discussion Points" section, but no literal "Summary"/"Decisions"/
+// "Action Items"/"Next Steps" header anywhere, used to match neither of
+// those two words at all — so anyHeaderFound stayed false and the "no
+// headers recognized" fallback kicked in, dumping the intro paragraph *and*
+// the attendee list *and* every discussion bullet into Summary wholesale
+// (user-reported: "meeting summary currently takes too much... other
+// sections bleed into summary"). Attendees/Discussion Points are now
+// recognized-but-excluded headers, same pattern as Open Points, so their
+// content no longer bleeds anywhere — Summary correctly ends up empty for
+// this kind of document instead (there being no actual Summary header to
+// draw from), same as any other doc with real structure but no Summary
+// section (see the "drops unlabeled text" test above).
+test('parseMeetingMinutes excludes an Attendees list and a Discussion Points section, rather than dumping them into Summary', function () {
+  const text = `This status meeting covered progress on the Nimbus Mobile App Redesign, focusing on the onboarding flow rebuild, a critical crash bug, marketing launch timing, and support readiness.
+Meeting Attendees
+• Priya Nair (Product Manager)
+• Tom Reyes (Engineering Lead)
+Discussion Points
+• The onboarding flow rebuild is roughly 80% complete, but was blocked on complex animation transitions.
+• A crash bug (ticket NIM-482) was identified as a null pointer issue.`;
+  const parsed = parseMeetingMinutes(text);
+  assertEqual(parsed.summary, '', 'no literal Summary header exists in this doc, so nothing should land there');
+  assertFalse(parsed.summary.includes('Priya Nair'), 'the attendee list must not bleed into Summary');
+  assertFalse(parsed.summary.includes('animation transitions'), 'Discussion Points content must not bleed into Summary');
+  assertEqual(parsed.actionItems, '');
+  assertEqual(parsed.decisions, '');
+  assertEqual(parsed.nextSteps, '');
+});
+
+test('parseMeetingMinutes excludes inline content on the "Attendees:"/"Discussion Points:" header lines themselves, and resumes normally at the next real header', function () {
+  const text = 'Attendees: Alice, Bob\nDiscussion Points: covered budget and timeline\nDecisions\nGo live on the 15th.';
+  const parsed = parseMeetingMinutes(text);
+  assertFalse(parsed.decisions.includes('Alice'));
+  assertFalse(parsed.decisions.includes('budget'));
+  assertEqual(parsed.decisions, 'Go live on the 15th.', 'parsing should resume normally once a real header follows');
+});
+
+test('parseMeetingMinutes still recognizes an explicit Summary header even alongside Attendees/Discussion Points', function () {
+  const text = 'Summary\nKickoff went well.\nAttendees\nAlice, Bob\nDiscussion Points\nTimeline looks tight.';
+  const parsed = parseMeetingMinutes(text);
+  assertEqual(parsed.summary, 'Kickoff went well.');
 });
 
 test('linesToActionItems turns each non-blank line into its own row with Owner/Due Date left blank', function () {
