@@ -560,6 +560,24 @@
      row's own column widths. milestoneHeaderHtml()'s "N/A"/"Status" labels
      span the identical 10/12 range for the same reason. */
   .milestone-status-cell { display: flex; align-items: center; gap: 6px; }
+  /* Without a fixed width here, a flex child sizes to its own text — so
+     "Complete" and "Not Started" (this cell's shortest and longest labels)
+     leave the N/A toggle that follows sitting at a different x position
+     row to row, a user-reported alignment complaint. min-width (not width)
+     so a label doesn't clip if it's ever the widest thing in this cell;
+     text-align:center keeps a short label looking deliberately centered in
+     that reserved width rather than hugging its left edge. 92px comfortably
+     fits "Not Started" at this font-size/weight with room to spare.
+     Targets the cell's first child structurally (:first-child), not the
+     .status-badge class specifically — milestoneHeaderHtml()'s own plain
+     "Status" text label is this cell's first child too, and a second
+     user-reported alignment bug showed exactly what happens when only the
+     data row's badge got this treatment: the header's shorter, unsized
+     "Status" word left its own "N/A" label sitting well to the left of
+     where the real icon renders below it. Keying off structural position
+     instead of a shared class means the header and every data row stay
+     locked together automatically, with no second rule to keep in sync. */
+  .milestone-status-cell > :first-child { min-width: 92px; box-sizing: border-box; text-align: center; white-space: nowrap; }
 
   /* Modal */
   .modal-bg {
@@ -2052,7 +2070,7 @@ function milestoneHeaderHtml(reviewCycle) {
   // hidden, is the same fix already applied to the Action Log's own header
   // for the identical reason — see actionLogHtml() in CLAUDE.md.
   const reviewLabel = reviewCycle ? `<span class="review-confirm-toggle" style="grid-column:12;visibility:hidden"><i class="fa-solid fa-circle-check"></i></span>` : '';
-  // "N/A" then "Status" share one flex cell spanning columns 10/12 (both
+  // "Status" then "N/A" share one flex cell spanning columns 10/12 (both
   // trailing tracks, 90px + 56px) — matching milestoneRowsHtml()'s own
   // .milestone-status-cell exactly, rather than each claiming a whole
   // track, so the toggle doesn't inherit a full 90px track sized for a
@@ -2060,7 +2078,7 @@ function milestoneHeaderHtml(reviewCycle) {
   // matching whatever the data rows actually use, the same alignment
   // invariant every other column here already depends on.
   return `<div class="milestone-header">
-      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span class="milestone-status-cell" style="grid-column:10/12"><span>N/A</span><span>Status</span></span>${reviewLabel}
+      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span class="milestone-status-cell" style="grid-column:10/12"><span>Status</span><span>N/A</span></span>${reviewLabel}
     </div>`;
 }
 // Emits the same 11 grid cells itemRowHtml() does (chevron|name|milestones|
@@ -2117,16 +2135,22 @@ function milestoneRowsHtml(it, reviewCycle) {
     // recording when something actually finished is exactly what a review
     // pass is for. Below Editor, both are disabled the same way the item's
     // own Plan dates are (see planDatesHtml above). A milestone marked
-    // notApplicable (see toggleMilestoneNotApplicable()) disables both
-    // outright, on top of either of those — its dates no longer feed into
-    // anything (see computedDateRangeFromMilestones()), so editing them
-    // would be a no-op that looks like it did something.
+    // notApplicable (see toggleMilestoneNotApplicable()) clears both dates
+    // outright, so rendering a *disabled-but-still-visible* empty pill here
+    // (icon + blank "tt.mm.jjjj" placeholder) read as a lingering, editable-
+    // looking field for a value that's deliberately gone — a user-reported
+    // inconsistency with Actual, which already collapses to a genuinely
+    // blank cell rather than a disabled ghost/pill once there's nothing to
+    // show (see actualHtml below). Due now matches: a real but empty
+    // element, not the date-pill at all, while notApplicable.
     const dueEditable = hasRole('editor') && !m.notApplicable;
-    const dueHtml = reviewCycle
-      ? `<span class="item-dates-computed" title="Not editable during a review">${fmtDate(m.dueDate)}</span>`
-      : `<span class="item-dates-inline">
-        ${dateInputHtml(m.dueDate, `title="${m.notApplicable ? 'Not applicable' : 'Due date'}" ${dueEditable ? `onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)"` : 'disabled'}`)}
-      </span>`;
+    const dueHtml = m.notApplicable
+      ? `<span></span>`
+      : (reviewCycle
+          ? `<span class="item-dates-computed" title="Not editable during a review">${fmtDate(m.dueDate)}</span>`
+          : `<span class="item-dates-inline">
+            ${dateInputHtml(m.dueDate, `title="Due date" ${dueEditable ? `onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)"` : 'disabled'}`)}
+          </span>`);
     // An unset Actual date starts hidden behind a muted "+" — it only needs
     // a value when a milestone actually finishes on a different date than
     // planned, so a permanently-empty pill here would misread as a required
@@ -2152,18 +2176,18 @@ function milestoneRowsHtml(it, reviewCycle) {
       : (hasRole('editor')
           ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(statusLabel(m.status))}</button>`
           : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`);
-    // The Not Applicable toggle sits immediately before the Status badge — a
-    // user-requested swap from the original Status-then-N/A order — inside
-    // one shared .milestone-status-cell spanning columns 10/12 (both
-    // trailing tracks, 90px + 56px — see that class's own CSS comment for
-    // why: a whole 90px track sized for Status's text label would leave the
-    // icon-only toggle stretched/floating no matter how it's aligned within
-    // it, a user-reported "too broad" bug). Always shows an icon (outline
-    // when off, filled when on) rather than being omitted when off, same
-    // "always a real, visible icon, just not clickable below the gating
-    // role" convention .review-confirm-toggle already uses.
-    // milestoneHeaderHtml()'s own "N/A"/"Status" labels must keep matching
-    // this order and span.
+    // The Not Applicable toggle sits immediately after the Status badge —
+    // back to the original Status-then-N/A order (flipped, then flipped
+    // back again per user request) — inside one shared .milestone-status-
+    // cell spanning columns 10/12 (both trailing tracks, 90px + 56px — see
+    // that class's own CSS comment for why: a whole 90px track sized for
+    // Status's text label would leave the icon-only toggle stretched/
+    // floating no matter how it's aligned within it, a user-reported "too
+    // broad" bug). Always shows an icon (outline when off, filled when on)
+    // rather than being omitted when off, same "always a real, visible
+    // icon, just not clickable below the gating role" convention
+    // .review-confirm-toggle already uses. milestoneHeaderHtml()'s own
+    // "Status"/"N/A" labels must keep matching this order and span.
     const naHtml = hasRole('editor')
       ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></button>`
       : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></span>`;
@@ -2178,8 +2202,8 @@ function milestoneRowsHtml(it, reviewCycle) {
         ${actualHtml}
       </span>
       <span class="milestone-status-cell" style="grid-column:10/12">
-        ${naHtml}
         ${statusHtml}
+        ${naHtml}
       </span>
       ${reviewCellHtml}
     </div>`;
@@ -2753,10 +2777,9 @@ function closeItemModal() {
 // comment), and Due/Actual disable outright since toggleEditingMilestone-
 // NotApplicable() clears both the moment it's turned on. The name field
 // stays editable either way — renaming a milestone that happens to be
-// marked Not Applicable is still a normal edit. The toggle itself sits
-// *before* the status field (a user-requested swap from the original
-// order), matching milestoneRowsHtml()'s own column order on the status
-// board.
+// marked Not Applicable is still a normal edit. The toggle sits *after*
+// the status field (flipped, then flipped back again per user request),
+// matching milestoneRowsHtml()'s own column order on the status board.
 function renderMilestonesEditor() {
   const editable = hasRole('editor');
   const dis = editable ? '' : 'disabled';
@@ -2776,8 +2799,8 @@ function renderMilestonesEditor() {
       <input type="text" value="${esc(m.name)}" title="Milestone name" ${dis} oninput="editingMilestones[${idx}].name = this.value">
       <input type="date" value="${esc(m.dueDate)}" title="Due date" ${datesDis} oninput="editingMilestones[${idx}].dueDate = this.value; updateItemStatusFieldMode();">
       <input type="date" value="${esc(m.actualDate || '')}" title="Actual completion date" ${datesDis} oninput="editingMilestones[${idx}].actualDate = this.value || null; updateItemStatusFieldMode();">
-      ${naToggleHtml}
       ${statusHtml}
+      ${naToggleHtml}
       ${editable ? `<button class="row-icon-btn" onclick="removeMilestoneRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>` : '<span></span>'}
     </div>`;
   }).join('');

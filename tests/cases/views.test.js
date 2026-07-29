@@ -302,7 +302,7 @@ test('milestoneRowsHtml renders the Not Applicable toggle wired to toggleMilesto
   assertIncludes(html, 'fa-solid fa-ban', 'the marked milestone should show the filled icon');
 });
 
-test('the milestone header shows N/A immediately before Status, matching the data rows\' own column order', function () {
+test('the milestone header shows Status immediately before N/A, matching the data rows\' own column order', function () {
   const it = addItem({
     name: 'Parent',
     milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null }]
@@ -312,10 +312,10 @@ test('the milestone header shows N/A immediately before Status, matching the dat
   const html = document.getElementById('main').innerHTML;
   const headerIdx = html.indexOf('milestone-header');
   const header = html.slice(headerIdx, headerIdx + 400);
-  assertIncludes(header, '<span>N/A</span><span>Status</span>', 'N/A must be the column immediately before Status in the header');
+  assertIncludes(header, '<span>Status</span><span>N/A</span>', 'Status must be the column immediately before N/A in the header');
 });
 
-test('a milestone row\'s Not Applicable toggle sits immediately before its Status badge, matching the header\'s own column order', function () {
+test('a milestone row\'s Status badge sits immediately before its Not Applicable toggle, matching the header\'s own column order', function () {
   const it = addItem({
     name: 'Parent',
     milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'green', actualDate: null }]
@@ -325,7 +325,7 @@ test('a milestone row\'s Not Applicable toggle sits immediately before its Statu
   const html = document.getElementById('main').innerHTML;
   const naIdx = html.indexOf(`toggleMilestoneNotApplicable('${it.id}','m1')`);
   const statusIdx = html.indexOf(`cycleMilestoneStatus('${it.id}','m1')`);
-  assertTrue(naIdx !== -1 && statusIdx !== -1 && naIdx < statusIdx, 'the Not Applicable toggle must render before the Status badge in DOM order');
+  assertTrue(naIdx !== -1 && statusIdx !== -1 && statusIdx < naIdx, 'the Status badge must render before the Not Applicable toggle in DOM order');
 });
 
 test('the Not Applicable toggle and Status badge share one flex cell spanning both trailing columns, rather than the toggle claiming a whole 90px track on its own', function () {
@@ -356,7 +356,21 @@ test('a notApplicable milestone row freezes its status badge to a plain "N/A" la
   assertNotIncludes(html, `cycleMilestoneStatus('${it.id}','m1')`, 'the frozen badge must not still be clickable to cycle status');
 });
 
-test('a notApplicable milestone\'s Due/Actual date inputs are disabled', function () {
+test('a notApplicable milestone\'s Due cell renders as genuinely empty — no date pill at all, not just a disabled one', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Skipped', dueDate: null, status: 'not-started', actualDate: null, notApplicable: true }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  const rowIdx = html.indexOf('milestone-sub-row', html.indexOf('milestone-sub-row') + 1); // the data row, not the header
+  const row = html.slice(rowIdx, rowIdx + 800);
+  assertNotIncludes(row, 'item-dates-inline', 'no date-pill wrapper should render for Due while notApplicable');
+  assertNotIncludes(row, '<input type="date"', 'no date input at all — matching how Actual already collapses to nothing when empty');
+});
+
+test('a notApplicable milestone\'s leftover Actual date (set before it was marked notApplicable) still renders as a disabled — not hidden — pill, unlike Due which always hides', function () {
   const it = addItem({
     name: 'Parent',
     milestones: [{ id: 'm1', name: 'Skipped', dueDate: todayStr(), status: 'not-started', actualDate: '2026-01-01', notApplicable: true }]
@@ -365,7 +379,7 @@ test('a notApplicable milestone\'s Due/Actual date inputs are disabled', functio
   renderMain();
   const html = document.getElementById('main').innerHTML;
   const dateInputCount = (html.match(/<input type="date"[^>]*disabled/g) || []).length;
-  assertTrue(dateInputCount >= 2, 'both Due and Actual inputs should render disabled while notApplicable');
+  assertEqual(dateInputCount, 1, 'only Actual should still render a (disabled) date input here — Due always hides regardless of its own value');
 });
 
 test('the Not Applicable toggle renders as an inert (non-clickable) icon below Editor, still showing the correct on/off state', function () {
