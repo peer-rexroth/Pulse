@@ -905,7 +905,7 @@
       </div>
     </div>
   </div>
-  <button class="btn btn-sm" id="tabAdmin" onclick="setMode('admin')"><i class="fa-solid fa-sliders"></i> Admin</button>
+  <button class="btn btn-sm" id="tabAdmin" onclick="setMode('admin')"><i class="fa-solid fa-sliders"></i> Settings</button>
   <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileImport(event)">
   <button class="icon-btn" id="roleBtn" onclick="openRoleModal()" title="Switch role"><i class="fa-solid" id="roleBtnIcon"></i></button>
   <button class="icon-btn" onclick="openThemeModal()" title="Color scheme"><i class="fa-solid fa-palette"></i></button>
@@ -1129,7 +1129,7 @@
 <div class="modal-bg" id="roleModalBg">
   <div class="modal" style="width:440px">
     <h3 id="roleModalTitle">Choose your role</h3>
-    <p id="roleModalIntro">This is a workflow setting, not a security boundary — Pulse has no accounts or server, so it only guides what's shown/enabled in the UI. The role you pick is saved to this browser only, never written to a shared/synced data file — but Reviewer/Editor/Admin can each optionally require a password (set by an Admin, under Admin &gt; Role Passwords) to cut down on accidental switches. Only a salted hash of that password is stored in the shared data file, not the password itself — but the check still runs in this page's own code, so it's a soft deterrent, not real access control.</p>
+    <p id="roleModalIntro">This is a workflow setting, not a security boundary — Pulse has no accounts or server, so it only guides what's shown/enabled in the UI. The role you pick is saved to this browser only, never written to a shared/synced data file — but Reviewer/Editor/Admin can each optionally require a password (set by an Admin, under Settings &gt; Role Passwords) to cut down on accidental switches. Only a salted hash of that password is stored in the shared data file, not the password itself — but the check still runs in this page's own code, so it's a soft deterrent, not real access control.</p>
     <div class="theme-options" id="roleOptions"></div>
     <div id="roleModalPasswordStep" style="display:none">
       <p id="roleModalPasswordIntro" style="margin-top:0"></p>
