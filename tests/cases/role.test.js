@@ -6,27 +6,30 @@
 
 // ---------- hasRole() / roleLevel() ladder ----------
 
+// ROLES is ['visitor', 'reviewer', 'editor', 'admin'] — Reviewer sits below
+// Editor (a user-requested swap from the original order), so an Editor also
+// passes hasRole('reviewer'), but a Reviewer does not pass hasRole('editor').
 test('hasRole treats ROLES as an increasing ladder — a higher role passes every lower check too', function () {
   userRole = 'admin';
   assertTrue(hasRole('visitor'));
-  assertTrue(hasRole('editor'));
   assertTrue(hasRole('reviewer'));
+  assertTrue(hasRole('editor'));
   assertTrue(hasRole('admin'));
 
-  userRole = 'reviewer';
+  userRole = 'editor';
   assertTrue(hasRole('visitor'));
-  assertTrue(hasRole('editor'));
   assertTrue(hasRole('reviewer'));
+  assertTrue(hasRole('editor'));
   assertFalse(hasRole('admin'));
 
-  userRole = 'editor';
-  assertTrue(hasRole('editor'));
-  assertFalse(hasRole('reviewer'));
+  userRole = 'reviewer';
+  assertTrue(hasRole('reviewer'));
+  assertFalse(hasRole('editor'));
   assertFalse(hasRole('admin'));
 
   userRole = 'visitor';
   assertTrue(hasRole('visitor'));
-  assertFalse(hasRole('editor'));
+  assertFalse(hasRole('reviewer'));
 });
 
 test('requireRole shows a toast naming the missing role and returns false when the current role falls short; true and silent otherwise', function () {
@@ -197,7 +200,7 @@ test('startReviewCycle, toggleReviewConfirm, and completeReviewCycle are all blo
   const it = { id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X', owner: '', notes: '', status: 'green', itBudget: 'green', businessImpact: 'green', budgetImpact: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() };
   items.push(it);
 
-  userRole = 'editor';
+  userRole = 'visitor';
   startReviewCycle(workstreams[0].id);
   assertEqual(reviewCycles.length, 0, 'starting a review cycle must have been blocked below Reviewer');
 
@@ -206,7 +209,7 @@ test('startReviewCycle, toggleReviewConfirm, and completeReviewCycle are all blo
   const cycle = activeReviewCycle(workstreams[0].id);
   assertTrue(!!cycle, 'sanity check — Admin can start a cycle');
 
-  userRole = 'editor';
+  userRole = 'visitor';
   toggleReviewConfirm(cycle.id, it.id);
   assertEqual(cycle.confirmations.length, 0, 'confirming must have been blocked below Reviewer');
 
@@ -221,7 +224,7 @@ test('toggleActionLogItem and deleteActionLogItem are both blocked below Reviewe
   w.actionLog = [{ id: genId(), text: 'Do the thing', owner: '', dueDate: null, completed: false, completedAt: null, cycleId: null, addedAt: Date.now() }];
   const itemId = w.actionLog[0].id;
 
-  userRole = 'editor';
+  userRole = 'visitor';
   toggleActionLogItem(w.id, itemId);
   assertEqual(w.actionLog[0].completed, false, 'toggling must have been blocked below Reviewer');
 
@@ -233,7 +236,7 @@ test('the Review "Start review cycle" button is replaced with an explanatory lin
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
 
-  userRole = 'editor';
+  userRole = 'visitor';
   renderReview();
   let html = document.getElementById('main').innerHTML;
   assertNotIncludes(html, 'startReviewCycle', 'no clickable Start button below Reviewer');
@@ -252,7 +255,7 @@ test('saveMinutes and removeMinutes are both blocked below Reviewer', function (
   editingMinutesActionItems = [];
   document.getElementById('minutesSummaryInput').value = 'A summary';
 
-  userRole = 'editor';
+  userRole = 'visitor';
   saveMinutes();
   assertEqual(cycle.minutes, null, 'saving must have been blocked below Reviewer');
 

@@ -1266,12 +1266,12 @@ const MODES = ['planning', 'review', 'dashboard', 'admin'];
 // ROLES is an increasing ladder — each role can do everything the one before
 // it can, plus more (see hasRole()); it is never treated as a set of
 // independent, non-overlapping permissions.
-const ROLES = ['visitor', 'editor', 'reviewer', 'admin'];
+const ROLES = ['visitor', 'reviewer', 'editor', 'admin'];
 const ROLE_META = {
   visitor: { label: 'Visitor', icon: 'fa-eye', desc: 'View Planning, Review, and Dashboard — no edits.' },
-  editor: { label: 'Editor', icon: 'fa-pen', desc: 'Everything a Visitor can see, plus create/edit/delete workstreams, scope items, milestones, and categories.' },
-  reviewer: { label: 'Reviewer', icon: 'fa-clipboard-check', desc: 'Everything an Editor can do, plus run review cycles, attach meeting minutes, and manage the Action Log.' },
-  admin: { label: 'Admin', icon: 'fa-user-shield', desc: 'Everything a Reviewer can do, plus import/restore data and manage file sync.' }
+  reviewer: { label: 'Reviewer', icon: 'fa-clipboard-check', desc: 'Everything a Visitor can see, plus run review cycles, attach meeting minutes, and manage the Action Log.' },
+  editor: { label: 'Editor', icon: 'fa-pen', desc: 'Everything a Reviewer can do, plus create/edit/delete workstreams, scope items, milestones, and categories.' },
+  admin: { label: 'Admin', icon: 'fa-user-shield', desc: 'Everything an Editor can do, plus import/restore data and manage file sync.' }
 };
 function roleLevel(r) { return ROLES.indexOf(r); }
 // True once the *current* role's level is at or above minRole's — e.g.
