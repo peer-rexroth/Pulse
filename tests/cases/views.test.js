@@ -312,7 +312,7 @@ test('the milestone header shows Status immediately before N/A, matching the dat
   const html = document.getElementById('main').innerHTML;
   const headerIdx = html.indexOf('milestone-header');
   const header = html.slice(headerIdx, headerIdx + 400);
-  assertIncludes(header, '<span>Status</span><span>N/A</span>', 'Status must be the column immediately before N/A in the header');
+  assertIncludes(header, '<span>Status</span><span style="justify-self:center">N/A</span>', 'Status must be the column immediately before N/A in the header');
 });
 
 test('a milestone row\'s Status badge sits immediately before its Not Applicable toggle, matching the header\'s own column order', function () {
