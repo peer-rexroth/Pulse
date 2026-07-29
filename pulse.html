@@ -579,9 +579,12 @@
      pill noticeably bigger than the item row's own (unconstrained,
      content-sized) status pill — a second, later user-reported complaint.
      Reserving the width on the *column* instead, with the child merely
-     centered in it (justify-self:center, not stretched), keeps the pill
-     itself sized identically everywhere while still reserving the same
-     96px-equivalent width every row needs for the N/A toggle to line up. */
+     positioned in it rather than stretched, keeps the pill itself sized
+     identically everywhere while still reserving the same width every row
+     needs for the N/A toggle to line up. justify-self:start (left), not
+     center — every header in this table is left-aligned, an explicit user
+     request that applies here too, to the Status pill/label along with it
+     (see the comment just below for why the two can't be split apart). */
   .milestone-status-cell { display: grid; grid-template-columns: 92px auto; align-items: center; gap: 6px; }
   /* Targets the cell's first child structurally (:first-child), not the
      .status-badge class specifically — milestoneHeaderHtml()'s own plain
@@ -591,8 +594,12 @@
      "Status" word left its own "N/A" label sitting well to the left of
      where the real icon renders below it. Keying off structural position
      instead of a shared class means the header and every data row stay
-     locked together automatically, with no second rule to keep in sync. */
-  .milestone-status-cell > :first-child { justify-self: center; white-space: nowrap; }
+     locked together automatically, with no second rule to keep in sync —
+     including this alignment: left-aligning just the header text while
+     leaving every row's actual pill centered would reintroduce that exact
+     "header not aligned with the pill" bug, just flipped left/center
+     instead of left/unsized. */
+  .milestone-status-cell > :first-child { justify-self: start; white-space: nowrap; }
 
   /* Modal */
   .modal-bg {
@@ -2213,7 +2220,7 @@ function milestoneHeaderHtml(reviewCycle) {
   // matching whatever the data rows actually use, the same alignment
   // invariant every other column here already depends on.
   return `<div class="milestone-header">
-      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span style="text-align:center">Due</span><span style="text-align:center">Actual</span><span class="milestone-status-cell" style="grid-column:10/12"><span>Status</span><span style="justify-self:center">N/A</span></span>${reviewLabel}
+      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span class="milestone-status-cell" style="grid-column:10/12"><span>Status</span><span>N/A</span></span>${reviewLabel}
     </div>`;
 }
 // Emits the same 11 grid cells itemRowHtml() does (chevron|name|milestones|
@@ -4247,18 +4254,17 @@ function actionLogHtml(w) {
   // outright with a fully explicit 8-column list (see that CSS rule's own
   // comment), so every column here has a pinned width regardless of whether
   // a given row (or this header) puts anything in it. Delete/the confirm
-  // toggle (7/8) share one "Actions" label spanning both columns, centered
-  // over the two icon buttons beneath it — a user-reported gap, since every
-  // other column here has its own header text.
+  // toggle (7/8) share one "Actions" label spanning both columns — every
+  // header label here is left-aligned, an explicit user request.
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header">
         <span style="grid-column:1">Action Item</span>
-        <span style="grid-column:2;text-align:center">Owner</span>
-        <span style="grid-column:3;text-align:center">Due Date</span>
-        <span style="grid-column:4;text-align:center">Source</span>
-        <span style="grid-column:5;text-align:center">Created</span>
-        <span style="grid-column:6;text-align:center">Closed</span>
-        <span style="grid-column:7/9;text-align:center">Actions</span>
+        <span style="grid-column:2">Owner</span>
+        <span style="grid-column:3">Due Date</span>
+        <span style="grid-column:4">Source</span>
+        <span style="grid-column:5">Created</span>
+        <span style="grid-column:6">Closed</span>
+        <span style="grid-column:7/9">Actions</span>
       </div>
       ${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}
     </div>`;
@@ -4281,13 +4287,13 @@ function allWorkstreamsActionLogHtml() {
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header with-ws">
         <span style="grid-column:1">Action Item</span>
-        <span style="grid-column:2;text-align:center">Workstream</span>
-        <span style="grid-column:3;text-align:center">Owner</span>
-        <span style="grid-column:4;text-align:center">Due Date</span>
-        <span style="grid-column:5;text-align:center">Source</span>
-        <span style="grid-column:6;text-align:center">Created</span>
-        <span style="grid-column:7;text-align:center">Closed</span>
-        <span style="grid-column:8/10;text-align:center">Actions</span>
+        <span style="grid-column:2">Workstream</span>
+        <span style="grid-column:3">Owner</span>
+        <span style="grid-column:4">Due Date</span>
+        <span style="grid-column:5">Source</span>
+        <span style="grid-column:6">Created</span>
+        <span style="grid-column:7">Closed</span>
+        <span style="grid-column:8/10">Actions</span>
       </div>
       ${sortedActionLog(entries, x => x.a).map(({ w, a }) => actionLogRowHtml(w, a, true)).join('')}
     </div>`;
@@ -4414,8 +4420,8 @@ function decisionLogHtml(w) {
   return `<div class="action-log-list">
       <div class="item-row decision-log-row decision-log-header">
         <span style="grid-column:1">Decision</span>
-        <span style="grid-column:2;text-align:center">Source</span>
-        <span style="grid-column:3;text-align:center">Logged</span>
+        <span style="grid-column:2">Source</span>
+        <span style="grid-column:3">Logged</span>
         <span style="grid-column:4"></span>
       </div>
       ${sortedDecisionLog(list).map(d => decisionLogRowHtml(w, d)).join('')}
@@ -4435,9 +4441,9 @@ function allWorkstreamsDecisionLogHtml() {
   return `<div class="action-log-list">
       <div class="item-row decision-log-row decision-log-header with-ws">
         <span style="grid-column:1">Decision</span>
-        <span style="grid-column:2;text-align:center">Workstream</span>
-        <span style="grid-column:3;text-align:center">Source</span>
-        <span style="grid-column:4;text-align:center">Logged</span>
+        <span style="grid-column:2">Workstream</span>
+        <span style="grid-column:3">Source</span>
+        <span style="grid-column:4">Logged</span>
         <span style="grid-column:5"></span>
       </div>
       ${sortedDecisionLog(entries, x => x.d).map(({ w, d }) => decisionLogRowHtml(w, d, true)).join('')}

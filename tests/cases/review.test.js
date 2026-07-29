@@ -1609,11 +1609,11 @@ test('actionLogHtml\'s header and data rows agree on where Owner/Due Date/Source
   const html = document.getElementById('main').innerHTML;
   const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 500);
   assertIncludes(headerRow, 'grid-column:1">Action Item');
-  assertIncludes(headerRow, 'grid-column:2;text-align:center">Owner');
-  assertIncludes(headerRow, 'grid-column:3;text-align:center">Due Date');
-  assertIncludes(headerRow, 'grid-column:4;text-align:center">Source');
-  assertIncludes(headerRow, 'grid-column:5;text-align:center">Created');
-  assertIncludes(headerRow, 'grid-column:6;text-align:center">Closed');
+  assertIncludes(headerRow, 'grid-column:2">Owner');
+  assertIncludes(headerRow, 'grid-column:3">Due Date');
+  assertIncludes(headerRow, 'grid-column:4">Source');
+  assertIncludes(headerRow, 'grid-column:5">Created');
+  assertIncludes(headerRow, 'grid-column:6">Closed');
 
   const id = workstreams[0].actionLog[0].id;
   const dataRow = html.slice(html.indexOf('action-log-text')); // first data row onward — the only one in this test
@@ -1716,12 +1716,12 @@ test('allWorkstreamsActionLogHtml\'s header includes a Workstream column and shi
   const html = allWorkstreamsActionLogHtml();
   const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 600);
   assertIncludes(headerRow, 'grid-column:1">Action Item');
-  assertIncludes(headerRow, 'grid-column:2;text-align:center">Workstream');
-  assertIncludes(headerRow, 'grid-column:3;text-align:center">Owner');
-  assertIncludes(headerRow, 'grid-column:4;text-align:center">Due Date');
-  assertIncludes(headerRow, 'grid-column:5;text-align:center">Source');
-  assertIncludes(headerRow, 'grid-column:6;text-align:center">Created');
-  assertIncludes(headerRow, 'grid-column:7;text-align:center">Closed');
+  assertIncludes(headerRow, 'grid-column:2">Workstream');
+  assertIncludes(headerRow, 'grid-column:3">Owner');
+  assertIncludes(headerRow, 'grid-column:4">Due Date');
+  assertIncludes(headerRow, 'grid-column:5">Source');
+  assertIncludes(headerRow, 'grid-column:6">Created');
+  assertIncludes(headerRow, 'grid-column:7">Closed');
 
   const dataRow = html.slice(html.indexOf('action-log-text'));
   assertIncludes(dataRow, 'grid-column:2"', 'the Workstream cell must sit at column 2 on the data row too');
@@ -2009,9 +2009,9 @@ test('allWorkstreamsDecisionLogHtml\'s header includes a Workstream column and s
   const html = allWorkstreamsDecisionLogHtml();
   const headerRow = html.slice(html.indexOf('decision-log-header'), html.indexOf('decision-log-header') + 400);
   assertIncludes(headerRow, 'grid-column:1">Decision');
-  assertIncludes(headerRow, 'grid-column:2;text-align:center">Workstream');
-  assertIncludes(headerRow, 'grid-column:3;text-align:center">Source');
-  assertIncludes(headerRow, 'grid-column:4;text-align:center">Logged');
+  assertIncludes(headerRow, 'grid-column:2">Workstream');
+  assertIncludes(headerRow, 'grid-column:3">Source');
+  assertIncludes(headerRow, 'grid-column:4">Logged');
 
   const dataRow = html.slice(html.indexOf('action-log-text'));
   assertIncludes(dataRow, 'grid-column:2"', 'the Workstream cell must sit at column 2 on the data row too');
