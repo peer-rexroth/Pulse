@@ -302,7 +302,7 @@ test('milestoneRowsHtml renders the Not Applicable toggle wired to toggleMilesto
   assertIncludes(html, 'fa-solid fa-ban', 'the marked milestone should show the filled icon');
 });
 
-test('the milestone header shows Status immediately before N/A, matching the data rows\' own column order', function () {
+test('the milestone header shows Status immediately before MS Req. (the Not Applicable toggle\'s column), matching the data rows\' own column order', function () {
   const it = addItem({
     name: 'Parent',
     milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null }]
@@ -312,7 +312,7 @@ test('the milestone header shows Status immediately before N/A, matching the dat
   const html = document.getElementById('main').innerHTML;
   const headerIdx = html.indexOf('milestone-header');
   const header = html.slice(headerIdx, headerIdx + 400);
-  assertIncludes(header, '<span>Status</span><span>N/A</span>', 'Status must be the column immediately before N/A in the header');
+  assertIncludes(header, '<span>Status</span><span>MS Req.</span>', 'Status must be the column immediately before the Not Applicable toggle\'s header label');
 });
 
 test('a milestone row\'s Status badge sits immediately before its Not Applicable toggle, matching the header\'s own column order', function () {
