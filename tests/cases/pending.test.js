@@ -1,64 +1,71 @@
 // ---------- Quick-add scope items & the reserved Pending category ----------
 // See "Quick-add scope items & the Pending category" in pulse.html and
-// CLAUDE.md. "Add item" opens openQuickAddItemModal() instead of the full
-// item modal — just Name and Workstream — and seeds the new item into the
-// reserved Pending category with its one milestone, "Scope item confirmed".
-// Marking that milestone Complete pops up openScopeAssignModal() to pick the
-// item's real workstream/category, which applyScopeCategory() then applies.
+// CLAUDE.md. The Unassigned section's inline "+ Add item" (see
+// unassignedSectionHtml()) is a deliberately minimal, name-only capture —
+// no modal, no workstream picker. The new item is seeded with no workstream
+// at all (workstreamId: null — "Unassigned") and straight into the reserved
+// Pending category with its one milestone, "Scope item confirmed". Marking
+// that milestone Complete pops up openScopeAssignModal() to pick the item's
+// real workstream/category together, which applyScopeCategory() then applies.
 
-test('openQuickAddItemModal/saveQuickAddItem creates an item in the Pending category with its one milestone', function () {
-  openQuickAddItemModal(workstreams[0].id);
-  document.getElementById('quickAddNameInput').value = 'Some new ask';
-  // The fake DOM's <select>.innerHTML is an opaque string — marking an
-  // <option> "selected" in it (as openQuickAddItemModal()'s populate call
-  // does) doesn't also update .value the way a real browser would, so every
-  // test here sets .value explicitly, same convention as fillItemForm() in
-  // items.test.js.
-  document.getElementById('quickAddWorkstreamSelect').value = workstreams[0].id;
-  saveQuickAddItem();
+function addPendingItem(name) {
+  openInlineQuickAdd();
+  document.getElementById('unassignedQuickAddInput').value = name || 'Some new ask';
+  saveInlineQuickAddItem();
+  return items[items.length - 1];
+}
+
+test('openInlineQuickAdd/saveInlineQuickAddItem creates an Unassigned item in the Pending category with its one milestone', function () {
+  const it = addPendingItem('Some new ask');
   assertEqual(items.length, 1);
-  const it = items[0];
   assertEqual(it.name, 'Some new ask');
-  assertEqual(it.workstreamId, workstreams[0].id);
+  assertEqual(it.workstreamId, null);
   assertTrue(isPendingCategory(it.categoryId));
   assertEqual(it.milestones.length, 1);
   assertEqual(it.milestones[0].name, 'Scope item confirmed');
   assertEqual(it.milestones[0].status, 'not-started');
   assertEqual(it.status, 'not-started');
+  assertFalse(unassignedQuickAddOpen, 'the input should have closed back to the button after saving');
 });
 
-test('saveQuickAddItem rejects an empty name', function () {
-  openQuickAddItemModal(workstreams[0].id);
-  document.getElementById('quickAddNameInput').value = '   ';
-  saveQuickAddItem();
+test('saveInlineQuickAddItem closes the input without creating anything when the name is blank', function () {
+  openInlineQuickAdd();
+  document.getElementById('unassignedQuickAddInput').value = '   ';
+  saveInlineQuickAddItem();
   assertEqual(items.length, 0);
+  assertFalse(unassignedQuickAddOpen);
 });
 
-test('openQuickAddItemModal presets the workstream select, but it can still be changed before saving', function () {
-  const secondWs = { id: genId(), name: 'Second', color: 'teal', order: 1 };
-  workstreams.push(secondWs);
-  openQuickAddItemModal(workstreams[0].id);
-  assertIncludes(document.getElementById('quickAddWorkstreamSelect').innerHTML, `value="${workstreams[0].id}" selected`);
-  document.getElementById('quickAddWorkstreamSelect').value = secondWs.id;
-  document.getElementById('quickAddNameInput').value = 'X';
-  saveQuickAddItem();
-  assertEqual(items[0].workstreamId, secondWs.id);
-});
-
-test('closeQuickAddItemModal is a no-op that discards nothing (nothing is created until Save)', function () {
-  openQuickAddItemModal(workstreams[0].id);
-  document.getElementById('quickAddNameInput').value = 'Abandoned draft';
-  closeQuickAddItemModal();
+test('cancelInlineQuickAdd (Escape) discards whatever was typed, closing the input', function () {
+  openInlineQuickAdd();
+  document.getElementById('unassignedQuickAddInput').value = 'Abandoned draft';
+  cancelInlineQuickAdd();
   assertEqual(items.length, 0);
+  assertFalse(unassignedQuickAddOpen);
 });
 
-function addPendingItem(name) {
-  openQuickAddItemModal(workstreams[0].id);
-  document.getElementById('quickAddNameInput').value = name || 'Some new ask';
-  document.getElementById('quickAddWorkstreamSelect').value = workstreams[0].id;
-  saveQuickAddItem();
-  return items[items.length - 1];
-}
+test('saveInlineQuickAddItem is a no-op if called again after it already closed things (Enter followed by the resulting blur)', function () {
+  openInlineQuickAdd();
+  document.getElementById('unassignedQuickAddInput').value = 'Typed once';
+  saveInlineQuickAddItem(); // e.g. Enter
+  assertEqual(items.length, 1);
+  saveInlineQuickAddItem(); // e.g. the blur that same render() triggers by tearing out the focused input
+  assertEqual(items.length, 1, 'a second call after the input already closed must not create a duplicate');
+});
+
+test('unassignedItemsSorted only returns items with no workstream, ordered by their own `order`', function () {
+  addPendingItem('First');
+  addPendingItem('Second');
+  items.push({ id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'Assigned', owner: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], order: 0, updatedAt: Date.now() });
+  const names = unassignedItemsSorted().map(it => it.name);
+  assertDeepEqual(names, ['First', 'Second']);
+});
+
+test('openInlineQuickAdd/saveInlineQuickAddItem are blocked below Editor', function () {
+  userRole = 'reviewer';
+  openInlineQuickAdd();
+  assertFalse(unassignedQuickAddOpen);
+});
 
 test('marking a Pending item\'s "Scope item confirmed" milestone Complete auto-opens the scope-assign modal', function () {
   const it = addPendingItem();
@@ -82,7 +89,6 @@ test('the scope-assign modal does not re-open on an unrelated save once already 
   cycleMilestoneStatus(it.id, it.milestones[0].id); // -> complete, opens the modal
   closeScopeAssignModal();
   openItemModal(it.id);
-  document.getElementById('itemWorkstreamSelect').value = it.workstreamId;
   document.getElementById('itemCategorySelect').value = it.categoryId;
   document.getElementById('itemOwnerInput').value = 'Jamie';
   saveItem();
@@ -93,12 +99,10 @@ test('the scope-assign modal does not re-open on an unrelated save once already 
 test('marking the milestone Complete via the full item modal\'s dropdown also triggers the scope-assign prompt', function () {
   const it = addPendingItem();
   openItemModal(it.id);
-  // Same fake-DOM caveat as addPendingItem() above — populateWorkstreamSelect()/
-  // populateCategorySelect() mark the right <option> "selected" in the
-  // innerHTML string, but the harness's <select>.value doesn't follow that;
-  // it must be set explicitly so saveItem() persists the item's real
-  // workstream/category rather than the fake element's default ''.
-  document.getElementById('itemWorkstreamSelect').value = it.workstreamId;
+  // The fake DOM's <select>.innerHTML is an opaque string — marking an
+  // <option> "selected" in it (as populateCategorySelect() does) doesn't
+  // also update .value the way a real browser would, so it's set explicitly
+  // here, same convention as fillItemForm() in items.test.js.
   document.getElementById('itemCategorySelect').value = it.categoryId;
   editingMilestones[0].status = 'complete';
   saveItem();
@@ -106,17 +110,19 @@ test('marking the milestone Complete via the full item modal\'s dropdown also tr
   assertTrue(document.getElementById('scopeAssignModalBg').classList.contains('open'));
 });
 
-test('openScopeAssignModal populates the workstream select and offers every category except Pending', function () {
+test('openScopeAssignModal populates the workstream select (with nothing preselected for an Unassigned item) and offers every category except Pending', function () {
   const it = addPendingItem();
   openScopeAssignModal(it.id);
-  assertIncludes(document.getElementById('scopeAssignWorkstreamSelect').innerHTML, `value="${workstreams[0].id}" selected`);
-  const html = document.getElementById('scopeAssignCategorySelect').innerHTML;
-  categories.filter(c => !c.pending).forEach(c => assertIncludes(html, `value="${c.id}"`));
+  const wsHtml = document.getElementById('scopeAssignWorkstreamSelect').innerHTML;
+  workstreams.forEach(w => assertIncludes(wsHtml, `value="${w.id}"`));
+  assertNotIncludes(wsHtml, 'selected', 'an Unassigned item has no workstream to preselect');
+  const catHtml = document.getElementById('scopeAssignCategorySelect').innerHTML;
+  categories.filter(c => !c.pending).forEach(c => assertIncludes(catHtml, `value="${c.id}"`));
   const pendingCat = categories.find(c => c.pending);
-  assertNotIncludes(html, `value="${pendingCat.id}"`, 'Pending itself must never be offered as a destination category');
+  assertNotIncludes(catHtml, `value="${pendingCat.id}"`, 'Pending itself must never be offered as a destination category');
 });
 
-test('applyScopeCategory swaps in the chosen workstream/category and that category\'s full milestone template', function () {
+test('applyScopeCategory sets the item\'s workstream (out of Unassigned) and category, and swaps in that category\'s full milestone template', function () {
   const secondWs = { id: genId(), name: 'Second', color: 'teal', order: 1 };
   workstreams.push(secondWs);
   const it = addPendingItem();
@@ -137,6 +143,7 @@ test('applyScopeAssign reads the modal\'s selects and applies them, then closes 
   document.getElementById('scopeAssignWorkstreamSelect').value = workstreams[0].id;
   document.getElementById('scopeAssignCategorySelect').value = devCat.id;
   applyScopeAssign();
+  assertEqual(it.workstreamId, workstreams[0].id);
   assertEqual(it.categoryId, devCat.id);
   assertFalse(document.getElementById('scopeAssignModalBg').classList.contains('open'));
   assertEqual(scopeAssignItemId, null);
@@ -163,11 +170,47 @@ test('itemRowHtml uses the normal openItemModal status badge for a not-yet-compl
   assertNotIncludes(html, 'openScopeAssignModal');
 });
 
-test('openQuickAddItemModal/openScopeAssignModal are both blocked below Editor', function () {
+// ---------- The Unassigned section itself (renderStatusView()/unassignedSectionHtml()) ----------
+
+test('unassignedSectionHtml shows the inline Add-item button (not the input) by default, for an Editor', function () {
+  const html = unassignedSectionHtml();
+  assertIncludes(html, 'Unassigned');
+  assertIncludes(html, `onclick="openInlineQuickAdd()"`);
+  assertNotIncludes(html, 'id="unassignedQuickAddInput"');
+});
+
+test('unassignedSectionHtml shows the input once opened', function () {
+  openInlineQuickAdd();
+  const html = unassignedSectionHtml();
+  assertIncludes(html, 'id="unassignedQuickAddInput"');
+});
+
+test('unassignedSectionHtml is omitted entirely below Editor when there are no unassigned items', function () {
+  userRole = 'reviewer';
+  assertEqual(unassignedSectionHtml(), '');
+});
+
+test('unassignedSectionHtml still shows (read-only) below Editor once there is at least one unassigned item', function () {
   const it = addPendingItem();
   userRole = 'reviewer';
-  openQuickAddItemModal(workstreams[0].id);
-  assertFalse(document.getElementById('quickAddItemModalBg').classList.contains('open'));
-  openScopeAssignModal(it.id);
-  assertFalse(document.getElementById('scopeAssignModalBg').classList.contains('open'));
+  const html = unassignedSectionHtml();
+  assertIncludes(html, it.name);
+  assertNotIncludes(html, 'openInlineQuickAdd', 'no add affordance below Editor');
+});
+
+test('renderMain places the Unassigned section above the real workstream sections, and shows it regardless of the sidebar filter', function () {
+  addPendingItem('Needs triage');
+  setFilterWorkstream(workstreams[0].id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Needs triage');
+  assertTrue(html.indexOf('Unassigned') < html.indexOf(workstreams[0].name), 'Unassigned should render first');
+});
+
+test('renderMain shows the Unassigned add-item entry point even with zero workstreams', function () {
+  workstreams = []; items = [];
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Unassigned');
+  assertIncludes(html, 'No workstreams yet');
 });

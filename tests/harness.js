@@ -197,6 +197,7 @@ async function run(argv) {
   userRole = 'admin';
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set();
+  unassignedQuickAddOpen = false;
   editingCategoryId = null; editingCategoryMilestones = [];
   minutesModalCycleId = null; editingMinutesActionItems = []; reviewTab = 'scope';
   renamingProgramme = false;

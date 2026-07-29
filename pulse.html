@@ -536,6 +536,11 @@
   .drag-handle { cursor: grab; }
   .drag-handle:active { cursor: grabbing; }
   .ws-section-add { padding: 8px 14px; border-radius: 0 0 var(--radius) var(--radius); }
+  .inline-quick-add-input {
+    width: 100%; max-width: 320px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel-2); color: var(--text); font: inherit;
+  }
+  .inline-quick-add-input:focus { border-color: var(--accent); }
 
   /* Shown only above an expanded item's own milestone rows (see
      milestoneHeaderHtml()) — scoped to that one item, not a page-wide
@@ -565,16 +570,20 @@
      content into tracks 10/11 untouched, so nothing here affects the item
      row's own column widths. milestoneHeaderHtml()'s "N/A"/"Status" labels
      span the identical 10/12 range for the same reason. */
-  .milestone-status-cell { display: flex; align-items: center; gap: 6px; }
-  /* Without a fixed width here, a flex child sizes to its own text — so
-     "Complete" and "Not Started" (this cell's shortest and longest labels)
-     leave the N/A toggle that follows sitting at a different x position
-     row to row, a user-reported alignment complaint. min-width (not width)
-     so a label doesn't clip if it's ever the widest thing in this cell;
-     text-align:center keeps a short label looking deliberately centered in
-     that reserved width rather than hugging its left edge. 92px comfortably
-     fits "Not Started" at this font-size/weight with room to spare.
-     Targets the cell's first child structurally (:first-child), not the
+  /* A CSS Grid, not flex — the fixed 92px first column is what keeps the N/A
+     toggle sitting at the same x position regardless of "Complete" vs "Not
+     Started" (this cell's shortest and longest labels), a user-reported
+     alignment complaint. An earlier version put that 92px min-width on the
+     first *child* itself (stretching the .status-badge pill to fill it),
+     which fixed the N/A alignment but visually inflated the milestone
+     pill noticeably bigger than the item row's own (unconstrained,
+     content-sized) status pill — a second, later user-reported complaint.
+     Reserving the width on the *column* instead, with the child merely
+     centered in it (justify-self:center, not stretched), keeps the pill
+     itself sized identically everywhere while still reserving the same
+     96px-equivalent width every row needs for the N/A toggle to line up. */
+  .milestone-status-cell { display: grid; grid-template-columns: 92px auto; align-items: center; gap: 6px; }
+  /* Targets the cell's first child structurally (:first-child), not the
      .status-badge class specifically — milestoneHeaderHtml()'s own plain
      "Status" text label is this cell's first child too, and a second
      user-reported alignment bug showed exactly what happens when only the
@@ -583,7 +592,7 @@
      where the real icon renders below it. Keying off structural position
      instead of a shared class means the header and every data row stay
      locked together automatically, with no second rule to keep in sync. */
-  .milestone-status-cell > :first-child { min-width: 92px; box-sizing: border-box; text-align: center; white-space: nowrap; }
+  .milestone-status-cell > :first-child { justify-self: center; white-space: nowrap; }
 
   /* Modal */
   .modal-bg {
@@ -1135,28 +1144,6 @@
   </div>
 </div>
 
-<!-- Quick add item modal — a deliberately minimal "New scope item" dialog:
-     just Name and Workstream. The item opens in the reserved Pending
-     category with one milestone, "Scope item confirmed" — see
-     openQuickAddItemModal()/saveQuickAddItem() in the script below. -->
-<div class="modal-bg" id="quickAddItemModalBg">
-  <div class="modal">
-    <h3>New scope item</h3>
-    <div class="field">
-      <label>Name</label>
-      <input type="text" id="quickAddNameInput" placeholder="e.g. Finalize data schema">
-    </div>
-    <div class="field">
-      <label>Workstream</label>
-      <select id="quickAddWorkstreamSelect"></select>
-    </div>
-    <div class="modal-actions" style="justify-content:flex-end">
-      <button class="btn" onclick="closeQuickAddItemModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveQuickAddItem()">Save</button>
-    </div>
-  </div>
-</div>
-
 <!-- Assign scope category modal — pops up once a Pending item's "Scope item
      confirmed" milestone is marked Complete (maybeOfferScopeAssign()), and
      stays reachable afterward from the item's own status badge
@@ -1380,20 +1367,23 @@ const THEME_SCHEMES = [
   { id: 'githubdimmed', name: 'GitHub Dimmed', desc: 'The same crisp palette, dimmed to a softer graphite.', swatches: ['#f6f8fa', '#478be6', '#e5534b'] }
 ];
 
-// Seeds the one default category ("Development") the first time a programme
-// has none — see normalizeData(). New categories created afterward define
-// their own milestone template from scratch; this constant only matters at
-// that one seeding moment, not as a live default used elsewhere.
-const DEFAULT_CATEGORY_MILESTONES = [
-  'Scope item confirmed',
-  'Requirements defined',
-  'Requirements approved',
-  'Design defined',
-  'Development completed',
-  'Ready for SIT',
-  'Ready for UAT',
-  'Deployment completed'
+// Seeds the out-of-the-box categories the first time a programme has none —
+// see seedDefaults()/normalizeData(). New categories created afterward
+// define their own milestone template from scratch; this only matters at
+// that one seeding moment, not as a live default used elsewhere. Content
+// (names, milestone lists, order) comes from Milestone_Lookup_Table.xlsx —
+// an explicit request to replace the prior single made-up "Development"
+// template with this real one.
+const DEFAULT_CATEGORIES = [
+  { name: 'Development', milestones: ['Requirements Defined', 'Requirements Approved', 'Design Defined', 'Build Completed', 'Ready for SIT', 'Ready for E2E', 'Deployment Completed'] },
+  { name: 'Artefact', milestones: ['Draft Completed', 'Ready for Review', 'Artefact Approved', 'Artefact Baselined'] },
+  { name: 'Integration', milestones: ['Interface Specification Agreed', 'Design Defined', 'Build Completed', 'Ready for SIT', 'Ready for E2E', 'Deployment Completed'] },
+  { name: 'Activity', milestones: ['Activity Defined', 'Activity Prepared', 'Ready for Execution', 'Activity Started', 'Activity Completed'] }
 ];
+// Kept as an alias, not a second source of truth — several call sites and
+// tests only ever cared about "the first/default category's own milestone
+// template", back when Development was the only one seeded.
+const DEFAULT_CATEGORY_MILESTONES = DEFAULT_CATEGORIES[0].milestones;
 
 const DAY_MS = 86400000;
 const REVIEW_STALE_DAYS = 30;
@@ -1480,6 +1470,10 @@ let historyShowAllWs = new Set();
 // starts hidden behind a "+" affordance instead of looking like a blank
 // field waiting to be filled in.
 let revealedActualIds = new Set();
+// Whether the Unassigned section's inline "Add item" input is currently
+// showing in place of its button — UI-only, not persisted. See
+// unassignedSectionHtml()/openInlineQuickAdd().
+let unassignedQuickAddOpen = false;
 // Review mode's own two sub-tabs: 'scope' (the existing checklist + cycle
 // history) or 'actionLog' (the workstream-wide action log) — UI-only, not
 // persisted, same as view above but scoped one level deeper.
@@ -1564,13 +1558,12 @@ function seedDefaults() {
   workstreams = [];
   items = [];
   // The Pending category is reserved for the quick-add flow (see
-  // openQuickAddItemModal()/saveQuickAddItem()) — every fresh programme gets
-  // it alongside Development so a brand-new item always has somewhere to
-  // land before its real category is chosen (see applyScopeCategory()).
-  categories = [
-    { id: genId(), name: 'Development', milestones: DEFAULT_CATEGORY_MILESTONES.slice(), order: 0 },
-    { id: genId(), name: 'Pending', milestones: ['Scope item confirmed'], pending: true, order: 1 }
-  ];
+  // openInlineQuickAdd()/saveInlineQuickAddItem()) — every fresh programme
+  // gets it alongside the real out-of-the-box categories (DEFAULT_CATEGORIES)
+  // so a brand-new item always has somewhere to land before its real
+  // category is chosen (see applyScopeCategory()).
+  categories = DEFAULT_CATEGORIES.map((c, i) => ({ id: genId(), name: c.name, milestones: c.milestones.slice(), order: i }));
+  categories.push({ id: genId(), name: 'Pending', milestones: ['Scope item confirmed'], pending: true, order: categories.length });
   reviewCycles = [];
   deletedWorkstreamIds = [];
   deletedItemIds = [];
@@ -1663,14 +1656,14 @@ function normalizeData() {
   });
   categories.sort((a, b) => a.order - b.order);
   // A programme with no categories at all (pre-categories save, or every
-  // category deleted somehow) always gets this one default seeded back in —
-  // items must always have a category to pick from and fall back to.
+  // category deleted somehow) always gets the out-of-the-box set seeded
+  // back in — items must always have a category to pick from and fall back to.
   if (categories.length === 0) {
-    categories = [{ id: genId(), name: 'Development', milestones: DEFAULT_CATEGORY_MILESTONES.slice(), order: 0, pending: false }];
+    categories = DEFAULT_CATEGORIES.map((c, i) => ({ id: genId(), name: c.name, milestones: c.milestones.slice(), order: i, pending: false }));
   }
   // Likewise, a programme saved before the Pending category existed (or one
   // that's somehow lost it) always gets it added back — the quick-add flow
-  // (openQuickAddItemModal()) depends on exactly one category having
+  // (openInlineQuickAdd()) depends on exactly one category having
   // `pending: true` to seed a new item into.
   if (!categories.some(c => c.pending)) {
     categories.push({ id: genId(), name: 'Pending', milestones: ['Scope item confirmed'], pending: true, order: categories.length });
@@ -1728,7 +1721,15 @@ function normalizeData() {
   items.forEach(it => {
     delete it.type;
     if (!isSafeId(it.id)) it.id = genId();
-    if (!wsIds.has(it.workstreamId)) it.workstreamId = workstreams[0] ? workstreams[0].id : null;
+    // null is a legitimate, intentional value here — "Unassigned" (see
+    // "Quick-add scope items & the Pending category" in CLAUDE.md) — so it's
+    // left alone; only a genuinely stale/unknown id (e.g. a workstream that
+    // was deleted out from under a merge, or a hand-edited import) gets
+    // reset, and it resets to null/Unassigned too rather than an arbitrary
+    // real workstream, so a broken reference surfaces for triage instead of
+    // silently landing in whichever workstream happens to be first.
+    if (it.workstreamId != null && !wsIds.has(it.workstreamId)) it.workstreamId = null;
+    if (it.workstreamId === undefined) it.workstreamId = null;
     if (!catIds.has(it.categoryId)) it.categoryId = categories[0].id;
     if (!it.name) it.name = 'Untitled';
     if (!it.owner) it.owner = '';
@@ -1876,7 +1877,7 @@ function computedDateRangeFromMilestones(milestones) {
 function wsById(id) { return workstreams.find(w => w.id === id); }
 function categoryById(id) { return categories.find(c => c.id === id); }
 // The one category flagged `pending: true` (see seedDefaults()/normalizeData())
-// — reserved for the quick-add flow (openQuickAddItemModal()) and never
+// — reserved for the quick-add flow (openInlineQuickAdd()) and never
 // offered as a choice in the scope-assign modal (openScopeAssignModal()).
 function pendingCategory() { return categories.find(c => c.pending); }
 function isPendingCategory(categoryId) { const c = categoryById(categoryId); return !!(c && c.pending); }
@@ -1980,14 +1981,40 @@ function visibleWorkstreams() {
 }
 
 function renderMain() {
-  const main = document.getElementById('main');
-  if (workstreams.length === 0) {
-    main.innerHTML = `<div class="empty-state"><i class="fa-solid fa-wave-square"></i>
-      <div>No workstreams yet.</div>
-      <button class="btn btn-primary" onclick="openWorkstreamModal()"><i class="fa-solid fa-plus"></i> Add a workstream</button></div>`;
-    return;
-  }
-  renderStatusView(main);
+  renderStatusView(document.getElementById('main'));
+}
+
+// The one place a brand-new scope item can be quick-added — see "Quick-add
+// scope items & the Pending category" in CLAUDE.md. Pinned above every real
+// workstream's own section and shown regardless of the current sidebar
+// filter (visibleWorkstreams() below only affects the real sections), since
+// an unassigned item doesn't belong to any one workstream yet and shouldn't
+// require switching to "All workstreams" to see or triage. Below Editor,
+// and with nothing in it, it's omitted entirely — there both nothing to
+// show and no way to add anything, so an empty "Unassigned" heading would
+// just be clutter.
+function unassignedItemsSorted() {
+  return items.filter(it => it.workstreamId == null).sort((a, b) => a.order - b.order);
+}
+function unassignedSectionHtml() {
+  const uItems = unassignedItemsSorted();
+  const editable = hasRole('editor');
+  if (!uItems.length && !editable) return '';
+  const rows = uItems.length ? uItems.map(it => itemRowHtml(it)).join('') :
+    `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No unassigned items.</div>`;
+  const addRow = editable
+    ? (unassignedQuickAddOpen
+        ? `<div class="ws-section-add"><input type="text" class="inline-quick-add-input" id="unassignedQuickAddInput" placeholder="Item name" onkeydown="if(event.key==='Enter') saveInlineQuickAddItem(); if(event.key==='Escape') cancelInlineQuickAdd();" onblur="saveInlineQuickAddItem()"></div>`
+        : `<div class="ws-section-add"><button class="btn btn-sm" onclick="openInlineQuickAdd()"><i class="fa-solid fa-plus"></i> Add item</button></div>`)
+    : '';
+  return `<div class="ws-section">
+      <div class="ws-section-header" style="background:var(--panel-2)">
+        <span class="ws-dot" style="background:transparent"></span>
+        <span class="ws-section-title">Unassigned</span>
+      </div>
+      ${rows}
+      ${addRow}
+    </div>`;
 }
 
 function renderStatusView(main) {
@@ -2013,12 +2040,15 @@ function renderStatusView(main) {
           <div class="rag-summary">${pills}</div>
         </div>
         ${rows}
-        ${hasRole('editor') ? `<div class="ws-section-add">
-          <button class="btn btn-sm" onclick="openQuickAddItemModal('${w.id}')"><i class="fa-solid fa-plus"></i> Add item</button>
-        </div>` : ''}
       </div>`;
   }).join('');
-  main.innerHTML = sections;
+  const noWorkstreamsHint = workstreams.length === 0
+    ? `<div class="empty-state"><i class="fa-solid fa-wave-square"></i>
+        <div>No workstreams yet.</div>
+        <button class="btn btn-primary" onclick="openWorkstreamModal()"><i class="fa-solid fa-plus"></i> Add a workstream</button>
+      </div>`
+    : '';
+  main.innerHTML = unassignedSectionHtml() + sections + noWorkstreamsHint;
 }
 
 // reviewCycle is optional — passed only when this row is rendered inside
@@ -2121,7 +2151,7 @@ function itemRowHtml(it, reviewCycle) {
   // of the row; the drop target is the whole row, so dropping anywhere on it
   // (not just precisely on its own handle) works.
   const dragAttrs = reviewCycle ? '' : ` ondragover="event.preventDefault()" ondrop="dropOnItem(event,'${it.id}')"`;
-  // A quick-added item (see openQuickAddItemModal()) whose sole "Scope item
+  // A quick-added item (see openInlineQuickAdd()) whose sole "Scope item
   // confirmed" milestone has been marked Complete still sits in the reserved
   // Pending category until its real workstream/category is chosen — the
   // status badge itself becomes that entry point instead of the usual "open
@@ -3039,42 +3069,57 @@ function saveItem() {
 }
 
 // ---------- Quick-add scope items & the Pending category ----------
-// "Add item" (see renderStatusView()) opens this deliberately minimal
-// dialog instead of the full item modal — just Name and Workstream. The new
-// item is seeded straight into the reserved Pending category (see
-// pendingCategory()/seedDefaults()) with that category's one milestone,
-// "Scope item confirmed" — everything else about the item (its real
-// category and full milestone checklist) is decided later, once that
-// milestone is marked Complete (see maybeOfferScopeAssign()/
-// openScopeAssignModal()).
-function openQuickAddItemModal(presetWorkstreamId) {
+// The Unassigned section's inline "+ Add item" (see unassignedSectionHtml())
+// — deliberately minimal, just a Name input, no modal. The new item is
+// seeded with no workstream at all (workstreamId: null — "Unassigned", the
+// same idea as the reserved Pending category below, just for workstream
+// instead of category) and straight into that Pending category (see
+// pendingCategory()/seedDefaults()) with its one milestone, "Scope item
+// confirmed". Both the real workstream and the real category are decided
+// together, later, once that milestone is marked Complete (see
+// maybeOfferScopeAssign()/openScopeAssignModal()).
+function openInlineQuickAdd() {
   if (!requireRole('editor')) return;
-  document.getElementById('quickAddNameInput').value = '';
-  populateWorkstreamSelect(presetWorkstreamId || (workstreams[0] && workstreams[0].id), 'quickAddWorkstreamSelect');
-  document.getElementById('quickAddItemModalBg').classList.add('open');
-  document.getElementById('quickAddNameInput').focus();
+  unassignedQuickAddOpen = true;
+  render();
+  document.getElementById('unassignedQuickAddInput')?.focus();
 }
-function closeQuickAddItemModal() {
-  document.getElementById('quickAddItemModalBg').classList.remove('open');
+// Explicit cancel (Escape) — discards whatever was typed, unconditionally.
+// Closing the input this way still fires its own onblur as render() below
+// tears out the focused element, which would otherwise call
+// saveInlineQuickAddItem() right back — that's why unassignedQuickAddOpen is
+// flipped false *before* render() here: saveInlineQuickAddItem()'s own guard
+// then sees it's already closed and no-ops instead of reviving what Escape
+// just cancelled.
+function cancelInlineQuickAdd() {
+  unassignedQuickAddOpen = false;
+  render();
 }
-function saveQuickAddItem() {
-  if (!requireRole('editor')) return;
-  const name = document.getElementById('quickAddNameInput').value.trim();
-  if (!name) { showToast('Name is required', true); return; }
-  const workstreamId = document.getElementById('quickAddWorkstreamSelect').value;
+// Fires on Enter (explicit commit) and on blur (clicking/tabbing away
+// commits too, same convention as every other inline-edit field in this app
+// — see dateInputHtml()) — both can call this for the same keystroke (Enter
+// triggers this directly, and this function's own render() then blurs the
+// input a second time), so the guard below is load-bearing, not defensive
+// dead code: whichever call runs first flips the flag and does the real
+// work; the second sees it already closed and returns immediately.
+function saveInlineQuickAddItem() {
+  if (!unassignedQuickAddOpen) return;
+  unassignedQuickAddOpen = false;
+  const name = (document.getElementById('unassignedQuickAddInput').value || '').trim();
+  if (!name) { render(); return; } // blurring/Enter with nothing typed just closes it, no error
   const cat = pendingCategory();
   const today = todayStr();
   const milestones = milestonesForCategory(cat.id, today);
   const range = computedDateRangeFromMilestones(milestones);
-  const order = items.filter(i => i.workstreamId === workstreamId).length;
+  const order = items.filter(i => i.workstreamId == null).length;
   items.push({
-    id: genId(), workstreamId, categoryId: cat.id, name, owner: '',
+    id: genId(), workstreamId: null, categoryId: cat.id, name, owner: '',
     status: computedStatusFromMilestones(milestones), actualDate: null,
     startDate: range ? range.startDate : today, dueDate: range ? range.dueDate : today,
     milestones, itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
     order, updatedAt: Date.now()
   });
-  save(); closeQuickAddItemModal(); render();
+  save(); render();
   showToast('Item added');
 }
 
@@ -4658,7 +4703,7 @@ function renderAdmin() {
     <div class="category-list">
       ${categories.map(c => {
         const count = items.filter(it => it.categoryId === c.id).length;
-        const pendingBadge = c.pending ? `<span class="review-ws-badge" title="Reserved for the quick-add flow — can't be deleted">Reserved</span>` : '';
+        const pendingBadge = c.pending ? `<span class="review-ws-badge" style="background:var(--panel-2);color:var(--text-dim)" title="Reserved for the quick-add flow — can't be deleted">Reserved</span>` : '';
         return `<div class="category-row">
             <span class="category-name">${esc(c.name)}</span>
             ${pendingBadge}
@@ -5010,9 +5055,9 @@ function closeImportModal() {
 function isFreshLocalState() {
   // The reserved Pending category (see pendingCategory()) always exists, even
   // in a truly fresh programme, so it's excluded here — only a real,
-  // user-added category (beyond the default Development) counts as "not
-  // fresh anymore".
-  return items.length === 0 && workstreams.length <= 1 && categories.filter(c => !c.pending).length <= 1 && programme.name === 'New Programme';
+  // user-added category (beyond the out-of-the-box DEFAULT_CATEGORIES set)
+  // counts as "not fresh anymore".
+  return items.length === 0 && workstreams.length <= 1 && categories.filter(c => !c.pending).length <= DEFAULT_CATEGORIES.length && programme.name === 'New Programme';
 }
 // Wholesale replace from a file's contents — used only when
 // isFreshLocalState() is true, as the alternative to mergeData() in that one
@@ -5640,7 +5685,6 @@ document.addEventListener('click', (e) => {
 document.getElementById('wsModalBg').addEventListener('click', (e) => { if (e.target.id === 'wsModalBg') closeWorkstreamModal(); });
 document.getElementById('itemModalBg').addEventListener('click', (e) => { if (e.target.id === 'itemModalBg') closeItemModal(); });
 document.getElementById('categoryModalBg').addEventListener('click', (e) => { if (e.target.id === 'categoryModalBg') closeCategoryModal(); });
-document.getElementById('quickAddItemModalBg').addEventListener('click', (e) => { if (e.target.id === 'quickAddItemModalBg') closeQuickAddItemModal(); });
 document.getElementById('scopeAssignModalBg').addEventListener('click', (e) => { if (e.target.id === 'scopeAssignModalBg') closeScopeAssignModal(); });
 document.getElementById('minutesModalBg').addEventListener('click', (e) => { if (e.target.id === 'minutesModalBg') closeMinutesModal(); });
 document.getElementById('confirmModalBg').addEventListener('click', (e) => { if (e.target.id === 'confirmModalBg') closeConfirmModal(); });
@@ -5652,7 +5696,7 @@ document.getElementById('themeModalBg').addEventListener('click', (e) => { if (e
 document.getElementById('roleModalBg').addEventListener('click', (e) => { if (e.target.id === 'roleModalBg') closeRoleModal(); });
 document.getElementById('rolePasswordsModalBg').addEventListener('click', (e) => { if (e.target.id === 'rolePasswordsModalBg') closeRolePasswordsModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeQuickAddItemModal(); closeScopeAssignModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeScopeAssignModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); }
 });
 
 // ---------- Init ----------

@@ -1,17 +1,20 @@
-test('seedDefaults creates one default "Development" category with the standard milestones, plus the reserved Pending category', function () {
-  assertEqual(categories.length, 2);
-  assertEqual(categories[0].name, 'Development');
-  assertDeepEqual(categories[0].milestones, DEFAULT_CATEGORY_MILESTONES);
-  assertEqual(categories[1].name, 'Pending');
-  assertTrue(categories[1].pending);
-  assertDeepEqual(categories[1].milestones, ['Scope item confirmed']);
+test('seedDefaults creates the out-of-the-box DEFAULT_CATEGORIES, plus the reserved Pending category', function () {
+  assertEqual(categories.length, DEFAULT_CATEGORIES.length + 1);
+  DEFAULT_CATEGORIES.forEach((c, i) => {
+    assertEqual(categories[i].name, c.name);
+    assertDeepEqual(categories[i].milestones, c.milestones);
+  });
+  const pendingCat = categories.find(c => c.pending);
+  assertEqual(pendingCat.name, 'Pending');
+  assertTrue(pendingCat.pending);
+  assertDeepEqual(pendingCat.milestones, ['Scope item confirmed']);
 });
 
-test('normalizeData seeds a default category if none exist, and always ensures a Pending one too', function () {
+test('normalizeData seeds the default categories if none exist, and always ensures a Pending one too', function () {
   categories = [];
   normalizeData();
-  assertEqual(categories.length, 2);
-  assertEqual(categories[0].name, 'Development');
+  assertEqual(categories.length, DEFAULT_CATEGORIES.length + 1);
+  assertEqual(categories[0].name, DEFAULT_CATEGORIES[0].name);
   assertTrue(categories.some(c => c.pending));
 });
 
@@ -38,7 +41,7 @@ test('saveItem persists the chosen categoryId', function () {
   document.getElementById('categoryNameInput').value = 'Vendor Onboarding';
   editingCategoryMilestones = ['Contract signed', 'Kickoff call'];
   saveCategory();
-  const newCat = categories[2]; // [0] Development, [1] Pending, [2] the one just created
+  const newCat = categories[categories.length - 1]; // saveCategory() always appends new categories at the end
   openItemModal(null);
   document.getElementById('itemCategorySelect').value = newCat.id;
   document.getElementById('itemNameInput').value = 'Onboard Acme';
@@ -51,7 +54,7 @@ test('onItemCategoryChange reseeds milestones from the new category while creati
   document.getElementById('categoryNameInput').value = 'Vendor Onboarding';
   editingCategoryMilestones = ['Contract signed', 'Kickoff call'];
   saveCategory();
-  const newCat = categories[2]; // [0] Development, [1] Pending, [2] the one just created
+  const newCat = categories[categories.length - 1]; // saveCategory() always appends new categories at the end
   openItemModal(null);
   assertEqual(editingMilestones.length, categories[0].milestones.length);
   document.getElementById('itemCategorySelect').value = newCat.id;
@@ -72,21 +75,23 @@ test('onItemCategoryChange does nothing while editing an existing item (never re
   document.getElementById('categoryNameInput').value = 'Vendor Onboarding';
   editingCategoryMilestones = ['Contract signed'];
   saveCategory();
-  document.getElementById('itemCategorySelect').value = categories[2].id; // [0] Development, [1] Pending, [2] the one just created
+  document.getElementById('itemCategorySelect').value = categories[categories.length - 1].id; // the one just created
   onItemCategoryChange();
   assertEqual(editingMilestones.length, 1, 'editing an existing item should not reseed its milestones on category change');
 });
 
 test('saveCategory adds a new category, and edits an existing one in place', function () {
+  const baseCount = categories.length;
   document.getElementById('categoryNameInput').value = 'Vendor Onboarding';
   editingCategoryMilestones = ['Contract signed', 'Kickoff call'];
   saveCategory();
-  assertEqual(categories.length, 3); // Development, Pending, and the one just added
-  openCategoryModal(categories[2].id);
+  assertEqual(categories.length, baseCount + 1);
+  const newCat = categories[categories.length - 1];
+  openCategoryModal(newCat.id);
   document.getElementById('categoryNameInput').value = 'Renamed Category';
   saveCategory();
-  assertEqual(categories.length, 3);
-  assertEqual(categories[2].name, 'Renamed Category');
+  assertEqual(categories.length, baseCount + 1);
+  assertEqual(categories[categories.length - 1].name, 'Renamed Category');
 });
 
 test('saveCategory rejects an empty name', function () {
@@ -97,35 +102,46 @@ test('saveCategory rejects an empty name', function () {
 });
 
 test('deleteCategoryFromModal reassigns items using it to the fallback category', function () {
+  const baseCount = categories.length;
   document.getElementById('categoryNameInput').value = 'Vendor Onboarding';
   editingCategoryMilestones = ['Contract signed'];
   saveCategory();
-  const newCat = categories[2]; // [0] Development, [1] Pending, [2] the one just created
+  const newCat = categories[categories.length - 1]; // the one just created
   const it = { id: genId(), workstreamId: workstreams[0].id, categoryId: newCat.id, name: 'X', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() };
   items.push(it);
   editingCategoryId = newCat.id;
   deleteCategoryFromModal();
   confirmModalAction();
-  assertEqual(categories.length, 2);
+  assertEqual(categories.length, baseCount);
   assertEqual(items[0].categoryId, categories[0].id);
 });
 
-test('deleteCategoryFromModal refuses to delete Development, the only remaining non-Pending category', function () {
+test('deleteCategoryFromModal refuses to delete the last remaining non-Pending category', function () {
+  // Delete every non-Pending category but one, to actually reach the guarded
+  // scenario — DEFAULT_CATEGORIES seeds several, not just one, these days.
+  categories.filter(c => !c.pending).slice(1).forEach(c => {
+    editingCategoryId = c.id;
+    deleteCategoryFromModal();
+    confirmModalAction();
+  });
+  assertEqual(categories.filter(c => !c.pending).length, 1);
   editingCategoryId = categories.find(c => !c.pending).id;
   deleteCategoryFromModal();
-  assertEqual(categories.length, 2, 'at least one real (non-Pending) category must always remain');
+  assertEqual(categories.filter(c => !c.pending).length, 1, 'at least one real (non-Pending) category must always remain');
 });
 
 test('deleteCategoryFromModal refuses to delete the reserved Pending category, even with other categories to fall back to', function () {
+  const baseCount = categories.length;
   document.getElementById('categoryNameInput').value = 'Vendor Onboarding';
   editingCategoryMilestones = ['Contract signed'];
   saveCategory();
   editingCategoryId = categories.find(c => c.pending).id;
   deleteCategoryFromModal();
-  assertEqual(categories.length, 3, 'Pending must never be deletable, regardless of how many other categories exist');
+  assertEqual(categories.length, baseCount + 1, 'Pending must never be deletable, regardless of how many other categories exist');
 });
 
 test('addCategoryMilestoneRow / removeCategoryMilestoneRow edit the in-progress template only', function () {
+  const baseCount = categories.length;
   openCategoryModal();
   assertEqual(editingCategoryMilestones.length, 0);
   addCategoryMilestoneRow();
@@ -133,7 +149,7 @@ test('addCategoryMilestoneRow / removeCategoryMilestoneRow edit the in-progress 
   assertEqual(editingCategoryMilestones.length, 2);
   removeCategoryMilestoneRow(0);
   assertEqual(editingCategoryMilestones.length, 1);
-  assertEqual(categories.length, 2, 'nothing should be saved until Save is clicked');
+  assertEqual(categories.length, baseCount, 'nothing should be saved until Save is clicked');
 });
 
 test('moveCategoryMilestoneRow swaps a milestone with its neighbor', function () {
@@ -305,12 +321,12 @@ test('template changes save immediately (no confirm) when no items use the categ
   document.getElementById('categoryNameInput').value = 'Vendor Onboarding';
   editingCategoryMilestones = ['Contract signed'];
   saveCategory();
-  const newCat = categories[2]; // [0] Development, [1] Pending, [2] the one just created
+  const newCat = categories[categories.length - 1]; // the one just created
   openCategoryModal(newCat.id);
   addCategoryMilestoneRow();
   saveCategory();
   assertFalse(!!modalTarget);
-  assertEqual(categories[2].milestones.length, 2);
+  assertEqual(newCat.milestones.length, 2);
 });
 
 test('cancelling the confirm modal discards the whole category edit, including the name change', function () {

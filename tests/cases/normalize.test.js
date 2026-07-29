@@ -61,10 +61,16 @@ test('normalizeData backfills id/text/owner/dueDate on a hand-built action item 
   assertEqual(a.dueDate, null);
 });
 
-test('normalizeData reassigns an item whose workstream no longer exists', function () {
+test('normalizeData resets an item whose workstream no longer exists to Unassigned (null), not an arbitrary real one', function () {
   items.push({ id: 'x2', workstreamId: 'does-not-exist', name: 'Orphan', dueDate: todayStr(), milestones: [] });
   normalizeData();
-  assertEqual(items[0].workstreamId, workstreams[0].id);
+  assertEqual(items[0].workstreamId, null, 'a broken reference should surface for triage in the Unassigned bucket, not silently land in workstreams[0]');
+});
+
+test('normalizeData leaves a genuinely Unassigned item (workstreamId: null) alone', function () {
+  items.push({ id: 'x2', workstreamId: null, name: 'Unassigned item', dueDate: todayStr(), milestones: [] });
+  normalizeData();
+  assertEqual(items[0].workstreamId, null);
 });
 
 test('normalizeData rejects an unknown status value on an item and on a milestone', function () {

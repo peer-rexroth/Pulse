@@ -15,8 +15,8 @@ function fillItemForm(overrides) {
 test('opening a new item modal seeds the standard set of milestones', function () {
   openItemModal(null);
   assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length);
-  assertEqual(editingMilestones[0].name, 'Scope item confirmed');
-  assertEqual(editingMilestones[editingMilestones.length - 1].name, 'Deployment completed');
+  assertEqual(editingMilestones[0].name, 'Requirements Defined');
+  assertEqual(editingMilestones[editingMilestones.length - 1].name, 'Deployment Completed');
   editingMilestones.forEach(m => assertEqual(m.status, 'not-started'));
 });
 
@@ -41,7 +41,7 @@ test('saveItem creates a scope item carrying the standard milestones through', f
   assertEqual(it.startDate, todayStr());
   assertEqual(it.dueDate, todayStr());
   assertEqual(it.milestones.length, DEFAULT_CATEGORY_MILESTONES.length);
-  assertEqual(it.milestones[0].name, 'Scope item confirmed');
+  assertEqual(it.milestones[0].name, 'Requirements Defined');
 });
 
 test('saveItem rejects an empty name', function () {
@@ -106,9 +106,9 @@ test('saveItem stamps a brand-new milestone (added via the modal) with its own u
 test('removeMilestoneRow removes one row from the in-progress edit without touching saved data yet', function () {
   openItemModal(null);
   assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length);
-  removeMilestoneRow(2); // removes "Requirements approved"
+  removeMilestoneRow(2); // removes "Design Defined"
   assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length - 1);
-  assertEqual(editingMilestones[2].name, 'Design defined');
+  assertEqual(editingMilestones[2].name, 'Build Completed');
   assertEqual(items.length, 0, 'nothing should be saved until Save is clicked');
 });
 
