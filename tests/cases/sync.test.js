@@ -275,6 +275,16 @@ test('exportProgramme downloads a JSON blob containing the current workstreams a
   assertDeepEqual(payload.programme, programme);
 });
 
+// exportToExcelReport()'s actual sheet-building only ever runs against a
+// real ExcelJS.Workbook (loaded from a CDN <script>, not part of this
+// zero-dependency JXA harness) — this only exercises the guard that keeps a
+// missing/blocked library a clear, visible toast rather than a crash.
+test('exportToExcelReport shows a clear toast instead of throwing when ExcelJS hasn\'t loaded', async function () {
+  assertEqual(typeof globalThis.ExcelJS, 'undefined', 'this harness never loads the real library');
+  await exportToExcelReport();
+  assertIncludes(document.getElementById('toastMsg').textContent, 'Excel export needs an internet connection');
+});
+
 test('applyImport merge mode adds new data and ignores tombstones (manual import intent)', function () {
   tombstone(deletedItemIds, 'import-1');
   pendingImportData = {

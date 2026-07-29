@@ -8,6 +8,12 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <meta name="theme-color" content="#ffffff">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<!-- Only external JS dependency in this otherwise zero-build app — used
+     solely for the "Export to Excel" report (exportToExcelReport()); the
+     "bare" build skips Node-only stream/fs polyfills this browser-only page
+     never needs. Loaded eagerly (not lazily on first use) so it's a single,
+     predictable thing for the service worker to precache — see sw.js. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.bare.min.js"></script>
 <style>
   :root {
     --bg: #f5f6f8;
@@ -952,6 +958,10 @@
       <div class="dropdown-item" onclick="exportProgramme();closeDataMenu()">
         <i class="fa-solid fa-download dropdown-item-icon"></i>
         <div><div class="dropdown-item-label">Export</div><div class="dropdown-item-desc">Download data as .json</div></div>
+      </div>
+      <div class="dropdown-item" onclick="exportToExcelReport();closeDataMenu()">
+        <i class="fa-solid fa-file-excel dropdown-item-icon"></i>
+        <div><div class="dropdown-item-label">Export to Excel</div><div class="dropdown-item-desc">A formatted .xlsx report — Scope Items, Action Log, Decision Log</div></div>
       </div>
       <div class="dropdown-item" id="dataMenuImportItem" onclick="triggerImport();closeDataMenu()">
         <i class="fa-solid fa-upload dropdown-item-icon"></i>
@@ -5107,6 +5117,160 @@ function currentExportPayload() {
 }
 function exportProgramme() {
   downloadData(currentExportPayload(), `pulse-${todayStr()}.json`);
+}
+
+// ---------- Export to Excel (a formatted, shareable report — an explicit
+// user request, distinct from the plain-data Export above: that one's a
+// lossless backup/interchange format meant to be re-imported; this one is a
+// human-facing document meant to be read, printed, or handed to someone who
+// will never open Pulse itself) ----------
+// Fixed, hardcoded hex values rather than reading the current CSS custom
+// properties — a report exported today should look the same regardless of
+// which of Pulse's own color schemes (Dracula, GitHub, …) happened to be
+// active in the browser at export time; this is always the "standard"
+// theme's own RAG palette, matching the very first :root block up top.
+const EXCEL_RAG_COLORS = {
+  'not-started': { fg: 'FF8B93A1', bg: 'FFECEEF1' },
+  green: { fg: 'FF1F9D55', bg: 'FFE1F5E8' },
+  amber: { fg: 'FFC07F0A', bg: 'FFFCF1DA' },
+  red: { fg: 'FFD13C3C', bg: 'FFFBE8E8' },
+  complete: { fg: 'FF3457C9', bg: 'FFE8EDFC' }
+};
+function excelRagCellStyle(cell, ragId) {
+  const c = EXCEL_RAG_COLORS[ragId] || EXCEL_RAG_COLORS['not-started'];
+  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: c.bg } };
+  cell.font = { bold: true, color: { argb: c.fg } };
+}
+// A plain 'YYYY-MM-DD' string becomes a real Excel date value (so it sorts/
+// filters/formats like one instead of sitting there as inert text) — blank
+// stays blank rather than becoming an arbitrary placeholder date. Built from
+// UTC date parts specifically (Date.UTC), not `new Date(iso + 'T00:00:00')`
+// (parsed in the browser's *local* timezone, the way every other date in
+// this app deliberately does it — see fmtDate()) — ExcelJS itself converts
+// a JS Date to an Excel serial number using its UTC fields, so a locally-
+// parsed midnight in any UTC+ timezone rolls back to the *previous* day's
+// serial (confirmed: opened in Excel/openpyxl one calendar day early for a
+// tester in UTC+2). Date.UTC keeps the calendar date exactly what the ISO
+// string says regardless of the exporting browser's own timezone.
+function excelDateCell(row, key, iso) {
+  if (!iso) return;
+  const [y, m, d] = iso.split('-').map(Number);
+  const cell = row.getCell(key);
+  cell.value = new Date(Date.UTC(y, m - 1, d));
+  cell.numFmt = 'dd mmm yyyy';
+}
+function excelStyleHeaderRow(row) {
+  row.eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D3648' } };
+    cell.alignment = { vertical: 'middle' };
+  });
+  row.height = 20;
+}
+function buildScopeItemsSheet(wb) {
+  const sheet = wb.addWorksheet('Scope Items', { views: [{ state: 'frozen', ySplit: 1 }] });
+  sheet.columns = [
+    { header: 'Workstream', key: 'ws', width: 20 },
+    { header: 'Category', key: 'cat', width: 16 },
+    { header: 'Scope Item / Milestone', key: 'name', width: 44 },
+    { header: 'Status', key: 'status', width: 13 },
+    { header: 'Start', key: 'start', width: 13 },
+    { header: 'Due', key: 'due', width: 13 },
+    { header: 'Actual', key: 'actual', width: 13 },
+    { header: 'IT', key: 'it', width: 10 },
+    { header: 'Business', key: 'biz', width: 10 },
+    { header: 'Budget', key: 'budget', width: 10 }
+  ];
+  excelStyleHeaderRow(sheet.getRow(1));
+  sheet.autoFilter = { from: 'A1', to: 'J1' };
+  // Unassigned first (mirroring renderMain()'s own section order), then real
+  // workstreams in their own displayed order — every item within each in its
+  // own manual order, same as the status board.
+  const sections = [{ id: null, name: 'Unassigned' }, ...workstreams.slice().sort((a, b) => a.order - b.order)];
+  sections.forEach(w => {
+    const wItems = items.filter(it => it.workstreamId === w.id).sort((a, b) => a.order - b.order);
+    wItems.forEach(it => {
+      const cat = categoryById(it.categoryId);
+      const row = sheet.addRow({
+        ws: w.name, cat: cat ? cat.name : '', name: it.name, status: statusLabel(it.status),
+        it: it.itStatus, biz: it.businessStatus, budget: it.budgetStatus
+      });
+      row.font = { bold: true };
+      excelDateCell(row, 'start', it.startDate);
+      excelDateCell(row, 'due', it.dueDate);
+      excelDateCell(row, 'actual', it.actualDate);
+      excelRagCellStyle(row.getCell('status'), it.status);
+      [['it', it.itStatus], ['biz', it.businessStatus], ['budget', it.budgetStatus]].forEach(([key, val]) => excelRagCellStyle(row.getCell(key), val));
+      it.milestones.forEach(m => {
+        const mrow = sheet.addRow({ name: m.name, status: m.notApplicable ? 'N/A' : statusLabel(m.status) });
+        mrow.getCell('name').alignment = { indent: 2 };
+        mrow.font = { italic: true, color: { argb: 'FF666666' } };
+        if (m.notApplicable) {
+          mrow.getCell('status').font = { italic: true, color: { argb: 'FF8B93A1' } };
+        } else {
+          excelDateCell(mrow, 'due', m.dueDate);
+          excelDateCell(mrow, 'actual', m.actualDate);
+          excelRagCellStyle(mrow.getCell('status'), m.status);
+        }
+      });
+    });
+  });
+}
+function buildActionLogSheet(wb) {
+  const sheet = wb.addWorksheet('Action Log', { views: [{ state: 'frozen', ySplit: 1 }] });
+  sheet.columns = [
+    { header: 'Workstream', key: 'ws', width: 20 },
+    { header: 'Action Item', key: 'text', width: 48 },
+    { header: 'Owner', key: 'owner', width: 18 },
+    { header: 'Due Date', key: 'due', width: 13 },
+    { header: 'Source', key: 'source', width: 10 },
+    { header: 'Created', key: 'created', width: 13 },
+    { header: 'Closed', key: 'closed', width: 13 }
+  ];
+  excelStyleHeaderRow(sheet.getRow(1));
+  sheet.autoFilter = { from: 'A1', to: 'G1' };
+  const wrapped = workstreams.flatMap(w => (Array.isArray(w.actionLog) ? w.actionLog : []).map(a => ({ w, a })));
+  sortedActionLog(wrapped, x => x.a).forEach(({ w, a }) => {
+    const cycle = reviewCycles.find(c => c.id === a.cycleId);
+    const row = sheet.addRow({ ws: w.name, text: a.text, owner: a.owner, source: cycle ? 'Review' : '' });
+    excelDateCell(row, 'due', a.dueDate);
+    excelDateCell(row, 'created', dateStrFromTs(a.addedAt));
+    if (a.completedAt) excelDateCell(row, 'closed', dateStrFromTs(a.completedAt));
+    if (a.completed) row.font = { strike: true, color: { argb: 'FF999999' } };
+  });
+}
+function buildDecisionLogSheet(wb) {
+  const sheet = wb.addWorksheet('Decision Log', { views: [{ state: 'frozen', ySplit: 1 }] });
+  sheet.columns = [
+    { header: 'Workstream', key: 'ws', width: 20 },
+    { header: 'Decision', key: 'text', width: 64 },
+    { header: 'Source', key: 'source', width: 10 },
+    { header: 'Logged', key: 'logged', width: 13 }
+  ];
+  excelStyleHeaderRow(sheet.getRow(1));
+  sheet.autoFilter = { from: 'A1', to: 'D1' };
+  const wrapped = workstreams.flatMap(w => (Array.isArray(w.decisionLog) ? w.decisionLog : []).map(d => ({ w, d })));
+  sortedDecisionLog(wrapped, x => x.d).forEach(({ w, d }) => {
+    const cycle = reviewCycles.find(c => c.id === d.cycleId);
+    const row = sheet.addRow({ ws: w.name, text: d.text, source: cycle ? 'Review' : '' });
+    excelDateCell(row, 'logged', dateStrFromTs(d.addedAt));
+  });
+}
+async function exportToExcelReport() {
+  if (typeof ExcelJS === 'undefined') { showToast('Excel export needs an internet connection the first time (loading the export library) — check your connection and try again', true); return; }
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Pulse';
+  wb.created = new Date();
+  buildScopeItemsSheet(wb);
+  buildActionLogSheet(wb);
+  buildDecisionLogSheet(wb);
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = (programme.name || 'Pulse').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'Pulse';
+  a.href = url; a.download = `${safeName}-${todayStr()}.xlsx`;
+  a.click(); URL.revokeObjectURL(url);
 }
 function triggerImport() { if (!requireRole('admin')) return; document.getElementById('fileInput').click(); }
 function handleFileImport(event) {
