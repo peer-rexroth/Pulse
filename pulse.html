@@ -1887,9 +1887,19 @@ function renderSidebar() {
       ? `<span class="row-icon-btn drag-handle ws-row-drag" draggable="true" ondragstart="dragStartWs(event,'${w.id}')" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>`
       : '';
     const dragAttrs = hasRole('editor') ? ` ondragover="event.preventDefault()" ondrop="dropOnWs(event,'${w.id}')"` : '';
-    return `<div class="ws-row ${filterWorkstreamId === w.id ? 'active' : ''}" onclick="setFilterWorkstream('${w.id}')"${dragAttrs}>
+    // title sits on the whole row, not just .ws-row-name — a user report
+    // ("don't see anything while hovering") traced to .ws-row-name being
+    // flex:1 while .ws-row-edit/.ws-row-drag toggle display:none ->
+    // inline-flex on :hover: the reveal shrinks the name's own box the
+    // instant the row starts being hovered, which can shift it out from
+    // under the cursor before the native tooltip timer fires. A title on
+    // the row itself keeps working regardless of that reflow — the edit/
+    // drag buttons still show their own more specific titles when hovered
+    // directly, since a title on the actual hovered element always wins
+    // over an ancestor's.
+    return `<div class="ws-row ${filterWorkstreamId === w.id ? 'active' : ''}" onclick="setFilterWorkstream('${w.id}')" title="${esc(w.name)}"${dragAttrs}>
         <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
-        <span class="ws-row-name" title="${esc(w.name)}">${esc(w.name)}</span>
+        <span class="ws-row-name">${esc(w.name)}</span>
         ${reviewBadge}
         <span class="ws-row-count">${count}</span>
         ${dragHandle}
