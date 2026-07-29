@@ -410,7 +410,15 @@
     padding: 7px 12px; border-radius: 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
   }
   .btn:hover { background: var(--panel-2); }
-  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  /* transform: translateZ(0) forces its own GPU-composited layer immediately
+     rather than on first interaction — a user-reported bug where this
+     button's solid background (same color as its border) rendered as a
+     blank interior with only the border visible until hovered/repainted,
+     specifically on a modal that goes straight from display:none to flex
+     with no transition. Reproduced in both Chrome and Safari, so it's a
+     background/border paint-race on first frame, not an engine-specific
+     quirk; forcing layer promotion up front avoids the race. */
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; transform: translateZ(0); }
   .btn-primary:hover { filter: brightness(1.06); }
   .btn:disabled, .btn-primary:disabled { opacity: .4; cursor: not-allowed; filter: none; }
   .btn-danger { color: var(--danger); }
