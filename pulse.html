@@ -1889,7 +1889,7 @@ function renderSidebar() {
     const dragAttrs = hasRole('editor') ? ` ondragover="event.preventDefault()" ondrop="dropOnWs(event,'${w.id}')"` : '';
     return `<div class="ws-row ${filterWorkstreamId === w.id ? 'active' : ''}" onclick="setFilterWorkstream('${w.id}')"${dragAttrs}>
         <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
-        <span class="ws-row-name">${esc(w.name)}</span>
+        <span class="ws-row-name" title="${esc(w.name)}">${esc(w.name)}</span>
         ${reviewBadge}
         <span class="ws-row-count">${count}</span>
         ${dragHandle}

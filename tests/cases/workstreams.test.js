@@ -119,3 +119,10 @@ test('renderSidebar renders a drag handle wired to dragStartWs for each real wor
   html = document.getElementById('wsList').innerHTML;
   assertNotIncludes(html, 'dragStartWs', 'no drag handle should render below Editor');
 });
+
+test('renderSidebar sets a title tooltip on each workstream row\'s name, so a truncated/ellipsized name is still readable on hover', function () {
+  addWorkstream('A Rather Long Workstream Name That Would Get Truncated');
+  renderSidebar();
+  const html = document.getElementById('wsList').innerHTML;
+  assertIncludes(html, 'title="A Rather Long Workstream Name That Would Get Truncated"');
+});
