@@ -494,6 +494,12 @@
   }
   .date-pill:hover { background: var(--border); }
   .date-pill i { font-size: 10px; color: var(--text-faint); cursor: pointer; }
+  /* Delayed-milestone color coding (see milestoneRowsHtml()'s dueHtml/
+     actualHtml): a Due pill still open past its own date, or an Actual pill
+     recorded after its Due date, both read as the same red used everywhere
+     else in the app for "off track"/"overdue" (see .attention-tag.overdue). */
+  .date-pill.pill-overdue { background: var(--stat-red-bg); color: var(--stat-red); }
+  .date-pill.pill-overdue i { color: var(--stat-red); }
   .inline-date-input {
     border: none; background: transparent; color: inherit; font-family: inherit;
     font-size: 12px; padding: 0; margin: 0; cursor: text; width: 80px;
@@ -726,10 +732,6 @@
   .milestone-row select {
     width: 86px; flex: 0 0 auto; padding: 5px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); font-size: 11.5px;
   }
-  .milestone-reorder { display: flex; flex-direction: column; flex: 0 0 auto; }
-  .milestone-reorder .row-icon-btn { padding: 0 4px; font-size: 10px; line-height: 1.6; }
-  .milestone-reorder .row-icon-btn:disabled { opacity: .25; cursor: default; }
-  .milestone-reorder .row-icon-btn:disabled:hover { background: transparent; }
   .color-grid { display: flex; gap: 8px; flex-wrap: wrap; }
   .color-swatch { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
   .color-swatch.selected { border-color: var(--text); }
@@ -2287,12 +2289,16 @@ function milestoneRowsHtml(it, reviewCycle) {
     // show (see actualHtml below). Due now matches: a real but empty
     // element, not the date-pill at all, while notApplicable.
     const dueEditable = hasRole('editor') && !m.notApplicable;
+    // Same "overdue" definition the dashboard already uses for items
+    // (status !== 'complete' && dueDate < today) — a milestone still open
+    // past its own Due date gets flagged the same way.
+    const dueOverdue = !m.notApplicable && m.status !== 'complete' && m.dueDate && m.dueDate < todayStr();
     const dueHtml = m.notApplicable
       ? `<span></span>`
       : (reviewCycle
-          ? `<span class="item-dates-computed" title="Not editable during a review">${fmtDate(m.dueDate)}</span>`
+          ? `<span class="item-dates-computed" ${dueOverdue ? 'style="color:var(--stat-red)"' : ''} title="${dueOverdue ? 'Overdue — ' : ''}Not editable during a review">${fmtDate(m.dueDate)}</span>`
           : `<span class="item-dates-inline">
-            ${dateInputHtml(m.dueDate, `title="Due date" ${dueEditable ? `onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)"` : 'disabled'}`)}
+            ${dateInputHtml(m.dueDate, `title="${dueOverdue ? 'Overdue — ' : ''}Due date" ${dueEditable ? `onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)"` : 'disabled'}`, dueOverdue ? 'pill-overdue' : '')}
           </span>`);
     // An unset Actual date starts hidden behind a muted "+" — it only needs
     // a value when a milestone actually finishes on a different date than
@@ -2305,9 +2311,12 @@ function milestoneRowsHtml(it, reviewCycle) {
     // notApplicable override as Due above.
     const actualEditable = hasRole('editor') && !m.notApplicable;
     const isRevealedEmpty = !m.actualDate && revealedActualIds.has(m.id);
+    // Flags a late finish — recorded after its own Due date — the other
+    // half of the delayed-milestone signal alongside dueOverdue above.
+    const actualLate = !m.notApplicable && m.actualDate && m.dueDate && m.actualDate > m.dueDate;
     const actualHtml = (!m.actualDate && !revealedActualIds.has(m.id))
       ? (actualEditable ? `<button class="actual-date-ghost" title="Set an actual date — only needed if this milestone finished on a different date than planned" onclick="revealActualDate('${m.id}')"><i class="fa-solid fa-plus"></i></button>` : '')
-      : dateInputHtml(m.actualDate, `id="actual-input-${m.id}" ${actualEditable ? `onblur="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)" ${isRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealActualDate('${m.id}')"` : ''}` : 'disabled'}`);
+      : dateInputHtml(m.actualDate, `id="actual-input-${m.id}" ${actualLate ? 'title="Finished after its Due date"' : ''} ${actualEditable ? `onblur="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)" ${isRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealActualDate('${m.id}')"` : ''}` : 'disabled'}`, actualLate ? 'pill-overdue' : '');
     // The status badge freezes to a plain "N/A" while notApplicable — never
     // cycleable, and deliberately not showing whatever RAG color m.status
     // still holds underneath (see toggleMilestoneNotApplicable()'s own
@@ -2518,8 +2527,8 @@ function fmtDate(iso) {
 // disabled input has nothing to open) — clicking anywhere else in the pill
 // (its padding/gap, not just the narrow input itself) focuses the input so
 // typing works immediately, without also popping the calendar.
-function dateInputHtml(value, attrs) {
-  return `<span class="date-pill" onclick="if(event.target.tagName!=='INPUT' && event.target.tagName!=='I'){ const inp=this.querySelector('input'); if(!inp.disabled) inp.focus(); }">
+function dateInputHtml(value, attrs, pillClass) {
+  return `<span class="date-pill${pillClass ? ' ' + pillClass : ''}" onclick="if(event.target.tagName!=='INPUT' && event.target.tagName!=='I'){ const inp=this.querySelector('input'); if(!inp.disabled) inp.focus(); }">
       <i class="fa-solid fa-calendar" onclick="const inp=this.nextElementSibling; if(inp.showPicker && !inp.disabled) inp.showPicker();"></i>
       <input type="date" class="inline-date-input" value="${value || ''}" ${attrs || ''}>
     </span>`;
@@ -4820,14 +4829,12 @@ function closeCategoryModal() {
   editingCategoryOriginalMilestones = [];
 }
 function renderCategoryMilestonesEditor() {
-  const last = editingCategoryMilestones.length - 1;
   const editable = hasRole('editor');
+  // Row itself is the drop target (dropping anywhere on it works, not just
+  // precisely on the grip handle) — same split as dragStartItem()/dropOnItem().
   document.getElementById('categoryMilestonesEditor').innerHTML = editingCategoryMilestones.map((name, idx) => `
-    <div class="milestone-row">
-      <div class="milestone-reorder">
-        <button class="row-icon-btn" onclick="moveCategoryMilestoneRow(${idx},-1)" title="Move up" ${(idx === 0 || !editable) ? 'disabled' : ''}><i class="fa-solid fa-chevron-up"></i></button>
-        <button class="row-icon-btn" onclick="moveCategoryMilestoneRow(${idx},1)" title="Move down" ${(idx === last || !editable) ? 'disabled' : ''}><i class="fa-solid fa-chevron-down"></i></button>
-      </div>
+    <div class="milestone-row"${editable ? ` ondragover="event.preventDefault()" ondrop="dropOnCategoryMilestoneRow(event,${idx})"` : ''}>
+      ${editable ? `<span class="row-icon-btn drag-handle" draggable="true" ondragstart="dragStartCategoryMilestoneRow(event,${idx})" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>` : '<span></span>'}
       <input type="text" value="${esc(name)}" ${editable ? '' : 'disabled'} oninput="editingCategoryMilestones[${idx}] = this.value">
       ${editable ? `<button class="row-icon-btn" onclick="removeCategoryMilestoneRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>` : '<span></span>'}
     </div>`).join('');
@@ -4836,13 +4843,24 @@ function addCategoryMilestoneRow() {
   editingCategoryMilestones.push('New milestone');
   renderCategoryMilestonesEditor();
 }
-function moveCategoryMilestoneRow(idx, dir) {
+// Drag-and-drop reordering of the in-progress category template — same
+// grip-handle/whole-row-drop-target split as dragStartItem()/dropOnItem(),
+// but over the plain editingCategoryMilestones array of names rather than an
+// id-keyed data array: it's in-memory only until Save and always fully
+// re-rendered after a change, so an index is all reordering needs.
+let draggedCategoryMilestoneIdx = null;
+function dragStartCategoryMilestoneRow(e, idx) {
+  draggedCategoryMilestoneIdx = idx;
+  e.dataTransfer.effectAllowed = 'move';
+}
+function dropOnCategoryMilestoneRow(e, idx) {
+  e.preventDefault();
+  const fromIdx = draggedCategoryMilestoneIdx;
+  draggedCategoryMilestoneIdx = null;
   if (!requireRole('editor')) return;
-  const target = idx + dir;
-  if (target < 0 || target >= editingCategoryMilestones.length) return;
-  const tmp = editingCategoryMilestones[idx];
-  editingCategoryMilestones[idx] = editingCategoryMilestones[target];
-  editingCategoryMilestones[target] = tmp;
+  if (fromIdx === null || fromIdx === idx) return;
+  const [moved] = editingCategoryMilestones.splice(fromIdx, 1);
+  editingCategoryMilestones.splice(idx, 0, moved);
   renderCategoryMilestonesEditor();
 }
 function removeCategoryMilestoneRow(idx) {

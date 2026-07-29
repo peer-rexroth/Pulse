@@ -152,30 +152,62 @@ test('addCategoryMilestoneRow / removeCategoryMilestoneRow edit the in-progress 
   assertEqual(categories.length, baseCount, 'nothing should be saved until Save is clicked');
 });
 
-test('moveCategoryMilestoneRow swaps a milestone with its neighbor', function () {
+test('renderCategoryMilestonesEditor renders a drag handle wired to dragStartCategoryMilestoneRow for each row at Editor+, and omits it below Editor', function () {
+  openCategoryModal(categories[0].id);
+  let html = document.getElementById('categoryMilestonesEditor').innerHTML;
+  editingCategoryMilestones.forEach((_, idx) => {
+    assertIncludes(html, `dragStartCategoryMilestoneRow(event,${idx})`);
+    assertIncludes(html, `dropOnCategoryMilestoneRow(event,${idx})`);
+  });
+  userRole = 'reviewer';
+  renderCategoryMilestonesEditor();
+  html = document.getElementById('categoryMilestonesEditor').innerHTML;
+  assertNotIncludes(html, 'dragStartCategoryMilestoneRow', 'no drag handle should render below Editor');
+  assertNotIncludes(html, 'dropOnCategoryMilestoneRow', 'no drop target should render below Editor');
+});
+
+test('dragStartCategoryMilestoneRow/dropOnCategoryMilestoneRow reorders the in-progress template by dragging', function () {
   openCategoryModal(categories[0].id);
   const before = editingCategoryMilestones.slice();
-  moveCategoryMilestoneRow(0, 1); // move first entry down
+  const fakeEvent = { dataTransfer: {}, preventDefault: () => {} };
+  dragStartCategoryMilestoneRow(fakeEvent, 0); // drag first entry
+  dropOnCategoryMilestoneRow(fakeEvent, 1); // drop it onto the second slot
   assertEqual(editingCategoryMilestones[0], before[1]);
   assertEqual(editingCategoryMilestones[1], before[0]);
-  moveCategoryMilestoneRow(1, -1); // move it back up
+  dragStartCategoryMilestoneRow(fakeEvent, 1); // drag it back
+  dropOnCategoryMilestoneRow(fakeEvent, 0);
   assertDeepEqual(editingCategoryMilestones, before);
 });
 
-test('moveCategoryMilestoneRow refuses to move past either end', function () {
+test('dropOnCategoryMilestoneRow is a no-op when dropped back on the same row it was dragged from', function () {
   openCategoryModal(categories[0].id);
   const before = editingCategoryMilestones.slice();
-  moveCategoryMilestoneRow(0, -1); // already first — no-op
+  const fakeEvent = { dataTransfer: {}, preventDefault: () => {} };
+  dragStartCategoryMilestoneRow(fakeEvent, 0);
+  dropOnCategoryMilestoneRow(fakeEvent, 0);
   assertDeepEqual(editingCategoryMilestones, before);
   const lastIdx = editingCategoryMilestones.length - 1;
-  moveCategoryMilestoneRow(lastIdx, 1); // already last — no-op
+  dragStartCategoryMilestoneRow(fakeEvent, lastIdx);
+  dropOnCategoryMilestoneRow(fakeEvent, lastIdx);
   assertDeepEqual(editingCategoryMilestones, before);
+});
+
+test('dropOnCategoryMilestoneRow is blocked below Editor', function () {
+  openCategoryModal(categories[0].id);
+  const before = editingCategoryMilestones.slice();
+  const fakeEvent = { dataTransfer: {}, preventDefault: () => {} };
+  userRole = 'reviewer';
+  dragStartCategoryMilestoneRow(fakeEvent, 0);
+  dropOnCategoryMilestoneRow(fakeEvent, 1);
+  assertDeepEqual(editingCategoryMilestones, before, 'a Reviewer must not be able to reorder the template by dragging');
 });
 
 test('a reordered template is only committed to the category on Save', function () {
   openCategoryModal(categories[0].id);
   const before = editingCategoryMilestones.slice();
-  moveCategoryMilestoneRow(0, 1);
+  const fakeEvent = { dataTransfer: {}, preventDefault: () => {} };
+  dragStartCategoryMilestoneRow(fakeEvent, 0);
+  dropOnCategoryMilestoneRow(fakeEvent, 1);
   assertDeepEqual(categories[0].milestones, before, 'the saved category should be untouched before Save');
   saveCategory();
   assertEqual(categories[0].milestones[0], before[1]);
@@ -283,7 +315,9 @@ test('reordering a template with no name changes saves immediately, without a co
   const catId = categories[0].id;
   const it = addItemWithCategory(catId, categories[0].milestones);
   openCategoryModal(catId);
-  moveCategoryMilestoneRow(0, 1);
+  const fakeEvent = { dataTransfer: {}, preventDefault: () => {} };
+  dragStartCategoryMilestoneRow(fakeEvent, 0);
+  dropOnCategoryMilestoneRow(fakeEvent, 1);
   const expectedFirst = editingCategoryMilestones[0]; // captured before saveCategory() clears the working copy
   const expectedSecond = editingCategoryMilestones[1];
   saveCategory();
@@ -298,7 +332,9 @@ test('a custom milestone not in the template keeps its relative position after a
   const it = addItemWithCategory(catId, categories[0].milestones);
   it.milestones.push({ id: genId(), name: 'One-off custom step', dueDate: todayStr(), status: 'not-started', actualDate: null });
   openCategoryModal(catId);
-  moveCategoryMilestoneRow(0, 1);
+  const fakeEvent = { dataTransfer: {}, preventDefault: () => {} };
+  dragStartCategoryMilestoneRow(fakeEvent, 0);
+  dropOnCategoryMilestoneRow(fakeEvent, 1);
   saveCategory();
   assertEqual(it.milestones[it.milestones.length - 1].name, 'One-off custom step', 'a milestone with no matching template entry should sort after every template-matched one');
 });
@@ -310,7 +346,10 @@ test('reordering the template also positions a newly-added milestone correctly o
   addCategoryMilestoneRow();
   const newName = 'Go-live approved';
   editingCategoryMilestones[editingCategoryMilestones.length - 1] = newName;
-  moveCategoryMilestoneRow(editingCategoryMilestones.length - 1, -1); // move the new entry up one, off the very end
+  const fakeEvent = { dataTransfer: {}, preventDefault: () => {} };
+  const lastIdx = editingCategoryMilestones.length - 1;
+  dragStartCategoryMilestoneRow(fakeEvent, lastIdx);
+  dropOnCategoryMilestoneRow(fakeEvent, lastIdx - 1); // move the new entry up one, off the very end
   const expectedIdx = editingCategoryMilestones.indexOf(newName);
   saveCategory();
   confirmModalAction();

@@ -302,6 +302,75 @@ test('milestoneRowsHtml renders the Not Applicable toggle wired to toggleMilesto
   assertIncludes(html, 'fa-solid fa-ban', 'the marked milestone should show the filled icon');
 });
 
+// ---------- Delayed-milestone color coding (Due/Actual pills) ----------
+
+test('a milestone still open past its own Due date gets its Due pill flagged overdue', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Late one', dueDate: '2020-01-01', status: 'amber', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'pill-overdue');
+});
+
+test('a Complete milestone never gets its Due pill flagged, even if its Due date is in the past', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Done on time', dueDate: '2020-01-01', status: 'complete', actualDate: '2020-01-01' }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'pill-overdue', 'Due itself should not read as still-open once the milestone is Complete');
+});
+
+test('a milestone due in the future is never flagged overdue', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Not due yet', dueDate: '2099-01-01', status: 'green', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'pill-overdue');
+});
+
+test('an Actual date recorded after its own Due date gets flagged, whether or not the milestone is marked Complete', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Finished late', dueDate: '2020-01-01', status: 'complete', actualDate: '2020-03-01' }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'pill-overdue');
+  assertIncludes(html, 'Finished after its Due date');
+});
+
+test('an Actual date recorded on or before its own Due date is never flagged', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Finished on time', dueDate: '2020-06-01', status: 'complete', actualDate: '2020-05-01' }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'pill-overdue');
+});
+
+test('a notApplicable milestone is never flagged overdue on Due, even with a past Due date', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Skipped', dueDate: '2020-01-01', status: 'red', actualDate: null, notApplicable: true }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'pill-overdue');
+});
+
 test('the milestone header shows Status immediately before MS Req. (the Not Applicable toggle\'s column), matching the data rows\' own column order', function () {
   const it = addItem({
     name: 'Parent',
