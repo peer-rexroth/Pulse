@@ -74,6 +74,41 @@ test('setUserRole updates state, persists it, and re-renders the picker', functi
   assertEqual(localStorage.getItem('pulse-role-v1'), 'reviewer');
 });
 
+// Switching away from Admin while sitting on the Admin page would otherwise
+// leave Admin-gated content (Role Passwords especially) disappearing out
+// from under whoever's looking, mid-page — an explicit user request.
+test('setUserRole leaves the Admin page for the All-workstreams Dashboard when switching to any non-Admin role while mode is "admin"', function () {
+  userRole = 'admin';
+  mode = 'admin';
+  filterWorkstreamId = workstreams[0].id;
+  setUserRole('editor');
+  assertEqual(mode, 'dashboard');
+  assertEqual(filterWorkstreamId, null, 'should land on "All workstreams", not whatever was filtered before');
+});
+
+test('setUserRole does not touch mode/filterWorkstreamId when switching roles outside Admin mode', function () {
+  userRole = 'admin';
+  mode = 'planning';
+  filterWorkstreamId = workstreams[0].id;
+  setUserRole('visitor');
+  assertEqual(mode, 'planning');
+  assertEqual(filterWorkstreamId, workstreams[0].id);
+});
+
+test('setUserRole does not leave the Admin page when the newly picked role is still Admin', function () {
+  userRole = 'admin';
+  mode = 'admin';
+  setUserRole('admin');
+  assertEqual(mode, 'admin');
+});
+
+test('setUserRole does not leave the Admin page when re-picking the same role that\'s already active', function () {
+  userRole = 'editor';
+  mode = 'admin';
+  setUserRole('editor');
+  assertEqual(mode, 'admin', 'nothing actually changed, so there\'s no reason to navigate away');
+});
+
 // Regression test: the topbar shield icon (#roleBtn) used to be a hardcoded
 // fa-user-shield glyph regardless of the actual role, so switching roles
 // visibly changed nothing there. updateRoleBtn() (called from render(),
@@ -198,7 +233,9 @@ test('pickRole does not switch roles yet for a password-protected role — it sh
   assertEqual(userRole, 'visitor', 'must not switch until the password is actually submitted and correct');
   assertEqual(document.getElementById('roleModalPasswordStep').style.display, '', 'the password step must be shown');
   assertEqual(document.getElementById('roleOptions').style.display, 'none', 'the tile grid should be hidden while entering a password');
-  assertIncludes(document.getElementById('roleModalPasswordLabel').textContent, 'Editor');
+  assertIncludes(document.getElementById('roleModalTitle').textContent, 'Editor');
+  assertIncludes(document.getElementById('roleModalPasswordIntro').textContent, 'Editor');
+  assertEqual(document.getElementById('roleModalIntro').style.display, 'none', 'the whole-picker explanation should be hidden while focused on entering one password');
 });
 
 test('submitRolePassword rejects a wrong password, leaving the role unchanged and showing an error', async function () {
@@ -240,7 +277,7 @@ test('submitRolePassword shows a clear error instead of throwing when crypto.sub
   }
 });
 
-test('cancelRolePasswordStep backs out of the password step without changing the current role', async function () {
+test('cancelRolePasswordStep backs out of the password step without changing the current role, restoring the picker\'s own title/intro', async function () {
   programme.rolePasswords.editor = await hashRolePassword('secret123');
   userRole = 'visitor';
   pickRole('editor');
@@ -248,6 +285,8 @@ test('cancelRolePasswordStep backs out of the password step without changing the
   assertEqual(userRole, 'visitor', 'canceling must not switch roles');
   assertEqual(document.getElementById('roleModalPasswordStep').style.display, 'none');
   assertEqual(document.getElementById('roleOptions').style.display, '');
+  assertEqual(document.getElementById('roleModalTitle').textContent, 'Choose your role');
+  assertEqual(document.getElementById('roleModalIntro').style.display, '');
 });
 
 test('openRoleModal always resets any lingering password step back to the tile grid', async function () {

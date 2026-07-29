@@ -1128,13 +1128,13 @@
      icon (a role already chosen: the same modal, but now freely dismissable). -->
 <div class="modal-bg" id="roleModalBg">
   <div class="modal" style="width:440px">
-    <h3>Choose your role</h3>
-    <p>This is a workflow setting, not a security boundary — Pulse has no accounts or server, so it only guides what's shown/enabled in the UI. The role you pick is saved to this browser only, never written to a shared/synced data file — but Reviewer/Editor/Admin can each optionally require a password (set by an Admin, under Admin &gt; Role Passwords) to cut down on accidental switches. Only a salted hash of that password is stored in the shared data file, not the password itself — but the check still runs in this page's own code, so it's a soft deterrent, not real access control.</p>
+    <h3 id="roleModalTitle">Choose your role</h3>
+    <p id="roleModalIntro">This is a workflow setting, not a security boundary — Pulse has no accounts or server, so it only guides what's shown/enabled in the UI. The role you pick is saved to this browser only, never written to a shared/synced data file — but Reviewer/Editor/Admin can each optionally require a password (set by an Admin, under Admin &gt; Role Passwords) to cut down on accidental switches. Only a salted hash of that password is stored in the shared data file, not the password itself — but the check still runs in this page's own code, so it's a soft deterrent, not real access control.</p>
     <div class="theme-options" id="roleOptions"></div>
     <div id="roleModalPasswordStep" style="display:none">
+      <p id="roleModalPasswordIntro" style="margin-top:0"></p>
       <div class="field">
-        <label id="roleModalPasswordLabel">Password</label>
-        <input type="password" id="roleModalPasswordInput" onkeydown="if(event.key==='Enter') submitRolePassword(); if(event.key==='Escape') cancelRolePasswordStep();">
+        <input type="password" id="roleModalPasswordInput" placeholder="Password" onkeydown="if(event.key==='Enter') submitRolePassword(); if(event.key==='Escape') cancelRolePasswordStep();">
       </div>
       <div id="roleModalPasswordError" style="display:none;color:var(--stat-red);font-size:12.5px;margin:-6px 0 12px"></div>
       <div class="modal-actions" style="justify-content:flex-end">
@@ -2360,9 +2360,22 @@ function closeRoleModal() {
   maybeShowPendingFileSyncPrompt();
 }
 function setUserRole(role) {
+  const changed = role !== userRole;
   userRole = role;
   saveRole();
   renderRoleModal();
+  // Sitting on the Admin page while switching away to any non-Admin role
+  // would otherwise leave Admin-gated content (the Role Passwords section
+  // in particular) disappearing out from under whoever's looking, mid-page
+  // — an explicit user request: hop to the All-workstreams Dashboard
+  // instead of leaving that half-changed page showing. Gated on `changed`
+  // so re-picking the role already active (e.g. clicking your own current
+  // tile) doesn't boot you off the Admin page for no reason.
+  if (changed && role !== 'admin' && mode === 'admin') {
+    mode = 'dashboard';
+    filterWorkstreamId = null;
+    save();
+  }
   render();
 }
 // ---------- Role password hashing ----------
@@ -2421,7 +2434,14 @@ function pickRole(role) {
   pendingRolePick = role;
   document.getElementById('roleOptions').style.display = 'none';
   document.getElementById('roleModalDoneRow').style.display = 'none';
-  document.getElementById('roleModalPasswordLabel').textContent = `${ROLE_META[role].label} password`;
+  document.getElementById('roleModalIntro').style.display = 'none';
+  // The title/intro swap to be *about this one step*, not the whole role
+  // picker — a user-reported issue: "Choose your role" plus its full
+  // paragraph explaining the whole password system stayed on screen while
+  // someone was just trying to type one password in, reading as a much
+  // bigger dialog than the single field it actually needed.
+  document.getElementById('roleModalTitle').textContent = `${ROLE_META[role].label} password`;
+  document.getElementById('roleModalPasswordIntro').textContent = `Enter the password to switch to ${ROLE_META[role].label}.`;
   document.getElementById('roleModalPasswordError').style.display = 'none';
   const input = document.getElementById('roleModalPasswordInput');
   input.value = '';
@@ -2454,6 +2474,8 @@ function cancelRolePasswordStep() {
   document.getElementById('roleModalPasswordStep').style.display = 'none';
   document.getElementById('roleOptions').style.display = '';
   document.getElementById('roleModalDoneRow').style.display = '';
+  document.getElementById('roleModalIntro').style.display = '';
+  document.getElementById('roleModalTitle').textContent = 'Choose your role';
 }
 // Keeps the topbar shield icon in sync with the actual current role (it
 // used to be a hardcoded fa-user-shield regardless of role — a user-
