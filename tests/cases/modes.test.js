@@ -32,11 +32,16 @@ test('render() marks the active mode tab active and the others inactive', functi
   assertFalse(document.getElementById('tabPlanning').classList.contains('active'));
 });
 
-test('render() marks the Review tab disabled while "All workstreams" is selected, and enabled once one is picked', function () {
-  render(); // resetState() doesn't render on its own — a fresh fake tab element has no classes yet either way
-  assertTrue(document.getElementById('tabReview').classList.contains('disabled'));
+// #tabReview itself is never disabled any more — the Action Log tab works
+// fine with "All workstreams" selected (see allWorkstreamsActionLogHtml()),
+// so Review mode always has something sensible to show. Only Scope Item
+// Review, which needs one specific workstream's own cycle, still marks
+// itself disabled without one.
+test('render() marks the Scope Item Review sub-tab disabled while "All workstreams" is selected, and enabled once one is picked', function () {
+  setMode('review'); // lands on Action Log with no workstream selected — see setMode()
+  assertTrue(document.getElementById('tabReviewScope').classList.contains('disabled'));
   setFilterWorkstream(workstreams[0].id);
-  assertFalse(document.getElementById('tabReview').classList.contains('disabled'));
+  assertFalse(document.getElementById('tabReviewScope').classList.contains('disabled'));
 });
 
 test('normalizeData falls back to planning mode if the stored mode is invalid', function () {

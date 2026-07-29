@@ -117,30 +117,57 @@ test('reviewCyclesForWs returns every cycle (active and completed) for that work
 
 // ---------- Shared workstream selector: Review mode's own gating ----------
 
-test('setMode("review") is blocked while "All workstreams" is selected', function () {
+// Scope Item Review needs one specific workstream's own cycle, but the
+// Action Log doesn't (see allWorkstreamsActionLogHtml()) — so entering
+// Review mode (or clearing the workstream filter while already in it) no
+// longer bails out to Planning the way it used to. It lands on the Action
+// Log tab instead, since that's the one sub-tab with something to show.
+
+test('setMode("review") lands on the Action Log tab (not blocked) while "All workstreams" is selected', function () {
   assertEqual(filterWorkstreamId, null);
   setMode('review');
-  assertEqual(mode, 'planning', 'Review needs a specific workstream selected first');
+  assertEqual(mode, 'review');
+  assertEqual(reviewTab, 'actionLog', 'Scope Item Review has nothing to show without a workstream, so Review mode opens on Action Log instead');
 });
 
-test('setFilterWorkstream selects a workstream, which setMode("review") then accepts', function () {
+test('setFilterWorkstream selects a workstream, which setMode("review") then shows on the Scope tab', function () {
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
   assertEqual(mode, 'review');
 });
 
-test('picking "All workstreams" while already in Review mode falls back to Planning', function () {
+test('picking "All workstreams" while on Review\'s Scope tab hops to the Action Log tab instead of leaving Review mode', function () {
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
+  assertEqual(reviewTab, 'scope');
   setFilterWorkstream(null);
-  assertEqual(mode, 'planning', 'Review has nothing sensible to show once the selection is cleared');
+  assertEqual(mode, 'review', 'the Action Log tab has something to show even with no workstream selected');
+  assertEqual(reviewTab, 'actionLog');
 });
 
-test('normalizeData falls back to planning if mode is "review" with no workstream selected', function () {
+test('picking "All workstreams" while already on Review\'s Action Log tab stays right there', function () {
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('actionLog');
+  setFilterWorkstream(null);
+  assertEqual(mode, 'review');
+  assertEqual(reviewTab, 'actionLog');
+});
+
+test('normalizeData falls back to planning if mode is "review", reviewTab is "scope", and no workstream is selected', function () {
   mode = 'review';
   filterWorkstreamId = null;
+  reviewTab = 'scope';
   normalizeData();
   assertEqual(mode, 'planning');
+});
+
+test('normalizeData leaves mode as "review" if reviewTab is "actionLog", even with no workstream selected', function () {
+  mode = 'review';
+  filterWorkstreamId = null;
+  reviewTab = 'actionLog';
+  normalizeData();
+  assertEqual(mode, 'review');
 });
 
 test('renderReview shows a start button when no cycle is active, and the checklist once one starts', function () {
@@ -1390,7 +1417,7 @@ test('actionLogHtml shows an empty state when the workstream has no action items
   assertNotIncludes(html, 'action-log-header', 'no header row without any actual rows to label');
 });
 
-test('actionLogHtml shows a header row (Action Item / Owner / Due Date / Source / Created / Closed) once there is at least one action item', function () {
+test('actionLogHtml shows a header row (Action Item / Owner / Due Date / Source / Created / Closed / Actions) once there is at least one action item', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
   addMinutesActionItemRow();
@@ -1407,6 +1434,12 @@ test('actionLogHtml shows a header row (Action Item / Owner / Due Date / Source 
   assertIncludes(html, 'Source');
   assertIncludes(html, 'Created');
   assertIncludes(html, 'Closed');
+  // Delete/the confirm toggle share one "Actions" label spanning both
+  // columns (7/9) — a user-reported gap, since it used to be left
+  // unlabeled while every other column here had its own header text.
+  const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 600);
+  assertIncludes(headerRow, 'grid-column:7/9', 'the Actions label must span both the Delete and Confirm columns');
+  assertIncludes(headerRow, '>Actions<');
 });
 
 test('actionLogRowHtml shows the Source column as plain "Review" (with the fuller "From review started ..." text kept as a hover tooltip), since every row is transcribed from a review\'s minutes', function () {
@@ -1511,4 +1544,115 @@ test('sortedActionLog puts open items first (soonest due date first, undated las
   ];
   const sorted = sortedActionLog(list).map(a => a.id);
   assertDeepEqual(sorted, ['c', 'b', 'a', 'd', 'e']);
+});
+
+test('sortedActionLog\'s keyFn param sorts a list of wrapped {w, a} pairs by the wrapped item\'s own fields, same ordering as the plain-list case', function () {
+  const list = [
+    { w: 'ws1', a: { id: 'a', completed: false, dueDate: '2026-09-01' } },
+    { w: 'ws2', a: { id: 'b', completed: false, dueDate: '2026-08-01' } },
+    { w: 'ws1', a: { id: 'c', completed: true, completedAt: 100 } }
+  ];
+  const sorted = sortedActionLog(list, x => x.a).map(x => x.a.id);
+  assertDeepEqual(sorted, ['b', 'a', 'c']);
+});
+
+// ---------- "All workstreams" Action Log ----------
+// Reachable from Review mode's Action Log tab with "All workstreams"
+// selected in the sidebar — see setMode()/setFilterWorkstream()'s own
+// comments for why Review mode no longer requires a specific workstream
+// the way it used to (Scope Item Review still does; the Action Log doesn't).
+
+function addSecondWorkstreamWithCompletedCycle() {
+  document.getElementById('wsNameInput').value = 'Second Stream';
+  wsColorChoice = 'teal';
+  saveWorkstream();
+  const w2 = workstreams[1];
+  const it = addReviewItem({ workstreamId: w2.id });
+  startReviewCycle(w2.id);
+  const cycle = activeReviewCycle(w2.id);
+  toggleReviewConfirm(cycle.id, it.id);
+  completeReviewCycle(cycle.id);
+  return reviewCycles.find(c => c.workstreamId === w2.id);
+}
+
+test('allWorkstreamsActionLogHtml merges every workstream\'s own action log into one list, each row tagged with its source workstream', function () {
+  const cycle1 = addCompletedReviewCycle();
+  openMinutesModal(cycle1.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'From workstream 1';
+  saveMinutes();
+
+  const cycle2 = addSecondWorkstreamWithCompletedCycle();
+  openMinutesModal(cycle2.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'From workstream 2';
+  saveMinutes();
+
+  const html = allWorkstreamsActionLogHtml();
+  assertIncludes(html, 'From workstream 1');
+  assertIncludes(html, 'From workstream 2');
+  assertIncludes(html, esc(workstreams[0].name));
+  assertIncludes(html, esc(workstreams[1].name));
+  assertIncludes(html, 'action-log-row with-ws', 'each data row must carry the with-ws modifier so its CSS grid gets the extra Workstream column');
+});
+
+test('allWorkstreamsActionLogHtml\'s header includes a Workstream column and shifts every later column one slot right (columns 2-9)', function () {
+  addCompletedReviewCycle();
+  const w = workstreams[0];
+  w.actionLog = [{ id: 'a1', text: 'X', owner: 'Alice', dueDate: null, completed: false, completedAt: null, cycleId: null, addedAt: Date.now() }];
+  const html = allWorkstreamsActionLogHtml();
+  const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 600);
+  assertIncludes(headerRow, 'grid-column:1">Action Item');
+  assertIncludes(headerRow, 'grid-column:2">Workstream');
+  assertIncludes(headerRow, 'grid-column:3">Owner');
+  assertIncludes(headerRow, 'grid-column:4">Due Date');
+  assertIncludes(headerRow, 'grid-column:5">Source');
+  assertIncludes(headerRow, 'grid-column:6">Created');
+  assertIncludes(headerRow, 'grid-column:7">Closed');
+
+  const dataRow = html.slice(html.indexOf('action-log-text'));
+  assertIncludes(dataRow, 'grid-column:2"', 'the Workstream cell must sit at column 2 on the data row too');
+  assertIncludes(dataRow, `grid-column:8" onclick="deleteActionLogItem('${w.id}','a1')"`, 'Delete shifts to column 8 (one slot right of the plain 8-column layout) to make room for Workstream');
+  assertIncludes(dataRow, `grid-column:9" onclick="toggleActionLogItem('${w.id}','a1')"`, 'the confirm toggle shifts to column 9, still last');
+});
+
+test('allWorkstreamsActionLogHtml shows the same empty state as the per-workstream table when no workstream has any action items', function () {
+  const html = allWorkstreamsActionLogHtml();
+  assertIncludes(html, 'No action items yet');
+});
+
+test('renderReview shows the "All workstreams" Action Log when no workstream is filtered and reviewTab is "actionLog", with an aggregate open/total count', function () {
+  const cycle1 = addCompletedReviewCycle();
+  openMinutesModal(cycle1.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Item one';
+  saveMinutes();
+
+  const cycle2 = addSecondWorkstreamWithCompletedCycle();
+  openMinutesModal(cycle2.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Item two';
+  saveMinutes();
+
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setFilterWorkstream(null); // hops reviewTab to 'actionLog' — see setFilterWorkstream()
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '>All workstreams<');
+  assertIncludes(html, '2 open of 2 action items');
+  assertIncludes(html, 'Item one');
+  assertIncludes(html, 'Item two');
+});
+
+test('a completed action item on the "All workstreams" view is excluded from the open count, same as the per-workstream one', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Close me';
+  saveMinutes();
+  toggleActionLogItem(workstreams[0].id, workstreams[0].actionLog[0].id);
+
+  setMode('review'); // no workstream filtered — lands on Action Log
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '0 open of 1 action item');
 });

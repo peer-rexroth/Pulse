@@ -808,6 +808,16 @@
   .action-log-row, .action-log-header {
     grid-template-columns: minmax(220px,1fr) 100px 90px 80px 90px 90px 40px 40px;
   }
+  /* The "All workstreams" Action Log (see allWorkstreamsActionLogHtml())
+     inserts one extra Workstream column right after Action Item — every
+     other column shifts one slot right accordingly (see
+     actionLogRowHtml()'s showWs param). Action Item loses some of its own
+     flexible width to make room, same tradeoff --item-grid-cols itself
+     makes for its own name column. */
+  .action-log-row.with-ws, .action-log-header.with-ws {
+    grid-template-columns: minmax(160px,1fr) 130px 100px 90px 80px 90px 90px 40px 40px;
+  }
+  .action-log-ws { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .section-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin: 20px 0 8px; }
   .section-label:first-child { margin-top: 0; }
 
@@ -854,7 +864,7 @@
   <div class="view-tabs">
     <button class="view-tab" id="tabDashboard" onclick="setMode('dashboard')"><i class="fa-solid fa-gauge-high"></i> Dashboard</button>
     <button class="view-tab" id="tabPlanning" onclick="setMode('planning')"><i class="fa-solid fa-diagram-project"></i> Planning</button>
-    <button class="view-tab" id="tabReview" onclick="setMode('review')" title="Select a specific workstream in the sidebar first"><i class="fa-solid fa-clipboard-check"></i> Review</button>
+    <button class="view-tab" id="tabReview" onclick="setMode('review')"><i class="fa-solid fa-clipboard-check"></i> Review</button>
   </div>
   <div class="topbar-spacer"></div>
   <span id="syncConflictIndicator"></span>
@@ -1585,10 +1595,14 @@ function normalizeData() {
   }
   if (filterWorkstreamId && !wsIds.has(filterWorkstreamId)) filterWorkstreamId = null;
   if (!MODES.includes(mode)) mode = 'planning';
-  // Review mode requires a specific workstream selected — see setMode()/
+  // Scope Item Review requires a specific workstream selected; the Action
+  // Log tab doesn't (see allWorkstreamsActionLogHtml()) — see setMode()/
   // setFilterWorkstream() for the same rule enforced at the entry points;
   // this is the backstop for data loaded straight from storage/import/sync.
-  if (mode === 'review' && !filterWorkstreamId) mode = 'planning';
+  // reviewTab itself is never persisted (module-level, UI-only — see
+  // "Review mode has two sub-tabs" in CLAUDE.md), so it's always still at
+  // its 'scope' default here regardless of what a previous session showed.
+  if (mode === 'review' && !filterWorkstreamId && reviewTab === 'scope') mode = 'planning';
 }
 
 function genId() { return 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -1674,7 +1688,6 @@ function render() {
   document.getElementById('programmeNameDisplay').textContent = programme.name;
   updateRoleBtn();
   MODES.forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
-  document.getElementById('tabReview').classList.toggle('disabled', !filterWorkstreamId);
   document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
   document.getElementById('reviewToolbar').style.display = mode === 'review' ? '' : 'none';
@@ -1685,6 +1698,10 @@ function render() {
     renderMain();
   } else if (mode === 'review') {
     document.getElementById('tabReviewScope').classList.toggle('active', reviewTab === 'scope');
+    // Scope Item Review still needs one specific workstream — visually
+    // marked disabled the same way #tabReview itself used to be, before
+    // the Action Log tab (below) stopped needing one at all.
+    document.getElementById('tabReviewScope').classList.toggle('disabled', !filterWorkstreamId);
     document.getElementById('tabReviewActionLog').classList.toggle('active', reviewTab === 'actionLog');
     renderReview();
   } else if (mode === 'dashboard') {
@@ -1694,10 +1711,11 @@ function render() {
   }
 }
 function setMode(m) {
-  if (m === 'review' && !filterWorkstreamId) {
-    showToast('Select a specific workstream in the sidebar first — Review needs one', true);
-    return;
-  }
+  // Scope Item Review needs one specific workstream's own cycle; the Action
+  // Log doesn't (see allWorkstreamsActionLogHtml()) — so entering Review
+  // mode with "All workstreams" selected lands on Action Log rather than
+  // being blocked outright the way it used to be.
+  if (m === 'review' && !filterWorkstreamId) reviewTab = 'actionLog';
   mode = m; save(); render();
 }
 
@@ -2142,10 +2160,12 @@ function fmtDateY(iso) {
 function setReviewTab(t) { reviewTab = t; render(); }
 function setFilterWorkstream(id) {
   filterWorkstreamId = id;
-  // Switching to "All workstreams" while Review mode is showing a specific
-  // one's cycle would leave nothing sensible to display — bail to Planning,
-  // same as if that had been the state on load (see normalizeData()).
-  if (mode === 'review' && !filterWorkstreamId) mode = 'planning';
+  // Switching to "All workstreams" while Scope Item Review is showing a
+  // specific one's cycle would leave nothing sensible to display there —
+  // hop to the Action Log tab instead (which has no such dependency, see
+  // allWorkstreamsActionLogHtml()) rather than bailing out of Review mode
+  // entirely the way this used to.
+  if (mode === 'review' && !filterWorkstreamId && reviewTab === 'scope') reviewTab = 'actionLog';
   save(); render();
 }
 let renamingProgramme = false;
@@ -3430,18 +3450,27 @@ function reviewHistoryRowHtml(c) {
 // due date, undated last), completed items sunk to the bottom (most
 // recently completed first) rather than disappearing — this is a running
 // log, not a checklist that empties out.
-function sortedActionLog(list) {
-  const open = list.filter(a => !a.completed).sort((a, b) => (a.dueDate || '9999-99-99').localeCompare(b.dueDate || '9999-99-99'));
-  const done = list.filter(a => a.completed).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+// keyFn defaults to identity (the plain per-workstream case, where `list` is
+// already an array of action items) but lets allWorkstreamsActionLogHtml()
+// reuse the exact same open/done ordering over a list of {w, a} pairs —
+// pass keyFn: x => x.a to sort those by the wrapped item's own fields
+// without unwrapping the list first.
+function sortedActionLog(list, keyFn) {
+  keyFn = keyFn || (x => x);
+  const open = list.filter(x => !keyFn(x).completed).sort((x, y) => (keyFn(x).dueDate || '9999-99-99').localeCompare(keyFn(y).dueDate || '9999-99-99'));
+  const done = list.filter(x => keyFn(x).completed).sort((x, y) => (keyFn(y).completedAt || 0) - (keyFn(x).completedAt || 0));
   return open.concat(done);
 }
-// This table's own bespoke 8 columns (see .action-log-row's CSS comment for
+// This table's own bespoke columns (see .action-log-row's CSS comment for
 // why it's no longer derived from --item-grid-cols at all): Action Item at
 // 1, Owner/Due Date at 2/3, Source at 4, then Created/Closed at 5/6 —
 // reading left to right as "when this was logged, then when it was closed"
 // right next to where it came from — and Delete/the confirm toggle at 7/8,
-// kept last since they're actions, not data.
-function actionLogRowHtml(w, a) {
+// kept last since they're actions, not data. showWs (used only by
+// allWorkstreamsActionLogHtml()) inserts one extra Workstream column right
+// after Action Item and shifts everything else one slot right accordingly
+// — see .action-log-row.with-ws's own CSS comment.
+function actionLogRowHtml(w, a, showWs) {
   const cycle = reviewCycles.find(c => c.id === a.cycleId);
   // Every action item today is transcribed from a review's meeting minutes
   // (syncActionLogFromMinutes() is the only thing that ever writes a row
@@ -3451,32 +3480,39 @@ function actionLogRowHtml(w, a) {
   const source = cycle ? 'Review' : '';
   const sourceTitle = cycle ? `From review started ${fmtDate(dateStrFromTs(cycle.startedAt))}` : '';
   const canManage = hasRole('reviewer');
-  return `<div class="item-row action-log-row ${a.completed ? 'review-confirmed' : ''}">
+  const off = showWs ? 1 : 0;
+  const wsCellHtml = showWs
+    ? `<span class="action-log-ws" style="grid-column:2" title="${esc(w.name)}"><span class="ws-dot" style="background:var(--ws-${w.color})"></span>${esc(w.name)}</span>`
+    : '';
+  return `<div class="item-row action-log-row ${showWs ? 'with-ws' : ''} ${a.completed ? 'review-confirmed' : ''}">
       <span class="action-log-text" style="grid-column:1">${esc(a.text)}</span>
-      <span class="item-owner" style="grid-column:2">${esc(a.owner)}</span>
-      <span class="item-dates-computed" style="grid-column:3">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>
-      <span class="action-log-source" style="grid-column:4" title="${esc(sourceTitle)}">${esc(source)}</span>
-      <span class="item-dates-computed" style="grid-column:5">${fmtDate(dateStrFromTs(a.addedAt))}</span>
-      <span class="item-dates-computed" style="grid-column:6">${a.completedAt ? fmtDate(dateStrFromTs(a.completedAt)) : ''}</span>
+      ${wsCellHtml}
+      <span class="item-owner" style="grid-column:${2 + off}">${esc(a.owner)}</span>
+      <span class="item-dates-computed" style="grid-column:${3 + off}">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>
+      <span class="action-log-source" style="grid-column:${4 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
+      <span class="item-dates-computed" style="grid-column:${5 + off}">${fmtDate(dateStrFromTs(a.addedAt))}</span>
+      <span class="item-dates-computed" style="grid-column:${6 + off}">${a.completedAt ? fmtDate(dateStrFromTs(a.completedAt)) : ''}</span>
       ${canManage
-        ? `<button class="row-icon-btn" style="grid-column:7" onclick="deleteActionLogItem('${w.id}','${a.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>`
-        : `<span style="grid-column:7"></span>`}
+        ? `<button class="row-icon-btn" style="grid-column:${7 + off}" onclick="deleteActionLogItem('${w.id}','${a.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>`
+        : `<span style="grid-column:${7 + off}"></span>`}
       ${canManage
-        ? `<button class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:8" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
+        ? `<button class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:${8 + off}" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
         <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
       </button>`
-        : `<span class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:8" title="${a.completed ? 'Completed' : 'Not completed'}">
+        : `<span class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:${8 + off}" title="${a.completed ? 'Completed' : 'Not completed'}">
         <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
       </span>`}
     </div>`;
 }
 // The "<X> open of <Y> action items" count — shown next to the workstream
-// name in the shared .review-header (see renderReview()), not floating
-// disconnected above the table. .review-header's <h2> is flex:1, so
-// anything placed after it in that flex row lands at the header's far
-// right automatically, the same way a section-wide status badge would.
-function actionLogCountHtml(w) {
-  const list = Array.isArray(w.actionLog) ? w.actionLog : [];
+// name (or "All workstreams") in the shared .review-header (see
+// renderReview()), not floating disconnected above the table. .review-
+// header's <h2> is flex:1, so anything placed after it in that flex row
+// lands at the header's far right automatically, the same way a section-
+// wide status badge would. Takes the raw action item list directly (not a
+// workstream) so renderReview() can pass either w.actionLog or the merged
+// all-workstreams list through the same helper.
+function actionLogCountHtml(list) {
   if (!list.length) return '';
   const openCount = list.filter(a => !a.completed).length;
   return `<span class="review-progress" style="margin:0;flex:0 0 auto">${openCount} open of ${list.length} action item${list.length === 1 ? '' : 's'}</span>`;
@@ -3494,8 +3530,9 @@ function actionLogHtml(w) {
   // outright with a fully explicit 8-column list (see that CSS rule's own
   // comment), so every column here has a pinned width regardless of whether
   // a given row (or this header) puts anything in it. Delete/the confirm
-  // toggle (7/8) are left unlabeled here, same as Scope Item Review's own
-  // Actions column has no header text.
+  // toggle (7/8) share one "Actions" label spanning both columns, centered
+  // over the two icon buttons beneath it — a user-reported gap, since every
+  // other column here has its own header text.
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header">
         <span style="grid-column:1">Action Item</span>
@@ -3504,8 +3541,38 @@ function actionLogHtml(w) {
         <span style="grid-column:4">Source</span>
         <span style="grid-column:5">Created</span>
         <span style="grid-column:6">Closed</span>
+        <span style="grid-column:7/9;text-align:center">Actions</span>
       </div>
       ${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}
+    </div>`;
+}
+// The "All workstreams" Action Log — every workstream's own actionLog
+// merged into one list, each row tagged with its source workstream (see
+// actionLogRowHtml()'s showWs param). Reachable from Review mode's Action
+// Log tab with "All workstreams" selected in the sidebar (renderReview()):
+// unlike Scope Item Review, which is tied to one workstream's own active
+// cycle, the Action Log has no such dependency, so it's the one part of
+// Review mode that can meaningfully show every workstream at once.
+function allWorkstreamsActionLogHtml() {
+  const entries = [];
+  workstreams.forEach(w => {
+    (Array.isArray(w.actionLog) ? w.actionLog : []).forEach(a => entries.push({ w, a }));
+  });
+  if (!entries.length) {
+    return `<div class="attention-empty">No action items yet — they're added automatically when meeting minutes with action items are attached to a review cycle.</div>`;
+  }
+  return `<div class="action-log-list">
+      <div class="item-row action-log-row action-log-header with-ws">
+        <span style="grid-column:1">Action Item</span>
+        <span style="grid-column:2">Workstream</span>
+        <span style="grid-column:3">Owner</span>
+        <span style="grid-column:4">Due Date</span>
+        <span style="grid-column:5">Source</span>
+        <span style="grid-column:6">Created</span>
+        <span style="grid-column:7">Closed</span>
+        <span style="grid-column:8/10;text-align:center">Actions</span>
+      </div>
+      ${sortedActionLog(entries, x => x.a).map(({ w, a }) => actionLogRowHtml(w, a, true)).join('')}
     </div>`;
 }
 function toggleActionLogItem(wsId, itemId) {
@@ -3572,9 +3639,11 @@ function removeActionLogForCycle(cycle) {
 }
 // Review has no workstream picker of its own any more — it reads the same
 // filterWorkstreamId the sidebar (shared with Planning/Dashboard) sets.
-// setMode()/setFilterWorkstream() already keep mode from ever being 'review'
-// while filterWorkstreamId is null, but this still guards defensively in
-// case something else calls renderReview() directly (e.g. a test).
+// setMode()/setFilterWorkstream() already steer away from a state this
+// can't render (Scope Item Review with no workstream selected), but this
+// still guards defensively in case something else calls renderReview()
+// directly (e.g. a test). The Action Log tab is the one exception to
+// "Review needs a specific workstream": see allWorkstreamsActionLogHtml().
 function renderReview() {
   const el = document.getElementById('main');
   if (workstreams.length === 0) {
@@ -3582,13 +3651,17 @@ function renderReview() {
     return;
   }
   if (!filterWorkstreamId) {
-    el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-clipboard-check"></i><div>Select a workstream in the sidebar to review.</div></div>`;
+    if (reviewTab === 'actionLog') {
+      el.innerHTML = `<div class="review-header"><h2>All workstreams</h2>${actionLogCountHtml(workstreams.flatMap(w => Array.isArray(w.actionLog) ? w.actionLog : []))}</div>${allWorkstreamsActionLogHtml()}`;
+      return;
+    }
+    el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-clipboard-check"></i><div>Select a workstream in the sidebar to review its scope.</div></div>`;
     return;
   }
   const w = wsById(filterWorkstreamId);
   if (!w) { filterWorkstreamId = null; renderReview(); return; }
   if (reviewTab === 'actionLog') {
-    el.innerHTML = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2>${actionLogCountHtml(w)}</div>${actionLogHtml(w)}`;
+    el.innerHTML = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2>${actionLogCountHtml(Array.isArray(w.actionLog) ? w.actionLog : [])}</div>${actionLogHtml(w)}`;
     return;
   }
   const cycle = activeReviewCycle(filterWorkstreamId);
