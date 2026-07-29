@@ -302,6 +302,32 @@ test('milestoneRowsHtml renders the Not Applicable toggle wired to toggleMilesto
   assertIncludes(html, 'fa-solid fa-ban', 'the marked milestone should show the filled icon');
 });
 
+test('the milestone header shows N/A immediately before Status, matching the data rows\' own column order', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  const headerIdx = html.indexOf('milestone-header');
+  const header = html.slice(headerIdx, headerIdx + 400);
+  assertIncludes(header, '<span>N/A</span><span>Status</span>', 'N/A must be the column immediately before Status in the header');
+});
+
+test('a milestone row\'s Not Applicable toggle sits immediately before its Status badge, matching the header\'s own column order', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'green', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  const naIdx = html.indexOf(`toggleMilestoneNotApplicable('${it.id}','m1')`);
+  const statusIdx = html.indexOf(`cycleMilestoneStatus('${it.id}','m1')`);
+  assertTrue(naIdx !== -1 && statusIdx !== -1 && naIdx < statusIdx, 'the Not Applicable toggle must render before the Status badge in DOM order');
+});
+
 test('a notApplicable milestone row freezes its status badge to a plain "N/A" label instead of its own RAG color, and is no longer cycleable', function () {
   const it = addItem({
     name: 'Parent',

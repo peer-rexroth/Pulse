@@ -419,6 +419,35 @@ test('toggleMilestoneNotApplicable flips the flag without touching the milestone
   assertEqual(items[0].status, 'red', 'un-marking should restore the milestone\'s own preserved status to the roll-up');
 });
 
+test('toggleMilestoneNotApplicable clears both Due and Actual dates, and leaves them cleared when un-marked', function () {
+  openItemModal(null);
+  editingMilestones[0].actualDate = '2026-06-01';
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  assertTrue(!!it.milestones[0].dueDate, 'sanity check — a milestone always starts with a due date');
+  assertEqual(it.milestones[0].actualDate, '2026-06-01', 'sanity check');
+
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id);
+  assertEqual(items[0].milestones[0].dueDate, null);
+  assertEqual(items[0].milestones[0].actualDate, null);
+
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id); // un-mark
+  assertEqual(items[0].milestones[0].dueDate, null, 'un-marking does not try to restore the old date — it stays blank');
+  assertEqual(items[0].milestones[0].actualDate, null);
+});
+
+test('normalizeData does not refill a notApplicable milestone\'s cleared due date from the parent item', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id);
+  assertEqual(items[0].milestones[0].dueDate, null, 'sanity check');
+  normalizeData();
+  assertEqual(items[0].milestones[0].dueDate, null, 'the backfill-from-parent-item rule must not undo a deliberate clear');
+});
+
 test('toggleMilestoneNotApplicable is blocked below Editor', function () {
   openItemModal(null);
   fillItemForm({});
@@ -486,6 +515,18 @@ test('the item modal\'s Not Applicable toggle is wired to toggleEditingMilestone
   openItemModal(null);
   toggleEditingMilestoneNotApplicable(0);
   assertEqual(editingMilestones[0].notApplicable, false, 'toggling must have been blocked below Editor');
+});
+
+test('toggleEditingMilestoneNotApplicable clears Due/Actual in the editor\'s working copy, and saveItem does not refill Due from the manual Due input', function () {
+  openItemModal(null);
+  editingMilestones[0].actualDate = '2026-06-01';
+  toggleEditingMilestoneNotApplicable(0);
+  assertEqual(editingMilestones[0].dueDate, null);
+  assertEqual(editingMilestones[0].actualDate, null);
+
+  fillItemForm({ due: '2026-09-09' }); // the manual Due input — must not leak into the notApplicable milestone
+  saveItem();
+  assertEqual(items[0].milestones[0].dueDate, null, 'a notApplicable milestone must not fall back to the manual due date the way an applicable one does');
 });
 
 test('normalizeData backfills a missing/malformed milestone.notApplicable to false', function () {

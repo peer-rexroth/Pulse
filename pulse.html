@@ -1642,10 +1642,15 @@ function normalizeData() {
     it.milestones.forEach(m => {
       if (!isSafeId(m.id)) m.id = genId();
       if (!m.name) m.name = 'Untitled milestone';
-      if (!m.dueDate) m.dueDate = it.dueDate;
+      if (typeof m.notApplicable !== 'boolean') m.notApplicable = false;
+      // A notApplicable milestone's own dueDate is deliberately left alone
+      // even when blank — toggleMilestoneNotApplicable()/
+      // toggleEditingMilestoneNotApplicable() clear it on purpose, and this
+      // backfill would otherwise silently refill it from the parent item's
+      // own dueDate on the very next normalizeData() pass, undoing that.
+      if (!m.dueDate && !m.notApplicable) m.dueDate = it.dueDate;
       if (!STATUSES.some(s => s.id === m.status)) m.status = 'not-started';
       if (typeof m.actualDate !== 'string') m.actualDate = null;
-      if (typeof m.notApplicable !== 'boolean') m.notApplicable = false;
       // Backfilled from the parent item's own updatedAt (not Date.now()) —
       // legacy data predating this field shouldn't look freshly edited to a
       // merge just because it happened to load on this device first; the
@@ -2032,8 +2037,14 @@ function milestoneHeaderHtml(reviewCycle) {
   // hidden, is the same fix already applied to the Action Log's own header
   // for the identical reason — see actionLogHtml() in CLAUDE.md.
   const reviewLabel = reviewCycle ? `<span class="review-confirm-toggle" style="grid-column:12;visibility:hidden"><i class="fa-solid fa-circle-check"></i></span>` : '';
+  // Column 10 (the Not Applicable toggle) and column 11 (Status) are in that
+  // order specifically because milestoneRowsHtml()'s data rows put them in
+  // that order too (a user-requested swap from the original Status-then-N/A
+  // layout) — this header must keep matching whatever order the data rows
+  // actually use, the same alignment invariant every other column here
+  // already depends on.
   return `<div class="milestone-header">
-      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span>Status</span><span></span>${reviewLabel}
+      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span>N/A</span><span>Status</span>${reviewLabel}
     </div>`;
 }
 // Emits the same 11 grid cells itemRowHtml() does (chevron|name|milestones|
@@ -2125,17 +2136,15 @@ function milestoneRowsHtml(it, reviewCycle) {
       : (hasRole('editor')
           ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(statusLabel(m.status))}</button>`
           : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`);
-    // The Not Applicable toggle reuses the row's own Actions column (column
-    // 11 — see --item-grid-cols) rather than one of the two blank 20px filler
-    // columns (6/7): 56px is a normal icon-button width (the same one item
-    // rows use for their own Edit/Delete/drag-handle), while 20px barely
-    // fits the bare chevron/diamond glyphs already living there — this
-    // column is otherwise unused on a milestone row (item-level actions like
-    // Edit/Delete only ever apply to the item as a whole, not one of its
-    // milestones), so there was nothing else competing for it. Always shows
+    // The Not Applicable toggle sits at column 10 (the row's own Status
+    // track, 90px — see --item-grid-cols), one slot *before* the Status
+    // badge itself at column 11 (the Actions track, 56px) — a user-
+    // requested swap from the original Status-then-N/A order. Always shows
     // an icon (outline when off, filled when on) rather than being omitted
     // when off, same "always a real, visible icon, just not clickable below
     // the gating role" convention .review-confirm-toggle already uses.
+    // milestoneHeaderHtml()'s own column 10/11 labels ("N/A" / "Status")
+    // must keep matching this order.
     const naHtml = hasRole('editor')
       ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></button>`
       : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></span>`;
@@ -2149,8 +2158,8 @@ function milestoneRowsHtml(it, reviewCycle) {
       <span class="milestone-sub-actual-inline" title="Actual completion date">
         ${actualHtml}
       </span>
-      ${statusHtml}
       ${naHtml}
+      ${statusHtml}
       ${reviewCellHtml}
     </div>`;
   }).join('');
@@ -2201,9 +2210,15 @@ function cycleMilestoneStatus(itemId, milestoneId) {
 // computedStatusFromMilestones()/computedDateRangeFromMilestones() above,
 // and CLAUDE.md's "Milestone checklist" for the full rationale) — toggling
 // it on doesn't touch m.status at all, so un-toggling restores whatever
-// status it last had rather than resetting to "Not Started". Recomputes the
-// item's own rolled-up status/date range immediately, same as
-// cycleMilestoneStatus() does, since both are inputs to that roll-up.
+// status it last had rather than resetting to "Not Started". Due/Actual are
+// different — an explicit user request: marking a milestone Not Applicable
+// clears both outright (rather than just disabling the now-stale inputs
+// left showing whatever they last had), since neither date means anything
+// once it's out of scope; un-marking leaves them blank rather than trying
+// to restore whatever they were, so a genuinely reused milestone gets a
+// deliberate fresh date rather than an old one that's easy to miss.
+// Recomputes the item's own rolled-up status/date range immediately, same
+// as cycleMilestoneStatus() does, since both are inputs to that roll-up.
 function toggleMilestoneNotApplicable(itemId, milestoneId) {
   if (!requireRole('editor')) return;
   const it = items.find(i => i.id === itemId);
@@ -2211,6 +2226,7 @@ function toggleMilestoneNotApplicable(itemId, milestoneId) {
   const m = it.milestones.find(m => m.id === milestoneId);
   if (!m) return;
   m.notApplicable = !m.notApplicable;
+  if (m.notApplicable) { m.dueDate = null; m.actualDate = null; }
   m.updatedAt = Date.now();
   it.status = computedStatusFromMilestones(it.milestones);
   const range = computedDateRangeFromMilestones(it.milestones);
@@ -2713,10 +2729,13 @@ function closeItemModal() {
 // milestoneRowsHtml()/toggleMilestoneNotApplicable()): the status field
 // freezes to a plain "N/A" label instead of the real <select> while it's
 // on (never reset — see toggleEditingMilestoneNotApplicable()'s own
-// comment), and Due/Actual disable outright since their values no longer
-// feed into anything (see computedDateRangeFromMilestones()). The name
-// field stays editable either way — renaming a milestone that happens to
-// be marked Not Applicable is still a normal edit.
+// comment), and Due/Actual disable outright since toggleEditingMilestone-
+// NotApplicable() clears both the moment it's turned on. The name field
+// stays editable either way — renaming a milestone that happens to be
+// marked Not Applicable is still a normal edit. The toggle itself sits
+// *before* the status field (a user-requested swap from the original
+// order), matching milestoneRowsHtml()'s own column order on the status
+// board.
 function renderMilestonesEditor() {
   const editable = hasRole('editor');
   const dis = editable ? '' : 'disabled';
@@ -2736,8 +2755,8 @@ function renderMilestonesEditor() {
       <input type="text" value="${esc(m.name)}" title="Milestone name" ${dis} oninput="editingMilestones[${idx}].name = this.value">
       <input type="date" value="${esc(m.dueDate)}" title="Due date" ${datesDis} oninput="editingMilestones[${idx}].dueDate = this.value; updateItemStatusFieldMode();">
       <input type="date" value="${esc(m.actualDate || '')}" title="Actual completion date" ${datesDis} oninput="editingMilestones[${idx}].actualDate = this.value || null; updateItemStatusFieldMode();">
-      ${statusHtml}
       ${naToggleHtml}
+      ${statusHtml}
       ${editable ? `<button class="row-icon-btn" onclick="removeMilestoneRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>` : '<span></span>'}
     </div>`;
   }).join('');
@@ -2745,13 +2764,19 @@ function renderMilestonesEditor() {
 }
 // Independent of status (see toggleMilestoneNotApplicable()'s own comment
 // for the full rationale) — toggling doesn't touch editingMilestones[idx]'s
-// own status at all. Needs a full renderMilestonesEditor() re-render (not
-// just an in-place DOM tweak the way name/date/status edits get away with)
-// since the row's own markup shape changes: the status <select> swaps for a
-// frozen label, and Due/Actual flip disabled.
+// own status at all. Due/Actual do get cleared on the way in, same as the
+// status board's own toggleMilestoneNotApplicable() — neither means
+// anything once the milestone's out of scope, and un-marking leaves them
+// blank rather than trying to restore whatever they were. Needs a full
+// renderMilestonesEditor() re-render (not just an in-place DOM tweak the
+// way name/date/status edits get away with) since the row's own markup
+// shape changes: the status <select> swaps for a frozen label, and
+// Due/Actual flip disabled.
 function toggleEditingMilestoneNotApplicable(idx) {
   if (!requireRole('editor')) return;
-  editingMilestones[idx].notApplicable = !editingMilestones[idx].notApplicable;
+  const m = editingMilestones[idx];
+  m.notApplicable = !m.notApplicable;
+  if (m.notApplicable) { m.dueDate = null; m.actualDate = null; }
   renderMilestonesEditor();
 }
 // Toggles the modal's Status field between an editable <select> and a
@@ -2804,8 +2829,13 @@ function saveItem() {
   const manualDueDate = document.getElementById('itemDueInput').value || todayStr();
   const manualStartDate = document.getElementById('itemStartInput').value || manualDueDate;
   const actualDate = document.getElementById('itemActualInput').value || null;
+  // A notApplicable milestone's dueDate is left as whatever it is (null,
+  // once cleared by toggleEditingMilestoneNotApplicable()) rather than
+  // falling back to manualDueDate — that fallback exists so an *applicable*
+  // milestone never ends up with no due date at all, which doesn't apply
+  // once the milestone is out of scope.
   const milestones = editingMilestones.map(m => ({
-    id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: m.dueDate || manualDueDate, status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable, updatedAt: Date.now()
+    id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: m.notApplicable ? (m.dueDate || null) : (m.dueDate || manualDueDate), status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable, updatedAt: Date.now()
   }));
   // An item with milestones always gets its status AND plan date range
   // computed from them — the Status <select> and Start/Due <input>s are only
