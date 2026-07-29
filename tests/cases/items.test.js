@@ -165,7 +165,7 @@ test('removeMilestoneRow removes one row from the in-progress edit without touch
   assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length);
   removeMilestoneRow(2); // removes "Design Defined"
   assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length - 1);
-  assertEqual(editingMilestones[2].name, 'Build Completed');
+  assertEqual(editingMilestones[2].name, 'Development Completed');
   assertEqual(items.length, 0, 'nothing should be saved until Save is clicked');
 });
 
