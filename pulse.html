@@ -397,7 +397,6 @@
     color: var(--text-dim); font-weight: 600; display: flex; align-items: center; gap: 6px;
   }
   .view-tab.active { background: var(--panel); color: var(--accent); box-shadow: var(--shadow); }
-  .view-tab.disabled { opacity: .4; cursor: not-allowed; }
   #tabAdmin.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
   .topbar-spacer { flex: 1; }
   .icon-btn {
@@ -810,6 +809,18 @@
   .review-progress-bar { width: 100%; height: 6px; border-radius: 999px; background: var(--panel-2); overflow: hidden; margin: 8px 0 16px; }
   .review-progress-fill { height: 100%; background: var(--stat-green); border-radius: 999px; transition: width .2s; }
   .review-list { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; }
+  /* All-workstreams review-dates overview (see reviewDatesOverviewHtml()) —
+     reuses .attention-row's layout, just clickable (jumps to that
+     workstream's own Scope Item Review) and color-coded by staleness. The
+     "no color" tier (under 2 weeks, or nothing to review yet) is
+     deliberately just the plain row — coloring every row would drown out
+     the ones that actually need attention. */
+  .review-date-row { cursor: pointer; }
+  .review-date-row:hover { background: var(--panel-2); }
+  .review-date-row.stale-amber { background: var(--stat-amber-bg); }
+  .review-date-row.stale-amber .item-dates { color: var(--stat-amber); font-weight: 700; }
+  .review-date-row.stale-red { background: var(--stat-red-bg); }
+  .review-date-row.stale-red .item-dates { color: var(--stat-red); font-weight: 700; }
   /* The Review-mode checklist reuses Planning's own .item-row/.milestone-sub-row
      markup (see itemRowHtml()'s reviewCycle param) — this just gives that
      reused block the same card look .ws-section has, without overflow:hidden
@@ -1800,14 +1811,6 @@ function normalizeData() {
   }
   if (filterWorkstreamId && !wsIds.has(filterWorkstreamId)) filterWorkstreamId = null;
   if (!MODES.includes(mode)) mode = 'planning';
-  // Scope Item Review requires a specific workstream selected; the Action
-  // Log tab doesn't (see allWorkstreamsActionLogHtml()) — see setMode()/
-  // setFilterWorkstream() for the same rule enforced at the entry points;
-  // this is the backstop for data loaded straight from storage/import/sync.
-  // reviewTab itself is never persisted (module-level, UI-only — see
-  // "Review mode has two sub-tabs" in CLAUDE.md), so it's always still at
-  // its 'scope' default here regardless of what a previous session showed.
-  if (mode === 'review' && !filterWorkstreamId && reviewTab === 'scope') mode = 'planning';
 }
 
 function genId() { return 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -1920,10 +1923,6 @@ function render() {
     renderMain();
   } else if (mode === 'review') {
     document.getElementById('tabReviewScope').classList.toggle('active', reviewTab === 'scope');
-    // Scope Item Review still needs one specific workstream — visually
-    // marked disabled the same way #tabReview itself used to be, before
-    // the Action Log tab (below) stopped needing one at all.
-    document.getElementById('tabReviewScope').classList.toggle('disabled', !filterWorkstreamId);
     document.getElementById('tabReviewActionLog').classList.toggle('active', reviewTab === 'actionLog');
     document.getElementById('tabReviewDecisionLog').classList.toggle('active', reviewTab === 'decisionLog');
     renderReview();
@@ -1934,11 +1933,6 @@ function render() {
   }
 }
 function setMode(m) {
-  // Scope Item Review needs one specific workstream's own cycle; the Action
-  // Log doesn't (see allWorkstreamsActionLogHtml()) — so entering Review
-  // mode with "All workstreams" selected lands on Action Log rather than
-  // being blocked outright the way it used to be.
-  if (m === 'review' && !filterWorkstreamId) reviewTab = 'actionLog';
   mode = m; save(); render();
 }
 
@@ -2581,12 +2575,6 @@ function fmtDateY(iso) {
 function setReviewTab(t) { reviewTab = t; render(); }
 function setFilterWorkstream(id) {
   filterWorkstreamId = id;
-  // Switching to "All workstreams" while Scope Item Review is showing a
-  // specific one's cycle would leave nothing sensible to display there —
-  // hop to the Action Log tab instead (which has no such dependency, see
-  // allWorkstreamsActionLogHtml()) rather than bailing out of Review mode
-  // entirely the way this used to.
-  if (mode === 'review' && !filterWorkstreamId && reviewTab === 'scope') reviewTab = 'actionLog';
   save(); render();
 }
 let renamingProgramme = false;
@@ -4586,13 +4574,48 @@ function removeDecisionLogForCycle(cycle) {
   if (!w || !Array.isArray(w.decisionLog)) return;
   w.decisionLog = w.decisionLog.filter(d => d.cycleId !== cycle.id);
 }
+// "All workstreams" landing view for Scope Item Review — an explicit user
+// request. Scope Item Review is otherwise tied to one workstream's own
+// active cycle (unlike Action Log/Decision Log, which have no such
+// dependency — see allWorkstreamsActionLogHtml()), so with no workstream
+// selected there's nothing to show *within* a cycle — this instead shows,
+// across every workstream, when it was last reviewed, color-coded by how
+// stale that is, ranked oldest (or never-reviewed) first so the workstream
+// most in need of attention sits at the top. Clicking a row selects that
+// workstream (setFilterWorkstream()), landing directly on its own Scope
+// Item Review — the same "start a cycle" button or in-progress checklist
+// it would show if picked from the sidebar.
+function reviewDatesOverviewHtml() {
+  const rows = workstreams.map(w => {
+    const last = lastCompletedReview(w.id);
+    const days = last === null ? null : Math.floor((Date.now() - last) / DAY_MS);
+    // A workstream with no scope items yet has nothing to review — same
+    // guard isReviewOverdue() uses — so it never reads as stale here
+    // either, regardless of technically being "never reviewed".
+    const hasItems = items.some(it => it.workstreamId === w.id);
+    let staleness = ''; // under 2 weeks (or nothing to review yet) — no color
+    if (hasItems) {
+      if (days === null || days > 28) staleness = 'red';   // never reviewed, or over 4 weeks
+      else if (days >= 14) staleness = 'amber';             // 2-4 weeks
+    }
+    return { w, last, staleness };
+  }).sort((a, b) => (a.last ?? -Infinity) - (b.last ?? -Infinity));
+
+  return `<div class="review-list">${rows.map(({ w, last, staleness }) => `
+    <div class="attention-row review-date-row${staleness ? ` stale-${staleness}` : ''}" onclick="setFilterWorkstream('${w.id}')">
+      <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
+      <span class="item-name" style="flex:1">${esc(w.name)}</span>
+      <span class="item-dates">${last ? fmtDate(dateStrFromTs(last)) : 'Never reviewed'}</span>
+    </div>`).join('')}</div>`;
+}
 // Review has no workstream picker of its own any more — it reads the same
 // filterWorkstreamId the sidebar (shared with Planning/Dashboard) sets.
-// setMode()/setFilterWorkstream() already steer away from a state this
-// can't render (Scope Item Review with no workstream selected), but this
-// still guards defensively in case something else calls renderReview()
-// directly (e.g. a test). The Action Log tab is the one exception to
-// "Review needs a specific workstream": see allWorkstreamsActionLogHtml().
+// All three of Review's sub-tabs now render something sensible with no
+// workstream selected: Scope Item Review shows reviewDatesOverviewHtml(),
+// Action Log/Decision Log show their own "all workstreams" rollups — so
+// unlike earlier, nothing here needs to steer mode/reviewTab away from that
+// state at all; see setMode()/setFilterWorkstream() for the entry points
+// this used to (and no longer needs to) special-case.
 function renderReview() {
   const el = document.getElementById('main');
   if (workstreams.length === 0) {
@@ -4608,7 +4631,7 @@ function renderReview() {
       el.innerHTML = `<div class="review-header"><h2>All workstreams</h2>${decisionLogCountHtml(workstreams.flatMap(w => Array.isArray(w.decisionLog) ? w.decisionLog : []))}</div>${allWorkstreamsDecisionLogHtml()}`;
       return;
     }
-    el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-clipboard-check"></i><div>Select a workstream in the sidebar to review its scope.</div></div>`;
+    el.innerHTML = `<div class="review-header"><h2>All workstreams</h2></div>${reviewDatesOverviewHtml()}`;
     return;
   }
   const w = wsById(filterWorkstreamId);

@@ -32,14 +32,13 @@ test('render() marks the active mode tab active and the others inactive', functi
   assertFalse(document.getElementById('tabPlanning').classList.contains('active'));
 });
 
-// #tabReview itself is never disabled any more — the Action Log tab works
-// fine with "All workstreams" selected (see allWorkstreamsActionLogHtml()),
-// so Review mode always has something sensible to show. Only Scope Item
-// Review, which needs one specific workstream's own cycle, still marks
-// itself disabled without one.
-test('render() marks the Scope Item Review sub-tab disabled while "All workstreams" is selected, and enabled once one is picked', function () {
-  setMode('review'); // lands on Action Log with no workstream selected — see setMode()
-  assertTrue(document.getElementById('tabReviewScope').classList.contains('disabled'));
+// Neither #tabReview nor its Scope Item Review sub-tab are ever disabled —
+// every one of Review's sub-tabs has something sensible to show with "All
+// workstreams" selected: Action Log/Decision Log show their own rollups,
+// and Scope Item Review shows reviewDatesOverviewHtml().
+test('render() never marks the Scope Item Review sub-tab disabled, with or without a workstream selected', function () {
+  setMode('review');
+  assertFalse(document.getElementById('tabReviewScope').classList.contains('disabled'));
   setFilterWorkstream(workstreams[0].id);
   assertFalse(document.getElementById('tabReviewScope').classList.contains('disabled'));
 });

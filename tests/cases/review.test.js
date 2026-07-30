@@ -117,17 +117,18 @@ test('reviewCyclesForWs returns every cycle (active and completed) for that work
 
 // ---------- Shared workstream selector: Review mode's own gating ----------
 
-// Scope Item Review needs one specific workstream's own cycle, but the
-// Action Log doesn't (see allWorkstreamsActionLogHtml()) — so entering
-// Review mode (or clearing the workstream filter while already in it) no
-// longer bails out to Planning the way it used to. It lands on the Action
-// Log tab instead, since that's the one sub-tab with something to show.
+// All three of Review's sub-tabs have something sensible to show with no
+// workstream selected — Scope Item Review shows reviewDatesOverviewHtml(),
+// Action Log/Decision Log show their own "all workstreams" rollups — so
+// entering Review mode (or clearing the workstream filter while already in
+// it) never needs to bail out to Planning or hop reviewTab to a different
+// sub-tab any more; whatever tab was showing just keeps showing.
 
-test('setMode("review") lands on the Action Log tab (not blocked) while "All workstreams" is selected', function () {
+test('setMode("review") stays on the Scope tab (its default) while "All workstreams" is selected', function () {
   assertEqual(filterWorkstreamId, null);
   setMode('review');
   assertEqual(mode, 'review');
-  assertEqual(reviewTab, 'actionLog', 'Scope Item Review has nothing to show without a workstream, so Review mode opens on Action Log instead');
+  assertEqual(reviewTab, 'scope', 'Scope Item Review now has the all-workstreams review-dates overview to show, so there is nothing left to hop away from');
 });
 
 test('setFilterWorkstream selects a workstream, which setMode("review") then shows on the Scope tab', function () {
@@ -136,13 +137,13 @@ test('setFilterWorkstream selects a workstream, which setMode("review") then sho
   assertEqual(mode, 'review');
 });
 
-test('picking "All workstreams" while on Review\'s Scope tab hops to the Action Log tab instead of leaving Review mode', function () {
+test('picking "All workstreams" while on Review\'s Scope tab stays right there, showing the review-dates overview', function () {
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
   assertEqual(reviewTab, 'scope');
   setFilterWorkstream(null);
-  assertEqual(mode, 'review', 'the Action Log tab has something to show even with no workstream selected');
-  assertEqual(reviewTab, 'actionLog');
+  assertEqual(mode, 'review');
+  assertEqual(reviewTab, 'scope');
 });
 
 test('picking "All workstreams" while already on Review\'s Action Log tab stays right there', function () {
@@ -154,12 +155,12 @@ test('picking "All workstreams" while already on Review\'s Action Log tab stays 
   assertEqual(reviewTab, 'actionLog');
 });
 
-test('normalizeData falls back to planning if mode is "review", reviewTab is "scope", and no workstream is selected', function () {
+test('normalizeData leaves mode as "review" if reviewTab is "scope" with no workstream selected — the all-workstreams overview covers it', function () {
   mode = 'review';
   filterWorkstreamId = null;
   reviewTab = 'scope';
   normalizeData();
-  assertEqual(mode, 'planning');
+  assertEqual(mode, 'review');
 });
 
 test('normalizeData leaves mode as "review" if reviewTab is "actionLog", even with no workstream selected', function () {
@@ -1749,7 +1750,8 @@ test('renderReview shows the "All workstreams" Action Log when no workstream is 
 
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
-  setFilterWorkstream(null); // hops reviewTab to 'actionLog' — see setFilterWorkstream()
+  setFilterWorkstream(null);
+  setReviewTab('actionLog');
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, '>All workstreams<');
   assertIncludes(html, '2 open of 2 action items');
@@ -1765,7 +1767,8 @@ test('a completed action item on the "All workstreams" view is excluded from the
   saveMinutes();
   toggleActionLogItem(workstreams[0].id, workstreams[0].actionLog[0].id);
 
-  setMode('review'); // no workstream filtered — lands on Action Log
+  setMode('review'); // no workstream filtered
+  setReviewTab('actionLog');
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, '0 open of 1 action item');
 });
@@ -2043,4 +2046,77 @@ test('renderReview shows the "All workstreams" Decision Log when no workstream i
   assertIncludes(html, '2 decisions');
   assertIncludes(html, 'Decision one');
   assertIncludes(html, 'Decision two');
+});
+
+// ---------- "All workstreams" review-dates overview (Scope Item Review's
+// own landing view with no workstream selected — an explicit user request;
+// see reviewDatesOverviewHtml()) ----------
+
+function addWorkstreamWithReviewedDaysAgo(name, daysAgo) {
+  document.getElementById('wsNameInput').value = name;
+  wsColorChoice = 'teal';
+  saveWorkstream();
+  const w = workstreams[workstreams.length - 1];
+  const it = addReviewItem({ workstreamId: w.id });
+  startReviewCycle(w.id);
+  const cycle = activeReviewCycle(w.id);
+  toggleReviewConfirm(cycle.id, it.id);
+  completeReviewCycle(cycle.id);
+  if (daysAgo !== null) cycle.completedAt = Date.now() - daysAgo * DAY_MS;
+  return w;
+}
+
+test('reviewDatesOverviewHtml shows "Never reviewed" and red styling for a workstream with items but no completed review', function () {
+  addReviewItem({});
+  const html = reviewDatesOverviewHtml();
+  assertIncludes(html, 'Never reviewed');
+  assertIncludes(html, 'stale-red');
+});
+
+test('reviewDatesOverviewHtml applies no color coding to a workstream with no scope items yet, even though it is technically never reviewed', function () {
+  assertEqual(items.filter(it => it.workstreamId === workstreams[0].id).length, 0, 'sanity check — a fresh workstream starts with no items');
+  const html = reviewDatesOverviewHtml();
+  assertIncludes(html, 'Never reviewed');
+  assertFalse(html.includes('stale-red'));
+  assertFalse(html.includes('stale-amber'));
+});
+
+test('reviewDatesOverviewHtml color-codes by staleness — under 2 weeks is uncolored, 2-4 weeks is amber, over 4 weeks (or never) is red', function () {
+  const fresh = addWorkstreamWithReviewedDaysAgo('Fresh', 5);
+  const amber = addWorkstreamWithReviewedDaysAgo('Getting Stale', 20);
+  const stale = addWorkstreamWithReviewedDaysAgo('Very Stale', 40);
+  const html = reviewDatesOverviewHtml();
+  assertIncludes(html, `review-date-row" onclick="setFilterWorkstream('${fresh.id}')"`);
+  assertIncludes(html, `review-date-row stale-amber" onclick="setFilterWorkstream('${amber.id}')"`);
+  assertIncludes(html, `review-date-row stale-red" onclick="setFilterWorkstream('${stale.id}')"`);
+});
+
+test('reviewDatesOverviewHtml ranks workstreams oldest (or never-reviewed) review first', function () {
+  const recent = addWorkstreamWithReviewedDaysAgo('Recent', 1);
+  const neverReviewed = workstreams.find(w => w.id === workstreams[0].id);
+  addReviewItem({ workstreamId: neverReviewed.id }); // workstreams[0] — never reviewed
+  const oldest = addWorkstreamWithReviewedDaysAgo('Oldest', 60);
+
+  const html = reviewDatesOverviewHtml();
+  const posNever = html.indexOf(neverReviewed.id);
+  const posOldest = html.indexOf(oldest.id);
+  const posRecent = html.indexOf(recent.id);
+  assertTrue(posNever < posOldest, 'never-reviewed ranks ahead of a workstream reviewed 60 days ago');
+  assertTrue(posOldest < posRecent, 'a review from 60 days ago ranks ahead of one from yesterday');
+});
+
+test('reviewDatesOverviewHtml rows are clickable and select that workstream', function () {
+  const w = addWorkstreamWithReviewedDaysAgo('Clickable', 3);
+  assertIncludes(reviewDatesOverviewHtml(), `onclick="setFilterWorkstream('${w.id}')"`);
+});
+
+test('renderReview shows the all-workstreams review-dates overview on Scope Item Review with no workstream selected', function () {
+  addReviewItem({});
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setFilterWorkstream(null);
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '>All workstreams<');
+  assertIncludes(html, 'review-date-row');
+  assertIncludes(html, 'Never reviewed');
 });
