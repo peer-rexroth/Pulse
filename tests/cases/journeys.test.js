@@ -121,24 +121,50 @@ test('expanding a Journey with no connections shows the "No scope items connecte
   assertIncludes(html, 'No scope items connected yet.');
 });
 
-test('expanding a Journey lists each connected scope item, with its workstream and status', function () {
+test('expanding a Journey lists each connected scope item as a real, viewOnly item row', function () {
   const journey = addJourney();
   const it = addItem({ name: 'Design the intake form', status: 'amber' });
   it.journeyId = journey.id;
   toggleItemExpanded(journey.id);
   const html = itemRowHtml(journey);
   assertIncludes(html, 'Design the intake form');
-  assertIncludes(html, `onclick="openItemModal('${it.id}')"`);
-  assertIncludes(html, workstreams[0].name);
+  assertIncludes(html, `onclick="openItemModal('${it.id}')"`, 'the status badge still opens the item\'s own modal — that\'s viewing, not editing');
   assertIncludes(html, 'At Risk'); // statusLabel('amber')
 });
 
-test('a connected item with no workstream shows "Unassigned" in the connected-items list', function () {
+test('a connected item\'s own row renders viewOnly — no drag handle, Edit, or Delete', function () {
   const journey = addJourney();
-  const it = addItem({ name: 'Needs a workstream', workstreamId: null });
+  const it = addItem({ name: 'Design the intake form' });
   it.journeyId = journey.id;
   toggleItemExpanded(journey.id);
-  assertIncludes(itemRowHtml(journey), 'Unassigned');
+  const html = itemRowHtml(journey);
+  assertNotIncludes(html, `dragStartItem(event,'${it.id}')`);
+  assertNotIncludes(html, `onclick="openItemModal('${it.id}')" title="Edit"`);
+  assertNotIncludes(html, `deleteItem('${it.id}')`);
+});
+
+test('a connected item\'s own IT/Business/Budget tags render as inert spans, not clickable, when viewOnly', function () {
+  const journey = addJourney();
+  const it = addItem({ name: 'Design the intake form' });
+  it.journeyId = journey.id;
+  toggleItemExpanded(journey.id);
+  assertNotIncludes(itemRowHtml(journey), `cycleItemAttr('${it.id}'`);
+});
+
+test('a connected item with its own milestones can still be expanded to view them, read-only, with no "MS Req." column', function () {
+  const journey = addJourney();
+  const it = addItem({
+    name: 'Design the intake form',
+    milestones: [{ id: 'm1', name: 'Draft ready', dueDate: todayStr(), status: 'not-started', actualDate: null, notApplicable: false }]
+  });
+  it.journeyId = journey.id;
+  toggleItemExpanded(journey.id);
+  expandedItemIds.add(it.id); // peek at the connected item's own milestones too
+  const html = itemRowHtml(journey);
+  assertIncludes(html, 'Draft ready');
+  assertNotIncludes(html, 'MS Req.');
+  assertNotIncludes(html, `toggleMilestoneNotApplicable('${it.id}'`, 'the Not Applicable toggle itself must be gone too, not just its label');
+  assertNotIncludes(html, `cycleMilestoneStatus('${it.id}'`, 'the milestone status badge must be read-only too');
 });
 
 test('a collapsed Journey never shows its connected items, even with some connected', function () {
