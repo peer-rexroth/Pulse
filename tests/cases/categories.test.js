@@ -1,5 +1,5 @@
-test('seedDefaults creates the out-of-the-box DEFAULT_CATEGORIES, plus the reserved Pending and Journey categories', function () {
-  assertEqual(categories.length, DEFAULT_CATEGORIES.length + 2);
+test('seedDefaults creates the out-of-the-box DEFAULT_CATEGORIES, plus the reserved Pending category', function () {
+  assertEqual(categories.length, DEFAULT_CATEGORIES.length + 1);
   DEFAULT_CATEGORIES.forEach((c, i) => {
     assertEqual(categories[i].name, c.name);
     assertDeepEqual(categories[i].milestones, c.milestones);
@@ -8,27 +8,21 @@ test('seedDefaults creates the out-of-the-box DEFAULT_CATEGORIES, plus the reser
   assertEqual(pendingCat.name, 'Pending');
   assertTrue(pendingCat.pending);
   assertDeepEqual(pendingCat.milestones, ['Scope item confirmed']);
-  const journeyCat = categories.find(c => c.journey);
-  assertEqual(journeyCat.name, 'Journey');
-  assertTrue(journeyCat.journey);
-  assertDeepEqual(journeyCat.milestones, [], 'a Journey has no milestone checklist of its own');
 });
 
-test('normalizeData seeds the default categories if none exist, and always ensures a Pending and a Journey one too', function () {
+test('normalizeData seeds the default categories if none exist, and always ensures a Pending one too', function () {
   categories = [];
   normalizeData();
-  assertEqual(categories.length, DEFAULT_CATEGORIES.length + 2);
+  assertEqual(categories.length, DEFAULT_CATEGORIES.length + 1);
   assertEqual(categories[0].name, DEFAULT_CATEGORIES[0].name);
   assertTrue(categories.some(c => c.pending));
-  assertTrue(categories.some(c => c.journey));
 });
 
-test('normalizeData adds back missing Pending and Journey categories on an older save that predates them', function () {
+test('normalizeData adds back a missing Pending category on an older save that predates it', function () {
   categories = [{ id: genId(), name: 'Development', milestones: DEFAULT_CATEGORY_MILESTONES.slice(), order: 0 }];
   normalizeData();
-  assertEqual(categories.length, 3);
+  assertEqual(categories.length, 2);
   assertTrue(categories.some(c => c.pending), 'a save from before the Pending category existed should get one added back');
-  assertTrue(categories.some(c => c.journey), 'a save from before the Journey category existed should get one added back');
 });
 
 test('normalizeData reassigns an item whose category no longer exists', function () {
@@ -122,25 +116,18 @@ test('deleteCategoryFromModal reassigns items using it to the fallback category'
   assertEqual(items[0].categoryId, categories[0].id);
 });
 
-test('deleteCategoryFromModal refuses to delete the last remaining non-Pending, non-Journey category', function () {
-  // Delete every non-Pending, non-Journey category but one, to actually
-  // reach the guarded scenario — DEFAULT_CATEGORIES seeds several, not just
-  // one, these days.
-  categories.filter(c => !c.pending && !c.journey).slice(1).forEach(c => {
+test('deleteCategoryFromModal refuses to delete the last remaining non-Pending category', function () {
+  // Delete every non-Pending category but one, to actually reach the guarded
+  // scenario — DEFAULT_CATEGORIES seeds several, not just one, these days.
+  categories.filter(c => !c.pending).slice(1).forEach(c => {
     editingCategoryId = c.id;
     deleteCategoryFromModal();
     confirmModalAction();
   });
-  assertEqual(categories.filter(c => !c.pending && !c.journey).length, 1);
-  editingCategoryId = categories.find(c => !c.pending && !c.journey).id;
+  assertEqual(categories.filter(c => !c.pending).length, 1);
+  editingCategoryId = categories.find(c => !c.pending).id;
   deleteCategoryFromModal();
-  assertEqual(categories.filter(c => !c.pending && !c.journey).length, 1, 'at least one real (non-Pending, non-Journey) category must always remain');
-});
-
-test('deleteCategoryFromModal refuses to delete the reserved Journey category, even with other categories to fall back to', function () {
-  editingCategoryId = journeyCategory().id;
-  deleteCategoryFromModal();
-  assertTrue(categories.some(c => c.journey), 'the Journey category should still exist — no confirm modal should even have opened');
+  assertEqual(categories.filter(c => !c.pending).length, 1, 'at least one real (non-Pending) category must always remain');
 });
 
 test('deleteCategoryFromModal refuses to delete the reserved Pending category, even with other categories to fall back to', function () {

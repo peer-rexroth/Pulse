@@ -1167,7 +1167,9 @@
         <label>Workstream</label>
         <select id="itemWorkstreamSelect"></select>
       </div>
-      <div class="field">
+      <!-- Hidden entirely for a Journey too — a Journey has no category at
+           all (see "Journeys" in CLAUDE.md). -->
+      <div class="field" id="itemCategoryField">
         <label>Category</label>
         <select id="itemCategorySelect" onchange="onItemCategoryChange()"></select>
       </div>
@@ -1663,12 +1665,6 @@ function seedDefaults() {
   // category is chosen (see applyScopeCategory()).
   categories = DEFAULT_CATEGORIES.map((c, i) => ({ id: genId(), name: c.name, milestones: c.milestones.slice(), order: i }));
   categories.push({ id: genId(), name: 'Pending', milestones: ['Scope item confirmed'], pending: true, order: categories.length });
-  // The Journey category is reserved for the "Journey" item type (see
-  // "Journeys" below) — every fresh programme gets it too, alongside
-  // Pending. It has no milestone template of its own — a Journey has no
-  // checklist; its "end date" is instead computed from whichever existing
-  // scope items get connected to it (see computeJourneyDateRange()).
-  categories.push({ id: genId(), name: 'Journey', milestones: [], journey: true, order: categories.length });
   reviewCycles = [];
   deletedWorkstreamIds = [];
   deletedItemIds = [];
@@ -1758,7 +1754,6 @@ function normalizeData() {
     if (!Array.isArray(c.milestones)) c.milestones = [];
     if (typeof c.order !== 'number') c.order = i;
     if (typeof c.pending !== 'boolean') c.pending = false;
-    if (typeof c.journey !== 'boolean') c.journey = false;
   });
   categories.sort((a, b) => a.order - b.order);
   // A programme with no categories at all (pre-categories save, or every
@@ -1773,12 +1768,6 @@ function normalizeData() {
   // `pending: true` to seed a new item into.
   if (!categories.some(c => c.pending)) {
     categories.push({ id: genId(), name: 'Pending', milestones: ['Scope item confirmed'], pending: true, order: categories.length });
-  }
-  // Same self-healing as Pending, just for the Journey category — the
-  // Journey item type (see "Journeys" below) depends on exactly one category
-  // having `journey: true` to create/lock new Journeys into.
-  if (!categories.some(c => c.journey)) {
-    categories.push({ id: genId(), name: 'Journey', milestones: [], journey: true, order: categories.length });
   }
   const catIds = new Set(categories.map(c => c.id));
 
@@ -1842,13 +1831,19 @@ function normalizeData() {
     // silently landing in whichever workstream happens to be first.
     if (it.workstreamId != null && !wsIds.has(it.workstreamId)) it.workstreamId = null;
     if (it.workstreamId === undefined) it.workstreamId = null;
-    if (!catIds.has(it.categoryId)) it.categoryId = categories[0].id;
     // itemType distinguishes a Journey from a plain scope item (see
     // "Journeys" below) — 'scope' is the only other valid value, and any
     // legacy/hand-edited/unrecognized value falls back to it, same "unknown
     // value resets to the safe default" treatment every other enum-like
-    // field on an item gets here.
+    // field on an item gets here. Backfilled before the categoryId repair
+    // just below, since that repair needs to know whether it's dealing with
+    // a Journey (which has no category at all — see there) or a plain item.
     if (it.itemType !== 'journey') it.itemType = 'scope';
+    // A Journey has no category — categoryId stays null for one, never
+    // repaired into a real category the way a plain item's stale/missing
+    // categoryId is just below.
+    if (it.itemType === 'journey') it.categoryId = null;
+    else if (!catIds.has(it.categoryId)) it.categoryId = categories[0].id;
     // journeyId links a scope item to the Journey it's connected to (see
     // toggleJourneyConnection() below) — null for every item that isn't.
     // A reference to a since-deleted item, or one that's no longer a
@@ -2009,16 +2004,6 @@ function categoryById(id) { return categories.find(c => c.id === id); }
 // offered as a choice in the scope-assign modal (openScopeAssignModal()).
 function pendingCategory() { return categories.find(c => c.pending); }
 function isPendingCategory(categoryId) { const c = categoryById(categoryId); return !!(c && c.pending); }
-// The one category flagged `journey: true` (see seedDefaults()/normalizeData())
-// — reserved for Journey-type items (see "Journeys" below) and, like Pending,
-// never offered as a choice for a plain scope item (see populateCategorySelect()).
-// Unlike Pending, this isn't a temporary waypoint an item passes through on
-// the way to a real category — it's the permanent, structural category every
-// Journey stays in for its whole lifecycle, which is why the item modal
-// locks the Category select outright (rather than merely excluding it from
-// the list) whenever the item being edited is itself a Journey.
-function journeyCategory() { return categories.find(c => c.journey); }
-function isJourneyCategory(categoryId) { const c = categoryById(categoryId); return !!(c && c.journey); }
 // Every scope item currently linked to the given Journey (item.journeyId —
 // set/cleared by toggleJourneyConnection(), see "Journeys" below), in
 // itemRowHtml()/renderStatusView()'s own manual-order sort.
@@ -2241,16 +2226,12 @@ function renderStatusView(main) {
 
 // ---------- Journeys ----------
 // A Journey is not a separate top-level array or data shape — it's a plain
-// item (see "Data model" in CLAUDE.md), just one with itemType:'journey' and
-// forced into the reserved Journey category (see journeyCategory() above),
-// so it gets every bit of existing item machinery — milestones, status
-// roll-up, review, dashboard rollups, drag reorder — for free. This mode is
-// a dedicated, filtered view of just those items, scoped by the same shared
-// filterWorkstreamId selector Planning/Review/Dashboard already use — a
-// Journey still shows inline on Planning's own status board too, alongside
-// its workstream's scope items, just tagged with a small badge (see
-// itemRowHtml()'s journeyBadge) rather than living in a view of its own
-// there.
+// item (see "Data model" in CLAUDE.md) with itemType:'journey', so it gets
+// the row's Edit/Delete actions and itemRowHtml()'s entire rendering
+// machinery for free. Unlike a scope item, it has no category, no
+// workstream, and no milestones at all (an explicit user simplification —
+// its "end date" is instead computed from whichever existing scope items
+// get connected to it, see computeJourneyDateRange() below).
 // A Journey is never assigned to a workstream at all — an explicit user
 // correction to this feature's first draft ("Journey should not be assigned
 // to workstreams. They are overarching"). So unlike Planning's own status
@@ -3151,17 +3132,8 @@ function populateWorkstreamSelect(selectedId, elId, includeUnassigned) {
     `<option value="${w.id}" ${w.id === selectedId ? 'selected' : ''}>${esc(w.name)}</option>`
   ).join('');
 }
-// journeyOnly renders (and, paired with openItemModal()'s own disabling of
-// the select, effectively locks) the picker to just the one reserved
-// Journey category — used whenever the item being created/edited is itself
-// a Journey, whose category is permanent (see journeyCategory()'s own
-// comment above). Otherwise the Journey category is excluded outright, the
-// same "never a manual destination" treatment openScopeAssignModal() already
-// gives Pending — a plain scope item should never be able to pick its way
-// into the reserved Journey category by hand.
-function populateCategorySelect(selectedId, journeyOnly) {
-  const opts = categories.filter(c => !!c.journey === !!journeyOnly);
-  document.getElementById('itemCategorySelect').innerHTML = opts.map(c =>
+function populateCategorySelect(selectedId) {
+  document.getElementById('itemCategorySelect').innerHTML = categories.map(c =>
     `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${esc(c.name)}</option>`
   ).join('');
 }
@@ -3200,20 +3172,16 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   editingItemType = isJourneyItem ? 'journey' : 'scope';
   document.getElementById('itemModalTitle').textContent = it ? (isJourneyItem ? 'Edit Journey' : 'Edit item') : (isJourneyItem ? 'New Journey' : 'New item');
   populateStatusSelect();
-  // A Journey is never assigned to a workstream — an explicit user
-  // correction ("They are overarching") — so the whole field is hidden
-  // outright, not just left unpopulated/disabled; populating it anyway
-  // (harmlessly inert while hidden) keeps this call unconditional rather
-  // than adding a branch that skips it.
+  // A Journey has no workstream, no category, and no milestones at all — an
+  // explicit user simplification ("do not add milestones to it... you can
+  // remove the Journey category completely"). All three fields are hidden
+  // outright for one, not left unpopulated/disabled/empty.
   document.getElementById('itemWorkstreamField').style.display = isJourneyItem ? 'none' : '';
+  document.getElementById('itemCategoryField').style.display = isJourneyItem ? 'none' : '';
   document.getElementById('itemMilestonesField').style.display = isJourneyItem ? 'none' : '';
   populateWorkstreamSelect(it ? it.workstreamId : (presetWorkstreamId || (workstreams[0] && workstreams[0].id)), undefined, !!(it && it.workstreamId == null));
-  // A brand-new plain item defaults to the first *non-Journey* category —
-  // categories[0] happens to already never be the reserved one (seeding
-  // order always puts Journey last), but finding it explicitly here doesn't
-  // depend on that happening to stay true.
-  const defaultCategoryId = isJourneyItem ? journeyCategory().id : categories.find(c => !c.journey).id;
-  populateCategorySelect(it ? it.categoryId : defaultCategoryId, isJourneyItem);
+  const defaultCategoryId = categories[0].id;
+  if (!isJourneyItem) populateCategorySelect(it ? it.categoryId : defaultCategoryId);
   // A scope item connected to a Journey (see toggleJourneyConnection())
   // carries a read-only backlink to it — shown here, never editable, since
   // which Journey (if any) a scope item is connected to isn't something
@@ -3229,7 +3197,7 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   document.getElementById('itemExternalDeliveryInput').checked = it ? !!it.externalDelivery : false;
   document.getElementById('itemExternalDeliverySpocInput').value = it ? (it.externalDeliverySpoc || '') : '';
   onItemExternalDeliveryChange();
-  editingMilestones = it
+  editingMilestones = isJourneyItem ? [] : it
     ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable }))
     : milestonesForCategory(defaultCategoryId, document.getElementById('itemDueInput').value);
   renderMilestonesEditor();
@@ -3243,10 +3211,6 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   ['itemNameInput', 'itemStartInput', 'itemDueInput', 'itemActualInput', 'itemWorkstreamSelect', 'itemCategorySelect', 'itemStatusSelect', 'itemExternalDeliveryInput', 'itemExternalDeliverySpocInput'].forEach(id => {
     document.getElementById(id).disabled = !editable;
   });
-  // A Journey's category is permanent, never a manual choice (see
-  // populateCategorySelect()'s own comment) — locked regardless of role,
-  // not just below Editor.
-  if (isJourneyItem) document.getElementById('itemCategorySelect').disabled = true;
   document.getElementById('itemSaveBtn').style.display = editable ? '' : 'none';
   document.getElementById('itemModalBg').classList.add('open');
   document.getElementById('itemNameInput').focus();
@@ -3394,11 +3358,10 @@ function saveItem() {
   // it's never assigned to a workstream at all (see openItemModal()'s own
   // comment on itemWorkstreamField).
   const workstreamId = savingJourney ? null : (document.getElementById('itemWorkstreamSelect').value || null);
-  // A Journey's category is forced to the reserved one regardless of what
-  // the (disabled, single-option) select reports — savingJourney is the
-  // one source of truth for this, set by openItemModal() for both the new
-  // and edit-existing paths (see editingItemType's own comment).
-  const categoryId = savingJourney ? journeyCategory().id : document.getElementById('itemCategorySelect').value;
+  // A Journey has no category at all — forced to null regardless of the
+  // (hidden) select's value, same "never assigned" treatment workstreamId
+  // gets just above.
+  const categoryId = savingJourney ? null : document.getElementById('itemCategorySelect').value;
   const manualDueDate = document.getElementById('itemDueInput').value || todayStr();
   const manualStartDate = document.getElementById('itemStartInput').value || manualDueDate;
   const actualDate = document.getElementById('itemActualInput').value || null;
@@ -3545,11 +3508,9 @@ function openScopeAssignModal(itemId) {
   if (!it) return;
   scopeAssignItemId = itemId;
   populateWorkstreamSelect(it.workstreamId, 'scopeAssignWorkstreamSelect');
-  // Neither reserved category (Pending or Journey) is ever an option here —
-  // picking a real, selectable category is the whole point of this modal
-  // (see applyScopeCategory()); Journey is reserved for the Journey item
-  // type, not a destination a plain scope item should land in.
-  document.getElementById('scopeAssignCategorySelect').innerHTML = categories.filter(c => !c.pending && !c.journey).map(c =>
+  // The Pending category itself is never an option here — picking a real
+  // category is the whole point of this modal (see applyScopeCategory()).
+  document.getElementById('scopeAssignCategorySelect').innerHTML = categories.filter(c => !c.pending).map(c =>
     `<option value="${c.id}">${esc(c.name)}</option>`
   ).join('');
   document.getElementById('scopeAssignModalBg').classList.add('open');
@@ -5306,10 +5267,9 @@ function renderAdmin() {
       ${categories.map(c => {
         const count = items.filter(it => it.categoryId === c.id).length;
         const pendingBadge = c.pending ? `<span class="review-ws-badge" style="background:var(--panel-2);color:var(--text-dim)" title="Reserved for the quick-add flow — can't be deleted">Reserved</span>` : '';
-        const journeyBadge = c.journey ? `<span class="review-ws-badge" style="background:var(--panel-2);color:var(--text-dim)" title="Reserved for the Journey item type — can't be deleted">Reserved</span>` : '';
         return `<div class="category-row">
             <span class="category-name">${esc(c.name)}</span>
-            ${pendingBadge}${journeyBadge}
+            ${pendingBadge}
             <span class="category-milestones-preview">${c.milestones.length ? esc(c.milestones.join(' → ')) : 'No milestones in template'}</span>
             <span class="milestone-count-badge">${count} item${count === 1 ? '' : 's'}</span>
             <span class="item-actions" style="display:flex">
@@ -5553,15 +5513,12 @@ function deleteCategoryFromModal() {
   // would strand any item still waiting on openScopeAssignModal(), so it's
   // never deletable regardless of how many other categories exist.
   if (cat.pending) { showToast('The Pending category can\'t be deleted', true); return; }
-  // Same reservation, for the same reason, on the Journey category — deleting
-  // it would strand every Journey's checklist with nothing to reference.
-  if (cat.journey) { showToast('The Journey category can\'t be deleted', true); return; }
-  if (categories.filter(c => !c.pending && !c.journey).length <= 1) { showToast('At least one category is required', true); return; }
+  if (categories.filter(c => !c.pending).length <= 1) { showToast('At least one category is required', true); return; }
   closeCategoryModal();
   const count = items.filter(it => it.categoryId === catId).length;
-  // Never falls back to Pending or Journey — a real item losing its category
-  // should land on another real one, not in a reserved placeholder.
-  const fallback = categories.find(c => c.id !== catId && !c.pending && !c.journey);
+  // Never falls back to Pending — a real item losing its category should
+  // land on another real one, not in the quick-add checklist's placeholder.
+  const fallback = categories.find(c => c.id !== catId && !c.pending);
   const body = (count ? `${count} item${count === 1 ? '' : 's'} using this category will move to "${fallback.name}". ` : '') + 'This cannot be undone.';
   openConfirmModal({
     title: `Delete "${cat.name}"?`,
@@ -5705,7 +5662,10 @@ function buildScopeItemsSheet(wb) {
   // own manual order, same as the status board.
   const sections = [{ id: null, name: 'Unassigned' }, ...workstreams.slice().sort((a, b) => a.order - b.order)];
   sections.forEach(w => {
-    const wItems = items.filter(it => it.workstreamId === w.id).sort((a, b) => a.order - b.order);
+    // A Journey also has workstreamId:null (see "Journeys" above), but it's
+    // never a scope item — excluded here the same way unassignedItemsSorted()
+    // excludes it from the Unassigned bucket on Planning's own board.
+    const wItems = items.filter(it => it.workstreamId === w.id && it.itemType !== 'journey').sort((a, b) => a.order - b.order);
     wItems.forEach(it => {
       const cat = categoryById(it.categoryId);
       const row = sheet.addRow({
@@ -5822,11 +5782,11 @@ function closeImportModal() {
 // "exists" locally (the fresh seed's own untouched one) and mergeData()'s
 // additive logic treats that as nothing to do.
 function isFreshLocalState() {
-  // The reserved Pending and Journey categories (see pendingCategory()/
-  // journeyCategory()) always exist, even in a truly fresh programme, so
-  // both are excluded here — only a real, user-added category (beyond the
-  // out-of-the-box DEFAULT_CATEGORIES set) counts as "not fresh anymore".
-  return items.length === 0 && workstreams.length <= 1 && categories.filter(c => !c.pending && !c.journey).length <= DEFAULT_CATEGORIES.length && programme.name === 'New Programme';
+  // The reserved Pending category (see pendingCategory()) always exists, even
+  // in a truly fresh programme, so it's excluded here — only a real,
+  // user-added category (beyond the out-of-the-box DEFAULT_CATEGORIES set)
+  // counts as "not fresh anymore".
+  return items.length === 0 && workstreams.length <= 1 && categories.filter(c => !c.pending).length <= DEFAULT_CATEGORIES.length && programme.name === 'New Programme';
 }
 // Wholesale replace from a file's contents — used only when
 // isFreshLocalState() is true, as the alternative to mergeData() in that one

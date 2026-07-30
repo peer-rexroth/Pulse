@@ -7,18 +7,14 @@ test('seedDefaults starts with zero workstreams — a fresh programme has none u
   assertEqual(workstreams.length, 0);
   assertEqual(items.length, 0);
   // DEFAULT_CATEGORIES (the out-of-the-box, real/selectable categories)
-  // plus the reserved Pending and Journey categories (see pendingCategory()/
-  // journeyCategory()) — always present, even in a brand-new programme,
-  // since the quick-add flow and the Journey item type each depend on their
-  // own one existing.
-  assertEqual(categories.length, DEFAULT_CATEGORIES.length + 2);
+  // plus the reserved Pending category (see pendingCategory()) — always
+  // present, even in a brand-new programme, since the quick-add flow
+  // depends on it existing.
+  assertEqual(categories.length, DEFAULT_CATEGORIES.length + 1);
   DEFAULT_CATEGORIES.forEach((c, i) => assertEqual(categories[i].name, c.name));
   const pendingCat = categories.find(c => c.pending);
   assertEqual(pendingCat.name, 'Pending');
   assertTrue(pendingCat.pending);
-  const journeyCat = categories.find(c => c.journey);
-  assertEqual(journeyCat.name, 'Journey');
-  assertTrue(journeyCat.journey);
 });
 
 test('saveWorkstream adds a new workstream with chosen name and color', function () {

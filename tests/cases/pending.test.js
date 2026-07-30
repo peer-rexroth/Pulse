@@ -110,18 +110,16 @@ test('marking the milestone Complete via the full item modal\'s dropdown also tr
   assertTrue(document.getElementById('scopeAssignModalBg').classList.contains('open'));
 });
 
-test('openScopeAssignModal populates the workstream select (with nothing preselected for an Unassigned item) and offers every category except Pending and Journey', function () {
+test('openScopeAssignModal populates the workstream select (with nothing preselected for an Unassigned item) and offers every category except Pending', function () {
   const it = addPendingItem();
   openScopeAssignModal(it.id);
   const wsHtml = document.getElementById('scopeAssignWorkstreamSelect').innerHTML;
   workstreams.forEach(w => assertIncludes(wsHtml, `value="${w.id}"`));
   assertNotIncludes(wsHtml, 'selected', 'an Unassigned item has no workstream to preselect');
   const catHtml = document.getElementById('scopeAssignCategorySelect').innerHTML;
-  categories.filter(c => !c.pending && !c.journey).forEach(c => assertIncludes(catHtml, `value="${c.id}"`));
+  categories.filter(c => !c.pending).forEach(c => assertIncludes(catHtml, `value="${c.id}"`));
   const pendingCat = categories.find(c => c.pending);
   assertNotIncludes(catHtml, `value="${pendingCat.id}"`, 'Pending itself must never be offered as a destination category');
-  const journeyCat = categories.find(c => c.journey);
-  assertNotIncludes(catHtml, `value="${journeyCat.id}"`, 'Journey must never be offered as a destination category for a plain scope item');
 });
 
 // ---------- A Pending item can't be deleted before it's triaged ----------

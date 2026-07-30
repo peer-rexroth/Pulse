@@ -1,11 +1,12 @@
 // ---------- Journeys ----------
 // A Journey is not a separate top-level data shape — it's a plain item (see
-// "Data model" in CLAUDE.md) with itemType:'journey', forced into the
-// reserved Journey category (journeyCategory()/isJourneyCategory()). Unlike
-// an earlier version of this feature, a Journey has no milestone checklist
-// of its own at all (the reserved category's own template is empty) and is
-// never assigned to a workstream (workstreamId is always null — it's
-// overarching). Instead of decomposing into new scope items, a Journey
+// "Data model" in CLAUDE.md) with itemType:'journey'. It has no category, no
+// workstream, and no milestone checklist at all — an explicit user
+// simplification ("do not add milestones to it... you can remove the
+// Journey category completely"), removing what an earlier version of this
+// feature had (a reserved category with a fixed 4-milestone template). A
+// Journey is never assigned to a workstream (workstreamId is always null —
+// it's overarching). Instead of decomposing into new scope items, a Journey
 // *connects* to existing ones (item.journeyId, set/cleared via
 // toggleJourneyConnection() in the "Connect scope items" modal) — and its
 // own "end date" is computed live, at render time, from the latest
@@ -19,70 +20,56 @@ function addJourney(name) {
   return items[items.length - 1];
 }
 
-// ---------- Reserved category ----------
-
-test('journeyCategory/isJourneyCategory find the one category flagged journey:true', function () {
-  const cat = journeyCategory();
-  assertTrue(cat.journey);
-  assertEqual(cat.name, 'Journey');
-  assertTrue(isJourneyCategory(cat.id));
-  assertFalse(isJourneyCategory(categories.find(c => c.pending).id));
-});
-
-test('the reserved Journey category has no milestone template — a Journey has no checklist of its own', function () {
-  assertDeepEqual(journeyCategory().milestones, []);
-});
-
 // ---------- Creating a Journey ----------
 
-test('openItemModal(null, null, "journey") seeds a new Journey with no milestones, no workstream field, and a locked category', function () {
+test('openItemModal(null, null, "journey") seeds a new Journey with no milestones, no workstream field, and no category field', function () {
   openItemModal(null, null, 'journey');
   assertEqual(document.getElementById('itemModalTitle').textContent, 'New Journey');
   assertEqual(editingItemType, 'journey');
   assertDeepEqual(editingMilestones, []);
   assertEqual(document.getElementById('itemWorkstreamField').style.display, 'none', 'a Journey is never assigned to a workstream, so the field is hidden outright');
+  assertEqual(document.getElementById('itemCategoryField').style.display, 'none', 'a Journey has no category at all, so the whole field is hidden');
   assertEqual(document.getElementById('itemMilestonesField').style.display, 'none', 'a Journey has no milestone checklist, so the whole field is hidden');
-  const catHtml = document.getElementById('itemCategorySelect').innerHTML;
-  assertIncludes(catHtml, `value="${journeyCategory().id}"`);
-  assertTrue(document.getElementById('itemCategorySelect').disabled, 'a Journey\'s category is always locked, not just below Editor');
 });
 
-test('saveItem creates a new Journey with itemType, the reserved category, no workstream, and zero milestones', function () {
+test('saveItem creates a new Journey with itemType, no category, no workstream, and zero milestones', function () {
   const it = addJourney('Customer Onboarding');
   assertEqual(it.itemType, 'journey');
-  assertEqual(it.categoryId, journeyCategory().id);
+  assertEqual(it.categoryId, null, 'a Journey has no category at all');
   assertEqual(it.workstreamId, null, 'a Journey is overarching — never assigned to a workstream');
   assertEqual(it.journeyId, null);
   assertDeepEqual(it.milestones, []);
 });
 
-test('a plain new item never picks up itemType:"journey" and still shows the Workstream/Milestones fields', function () {
+test('a plain new item never picks up itemType:"journey" and still shows the Workstream/Category/Milestones fields', function () {
   openItemModal(null, workstreams[0].id);
   assertEqual(editingItemType, 'scope');
   assertFalse(document.getElementById('itemWorkstreamField').style.display === 'none');
+  assertFalse(document.getElementById('itemCategoryField').style.display === 'none');
   assertFalse(document.getElementById('itemMilestonesField').style.display === 'none');
   document.getElementById('itemNameInput').value = 'Ordinary item';
   document.getElementById('itemWorkstreamSelect').value = workstreams[0].id;
+  document.getElementById('itemCategorySelect').value = categories[0].id;
   saveItem();
   const it = items[items.length - 1];
   assertEqual(it.itemType, 'scope');
   assertEqual(it.workstreamId, workstreams[0].id);
-  assertFalse(document.getElementById('itemCategorySelect').disabled);
+  assertTrue(!!it.categoryId, 'a plain scope item still needs a real category');
 });
 
-test('editing an existing Journey keeps its title, locked category, hidden workstream/milestones fields, and itemType', function () {
+test('editing an existing Journey keeps its title, hidden workstream/category/milestones fields, and itemType', function () {
   const it = addJourney('Vendor Integration');
   openItemModal(it.id);
   assertEqual(document.getElementById('itemModalTitle').textContent, 'Edit Journey');
   assertEqual(editingItemType, 'journey');
-  assertTrue(document.getElementById('itemCategorySelect').disabled);
   assertEqual(document.getElementById('itemWorkstreamField').style.display, 'none');
+  assertEqual(document.getElementById('itemCategoryField').style.display, 'none');
   assertEqual(document.getElementById('itemMilestonesField').style.display, 'none');
   document.getElementById('itemNameInput').value = 'Vendor Integration (renamed)';
   saveItem();
   assertEqual(it.name, 'Vendor Integration (renamed)');
   assertEqual(it.itemType, 'journey', 'itemType must never change via a plain re-save');
-  assertEqual(it.categoryId, journeyCategory().id);
+  assertEqual(it.categoryId, null);
   assertEqual(it.workstreamId, null);
 });
 
@@ -96,22 +83,6 @@ test('creating a Journey is blocked below Editor', function () {
   userRole = 'reviewer';
   openItemModal(null, null, 'journey');
   assertEqual(document.getElementById('itemSaveBtn').style.display, 'none');
-});
-
-// ---------- populateCategorySelect ----------
-
-test('populateCategorySelect(id, true) offers only the Journey category', function () {
-  populateCategorySelect(journeyCategory().id, true);
-  const html = document.getElementById('itemCategorySelect').innerHTML;
-  assertIncludes(html, `value="${journeyCategory().id}"`);
-  categories.filter(c => !c.journey).forEach(c => assertNotIncludes(html, `value="${c.id}"`));
-});
-
-test('populateCategorySelect(id) (falsy journeyOnly) excludes the Journey category', function () {
-  populateCategorySelect(categories[0].id);
-  const html = document.getElementById('itemCategorySelect').innerHTML;
-  assertNotIncludes(html, `value="${journeyCategory().id}"`);
-  categories.filter(c => !c.journey).forEach(c => assertIncludes(html, `value="${c.id}"`));
 });
 
 // ---------- Row badge ----------
