@@ -2745,9 +2745,17 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // the Remove-milestone button already being blocked for a Pending item
     // (see renderMilestonesEditor()'s own isPendingItem).
     const naEditable = editable && !isPendingCategory(it.categoryId);
+    // The inert (span) case's *off* state is faded the same way the Remove
+    // button's own disabled trash icon is (opacity:.35, see below) — a
+    // user-reported inconsistency, screenshot-confirmed: the N/A icon read
+    // as fully "on" (normal contrast) even while genuinely disabled,
+    // unlike the trash icon right next to it. The *on* state deliberately
+    // stays full-strength colored regardless — it's a real, meaningful
+    // status (this milestone actually is Not Applicable) that must stay
+    // legible below the gating role, not just a disabled control.
     const naHtml = viewOnly ? '' : (naEditable
       ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></button>`
-      : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></span>`);
+      : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></span>`);
     return `
     <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''}">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
@@ -3440,10 +3448,15 @@ function renderMilestonesEditor() {
     // button just above already is (see isPendingItem, and this modal's own
     // leading comment) — marking it N/A would strand the item in Pending
     // forever, same reasoning milestoneRowsHtml()'s own naEditable guard
-    // documents.
+    // documents. The inert (span) case's *off* state is faded the same way
+    // the Remove button's own disabled trash icon is (opacity:.35) — a
+    // user-reported inconsistency, screenshot-confirmed: this icon read as
+    // fully "on" even while genuinely disabled. The *on* state stays
+    // full-strength colored regardless, same reasoning as
+    // milestoneRowsHtml()'s own naHtml.
     const naToggleHtml = (editable && !isPendingItem)
       ? `<button class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : ''}" onclick="toggleEditingMilestoneNotApplicable(${idx})" title="${na ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${na ? 'solid' : 'regular'} fa-ban"></i></button>`
-      : `<span class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : ''}" title="${na ? 'Not applicable' : ''}"><i class="fa-${na ? 'solid' : 'regular'} fa-ban"></i></span>`;
+      : `<span class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${na ? 'Not applicable' : ''}"><i class="fa-${na ? 'solid' : 'regular'} fa-ban"></i></span>`;
     return `
     <div class="milestone-row">
       <input type="text" value="${esc(m.name)}" title="Milestone name" ${dis} oninput="editingMilestones[${idx}].name = this.value">
