@@ -442,12 +442,25 @@ test('unassignedItemsSorted never includes a Journey, even though both share wor
 
 // ---------- Journeys mode ----------
 
-test('setMode("journeys") is a valid mode, renders the sidebar-less journeysBody, and hides scopedBody/adminBody', function () {
+test('setMode("journeys") is a valid mode, renders into the shared scopedBody/main shell (sidebar visible), and hides adminBody', function () {
   setMode('journeys');
   assertEqual(mode, 'journeys');
-  assertEqual(document.getElementById('scopedBody').style.display, 'none', 'Journeys is not workstream-scoped, so the shared sidebar shell is hidden, same treatment as Admin');
+  assertEqual(document.getElementById('scopedBody').style.display, '', 'Journeys now shares the sidebar shell — moved there so its own nav entry could live in the sidebar');
   assertEqual(document.getElementById('adminBody').style.display, 'none');
-  assertEqual(document.getElementById('journeysBody').style.display, '');
+});
+
+test('renderSidebar renders a Journeys nav row in its own section, separate from the workstream list, showing the current Journey count and highlighted only in Journeys mode', function () {
+  addJourney('First Journey');
+  addJourney('Second Journey');
+  setMode('planning');
+  let html = document.getElementById('journeysNav').innerHTML;
+  assertIncludes(html, 'Journeys');
+  assertIncludes(html, '>2<', 'the count badge should show allJourneys().length');
+  assertNotIncludes(html, 'ws-row active', 'not active while on Planning');
+
+  setMode('journeys');
+  html = document.getElementById('journeysNav').innerHTML;
+  assertIncludes(html, 'ws-row active', 'active once Journeys mode is showing');
 });
 
 test('allJourneys returns only itemType:"journey" items, sorted by order, regardless of any workstream', function () {
@@ -462,7 +475,7 @@ test('renderJourneys lists every journey in one flat list with a single Add-Jour
   addItem({ name: 'A plain scope item' });
   addJourney('The Journey');
   setMode('journeys');
-  const html = document.getElementById('journeysBody').innerHTML;
+  const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'The Journey');
   assertNotIncludes(html, 'A plain scope item');
   assertIncludes(html, `onclick="openItemModal(null,null,'journey')"`);
@@ -470,7 +483,7 @@ test('renderJourneys lists every journey in one flat list with a single Add-Jour
 
 test('renderJourneys shows "No journeys yet" when there are none', function () {
   setMode('journeys');
-  const html = document.getElementById('journeysBody').innerHTML;
+  const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'No journeys yet.');
 });
 
@@ -478,7 +491,7 @@ test('renderJourneys omits the Add-Journey button below Editor', function () {
   addJourney('Existing Journey');
   userRole = 'reviewer';
   setMode('journeys');
-  const html = document.getElementById('journeysBody').innerHTML;
+  const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Existing Journey');
   assertNotIncludes(html, 'Add Journey');
 });
@@ -490,7 +503,7 @@ test('renderJourneys ignores the shared filterWorkstreamId selector entirely —
   addJourney('Journey B');
   setFilterWorkstream(secondWs.id);
   setMode('journeys');
-  const html = document.getElementById('journeysBody').innerHTML;
+  const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Journey A');
   assertIncludes(html, 'Journey B');
 });
@@ -499,7 +512,7 @@ test('renderJourneys works even with zero workstreams (a Journey needs none to e
   workstreams = []; items = [];
   addJourney('Standalone Journey');
   setMode('journeys');
-  const html = document.getElementById('journeysBody').innerHTML;
+  const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Standalone Journey');
 });
 

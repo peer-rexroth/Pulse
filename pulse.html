@@ -397,7 +397,7 @@
     color: var(--text-dim); font-weight: 600; display: flex; align-items: center; gap: 6px;
   }
   .view-tab.active { background: var(--panel); color: var(--accent); box-shadow: var(--shadow); }
-  #tabAdmin.active, #tabJourneys.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+  #tabAdmin.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
   .topbar-spacer { flex: 1; }
   .icon-btn {
     border: 1px solid var(--border); background: var(--panel); color: var(--text-dim); cursor: pointer;
@@ -1007,12 +1007,6 @@
   <span id="syncConflictIndicator"></span>
   <span id="fileSyncIndicator"></span>
   <span id="backupSyncIndicator"></span>
-  <!-- Journeys is deliberately not in .view-tabs above, same reasoning as
-       #tabAdmin below: it isn't workstream-scoped (a Journey never belongs
-       to a workstream — see "Journeys" in CLAUDE.md), so grouping it with
-       Dashboard/Planning/Review, which all read the shared sidebar
-       workstream filter, would incorrectly imply it did too. -->
-  <button class="btn btn-sm" id="tabJourneys" onclick="setMode('journeys')"><i class="fa-solid fa-route"></i> Journeys</button>
   <div class="data-dropdown" id="dataDropdown">
     <button class="btn btn-sm" onclick="event.stopPropagation();toggleDataMenu()"><i class="fa-solid fa-database"></i> Data <i class="fa-solid fa-chevron-down" style="font-size:9px"></i></button>
     <div class="dropdown-menu" id="dataMenu">
@@ -1041,17 +1035,25 @@
   <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-circle-half-stroke"></i></button>
 </div>
 
-<!-- Shared shell for Planning/Review/Dashboard: one sidebar (the workstream
-     selector all three modes read from) + one main content area whose
-     contents swap per mode. Admin and Journeys are both not workstream-
-     scoped (see "Journeys" in CLAUDE.md for why a Journey never belongs to
-     one), so each gets its own separate full-width container instead,
-     reached from its own topbar button — a sidebar that filters nothing in
-     that view would just be a dead, misleading control. -->
+<!-- Shared shell for Planning/Review/Dashboard/Journeys: one sidebar + one
+     main content area whose contents swap per mode. Admin alone is not
+     workstream-scoped at all (see "Categories (Admin mode)" in CLAUDE.md)
+     and gets its own separate full-width container instead, reached from
+     its own topbar button — a sidebar that filters nothing in that view
+     would just be a dead, misleading control. Journeys used to get the same
+     sidebar-less treatment (a Journey never belongs to a workstream — see
+     "Journeys" in CLAUDE.md), reached from its own topbar button; moved into
+     this shared shell so its own entry point could live in the sidebar
+     instead, as its own section below Workstreams (an explicit user
+     request) — it still ignores the shared workstream selector entirely
+     once showing (renderJourneys() never reads filterWorkstreamId), same as
+     before, just now sitting alongside the sidebar rather than without one. -->
 <div class="body-row" id="scopedBody">
   <div class="sidebar">
     <div class="sidebar-label">Workstreams <button class="sidebar-label-add" id="addWsBtn" onclick="openWorkstreamModal()" title="New workstream"><i class="fa-solid fa-plus"></i></button></div>
     <div id="wsList"></div>
+    <div class="sidebar-label" style="margin-top:16px">Journeys</div>
+    <div id="journeysNav"></div>
   </div>
   <div class="planning-main">
     <div class="planning-toolbar" id="reviewToolbar" style="display:none">
@@ -1067,7 +1069,6 @@
 </div>
 
 <div class="main" id="adminBody" style="display:none"></div>
-<div class="main" id="journeysBody" style="display:none"></div>
 
 <!-- Workstream modal -->
 <div class="modal-bg" id="wsModalBg">
@@ -2073,10 +2074,13 @@ function computeJourneyDateRange(journeyId) {
 function render() {
   document.getElementById('programmeNameDisplay').textContent = programme.name;
   updateRoleBtn();
-  MODES.forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
-  document.getElementById('scopedBody').style.display = (mode === 'admin' || mode === 'journeys') ? 'none' : '';
+  // 'journeys' is excluded here — its entry point is the sidebar's own
+  // #journeysNav row now (see renderSidebar()), not a #tab<Mode> topbar
+  // button, so it sets its own 'active' class as part of that row's markup
+  // instead of through this generic id-based lookup.
+  MODES.filter(m => m !== 'journeys').forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
+  document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
-  document.getElementById('journeysBody').style.display = mode === 'journeys' ? '' : 'none';
   document.getElementById('reviewToolbar').style.display = mode === 'review' ? '' : 'none';
   document.getElementById('dataMenuImportItem').style.display = hasRole('admin') ? '' : 'none';
   document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
@@ -2161,6 +2165,27 @@ function renderSidebar() {
       </div>`;
   }).join('');
   el.innerHTML = html;
+  // Journeys' own entry point — moved here from a standalone topbar button
+  // (an explicit user request: "move journeys in the left navigation bar,
+  // separate it from workstreams"), as its own section below Workstreams
+  // rather than folded into that list, since a Journey is never a
+  // workstream and mixing the two would misrepresent that. It's a single
+  // row, not a per-Journey list — Journeys mode itself is still one flat
+  // list (see renderJourneys()), so there's nothing here to enumerate the
+  // way individual workstreams are. This row sets its own 'active' state
+  // directly (mode === 'journeys') rather than through render()'s generic
+  // MODES.forEach id-toggle loop, since it's rebuilt fresh on every
+  // renderSidebar() call anyway. Clicking a workstream row above while
+  // sitting in Journeys mode updates filterWorkstreamId (and that row's own
+  // highlight) but has no visible effect on the still-showing Journeys list
+  // — renderJourneys() ignores the selector entirely, same as it always
+  // has; only mode switches the visible content.
+  document.getElementById('journeysNav').innerHTML =
+    `<div class="ws-row ${mode === 'journeys' ? 'active' : ''}" id="tabJourneys" onclick="setMode('journeys')" title="Journeys">
+        <i class="fa-solid fa-route" style="width:14px;text-align:center;color:${mode === 'journeys' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
+        <span class="ws-row-name">Journeys</span>
+        <span class="ws-row-count">${allJourneys().length}</span>
+      </div>`;
 }
 
 function visibleWorkstreams() {
@@ -2258,14 +2283,18 @@ function renderStatusView(main) {
 // board, this view is a single flat list, not one section per workstream —
 // and it deliberately ignores the shared filterWorkstreamId selector
 // entirely (ignoring it, not just defaulting to "All", since a per-
-// workstream filter has nothing to scope a workstream-less list by), the
-// same reasoning #tabJourneys itself sits outside the shared .view-tabs
-// pill for (see its own comment in the topbar markup).
+// workstream filter has nothing to scope a workstream-less list by), even
+// though the sidebar carrying that selector is visible while this mode is
+// showing (see the sidebar's own #journeysNav comment in renderSidebar()
+// for why that's fine — Journeys mode used to render into its own
+// sidebar-less #journeysBody specifically to avoid implying it read the
+// selector; now it shares the sidebar shell purely so its own nav entry
+// could live there, and still just ignores the filter itself).
 function allJourneys() {
   return items.filter(it => it.itemType === 'journey').sort((a, b) => a.order - b.order);
 }
 function renderJourneys() {
-  const main = document.getElementById('journeysBody');
+  const main = document.getElementById('main');
   const journeys = allJourneys();
   const rows = journeys.length ? journeys.map(it => itemRowHtml(it)).join('') :
     `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No journeys yet.</div>`;
