@@ -444,3 +444,9 @@ test('writeBackupCopy is a no-op once today\'s backup has already been written',
   await writeBackupCopy({ workstreams: [] });
   assertEqual(lastBackupWrittenDate, today, 'should still just be today\'s date, unchanged — no attempt to write again');
 });
+
+test('updateBackupSyncUI hides the topbar indicator when the browser has no showDirectoryPicker support (matching the JXA harness itself)', function () {
+  backupDirHandle = { name: 'Fake Folder' };
+  updateBackupSyncUI();
+  assertEqual(document.getElementById('backupSyncIndicator').style.display, 'none');
+});

@@ -780,6 +780,7 @@
 
   /* File sync indicator */
   #fileSyncIndicator:not(:empty) { display: flex; align-items: center; gap: 6px; }
+  #backupSyncIndicator:not(:empty) { display: flex; align-items: center; gap: 6px; }
   .sync-linked { font-size: 12px; color: var(--stat-green); display: flex; align-items: center; gap: 5px; max-width: 150px; }
   .sync-linked span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sync-reconnect { color: var(--stat-amber) !important; border-color: var(--stat-amber) !important; }
@@ -971,6 +972,7 @@
   <div class="topbar-spacer"></div>
   <span id="syncConflictIndicator"></span>
   <span id="fileSyncIndicator"></span>
+  <span id="backupSyncIndicator"></span>
   <div class="data-dropdown" id="dataDropdown">
     <button class="btn btn-sm" onclick="event.stopPropagation();toggleDataMenu()"><i class="fa-solid fa-database"></i> Data <i class="fa-solid fa-chevron-down" style="font-size:9px"></i></button>
     <div class="dropdown-menu" id="dataMenu">
@@ -5891,7 +5893,7 @@ async function chooseBackupFolder() {
     backupDirHandle = dir;
     lastBackupWrittenDate = null;
     try { await _fsPut(dir, _FS.backupKey); } catch (_) {}
-    updateFileSyncUI();
+    updateBackupSyncUI();
     showToast(`Daily backups enabled — saving to ${dir.name}/Backup`);
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not access that folder', true); }
 }
@@ -5899,7 +5901,7 @@ async function unlinkBackupFolder() {
   backupDirHandle = null;
   lastBackupWrittenDate = null;
   await _fsDel(_FS.backupKey).catch(() => {});
-  updateFileSyncUI();
+  updateBackupSyncUI();
   showToast('Daily backups turned off');
 }
 // Background polling — without this, an external change (a teammate's edit,
@@ -6076,9 +6078,34 @@ function updateFileSyncUI() {
     }
   }).catch(() => { if (el) fadeSwapHTML(el, `<button class="btn btn-sm" onclick="openFileSyncModal()"><i class="fa-solid fa-link"></i> Link file</button>`); });
 }
+// backupSyncIndicator's own counterpart, right next to fileSyncIndicator —
+// same on/off toggle shape (an "off" button that opens the same modal, or a
+// linked-looking status + unlink button once on), but only two states, not
+// four: unlike a linked file's own permission, a lapsed backup-folder grant
+// has no dedicated reconnect flow (see writeBackupCopy()'s own comment) — it
+// just silently stops backing up until chooseBackupFolder() is run again —
+// so there's no third "reconnect" state to show here, matching
+// fileSyncBackupSectionHtml()'s own two-state modal row exactly.
+function updateBackupSyncUI() {
+  const el = document.getElementById('backupSyncIndicator');
+  if (!el) return;
+  if (!window.showDirectoryPicker) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  if (!backupDirHandle) {
+    fadeSwapHTML(el, `<button class="btn btn-sm" onclick="openFileSyncModal()" title="Save a dated backup copy to a folder every day"><i class="fa-solid fa-clock-rotate-left"></i> Backups off</button>`);
+    return;
+  }
+  fadeSwapHTML(el, `
+    <span class="sync-linked" title="Daily backup saved to ${esc(backupDirHandle.name)}/Backup">
+      <i class="fa-solid fa-clock-rotate-left"></i>
+      <span>${esc(backupDirHandle.name)}</span>
+    </span>
+    <button class="btn btn-sm" onclick="unlinkBackupFolder()" title="Turn off daily backups" style="padding:4px 8px;line-height:1"><i class="fa-solid fa-link-slash"></i></button>`);
+}
 async function initFileSync() {
   if (!window.showOpenFilePicker) return;
   updateFileSyncUI();
+  updateBackupSyncUI();
   // Restored independently of fileHandle's own try/catch below, in its own
   // isolated block that can never throw into (and so never trips) that
   // block's fileHandle-clearing catch — the two handles' lifecycles are
@@ -6089,6 +6116,7 @@ async function initFileSync() {
       backupDirHandle = storedBackupDir;
     }
   } catch (_) {}
+  updateBackupSyncUI();
   try {
     const handle = await _fsGet();
     // On a brand-new browser (no role chosen yet, userRole still null) this
