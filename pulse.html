@@ -445,6 +445,14 @@
   .ws-row-drag { display: none; border: none; background: transparent; color: var(--text-faint); padding: 2px 4px; }
   .ws-row:hover .ws-row-drag { display: inline-flex; }
   .ws-row-drag:hover { color: var(--text); }
+  /* "All workstreams" is a pseudo-row, not a real workstream — a thin
+     rule plus extra bottom spacing sets it apart from the real, per-
+     workstream rows listed below it, the same way .ws-dot visually
+     distinguishes a real workstream's own color from this row's plain,
+     neutral icon. */
+  .ws-row-all { margin-bottom: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .ws-row-all-icon { width: 8px; flex: 0 0 auto; text-align: center; font-size: 11px; color: var(--text-faint); }
+  .ws-row-all.active .ws-row-all-icon { color: var(--accent); }
 
   .main { flex: 1; min-width: 0; overflow: auto; padding: 20px 24px; }
   .planning-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -1955,7 +1963,8 @@ function setMode(m) {
 function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
   const el = document.getElementById('wsList');
-  let html = `<div class="ws-row ${filterWorkstreamId === null ? 'active' : ''}" onclick="setFilterWorkstream(null)">
+  let html = `<div class="ws-row ws-row-all ${filterWorkstreamId === null ? 'active' : ''}" onclick="setFilterWorkstream(null)">
+      <i class="fa-solid fa-layer-group ws-row-all-icon"></i>
       <span class="ws-row-name">All workstreams</span>
       <span class="ws-row-count">${items.length}</span>
     </div>`;
