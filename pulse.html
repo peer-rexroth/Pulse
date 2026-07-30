@@ -1615,6 +1615,9 @@ let revealedActualIds = new Set();
 // showing in place of its button — UI-only, not persisted. See
 // unassignedSectionHtml()/openInlineQuickAdd().
 let unassignedQuickAddOpen = false;
+// Journeys' own counterpart — UI-only, not persisted. See
+// renderJourneys()/openJourneyQuickAdd().
+let journeyQuickAddOpen = false;
 // Review mode's own two sub-tabs: 'scope' (the existing checklist + cycle
 // history) or 'actionLog' (the workstream-wide action log) — UI-only, not
 // persisted, same as view above but scoped one level deeper.
@@ -2328,8 +2331,17 @@ function renderJourneys() {
   const journeys = allJourneys();
   const rows = journeys.length ? journeys.map(it => itemRowHtml(it)).join('') :
     `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No journeys yet.</div>`;
+  // A name-only inline capture, matching the Unassigned section's own "+
+  // Add item" quick-add exactly (see openInlineQuickAdd()) — an explicit
+  // user request to make the two consistent, replacing the full item modal
+  // this used to open (openItemModal(null,null,'journey')). A Journey has
+  // no workstream/category/milestones to ask for up front anyway (see
+  // "Journeys" in CLAUDE.md), so the modal was never asking for more than a
+  // name here in practice — this just skips opening it at all.
   const addRow = hasRole('editor')
-    ? `<div class="ws-section-add"><button class="btn btn-sm" onclick="openItemModal(null,null,'journey')"><i class="fa-solid fa-plus"></i> Add Journey</button></div>`
+    ? (journeyQuickAddOpen
+        ? `<div class="ws-section-add"><input type="text" class="inline-quick-add-input" id="journeyQuickAddInput" placeholder="Journey name" onkeydown="if(event.key==='Enter') saveJourneyQuickAddItem(); if(event.key==='Escape') cancelJourneyQuickAdd();" onblur="saveJourneyQuickAddItem()"></div>`
+        : `<div class="ws-section-add"><button class="btn btn-sm" onclick="openJourneyQuickAdd()"><i class="fa-solid fa-plus"></i> Add Journey</button></div>`)
     : '';
   // Same "no real workstream" visual treatment unassignedSectionHtml() uses
   // for its own header — a transparent dot in place of a workstream color,
@@ -3682,6 +3694,53 @@ function applyScopeCategory(itemId, workstreamId, categoryId) {
   logReviewChange(it.workstreamId, it.name, null, `Category set to "${categoryById(categoryId).name}"`, { itemId: it.id });
   save(); render();
   showToast('Category assigned');
+}
+
+// ---------- Journey quick-add ----------
+// Mirrors openInlineQuickAdd()/cancelInlineQuickAdd()/saveInlineQuickAddItem()
+// (the Unassigned section's own name-only inline capture) exactly, down to
+// the double-fire guard against onblur re-triggering after Enter/Escape
+// already handled the same keystroke — an explicit user request to make the
+// two consistent, replacing the full item modal renderJourneys()'s own
+// "+ Add Journey" button used to open. A Journey genuinely has nothing else
+// worth asking for up front (no workstream, no category, no milestones —
+// see "Journeys" in CLAUDE.md), so the modal was never doing more here than
+// collecting a name; this just skips opening it.
+function openJourneyQuickAdd() {
+  if (!requireRole('editor')) return;
+  journeyQuickAddOpen = true;
+  render();
+  document.getElementById('journeyQuickAddInput')?.focus();
+}
+function cancelJourneyQuickAdd() {
+  journeyQuickAddOpen = false;
+  render();
+}
+// Builds the same shape saveItem()'s own Journey-creation branch does
+// (itemType:'journey', workstreamId/categoryId forced null, no milestones,
+// default green tags, 'not-started' status — see saveItem()'s own comment
+// on why itStatus/businessStatus/budgetStatus/itemType/order are never part
+// of the shared `data` object) — order is computed the same
+// `items.filter(i => i.workstreamId === null).length` way saveItem() does
+// for a Journey too, so a Journey created here sits at the same relative
+// position a modal-created one would have.
+function saveJourneyQuickAddItem() {
+  if (!journeyQuickAddOpen) return;
+  journeyQuickAddOpen = false;
+  const name = (document.getElementById('journeyQuickAddInput').value || '').trim();
+  if (!name) { render(); return; } // blurring/Enter with nothing typed just closes it, no error
+  const today = todayStr();
+  const order = items.filter(i => i.workstreamId === null).length;
+  items.push({
+    id: genId(), workstreamId: null, categoryId: null, name,
+    status: 'not-started', startDate: today, dueDate: today, actualDate: null,
+    milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
+    itemType: 'journey', journeyId: null,
+    externalDelivery: false, externalDeliverySpoc: null,
+    order, updatedAt: Date.now()
+  });
+  save(); render();
+  showToast('Journey added');
 }
 
 // ---------- Journey connect ----------

@@ -85,6 +85,77 @@ test('creating a Journey is blocked below Editor', function () {
   assertEqual(document.getElementById('itemSaveBtn').style.display, 'none');
 });
 
+// ---------- Journey quick-add (mirrors the Unassigned section's own
+// inline "+ Add item", see pending.test.js) ----------
+
+test('openJourneyQuickAdd/saveJourneyQuickAddItem creates a Journey with no workstream, no category, and zero milestones', function () {
+  openJourneyQuickAdd();
+  document.getElementById('journeyQuickAddInput').value = 'Onboarding Journey';
+  saveJourneyQuickAddItem();
+  assertEqual(items.length, 1);
+  const it = items[0];
+  assertEqual(it.name, 'Onboarding Journey');
+  assertEqual(it.itemType, 'journey');
+  assertEqual(it.workstreamId, null);
+  assertEqual(it.categoryId, null);
+  assertDeepEqual(it.milestones, []);
+  assertEqual(it.status, 'not-started');
+  assertFalse(journeyQuickAddOpen, 'the input should have closed back to the button after saving');
+});
+
+test('saveJourneyQuickAddItem closes the input without creating anything when the name is blank', function () {
+  openJourneyQuickAdd();
+  document.getElementById('journeyQuickAddInput').value = '   ';
+  saveJourneyQuickAddItem();
+  assertEqual(items.length, 0);
+  assertFalse(journeyQuickAddOpen);
+});
+
+test('cancelJourneyQuickAdd (Escape) discards whatever was typed, closing the input', function () {
+  openJourneyQuickAdd();
+  document.getElementById('journeyQuickAddInput').value = 'Abandoned draft';
+  cancelJourneyQuickAdd();
+  assertEqual(items.length, 0);
+  assertFalse(journeyQuickAddOpen);
+});
+
+test('saveJourneyQuickAddItem is a no-op if called again after it already closed things (Enter followed by the resulting blur)', function () {
+  openJourneyQuickAdd();
+  document.getElementById('journeyQuickAddInput').value = 'Typed once';
+  saveJourneyQuickAddItem(); // e.g. Enter
+  assertEqual(items.length, 1);
+  saveJourneyQuickAddItem(); // e.g. the blur that same render() triggers by tearing out the focused input
+  assertEqual(items.length, 1, 'a second call after the input already closed must not create a duplicate');
+});
+
+test('openJourneyQuickAdd is blocked below Editor', function () {
+  userRole = 'reviewer';
+  openJourneyQuickAdd();
+  assertFalse(journeyQuickAddOpen);
+});
+
+test('renderJourneys shows the button by default, and swaps in the input once opened', function () {
+  let html = document.getElementById('main').innerHTML;
+  setMode('journeys');
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `onclick="openJourneyQuickAdd()"`);
+  assertNotIncludes(html, 'id="journeyQuickAddInput"');
+
+  openJourneyQuickAdd();
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'id="journeyQuickAddInput"');
+});
+
+test('renderJourneys omits the Add-Journey button (and the quick-add input) below Editor', function () {
+  addJourney('Existing Journey');
+  userRole = 'reviewer';
+  setMode('journeys');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Existing Journey');
+  assertNotIncludes(html, 'openJourneyQuickAdd');
+  assertNotIncludes(html, 'id="journeyQuickAddInput"');
+});
+
 // ---------- Row badge ----------
 
 test('itemRowHtml shows a Journey badge icon in the name cell for a Journey, not for a scope item', function () {
@@ -471,14 +542,14 @@ test('allJourneys returns only itemType:"journey" items, sorted by order, regard
   assertDeepEqual(names, ['First Journey', 'Second Journey']);
 });
 
-test('renderJourneys lists every journey in one flat list with a single Add-Journey button, and excludes scope items', function () {
+test('renderJourneys lists every journey in one flat list with a single Add-Journey button (inline quick-add, not the modal), and excludes scope items', function () {
   addItem({ name: 'A plain scope item' });
   addJourney('The Journey');
   setMode('journeys');
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'The Journey');
   assertNotIncludes(html, 'A plain scope item');
-  assertIncludes(html, `onclick="openItemModal(null,null,'journey')"`);
+  assertIncludes(html, `onclick="openJourneyQuickAdd()"`);
 });
 
 test('renderJourneys shows "No journeys yet" when there are none', function () {
