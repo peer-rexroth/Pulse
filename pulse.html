@@ -3616,6 +3616,14 @@ function cancelInlineQuickAdd() {
 // input a second time), so the guard below is load-bearing, not defensive
 // dead code: whichever call runs first flips the flag and does the real
 // work; the second sees it already closed and returns immediately.
+// itemType/journeyId are stamped explicitly here (rather than left for
+// normalizeData()'s own backfill to fill in on the next load) — a
+// user-reported bug traced this omission to a freshly quick-added item
+// being invisible in the Journey "Connect scope items" picker
+// (renderJourneyConnectList()'s candidates filter checks itemType ===
+// 'scope' rather than the more defensive !== 'journey' every other
+// itemType check in this file uses) for the rest of that session, since
+// nothing re-runs normalizeData() between saves.
 function saveInlineQuickAddItem() {
   if (!unassignedQuickAddOpen) return;
   unassignedQuickAddOpen = false;
@@ -3627,7 +3635,7 @@ function saveInlineQuickAddItem() {
   const range = computedDateRangeFromMilestones(milestones);
   const order = items.filter(i => i.workstreamId == null).length;
   items.push({
-    id: genId(), workstreamId: null, categoryId: cat.id, name,
+    id: genId(), workstreamId: null, categoryId: cat.id, name, itemType: 'scope', journeyId: null,
     status: computedStatusFromMilestones(milestones), actualDate: null,
     startDate: range ? range.startDate : today, dueDate: range ? range.dueDate : today,
     milestones, itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
@@ -3771,10 +3779,20 @@ function closeJourneyConnectModal() {
 // Planning's own status board uses, so the picker reads familiarly rather
 // than as an undifferentiated flat list. A scope item already claimed by a
 // *different* Journey is left off entirely — connecting it here would
-// silently steal it from wherever it already belongs.
+// silently steal it from wherever it already belongs. The candidates check
+// is `itemType !== 'journey'`, not `=== 'scope'` — a user-reported bug
+// (some available scope items weren't showing up here) traced to the
+// stricter `=== 'scope'` check excluding any item whose `itemType` hasn't
+// been backfilled yet (only normalizeData(), run on load/merge/import,
+// ever does that — see "Data integrity" in CLAUDE.md), most visibly a
+// scope item quick-added via openInlineQuickAdd() earlier in the same
+// session. Every other itemType check in this file already uses the
+// defensive `!== 'journey'` form (unassignedItemsSorted(),
+// buildScopeItemsSheet()) for exactly this reason; this was the one place
+// that didn't.
 function renderJourneyConnectList() {
   const journeyId = journeyConnectItemId;
-  const candidates = items.filter(it => it.itemType === 'scope' && (it.journeyId == null || it.journeyId === journeyId));
+  const candidates = items.filter(it => it.itemType !== 'journey' && (it.journeyId == null || it.journeyId === journeyId));
   if (!candidates.length) {
     document.getElementById('journeyConnectList').innerHTML = `<p style="color:var(--text-faint);font-size:13px;margin:0">No available scope items yet.</p>`;
     return;

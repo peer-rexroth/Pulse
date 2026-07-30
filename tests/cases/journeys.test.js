@@ -397,6 +397,36 @@ test('renderJourneyConnectList shows a placeholder when there are no available s
   assertIncludes(document.getElementById('journeyConnectList').innerHTML, 'No available scope items yet.');
 });
 
+// Regression test for a user-reported bug: a scope item quick-added via
+// openInlineQuickAdd() earlier in the same session used to be invisible in
+// this list. saveInlineQuickAddItem() never stamped itemType at all (only
+// normalizeData(), run on load/merge/import — not on a plain save() — ever
+// backfills it), so the item's itemType stayed undefined for the rest of
+// that session; renderJourneyConnectList()'s own candidates filter checked
+// itemType === 'scope', which undefined never satisfies. Both halves of the
+// fix are covered here: saveInlineQuickAddItem() now stamps itemType
+// itself, and the filter is the same defensive itemType !== 'journey' form
+// used everywhere else in this file, so even an item that somehow still
+// arrives with no itemType (an old import, a hand-edited file) shows up
+// correctly rather than silently disappearing from this one picker.
+test('a scope item quick-added via openInlineQuickAdd (before any reload/normalizeData) still shows up in the Journey connect list', function () {
+  const journey = addJourney();
+  openInlineQuickAdd();
+  document.getElementById('unassignedQuickAddInput').value = 'Freshly quick-added';
+  saveInlineQuickAddItem();
+  const it = items[items.length - 1];
+  assertEqual(it.itemType, 'scope', 'saveInlineQuickAddItem must stamp itemType itself, not rely on a later normalizeData() pass');
+  openJourneyConnectModal(journey.id);
+  assertIncludes(document.getElementById('journeyConnectList').innerHTML, 'Freshly quick-added');
+});
+
+test('renderJourneyConnectList includes a scope item with no itemType at all (pre-normalizeData legacy/imported data), not just ones already stamped "scope"', function () {
+  const journey = addJourney();
+  items.push({ id: genId(), workstreamId: null, categoryId: categories.find(c => c.pending).id, name: 'No itemType yet', dueDate: todayStr(), startDate: todayStr(), milestones: [], order: 0 });
+  openJourneyConnectModal(journey.id);
+  assertIncludes(document.getElementById('journeyConnectList').innerHTML, 'No itemType yet');
+});
+
 test('toggleJourneyConnection sets and clears journeyId directly', function () {
   const journey = addJourney();
   const it = addItem({ name: 'Target' });
