@@ -385,46 +385,21 @@ test('restoreBackup replaces current data with the snapshot after confirmation',
 // ---------- Daily backups to a linked "Backup" folder ----------
 // A second, independent copy of every linked-file write, dated and dropped
 // into a Backup subfolder of a separately-chosen folder (backupDirHandle) —
-// see writeBackupCopy()/chooseBackupFolder() in pulse.html. Most of this is
-// gated behind window.showDirectoryPicker/indexedDB, neither of which the
+// see writeBackupCopy()/chooseBackupFolder() in pulse.html. Its on/off state
+// is surfaced only via the topbar's #backupSyncIndicator (updateBackupSyncUI(),
+// tested below) — there's no longer a matching row in the "Sync to a file"
+// modal, removed once the topbar indicator made it redundant. Most of this
+// is gated behind window.showDirectoryPicker/indexedDB, neither of which the
 // JXA harness provides, so (matching unlinkFile()'s own documented
 // exception) chooseBackupFolder()/unlinkBackupFolder() and the IndexedDB-
 // touching half of initFileSync() are not exercised here. What's tested
-// directly is the pure logic: the filename builder, the modal section's
-// two rendered states, and writeBackupCopy()'s early-return guards (both of
-// which fire before ever touching backupDirHandle's own methods, so they're
-// safe to exercise even with a plain fake object standing in for a real
-// FileSystemDirectoryHandle).
+// directly is the pure logic: the filename builder and writeBackupCopy()'s
+// early-return guards (both of which fire before ever touching
+// backupDirHandle's own methods, so they're safe to exercise even with a
+// plain fake object standing in for a real FileSystemDirectoryHandle).
 
 test('backupFileName builds a dated pulse-backup-<date>.json name', function () {
   assertEqual(backupFileName('2026-07-30'), 'pulse-backup-2026-07-30.json');
-});
-
-test('fileSyncBackupSectionHtml shows "Enable daily backups" when no backup folder is chosen', function () {
-  backupDirHandle = null;
-  const html = fileSyncBackupSectionHtml();
-  assertIncludes(html, 'Enable daily backups');
-  assertIncludes(html, 'onclick="closeFileSyncModal();chooseBackupFolder()"');
-});
-
-test('fileSyncBackupSectionHtml shows the chosen folder name and an unlink control once backups are on', function () {
-  backupDirHandle = { name: 'My Programme Docs' };
-  const html = fileSyncBackupSectionHtml();
-  assertIncludes(html, 'Daily backups on');
-  assertIncludes(html, 'My Programme Docs');
-  assertIncludes(html, 'unlinkBackupFolder()');
-});
-
-test('fileSyncBackupSectionHtml escapes a backup folder name containing HTML', function () {
-  backupDirHandle = { name: '<img src=x>' };
-  const html = fileSyncBackupSectionHtml();
-  assertFalse(html.includes('<img src=x>'), 'the raw, unescaped name must never appear in the rendered HTML');
-});
-
-test('openFileSyncModal renders the backup section into #fileSyncBackupSection', function () {
-  backupDirHandle = null;
-  openFileSyncModal();
-  assertIncludes(document.getElementById('fileSyncBackupSection').innerHTML, 'Enable daily backups');
 });
 
 test('writeBackupCopy is a no-op when no backup folder has been chosen', async function () {
