@@ -2120,3 +2120,111 @@ test('renderReview shows the all-workstreams review-dates overview on Scope Item
   assertIncludes(html, 'review-date-row');
   assertIncludes(html, 'Never reviewed');
 });
+
+// ---------- Change Log (Review's fourth tab) ----------
+// A cross-workstream, chronological feed of every change logged during a
+// review cycle (see logReviewChange()) — an explicit user request. This
+// introduces no new data of its own — it flattens the changeLog entries
+// already stored on each review cycle (see the "Scope item confirmed"
+// tests above, which already exercise how tagChange/statusChange/
+// dateChange entries get logged in the first place).
+
+test('workstreamChangeLogEntries flattens every review cycle\'s changeLog for one workstream, newest first', function () {
+  const it = addReviewItem({ name: 'Call Money', itStatus: 'green' });
+  startReviewCycle(workstreams[0].id);
+  const cycle1 = activeReviewCycle(workstreams[0].id);
+  cycleItemAttr(it.id, 'itStatus'); // green -> amber
+  cycle1.changeLog[0].changedAt = Date.now() - 2000;
+  toggleReviewConfirm(cycle1.id, it.id);
+  completeReviewCycle(cycle1.id);
+
+  startReviewCycle(workstreams[0].id);
+  const cycle2 = activeReviewCycle(workstreams[0].id);
+  cycleItemAttr(it.id, 'itStatus'); // amber -> red
+  cycle2.changeLog[0].changedAt = Date.now();
+  toggleReviewConfirm(cycle2.id, it.id);
+  completeReviewCycle(cycle2.id);
+
+  const entries = workstreamChangeLogEntries(workstreams[0].id);
+  assertEqual(entries.length, 2);
+  assertEqual(entries[0].tagChange.newValue, 'red', 'the more recent change (cycle2) comes first');
+  assertEqual(entries[1].tagChange.newValue, 'amber', 'the older change (cycle1) comes second');
+});
+
+test('changeLogHtml shows an empty state when the workstream has no logged changes yet', function () {
+  assertIncludes(changeLogHtml(workstreams[0]), 'No changes logged yet');
+});
+
+test('changeLogHtml renders a tag change as old icon -> new icon, with the item name as label — same rendering as the per-cycle history row', function () {
+  const it = addReviewItem({ name: 'Call Money', itStatus: 'green' });
+  startReviewCycle(workstreams[0].id);
+  cycleItemAttr(it.id, 'itStatus');
+  const html = changeLogHtml(workstreams[0]);
+  assertIncludes(html, 'review-change-label" style="flex:1">Call Money<');
+  assertIncludes(html, 'review-change-arrow');
+  assertEqual((html.match(/fa-laptop-code/g) || []).length, 2, 'the IT icon should render twice — old value, then new value');
+});
+
+test('changeLogCountHtml renders "N changes" (singular for one) and nothing for an empty list', function () {
+  assertEqual(changeLogCountHtml([]), '');
+  assertIncludes(changeLogCountHtml([{}, {}]), '2 changes');
+  assertIncludes(changeLogCountHtml([{}]), '1 change<');
+});
+
+test('allWorkstreamsChangeLogHtml merges every workstream\'s changes into one feed, each row tagged with its source workstream, newest first', function () {
+  const it1 = addReviewItem({ name: 'Item One', itStatus: 'green' });
+  startReviewCycle(workstreams[0].id);
+  const c1 = activeReviewCycle(workstreams[0].id);
+  cycleItemAttr(it1.id, 'itStatus');
+  c1.changeLog[0].changedAt = Date.now() - 5000;
+
+  document.getElementById('wsNameInput').value = 'Second Stream';
+  wsColorChoice = 'teal';
+  saveWorkstream();
+  const w2 = workstreams[1];
+  const it2 = addReviewItem({ workstreamId: w2.id, name: 'Item Two', itStatus: 'green' });
+  startReviewCycle(w2.id);
+  const c2 = activeReviewCycle(w2.id);
+  cycleItemAttr(it2.id, 'itStatus');
+  c2.changeLog[0].changedAt = Date.now();
+
+  const html = allWorkstreamsChangeLogHtml();
+  assertIncludes(html, 'Workstream 1');
+  assertIncludes(html, 'Second Stream');
+  const posOne = html.indexOf('Item One');
+  const posTwo = html.indexOf('Item Two');
+  assertTrue(posTwo < posOne, 'the more recent change (Item Two, on Second Stream) should render first');
+});
+
+test('allWorkstreamsChangeLogHtml shows the same empty state as the per-workstream view when nothing has been logged', function () {
+  assertIncludes(allWorkstreamsChangeLogHtml(), 'No changes logged yet');
+});
+
+test('setReviewTab switches renderReview to the Change Log, alongside the other three tabs', function () {
+  const it = addReviewItem({ name: 'Call Money', itStatus: 'green' });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  cycleItemAttr(it.id, 'itStatus');
+
+  setReviewTab('changeLog');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Workstream 1');
+  assertIncludes(html, '1 change<');
+  assertIncludes(html, 'review-change-label" style="flex:1">Call Money<');
+  assertNotIncludes(html, 'Start review cycle');
+});
+
+test('renderReview shows the "All workstreams" Change Log when no workstream is filtered and reviewTab is "changeLog"', function () {
+  const it = addReviewItem({ name: 'Call Money', itStatus: 'green' });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  cycleItemAttr(it.id, 'itStatus');
+  setFilterWorkstream(null);
+  setReviewTab('changeLog');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '>All workstreams<');
+  assertIncludes(html, '1 change<');
+  assertIncludes(html, 'Call Money');
+});

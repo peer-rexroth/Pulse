@@ -1006,6 +1006,7 @@
         <button class="view-tab" id="tabReviewScope" onclick="setReviewTab('scope')"><i class="fa-solid fa-clipboard-check"></i> Scope Item Review</button>
         <button class="view-tab" id="tabReviewActionLog" onclick="setReviewTab('actionLog')"><i class="fa-solid fa-list-check"></i> Action Log</button>
         <button class="view-tab" id="tabReviewDecisionLog" onclick="setReviewTab('decisionLog')"><i class="fa-solid fa-gavel"></i> Decision Log</button>
+        <button class="view-tab" id="tabReviewChangeLog" onclick="setReviewTab('changeLog')"><i class="fa-solid fa-clock-rotate-left"></i> Change Log</button>
       </div>
     </div>
     <div class="main" id="main"></div>
@@ -1939,6 +1940,7 @@ function render() {
     document.getElementById('tabReviewScope').classList.toggle('active', reviewTab === 'scope');
     document.getElementById('tabReviewActionLog').classList.toggle('active', reviewTab === 'actionLog');
     document.getElementById('tabReviewDecisionLog').classList.toggle('active', reviewTab === 'decisionLog');
+    document.getElementById('tabReviewChangeLog').classList.toggle('active', reviewTab === 'changeLog');
     renderReview();
   } else if (mode === 'dashboard') {
     renderDashboard();
@@ -4198,6 +4200,49 @@ function orderedChangeLog(changeLog) {
     return group.slice().sort((a, b) => milestoneIds.indexOf(a.milestoneId) - milestoneIds.indexOf(b.milestoneId));
   });
 }
+// Same "<item> — <milestone>" convention Dashboard's attention feed uses,
+// so a milestone-level change is never ambiguous about which scope item it
+// belongs to; an item-level change (tag, item date) has no milestoneName
+// and just shows the item name alone.
+function changeLogEntryLabel(e) {
+  return e.milestoneName ? `${e.itemName} — ${e.milestoneName}` : e.itemName;
+}
+// A tag change (IT/Business/Budget) renders as the row's own icon shown
+// twice — old value's color, then new value's color — instead of plain
+// text, so the shift is visible at a glance the same way a colored badge
+// reads faster than a word. A status change renders the same way but with
+// the row's own .status-badge pill (label + color) instead of an icon. A
+// date change (Due/Actual) renders as two real, disabled
+// <input type="date"> fields rather than formatted text, matching the
+// same date-field look used everywhere else in the app — "disabled" is
+// what "no editable" means here: a genuine date field the browser itself
+// refuses to let you change. All three fall back to plain text (e.change)
+// for anything without a structured shape. Shared by reviewHistoryRowHtml()
+// (one cycle's own expanded change log) and changeLogRowHtml() below (the
+// cross-workstream Change Log tab) — one place for what a change "looks
+// like", regardless of which view is showing it.
+function changeLogValueHtml(e) {
+  if (e.tagChange) {
+    const { field, oldValue, newValue } = e.tagChange;
+    const icon = `<i class="fa-solid ${TAG_FIELD_ICONS[field]}"></i>`;
+    return `<span class="tag-badge" style="background:var(--stat-${oldValue}-bg);color:var(--stat-${oldValue})">${icon}</span>
+      <span class="review-change-arrow">→</span>
+      <span class="tag-badge" style="background:var(--stat-${newValue}-bg);color:var(--stat-${newValue})">${icon}</span>`;
+  }
+  if (e.statusChange) {
+    const { oldValue, newValue } = e.statusChange;
+    return `<span class="status-badge" style="background:var(--stat-${oldValue}-bg);color:var(--stat-${oldValue});cursor:default">${esc(statusLabel(oldValue))}</span>
+      <span class="review-change-arrow">→</span>
+      <span class="status-badge" style="background:var(--stat-${newValue}-bg);color:var(--stat-${newValue});cursor:default">${esc(statusLabel(newValue))}</span>`;
+  }
+  if (e.dateChange) {
+    const { oldValue, newValue } = e.dateChange;
+    return `${dateInputHtml(oldValue, 'disabled')}
+      <span class="review-change-arrow">→</span>
+      ${dateInputHtml(newValue, 'disabled')}`;
+  }
+  return esc(e.change);
+}
 // Only ever called with a completed cycle — a cancelled one is deleted
 // outright (see cancelReviewCycle()) rather than kept and filtered here.
 function reviewHistoryRowHtml(c) {
@@ -4214,50 +4259,11 @@ function reviewHistoryRowHtml(c) {
   const chevron = hasLog
     ? `<span class="item-chevron" onclick="toggleHistoryExpanded('${c.id}')"><i class="fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
     : `<span class="item-chevron"></span>`;
-  // A tag change (IT/Business/Budget) renders as the row's own icon shown
-  // twice — old value's color, then new value's color — instead of plain
-  // text, so the shift is visible at a glance the same way a colored badge
-  // reads faster than a word. A status change renders the same way but with
-  // the row's own .status-badge pill (label + color) instead of an icon. A
-  // date change (Due/Actual) renders as two real, disabled
-  // <input type="date"> fields rather than formatted text, matching the
-  // same date-field look used everywhere else in the app — "disabled" is
-  // what "no editable" means here: a genuine date field the browser itself
-  // refuses to let you change. All three fall back to plain text (e.change)
-  // for anything without a structured shape, and e.change is kept on every
-  // entry regardless as the row's title tooltip.
   const changeRows = (hasLog && expanded)
-    ? orderedChangeLog(c.changeLog).map(e => {
-        let valueHtml;
-        if (e.tagChange) {
-          const { field, oldValue, newValue } = e.tagChange;
-          const icon = `<i class="fa-solid ${TAG_FIELD_ICONS[field]}"></i>`;
-          valueHtml = `<span class="tag-badge" style="background:var(--stat-${oldValue}-bg);color:var(--stat-${oldValue})">${icon}</span>
-            <span class="review-change-arrow">→</span>
-            <span class="tag-badge" style="background:var(--stat-${newValue}-bg);color:var(--stat-${newValue})">${icon}</span>`;
-        } else if (e.statusChange) {
-          const { oldValue, newValue } = e.statusChange;
-          valueHtml = `<span class="status-badge" style="background:var(--stat-${oldValue}-bg);color:var(--stat-${oldValue});cursor:default">${esc(statusLabel(oldValue))}</span>
-            <span class="review-change-arrow">→</span>
-            <span class="status-badge" style="background:var(--stat-${newValue}-bg);color:var(--stat-${newValue});cursor:default">${esc(statusLabel(newValue))}</span>`;
-        } else if (e.dateChange) {
-          const { oldValue, newValue } = e.dateChange;
-          valueHtml = `${dateInputHtml(oldValue, 'disabled')}
-            <span class="review-change-arrow">→</span>
-            ${dateInputHtml(newValue, 'disabled')}`;
-        } else {
-          valueHtml = esc(e.change);
-        }
-        // Same "<item> — <milestone>" convention Dashboard's attention feed
-        // uses, so a milestone-level change is never ambiguous about which
-        // scope item it belongs to; an item-level change (tag, item date)
-        // has no milestoneName and just shows the item name alone.
-        const label = e.milestoneName ? `${e.itemName} — ${e.milestoneName}` : e.itemName;
-        return `<div class="review-change-row" title="${esc(e.change)}">
-        <span class="review-change-label">${esc(label)}</span>
-        <span class="review-change-value">${valueHtml}</span>
-      </div>`;
-      }).join('')
+    ? orderedChangeLog(c.changeLog).map(e => `<div class="review-change-row" title="${esc(e.change)}">
+        <span class="review-change-label">${esc(changeLogEntryLabel(e))}</span>
+        <span class="review-change-value">${changeLogValueHtml(e)}</span>
+      </div>`).join('')
     : '';
   // Filled (solid, accent-colored) once minutes exist — same open/edit
   // modal either way (openMinutesModal()), just pre-filled — vs. an outline
@@ -4274,6 +4280,76 @@ function reviewHistoryRowHtml(c) {
       <span style="color:var(--text-faint)">${fmtDate(dateStrFromTs(c.completedAt))}</span>
     </div>${changeRows}`;
 }
+
+// ---------- Change Log (Review's fourth tab) ----------
+// A single, chronological, cross-workstream feed of every change logged
+// during a review cycle (see logReviewChange()) — an explicit user request
+// ("a cross workstream change log, orchestrating the changes from the
+// reviews in one view"). This introduces no new data — a change already
+// lives on the cycle it was logged against (cycle.changeLog), otherwise
+// only ever visible nested behind that one cycle's own History row (see
+// reviewHistoryRowHtml() above) — it just flattens what's already there,
+// across every cycle of every workstream, into one feed sorted newest
+// first, the same "don't invent a new store, just re-view the existing
+// one" approach allWorkstreamsActionLogHtml()/allWorkstreamsDecisionLogHtml()
+// already take for their own tabs.
+
+// Every changeLog entry across every review cycle (active or completed —
+// a cancelled cycle is deleted outright, see cancelReviewCycle(), so
+// there's nothing to exclude) this workstream has ever had, newest first.
+// Unlike orderedChangeLog() (which groups by item/milestone order for
+// display within one cycle's own expanded history row), a cross-cycle,
+// cross-workstream feed has no single item list to order against —
+// changedAt is the only ordering that stays meaningful at this scope.
+function workstreamChangeLogEntries(wsId) {
+  const entries = [];
+  reviewCyclesForWs(wsId).forEach(c => (c.changeLog || []).forEach(e => entries.push(e)));
+  return entries.sort((a, b) => b.changedAt - a.changedAt);
+}
+// Reuses .review-history-row's own flex row look (rather than a grid, the
+// way Action Log/Decision Log's tables are) since a change's own value
+// (changeLogValueHtml()) is inherently variable-width — an icon pair, a
+// status-badge pair, a date-input pair, or plain text — which doesn't sit
+// well in a fixed grid column the way a plain text cell does. showWs
+// (only used by allWorkstreamsChangeLogHtml()) prepends a workstream
+// dot+name the same way actionLogRowHtml()/decisionLogRowHtml() do.
+function changeLogRowHtml(w, e, showWs) {
+  const wsCellHtml = showWs
+    ? `<span class="action-log-ws" style="width:130px;flex:0 0 auto" title="${esc(w.name)}"><span class="ws-dot" style="background:var(--ws-${w.color})"></span>${esc(w.name)}</span>`
+    : '';
+  return `<div class="review-history-row" title="${esc(e.change)}">
+      ${wsCellHtml}
+      <span class="review-change-label" style="flex:1">${esc(changeLogEntryLabel(e))}</span>
+      <span class="review-change-value">${changeLogValueHtml(e)}</span>
+      <span style="color:var(--text-faint);flex:0 0 auto">${fmtDate(dateStrFromTs(e.changedAt))}</span>
+    </div>`;
+}
+function changeLogCountHtml(list) {
+  if (!list.length) return '';
+  return `<span class="review-progress" style="margin:0;flex:0 0 auto">${list.length} change${list.length === 1 ? '' : 's'}</span>`;
+}
+// Review's fourth tab, scoped to one workstream — every change logged
+// against any of its own review cycles.
+function changeLogHtml(w) {
+  const entries = workstreamChangeLogEntries(w.id);
+  if (!entries.length) {
+    return `<div class="attention-empty">No changes logged yet — anything edited while a review cycle is active gets recorded here.</div>`;
+  }
+  return `<div class="review-list">${entries.map(e => changeLogRowHtml(w, e, false)).join('')}</div>`;
+}
+// The "All workstreams" Change Log — allWorkstreamsActionLogHtml()'s
+// counterpart, reachable from Review mode's Change Log tab with "All
+// workstreams" selected in the sidebar.
+function allWorkstreamsChangeLogHtml() {
+  const entries = [];
+  workstreams.forEach(w => workstreamChangeLogEntries(w.id).forEach(e => entries.push({ w, e })));
+  entries.sort((a, b) => b.e.changedAt - a.e.changedAt);
+  if (!entries.length) {
+    return `<div class="attention-empty">No changes logged yet — anything edited while a review cycle is active gets recorded here.</div>`;
+  }
+  return `<div class="review-list">${entries.map(({ w, e }) => changeLogRowHtml(w, e, true)).join('')}</div>`;
+}
+
 // Sorts an action log for display: open items first (each group sorted by
 // due date, undated last), completed items sunk to the bottom (most
 // recently completed first) rather than disappearing — this is a running
@@ -4665,6 +4741,10 @@ function renderReview() {
       el.innerHTML = `<div class="review-header"><h2>All workstreams</h2>${decisionLogCountHtml(workstreams.flatMap(w => Array.isArray(w.decisionLog) ? w.decisionLog : []))}</div>${allWorkstreamsDecisionLogHtml()}`;
       return;
     }
+    if (reviewTab === 'changeLog') {
+      el.innerHTML = `<div class="review-header"><h2>All workstreams</h2>${changeLogCountHtml(workstreams.flatMap(w => workstreamChangeLogEntries(w.id)))}</div>${allWorkstreamsChangeLogHtml()}`;
+      return;
+    }
     el.innerHTML = `<div class="review-header"><h2>All workstreams</h2></div>${reviewDatesOverviewHtml()}`;
     return;
   }
@@ -4676,6 +4756,10 @@ function renderReview() {
   }
   if (reviewTab === 'decisionLog') {
     el.innerHTML = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2>${decisionLogCountHtml(Array.isArray(w.decisionLog) ? w.decisionLog : [])}</div>${decisionLogHtml(w)}`;
+    return;
+  }
+  if (reviewTab === 'changeLog') {
+    el.innerHTML = `<div class="review-header"><span class="ws-dot" style="background:var(--ws-${w.color})"></span><h2>${esc(w.name)}</h2>${changeLogCountHtml(workstreamChangeLogEntries(w.id))}</div>${changeLogHtml(w)}`;
     return;
   }
   const cycle = activeReviewCycle(filterWorkstreamId);
