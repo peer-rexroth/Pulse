@@ -382,10 +382,11 @@ test('restoreBackup replaces current data with the snapshot after confirmation',
   assertEqual(workstreams[0].name, 'Old Stream');
 });
 
-// ---------- Daily backups to a linked "Backup" folder ----------
+// ---------- Daily backups to a separately-chosen folder ----------
 // A second, independent copy of every linked-file write, dated and dropped
-// into a Backup subfolder of a separately-chosen folder (backupDirHandle) —
-// see writeBackupCopy()/chooseBackupFolder() in pulse.html. Its on/off state
+// directly into a separately-chosen folder (backupDirHandle, no nested
+// "Backup" subfolder) — see writeBackupCopy()/chooseBackupFolder() in
+// pulse.html. Its on/off state
 // is surfaced only via the topbar's #backupSyncIndicator (updateBackupSyncUI(),
 // tested below) — there's no longer a matching row in the "Sync to a file"
 // modal, removed once the topbar indicator made it redundant. Most of this

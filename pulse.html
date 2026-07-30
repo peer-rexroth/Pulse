@@ -5845,24 +5845,24 @@ async function doFileSyncWrite() {
 }
 function backupFileName(dateStr) { return `pulse-backup-${dateStr}.json`; }
 // A second, independent copy of every linked-file write, dated and dropped
-// into a "Backup" subfolder of whatever folder chooseBackupFolder() below
-// was pointed at — an explicit user request, separate from (and in addition
-// to) both the linked file itself and the existing localStorage rolling
-// backups (maybeSnapshotBackup()). Deliberately best-effort and silent on
-// failure: by the time this runs, doFileSyncWrite()'s own primary write has
-// already succeeded, so a problem here (permission lapsed, folder deleted)
-// must never surface as an error over a save that otherwise worked fine.
-// Only the first save of each calendar day actually writes — todayStr()
-// changing is what starts a new dated file; every other same-day save is a
-// no-op here, mirroring maybeSnapshotBackup()'s own "one snapshot per day"
-// rule. Kept forever — nothing here ever deletes an old dated file.
+// directly into whatever folder chooseBackupFolder() below was pointed at
+// (no "Backup" subfolder nested inside it — an explicit user request; an
+// earlier version created one, since removed) — separate from (and in
+// addition to) both the linked file itself and the existing localStorage
+// rolling backups (maybeSnapshotBackup()). Deliberately best-effort and
+// silent on failure: by the time this runs, doFileSyncWrite()'s own primary
+// write has already succeeded, so a problem here (permission lapsed, folder
+// deleted) must never surface as an error over a save that otherwise worked
+// fine. Only the first save of each calendar day actually writes —
+// todayStr() changing is what starts a new dated file; every other same-day
+// save is a no-op here, mirroring maybeSnapshotBackup()'s own "one snapshot
+// per day" rule. Kept forever — nothing here ever deletes an old dated file.
 async function writeBackupCopy(data) {
   if (!backupDirHandle) return;
   if (lastBackupWrittenDate === todayStr()) return;
   try {
     if ((await backupDirHandle.queryPermission({ mode: 'readwrite' })) !== 'granted') return;
-    const sub = await backupDirHandle.getDirectoryHandle('Backup', { create: true });
-    const fh = await sub.getFileHandle(backupFileName(todayStr()), { create: true });
+    const fh = await backupDirHandle.getFileHandle(backupFileName(todayStr()), { create: true });
     const w = await fh.createWritable();
     await w.write(JSON.stringify(data, null, 2));
     await w.close();
@@ -5893,7 +5893,7 @@ async function chooseBackupFolder() {
     lastBackupWrittenDate = null;
     try { await _fsPut(dir, _FS.backupKey); } catch (_) {}
     updateBackupSyncUI();
-    showToast(`Daily backups enabled — saving to ${dir.name}/Backup`);
+    showToast(`Daily backups enabled — saving to ${dir.name}`);
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not access that folder', true); }
 }
 async function unlinkBackupFolder() {
@@ -6099,7 +6099,7 @@ function updateBackupSyncUI() {
     return;
   }
   fadeSwapHTML(el, `
-    <span class="sync-linked" title="Daily backup saved to ${esc(backupDirHandle.name)}/Backup">
+    <span class="sync-linked" title="Daily backup saved to ${esc(backupDirHandle.name)}">
       <i class="fa-solid fa-clock-rotate-left"></i>
       <span>${esc(backupDirHandle.name)}</span>
     </span>
