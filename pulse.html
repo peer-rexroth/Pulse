@@ -1325,7 +1325,6 @@
         </div>
       </div>
     </div>
-    <p id="fileSyncAdminNotice" style="display:none">Admin role is required to manage file sync.</p>
     <div id="fileSyncWarning" style="display:flex;align-items:flex-start;gap:8px;background:var(--stat-amber-bg);border-radius:10px;padding:10px 12px;margin-top:4px">
       <i class="fa-solid fa-triangle-exclamation" style="color:var(--stat-amber);font-size:13px;margin-top:2px;flex-shrink:0"></i>
       <span style="font-size:12px;color:var(--stat-amber);line-height:1.55">Without a linked file, your programme is stored in browser storage and <strong>will be lost if you clear browsing data</strong>.</span>
@@ -1419,7 +1418,7 @@ const ROLE_META = {
   visitor: { label: 'Visitor', icon: 'fa-eye', desc: 'View Planning, Review, and Dashboard — no edits.' },
   reviewer: { label: 'Reviewer', icon: 'fa-clipboard-check', desc: 'Everything a Visitor can see, plus run review cycles, attach meeting minutes, and manage the Action Log.' },
   editor: { label: 'Editor', icon: 'fa-pen', desc: 'Everything a Reviewer can do, plus create/edit/delete workstreams, scope items, milestones, and categories.' },
-  admin: { label: 'Admin', icon: 'fa-user-shield', desc: 'Everything an Editor can do, plus import/restore data and manage file sync.' }
+  admin: { label: 'Admin', icon: 'fa-user-shield', desc: 'Everything an Editor can do, plus import/restore data.' }
 };
 function roleLevel(r) { return ROLES.indexOf(r); }
 // True once the *current* role's level is at or above minRole's — e.g.
@@ -5558,14 +5557,14 @@ let fileHandle = null;
 // On a brand-new browser (userRole still null), initFileSync() runs
 // concurrently with the mandatory first-launch role-picker gate — opening
 // the file-sync modal right then would race the (undismissable) role modal
-// and either get buried behind it or render its Admin-only content against
-// a role that isn't chosen yet. Instead of opening it immediately in that
-// case, initFileSync() parks what it wanted to show here ('link', or a
-// handle needing reconnect), and closeRoleModal() surfaces it once the user
-// actually has a role (see maybeShowPendingFileSyncPrompt()).
+// and get buried behind it. Instead of opening it immediately in that case,
+// initFileSync() parks what it wanted to show here ('link', or a handle
+// needing reconnect), and closeRoleModal() surfaces it once the user
+// actually has a role — any role, since file sync is available to all of
+// them (see maybeShowPendingFileSyncPrompt()).
 let pendingFileSyncPrompt = null;
 function maybeShowPendingFileSyncPrompt() {
-  if (!pendingFileSyncPrompt || !hasRole('admin')) { pendingFileSyncPrompt = null; return; }
+  if (!pendingFileSyncPrompt) return;
   const p = pendingFileSyncPrompt;
   pendingFileSyncPrompt = null;
   openFileSyncModal(p === 'link' ? undefined : p);
@@ -5733,7 +5732,6 @@ async function _clearFileLink() {
   updateFileSyncUI();
 }
 async function createNewLinkedFile() {
-  if (!requireRole('admin')) return;
   if (!window.showSaveFilePicker) { showToast('File linking requires Chrome or Edge', true); return; }
   try {
     const handle = await window.showSaveFilePicker({
@@ -5749,7 +5747,6 @@ async function createNewLinkedFile() {
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not create file', true); }
 }
 async function linkFile() {
-  if (!requireRole('admin')) return;
   if (!window.showOpenFilePicker) { showToast('File linking requires Chrome or Edge', true); return; }
   try {
     const [handle] = await window.showOpenFilePicker({
@@ -5792,12 +5789,10 @@ async function linkFile() {
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not link file', true); }
 }
 async function unlinkFile() {
-  if (!requireRole('admin')) return;
   await _clearFileLink();
   showToast('File unlinked — saving to browser storage only');
 }
 async function reconnectFile() {
-  if (!requireRole('admin')) return;
   if (!fileHandle) return;
   try {
     const perm = await fileHandle.requestPermission({ mode: 'readwrite' });
@@ -5840,7 +5835,6 @@ function updateFileSyncUI() {
   const el = document.getElementById('fileSyncIndicator');
   if (!el) return;
   if (!window.showOpenFilePicker) { el.style.display = 'none'; return; }
-  if (!hasRole('admin')) { el.style.display = 'none'; return; }
   el.style.display = '';
   if (!fileHandle) { fadeSwapHTML(el, `<button class="btn btn-sm" onclick="openFileSyncModal()" title="Link a .json data file for auto-save"><i class="fa-solid fa-link"></i> Link file</button>`); return; }
   fileHandle.queryPermission({ mode: 'readwrite' }).then(perm => {
@@ -5862,14 +5856,11 @@ async function initFileSync() {
   updateFileSyncUI();
   try {
     const handle = await _fsGet();
-    // Only auto-prompts an Admin — anyone else can't act on it anyway (see
-    // openFileSyncModal()'s own admin-notice branch). On a brand-new browser
-    // (no role chosen yet, userRole still null) this is parked in
-    // pendingFileSyncPrompt instead of opened immediately, since opening it
-    // here would race the mandatory role-picker gate below and either get
-    // buried behind it or render its Admin-only content before any role —
-    // let alone Admin — has actually been chosen.
-    if (!handle) { if (!userRole) pendingFileSyncPrompt = 'link'; else if (hasRole('admin')) openFileSyncModal(); return; }
+    // On a brand-new browser (no role chosen yet, userRole still null) this
+    // is parked in pendingFileSyncPrompt instead of opened immediately,
+    // since opening it here would race the mandatory role-picker gate below
+    // and get buried behind it before any role has actually been chosen.
+    if (!handle) { if (!userRole) pendingFileSyncPrompt = 'link'; else openFileSyncModal(); return; }
     fileHandle = handle;
     const perm = await handle.queryPermission({ mode: 'readwrite' });
     if (perm === 'granted') {
@@ -5907,20 +5898,16 @@ function openFileSyncModal(reconnectHandle) {
   const ro = document.getElementById('fileSyncReconnectOption');
   const rl = document.getElementById('fileSyncReconnectLabel');
   const warn = document.getElementById('fileSyncWarning');
-  // Linking/creating/reconnecting a synced file is Admin-tier (see
-  // createNewLinkedFile()/linkFile()/reconnectFile()'s own requireRole()
-  // guards) — below that, the options are replaced with a plain notice
-  // rather than left clickable-but-doomed-to-toast-an-error.
-  const canManage = hasRole('admin');
-  document.getElementById('fileSyncOptions').style.display = canManage ? '' : 'none';
-  document.getElementById('fileSyncAdminNotice').style.display = canManage ? 'none' : '';
-  if (canManage && reconnectHandle) {
+  // Linking/creating/reconnecting a synced file is available to every
+  // role — an explicit user request — so this modal has no gated content
+  // any more; it always shows the real options.
+  if (reconnectHandle) {
     ro.style.display = 'flex';
     rl.textContent = `Resume sync with ${reconnectHandle.name}`;
     warn.style.display = 'none';
   } else {
     ro.style.display = 'none';
-    warn.style.display = canManage ? 'flex' : 'none';
+    warn.style.display = 'flex';
   }
   document.getElementById('fileSyncModalBg').classList.add('open');
 }
