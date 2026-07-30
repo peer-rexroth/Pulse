@@ -1230,7 +1230,7 @@
       <div style="font-size:11px;color:var(--text-faint);margin-top:5px" id="itemDatesComputedNote">Computed from the earliest and latest milestone date (due or actual)</div>
     </div>
     <div class="field-row">
-      <div class="field">
+      <div class="field" id="itemActualField">
         <label>Actual completion date</label>
         <input type="date" id="itemActualInput">
       </div>
@@ -1243,7 +1243,7 @@
         </div>
       </div>
     </div>
-    <div class="field">
+    <div class="field" id="itemExternalDeliveryField">
       <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="itemExternalDeliveryInput" onchange="onItemExternalDeliveryChange()"> External Delivery</label>
     </div>
     <div class="field" id="itemExternalDeliverySpocField" style="display:none">
@@ -3346,6 +3346,10 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   const it = id ? items.find(i => i.id === id) : null;
   const isJourneyItem = it ? it.itemType === 'journey' : presetItemType === 'journey';
   editingItemType = isJourneyItem ? 'journey' : 'scope';
+  // Computed once, up front, so both the field-visibility pass just below
+  // and the Category-select lock further down (see its own comment) share
+  // one definition — a still-Pending item's data, not who's looking at it.
+  const stillPending = !!(it && isPendingCategory(it.categoryId));
   document.getElementById('itemModalTitle').textContent = it ? (isJourneyItem ? 'Edit Journey' : 'Edit item') : (isJourneyItem ? 'New Journey' : 'New item');
   populateStatusSelect();
   // A Journey has no workstream, no category, and no milestones at all — an
@@ -3355,6 +3359,15 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   document.getElementById('itemWorkstreamField').style.display = isJourneyItem ? 'none' : '';
   document.getElementById('itemCategoryField').style.display = isJourneyItem ? 'none' : '';
   document.getElementById('itemMilestonesField').style.display = isJourneyItem ? 'none' : '';
+  // Actual completion date and External Delivery are hidden outright for a
+  // still-Pending item — an explicit user request. Neither is meaningful
+  // yet: the item hasn't been scope-assigned to a real workstream/category
+  // at all, so there's nothing to record an actual finish date against, and
+  // "delivered by an external party" isn't a call worth making before the
+  // item's real scope is even known. Both become available again the
+  // moment applyScopeCategory() moves it out of Pending.
+  document.getElementById('itemActualField').style.display = stillPending ? 'none' : '';
+  document.getElementById('itemExternalDeliveryField').style.display = stillPending ? 'none' : '';
   populateWorkstreamSelect(it ? it.workstreamId : (presetWorkstreamId || (workstreams[0] && workstreams[0].id)), undefined, !!(it && it.workstreamId == null));
   const defaultCategoryId = categories[0].id;
   if (!isJourneyItem) populateCategorySelect(it ? it.categoryId : defaultCategoryId);
@@ -3373,6 +3386,12 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   document.getElementById('itemExternalDeliveryInput').checked = it ? !!it.externalDelivery : false;
   document.getElementById('itemExternalDeliverySpocInput').value = it ? (it.externalDeliverySpoc || '') : '';
   onItemExternalDeliveryChange();
+  // Re-asserted after onItemExternalDeliveryChange() above, which would
+  // otherwise reveal the SPOC field for a still-Pending item that somehow
+  // has externalDelivery already true (an edge case: an import, a
+  // hand-edited file) — the checkbox driving that toggle is itself hidden
+  // here, so nothing should be able to show this field regardless.
+  if (stillPending) document.getElementById('itemExternalDeliverySpocField').style.display = 'none';
   editingMilestones = isJourneyItem ? [] : it
     ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable }))
     : milestonesForCategory(defaultCategoryId, document.getElementById('itemDueInput').value);
@@ -3397,8 +3416,8 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   // straight into a real category without ever going through that flow, or
   // without the milestone actually being confirmed at all. Overrides the
   // role-based disable above rather than folding into it, since this is
-  // conditional on the item's own data, not on who's looking at it.
-  const stillPending = !!(it && isPendingCategory(it.categoryId));
+  // conditional on the item's own data, not on who's looking at it
+  // (stillPending itself is computed once, up top — see its own comment).
   const categorySelect = document.getElementById('itemCategorySelect');
   categorySelect.disabled = !editable || stillPending;
   categorySelect.title = stillPending ? 'This item is still Pending — its category is set automatically once its "Scope Item Confirmed" milestone is marked Complete.' : '';

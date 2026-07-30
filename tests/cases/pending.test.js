@@ -217,6 +217,34 @@ test('the Not Applicable toggle works normally again once a Pending item has bee
   assertTrue(it.milestones[0].notApplicable, 'the toggle should work normally once the item has a real category');
 });
 
+// Regression tests for an explicit user request: "remove for unassigned
+// items External Delivery and Actual Completion date" — neither is
+// meaningful yet, since the item hasn't been scope-assigned to a real
+// workstream/category at all.
+
+test('openItemModal hides Actual completion date and External Delivery for a Pending item', function () {
+  const it = addPendingItem();
+  openItemModal(it.id);
+  assertEqual(document.getElementById('itemActualField').style.display, 'none');
+  assertEqual(document.getElementById('itemExternalDeliveryField').style.display, 'none');
+  assertEqual(document.getElementById('itemExternalDeliverySpocField').style.display, 'none');
+});
+
+test('openItemModal shows Actual completion date and External Delivery again once an item has a real category (post scope-assign)', function () {
+  const it = addPendingItem();
+  const realCat = categories.find(c => !c.pending);
+  applyScopeCategory(it.id, workstreams[0].id, realCat.id);
+  openItemModal(it.id);
+  assertEqual(document.getElementById('itemActualField').style.display, '');
+  assertEqual(document.getElementById('itemExternalDeliveryField').style.display, '');
+});
+
+test('openItemModal shows both fields for a brand-new item (never Pending to begin with)', function () {
+  openItemModal(null, workstreams[0].id);
+  assertEqual(document.getElementById('itemActualField').style.display, '');
+  assertEqual(document.getElementById('itemExternalDeliveryField').style.display, '');
+});
+
 test('removeMilestoneRow works normally on a non-Pending item\'s milestones', function () {
   const it = addItem({
     name: 'Real item',
