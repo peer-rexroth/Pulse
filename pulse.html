@@ -2141,7 +2141,7 @@ function setMode(m) {
 function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
   const el = document.getElementById('wsList');
-  let html = `<div class="ws-row ws-row-all ${filterWorkstreamId === null ? 'active' : ''}" onclick="setFilterWorkstream(null)">
+  let html = `<div class="ws-row ws-row-all ${filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
       <i class="fa-solid fa-layer-group ws-row-all-icon"></i>
       <span class="ws-row-name">All workstreams</span>
       <span class="ws-row-count">${items.length}</span>
@@ -2174,7 +2174,7 @@ function renderSidebar() {
     // drag buttons still show their own more specific titles when hovered
     // directly, since a title on the actual hovered element always wins
     // over an ancestor's.
-    return `<div class="ws-row ${filterWorkstreamId === w.id ? 'active' : ''}" onclick="setFilterWorkstream('${w.id}')" title="${esc(w.name)}"${dragAttrs}>
+    return `<div class="ws-row ${filterWorkstreamId === w.id ? 'active' : ''}" onclick="selectWorkstreamFromSidebar('${w.id}')" title="${esc(w.name)}"${dragAttrs}>
         <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
         <span class="ws-row-name">${esc(w.name)}</span>
         ${reviewBadge}
@@ -2194,11 +2194,11 @@ function renderSidebar() {
   // way individual workstreams are. This row sets its own 'active' state
   // directly (mode === 'journeys') rather than through render()'s generic
   // MODES.forEach id-toggle loop, since it's rebuilt fresh on every
-  // renderSidebar() call anyway. Clicking a workstream row above while
-  // sitting in Journeys mode updates filterWorkstreamId (and that row's own
-  // highlight) but has no visible effect on the still-showing Journeys list
-  // — renderJourneys() ignores the selector entirely, same as it always
-  // has; only mode switches the visible content.
+  // renderSidebar() call anyway. Clicking a workstream row above (or "All
+  // workstreams") always switches mode to 'dashboard' too — see
+  // selectWorkstreamFromSidebar() — so from Journeys mode specifically,
+  // picking one now navigates away to the Dashboard scoped to that
+  // selection, rather than silently updating a selector Journeys ignores.
   document.getElementById('journeysNav').innerHTML =
     `<div class="ws-row ${mode === 'journeys' ? 'active' : ''}" id="tabJourneys" onclick="setMode('journeys')" title="Journeys">
         <i class="fa-solid fa-route" style="width:14px;text-align:center;color:${mode === 'journeys' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
@@ -2913,6 +2913,23 @@ function fmtDateY(iso) {
 function setReviewTab(t) { reviewTab = t; render(); }
 function setFilterWorkstream(id) {
   filterWorkstreamId = id;
+  save(); render();
+}
+// The sidebar's own "All workstreams"/per-workstream rows (renderSidebar())
+// call this instead of the plain setFilterWorkstream() above — an explicit
+// user request: picking a workstream (or "All workstreams") from the left
+// nav should always land on the Dashboard scoped to that selection,
+// regardless of whatever mode was showing beforehand. setFilterWorkstream()
+// itself stays mode-agnostic on purpose — every other caller (Review's own
+// reviewDatesOverviewHtml() rows, which deliberately land on that
+// workstream's Scope Item Review rather than Dashboard; every test that
+// just wants to narrow the scope without changing mode) depends on it not
+// touching mode. Sets both fields together and calls save()/render() once,
+// the same combined-fields pattern setUserRole() already uses for its own
+// "jump to Dashboard, All workstreams" case.
+function selectWorkstreamFromSidebar(id) {
+  filterWorkstreamId = id;
+  mode = 'dashboard';
   save(); render();
 }
 let renamingProgramme = false;

@@ -131,5 +131,30 @@ test('renderSidebar sets a title tooltip on the whole workstream row (not just t
   const w = addWorkstream('A Rather Long Workstream Name That Would Get Truncated');
   renderSidebar();
   const html = document.getElementById('wsList').innerHTML;
-  assertIncludes(html, `onclick="setFilterWorkstream('${w.id}')" title="${w.name}"`, 'the title must sit on the row div itself, not buried on an inner span the hover-reveal reflow can shift the cursor off of');
+  assertIncludes(html, `onclick="selectWorkstreamFromSidebar('${w.id}')" title="${w.name}"`, 'the title must sit on the row div itself, not buried on an inner span the hover-reveal reflow can shift the cursor off of');
+});
+
+// ---------- Sidebar workstream rows always land on Dashboard ----------
+
+test('selectWorkstreamFromSidebar sets the filter and switches to Dashboard, regardless of the current mode', function () {
+  const w = workstreams[0];
+  setMode('review');
+  selectWorkstreamFromSidebar(w.id);
+  assertEqual(mode, 'dashboard');
+  assertEqual(filterWorkstreamId, w.id);
+});
+
+test('selectWorkstreamFromSidebar(null) ("All workstreams") switches to Dashboard too, clearing the filter', function () {
+  setMode('planning');
+  filterWorkstreamId = workstreams[0].id;
+  selectWorkstreamFromSidebar(null);
+  assertEqual(mode, 'dashboard');
+  assertEqual(filterWorkstreamId, null);
+});
+
+test('plain setFilterWorkstream (used by reviewDatesOverviewHtml and tests) never changes mode — only the sidebar\'s own rows do', function () {
+  setMode('review');
+  setFilterWorkstream(workstreams[0].id);
+  assertEqual(mode, 'review', 'setFilterWorkstream must stay mode-agnostic so non-sidebar callers are unaffected');
+  assertEqual(filterWorkstreamId, workstreams[0].id);
 });
