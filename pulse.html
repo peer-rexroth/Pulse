@@ -1270,8 +1270,12 @@
 <!-- Assign scope category modal — pops up once a Pending item's "Scope item
      confirmed" milestone is marked Complete (maybeOfferScopeAssign()), and
      stays reachable afterward from the item's own status badge
-     (itemRowHtml()) if dismissed with "Later". See openScopeAssignModal()/
-     applyScopeCategory(). -->
+     (itemRowHtml()) in case the page was reloaded/closed before Apply was
+     ever clicked. Mandatory once open — no "Later"/dismiss option at all
+     (an explicit user request: "do not allow to later in the assigning
+     step"), the same "must complete before closing" treatment the role
+     picker's own first-launch gate already uses (see "Roles (RBAC)" in
+     CLAUDE.md). See openScopeAssignModal()/applyScopeCategory(). -->
 <div class="modal-bg" id="scopeAssignModalBg">
   <div class="modal">
     <h3>Assign category</h3>
@@ -1285,7 +1289,6 @@
       <select id="scopeAssignCategorySelect"></select>
     </div>
     <div class="modal-actions" style="justify-content:flex-end">
-      <button class="btn" onclick="closeScopeAssignModal()">Later</button>
       <button class="btn btn-primary" onclick="applyScopeAssign()">Apply</button>
     </div>
   </div>
@@ -2530,9 +2533,11 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // Pending category until its real workstream/category is chosen — the
   // status badge itself becomes that entry point instead of the usual "open
   // the full edit modal" (still reachable via the pencil icon below), so
-  // there's always a way back into openScopeAssignModal() even if it was
-  // dismissed with "Later" the first time it auto-popped up (see
-  // maybeOfferScopeAssign()).
+  // there's always a way back into openScopeAssignModal() if the page was
+  // reloaded or closed before Apply was ever clicked the first time it
+  // auto-popped up (see maybeOfferScopeAssign()) — that modal itself has no
+  // dismiss/"Later" option any more (an explicit user request), so this is
+  // purely a page-reload recovery path, not a "skip for now" one.
   const scopeAssignReady = editable && it.status === 'complete' && isPendingCategory(it.categoryId);
   const statusBadgeHtml = scopeAssignReady
     ? `<button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openScopeAssignModal('${it.id}')" title="Scope confirmed — click to assign its real workstream and category">${esc(statusLabel(it.status))}</button>`
@@ -3359,6 +3364,21 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   ['itemNameInput', 'itemStartInput', 'itemDueInput', 'itemActualInput', 'itemWorkstreamSelect', 'itemCategorySelect', 'itemStatusSelect', 'itemExternalDeliveryInput', 'itemExternalDeliverySpocInput'].forEach(id => {
     document.getElementById(id).disabled = !editable;
   });
+  // A still-Pending item's category can never be changed through this
+  // modal, even at Editor+ — an explicit user request ("prevent change
+  // category from unassigned scope items... they must remain pending").
+  // Reassigning out of Pending is exclusively applyScopeCategory()'s job,
+  // reached only once this item's "Scope item confirmed" milestone is
+  // marked Complete (see maybeOfferScopeAssign()/openScopeAssignModal()) —
+  // letting this select bypass that here would let someone jump an item
+  // straight into a real category without ever going through that flow, or
+  // without the milestone actually being confirmed at all. Overrides the
+  // role-based disable above rather than folding into it, since this is
+  // conditional on the item's own data, not on who's looking at it.
+  const stillPending = !!(it && isPendingCategory(it.categoryId));
+  const categorySelect = document.getElementById('itemCategorySelect');
+  categorySelect.disabled = !editable || stillPending;
+  categorySelect.title = stillPending ? 'This item is still Pending — its category is set automatically once its "Scope item confirmed" milestone is marked Complete.' : '';
   document.getElementById('itemSaveBtn').style.display = editable ? '' : 'none';
   document.getElementById('itemModalBg').classList.add('open');
   document.getElementById('itemNameInput').focus();
@@ -3508,8 +3528,14 @@ function saveItem() {
   const workstreamId = savingJourney ? null : (document.getElementById('itemWorkstreamSelect').value || null);
   // A Journey has no category at all — forced to null regardless of the
   // (hidden) select's value, same "never assigned" treatment workstreamId
-  // gets just above.
-  const categoryId = savingJourney ? null : document.getElementById('itemCategorySelect').value;
+  // gets just above. A still-Pending item's category is likewise forced to
+  // stay whatever it already is, regardless of the (disabled, but
+  // defense-in-depth here too — see openItemModal()'s own comment) select's
+  // value — only applyScopeCategory() is allowed to move an item out of
+  // Pending.
+  const editingItemForSave = editingItemId ? items.find(i => i.id === editingItemId) : null;
+  const stillPendingOnSave = !!(editingItemForSave && isPendingCategory(editingItemForSave.categoryId));
+  const categoryId = savingJourney ? null : (stillPendingOnSave ? editingItemForSave.categoryId : document.getElementById('itemCategorySelect').value);
   const manualDueDate = document.getElementById('itemDueInput').value || todayStr();
   const manualStartDate = document.getElementById('itemStartInput').value || manualDueDate;
   const actualDate = document.getElementById('itemActualInput').value || null;
@@ -3648,10 +3674,12 @@ function saveInlineQuickAddItem() {
 // Auto-opens the "assign category" prompt the moment a Pending item's
 // checklist becomes fully Complete — checked wherever a milestone's status
 // can change (cycleMilestoneStatus(), saveItem()). Only fires on the actual
-// not-complete-to-complete transition, never on every subsequent save/render,
-// so dismissing the modal with "Later" (see closeScopeAssignModal()) doesn't
-// re-trigger it; it stays reachable afterward via the item's own status
-// badge instead (see itemRowHtml()'s scopeAssignReady).
+// not-complete-to-complete transition, never on every subsequent save/render
+// — the modal itself has no dismiss option any more (see its own HTML
+// comment), so in practice Apply is what closes it and this guard mostly
+// matters for the page-reload-recovery path via the item's own status badge
+// (see itemRowHtml()'s scopeAssignReady): reopening from there and Applying
+// must not re-trigger this same auto-open a second time.
 function maybeOfferScopeAssign(it, prevStatus) {
   if (prevStatus !== 'complete' && it.status === 'complete' && isPendingCategory(it.categoryId)) {
     openScopeAssignModal(it.id);
@@ -6719,10 +6747,15 @@ document.addEventListener('click', (e) => {
 });
 
 // ---------- Modal backdrop click-to-close ----------
+// scopeAssignModalBg deliberately has no backdrop-click listener here (and
+// is excluded from the Escape handler just below) — it's the one modal in
+// this app with no dismiss/cancel path at all once open, an explicit user
+// request ("do not allow to later in the assigning step"); Apply is the
+// only way out. See its own HTML comment above for the precedent this
+// mirrors (the role picker's own mandatory first-launch gate).
 document.getElementById('wsModalBg').addEventListener('click', (e) => { if (e.target.id === 'wsModalBg') closeWorkstreamModal(); });
 document.getElementById('itemModalBg').addEventListener('click', (e) => { if (e.target.id === 'itemModalBg') closeItemModal(); });
 document.getElementById('categoryModalBg').addEventListener('click', (e) => { if (e.target.id === 'categoryModalBg') closeCategoryModal(); });
-document.getElementById('scopeAssignModalBg').addEventListener('click', (e) => { if (e.target.id === 'scopeAssignModalBg') closeScopeAssignModal(); });
 document.getElementById('journeyConnectModalBg').addEventListener('click', (e) => { if (e.target.id === 'journeyConnectModalBg') closeJourneyConnectModal(); });
 document.getElementById('minutesModalBg').addEventListener('click', (e) => { if (e.target.id === 'minutesModalBg') closeMinutesModal(); });
 document.getElementById('confirmModalBg').addEventListener('click', (e) => { if (e.target.id === 'confirmModalBg') closeConfirmModal(); });
@@ -6734,7 +6767,7 @@ document.getElementById('themeModalBg').addEventListener('click', (e) => { if (e
 document.getElementById('roleModalBg').addEventListener('click', (e) => { if (e.target.id === 'roleModalBg') closeRoleModal(); });
 document.getElementById('rolePasswordsModalBg').addEventListener('click', (e) => { if (e.target.id === 'rolePasswordsModalBg') closeRolePasswordsModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeScopeAssignModal(); closeJourneyConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeJourneyConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); }
 });
 
 // A user-reported bug on some Chrome/Safari + macOS combinations: a modal's

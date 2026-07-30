@@ -189,6 +189,44 @@ test('removeMilestoneRow works normally on a non-Pending item\'s milestones', fu
   assertEqual(editingMilestones[0].name, 'B');
 });
 
+// Regression tests for an explicit user request: "prevent change category
+// from unassigned scope items. They must remain pending. Only the
+// assignment process triggered by completed can change it."
+
+test('openItemModal disables the Category select for a Pending item, even at Editor+', function () {
+  const it = addPendingItem();
+  openItemModal(it.id);
+  assertTrue(document.getElementById('itemCategorySelect').disabled, 'the category select must be locked while the item is still Pending');
+});
+
+test('openItemModal leaves the Category select editable once an item has a real category (post scope-assign)', function () {
+  const it = addPendingItem();
+  const realCat = categories.find(c => !c.pending);
+  applyScopeCategory(it.id, workstreams[0].id, realCat.id);
+  openItemModal(it.id);
+  assertFalse(document.getElementById('itemCategorySelect').disabled);
+});
+
+test('saveItem forces a Pending item\'s categoryId to stay Pending, even if the (disabled) select somehow reports a different value', function () {
+  const it = addPendingItem();
+  const pendingCatId = it.categoryId;
+  const realCat = categories.find(c => !c.pending);
+  openItemModal(it.id);
+  document.getElementById('itemCategorySelect').value = realCat.id; // simulates bypassing the disabled attribute
+  saveItem();
+  assertEqual(it.categoryId, pendingCatId, 'only applyScopeCategory() may move an item out of Pending');
+});
+
+// The scope-assign modal's own "no Later button, no Escape/backdrop
+// dismiss" behavior lives entirely in static HTML markup and the global
+// keydown/click listeners at the bottom of the script — neither is
+// something this JXA harness can observe (it only extracts and evals the
+// inline <script> block's own function bodies against fake DOM stubs; the
+// real <body> markup and the harness's own no-op addEventListener() mean
+// there's no static HTML or real event dispatch to assert against here).
+// Verified manually in a real browser instead — see CLAUDE.md's own note
+// on this change.
+
 test('removeMilestoneRow works again once a Pending item has been scope-assigned to a real category', function () {
   const it = addPendingItem();
   const realCat = categories.find(c => !c.pending);
