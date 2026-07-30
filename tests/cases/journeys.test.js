@@ -107,6 +107,64 @@ test('the Connect-scope-items icon is omitted below Editor, same as Edit/Delete'
   assertNotIncludes(itemRowHtml(journey), 'openJourneyConnectModal');
 });
 
+// ---------- Unfolding a Journey's connected scope items ----------
+
+test('a Journey\'s chevron is clickable even with zero connected scope items', function () {
+  const journey = addJourney();
+  assertIncludes(itemRowHtml(journey), `onclick="toggleItemExpanded('${journey.id}')"`);
+});
+
+test('expanding a Journey with no connections shows the "No scope items connected yet" placeholder', function () {
+  const journey = addJourney();
+  toggleItemExpanded(journey.id);
+  const html = itemRowHtml(journey);
+  assertIncludes(html, 'No scope items connected yet.');
+});
+
+test('expanding a Journey lists each connected scope item, with its workstream and status', function () {
+  const journey = addJourney();
+  const it = addItem({ name: 'Design the intake form', status: 'amber' });
+  it.journeyId = journey.id;
+  toggleItemExpanded(journey.id);
+  const html = itemRowHtml(journey);
+  assertIncludes(html, 'Design the intake form');
+  assertIncludes(html, `onclick="openItemModal('${it.id}')"`);
+  assertIncludes(html, workstreams[0].name);
+  assertIncludes(html, 'At Risk'); // statusLabel('amber')
+});
+
+test('a connected item with no workstream shows "Unassigned" in the connected-items list', function () {
+  const journey = addJourney();
+  const it = addItem({ name: 'Needs a workstream', workstreamId: null });
+  it.journeyId = journey.id;
+  toggleItemExpanded(journey.id);
+  assertIncludes(itemRowHtml(journey), 'Unassigned');
+});
+
+test('a collapsed Journey never shows its connected items, even with some connected', function () {
+  const journey = addJourney();
+  const it = addItem({ name: 'Hidden while collapsed' });
+  it.journeyId = journey.id;
+  assertFalse(expandedItemIds.has(journey.id));
+  assertNotIncludes(itemRowHtml(journey), 'Hidden while collapsed');
+});
+
+test('the milestone-count-badge shows a connected scope item count for an expanded-or-not Journey', function () {
+  const journey = addJourney();
+  const it = addItem({ name: 'One connection' });
+  it.journeyId = journey.id;
+  assertIncludes(itemRowHtml(journey), '1 scope item<');
+  const it2 = addItem({ name: 'Two connections' });
+  it2.journeyId = journey.id;
+  assertIncludes(itemRowHtml(journey), '2 scope items<');
+});
+
+test('a scope item never gets the connected-items expand treatment, even if it somehow has a journeyId', function () {
+  const it = addItem({ name: 'Just a scope item' });
+  toggleItemExpanded(it.id);
+  assertNotIncludes(itemRowHtml(it), 'No scope items connected yet');
+});
+
 // ---------- computeJourneyDateRange / connectedScopeItems ----------
 
 test('connectedScopeItems returns only items whose journeyId matches, sorted by order', function () {

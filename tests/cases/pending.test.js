@@ -122,20 +122,20 @@ test('openScopeAssignModal populates the workstream select (with nothing presele
   assertNotIncludes(catHtml, `value="${pendingCat.id}"`, 'Pending itself must never be offered as a destination category');
 });
 
-// ---------- A Pending item can't be deleted before it's triaged ----------
-// An explicit user request: deleteItem() is the one function behind both the
-// row's own trash icon and the full edit modal's Delete button (see
-// deleteItemFromModal()), so guarding it here blocks both without needing a
-// second check anywhere else — same "refuse outright with a toast, don't
-// even open the confirm modal" shape deleteCategoryFromModal() already uses
-// for the Pending category itself.
+// ---------- A Pending (Unassigned) item can be deleted like any other ----------
+// An explicit user request: deleteItem() used to refuse a still-Pending item
+// outright (toast, no confirm modal) so it couldn't be lost before ever
+// getting a real workstream/category — that guard was later removed at the
+// user's own request, so a not-yet-triaged item is deletable the same way
+// as any other now.
 
-test('deleteItem refuses to delete a Pending-category item outright, with a toast, before the confirm modal ever opens', function () {
+test('deleteItem allows deleting a still-Pending (Unassigned) item, going through the normal confirm modal', function () {
   const it = addPendingItem();
   const before = items.length;
   deleteItem(it.id);
-  assertEqual(items.length, before, 'nothing should be removed');
-  assertFalse(!!modalTarget, 'the confirm modal should never even open for a Pending item');
+  assertTrue(!!modalTarget, 'the normal confirm modal should open, same as for any other item');
+  confirmModalAction();
+  assertEqual(items.length, before - 1);
 });
 
 test('deleteItem still works normally once an item has a real category (post scope-assign)', function () {
@@ -147,11 +147,12 @@ test('deleteItem still works normally once an item has a real category (post sco
   assertEqual(items.length, 0);
 });
 
-test('deleteItemFromModal is also blocked for a Pending item (same guard, reached through the modal)', function () {
+test('deleteItemFromModal also deletes a Pending item, reached through the modal', function () {
   const it = addPendingItem();
   editingItemId = it.id;
   deleteItemFromModal();
-  assertEqual(items.length, 1, 'the item should survive — deleteItem()\'s own guard still applies');
+  confirmModalAction();
+  assertEqual(items.length, 0);
 });
 
 // A user-reported follow-up to the deleteItem() guard above: removing the

@@ -2291,13 +2291,25 @@ function itemRowHtml(it, reviewCycle) {
   const applicableTotal = applicableMilestones.length;
   const done = applicableMilestones.filter(m => m.status === 'complete').length;
   const expanded = expandedItemIds.has(it.id);
-  const chevron = total
+  // A Journey has no milestones to expand — it expands to show its
+  // connected scope items instead (see connectedScopeItems() above and
+  // connectedItemsRowsHtml() below). The chevron is always clickable for one
+  // (even with zero connections yet), since there's no other on-row signal
+  // that expanding it does anything.
+  const isJourney = it.itemType === 'journey';
+  const connected = isJourney ? connectedScopeItems(it.id) : [];
+  const expandable = total || isJourney;
+  const chevron = expandable
     ? `<span class="item-chevron" onclick="toggleItemExpanded('${it.id}')"><i class="fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
     : `<span class="item-chevron"></span>`;
   // Always a real element, never an empty string — an absent grid item would
   // collapse its column and misalign every cell after it for rows that don't
   // have milestones (see "Status board" in CLAUDE.md).
-  const milestoneBadge = `<span class="milestone-count-badge">${applicableTotal ? `${done}/${applicableTotal} milestones` : ''}</span>`;
+  const milestoneBadge = `<span class="milestone-count-badge">${
+    isJourney
+      ? (connected.length ? `${connected.length} scope item${connected.length === 1 ? '' : 's'}` : '')
+      : (applicableTotal ? `${done}/${applicableTotal} milestones` : '')
+  }</span>`;
   // Plan dates are computed from milestones (earliest/latest due or actual
   // date) whenever any exist, same as status — so they're read-only text
   // here rather than editable inputs; only an item with zero milestones has
@@ -2391,7 +2403,9 @@ function itemRowHtml(it, reviewCycle) {
         <i class="fa-${confirmedForReview ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
       </span>`;
   }
-  const subRows = (expanded && total) ? milestoneHeaderHtml(reviewCycle) + milestoneRowsHtml(it, reviewCycle) : '';
+  const subRows = !expanded ? '' : isJourney
+    ? connectedItemsHeaderHtml() + connectedItemsRowsHtml(connected)
+    : (total ? milestoneHeaderHtml(reviewCycle) + milestoneRowsHtml(it, reviewCycle) : '');
   // Drag-and-drop reordering is Planning-only, same gating as Edit/Delete
   // below — a review is for confirming, not restructuring. Only the grip
   // handle itself is draggable="true" (not the whole row), so dragging
@@ -2617,6 +2631,43 @@ function milestoneRowsHtml(it, reviewCycle) {
         ${naHtml}
       </span>
       ${reviewCellHtml}
+    </div>`;
+  }).join('');
+}
+
+// A Journey's own "milestone rows" — expanding it shows the scope items
+// connected to it (see connectedScopeItems()/toggleJourneyConnection() and
+// "Journeys" in CLAUDE.md) instead of a checklist, since a Journey has none
+// of its own. Reuses the exact same .milestone-header/.milestone-sub-row
+// grid cells milestoneHeaderHtml()/milestoneRowsHtml() do, just with
+// different content in them — Scope Item / Workstream / Due / Status rather
+// than Milestone / Due / Actual / Status — so the sub-rows still line up
+// under the Journey's own row the same way a checklist's would.
+function connectedItemsHeaderHtml() {
+  return `<div class="milestone-header">
+      <span></span><span>Scope Item</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Workstream</span><span style="grid-column:10/12">Status</span>
+    </div>`;
+}
+function connectedItemsRowsHtml(connected) {
+  if (!connected.length) {
+    return `<div class="milestone-sub-row"><span class="item-chevron"></span><span class="milestone-sub-name" style="grid-column:2/12;color:var(--text-faint)">No scope items connected yet.</span></div>`;
+  }
+  return connected.map(ci => {
+    const ws = ci.workstreamId ? wsById(ci.workstreamId) : null;
+    const wsHtml = ws
+      ? `<span class="ws-dot" style="background:var(--ws-${ws.color})"></span> ${esc(ws.name)}`
+      : `<span style="color:var(--text-faint)">Unassigned</span>`;
+    return `
+    <div class="milestone-sub-row">
+      <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
+      <span class="milestone-sub-name" style="grid-column: 2 / 6">
+        <a href="javascript:void(0)" onclick="openItemModal('${ci.id}')" style="color:inherit;text-decoration:none" title="Open this scope item">${esc(ci.name)}</a>
+      </span>
+      <span></span>
+      <span></span>
+      <span class="item-dates-computed">${fmtDate(ci.dueDate)}</span>
+      <span class="milestone-sub-actual-inline" style="font-size:12.5px;color:var(--text-dim);display:flex;align-items:center;gap:5px">${wsHtml}</span>
+      <span class="status-badge" style="grid-column:10/12;background:var(--stat-${ci.status}-bg);color:var(--stat-${ci.status});cursor:default">${esc(statusLabel(ci.status))}</span>
     </div>`;
   }).join('');
 }
@@ -3691,24 +3742,17 @@ function deleteItemFromModal() {
   closeItemModal();
   deleteItem(id);
 }
-// A Pending-category item (see "Quick-add scope items, the Unassigned
-// bucket, and the Pending category") is only a placeholder waiting on real
-// triage — an explicit user request blocks deleting one outright here
-// (rather than hiding the Delete button, matching how
-// deleteCategoryFromModal() refuses the reserved Pending category itself:
-// a toast, no confirm modal) so it isn't lost before ever getting a real
-// workstream/category. This runs before the confirm modal even opens, and
-// covers both places deleteItem() is called from — the row's own trash icon
-// and the full edit modal's Delete button (deleteItemFromModal()) — since
-// both funnel through this one function.
+// Deleting a still-Pending (Unassigned) item is allowed, same as any other
+// item — an explicit user request reversing this function's earlier
+// behavior, which refused outright (toast, no confirm modal) rather than
+// letting one be deleted before it had a real workstream/category. Reaches
+// both places deleteItem() is called from — the row's own trash icon and
+// the full edit modal's Delete button (deleteItemFromModal()) — since both
+// funnel through this one function.
 function deleteItem(id) {
   if (!requireRole('editor')) return;
   const it = items.find(i => i.id === id);
   if (!it) return;
-  if (isPendingCategory(it.categoryId)) {
-    showToast('Assign a real workstream and category before deleting this item', true);
-    return;
-  }
   openConfirmModal({
     title: `Delete "${it.name}"?`,
     body: 'You can undo this from the toast right after deleting.',
