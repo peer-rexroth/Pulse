@@ -158,3 +158,34 @@ test('plain setFilterWorkstream (used by reviewDatesOverviewHtml and tests) neve
   assertEqual(mode, 'review', 'setFilterWorkstream must stay mode-agnostic so non-sidebar callers are unaffected');
   assertEqual(filterWorkstreamId, workstreams[0].id);
 });
+
+test('switching to Journeys mode deselects the workstream row in the sidebar, without clearing filterWorkstreamId itself', function () {
+  const w = workstreams[0];
+  filterWorkstreamId = w.id;
+  setMode('planning');
+  renderSidebar();
+  let html = document.getElementById('wsList').innerHTML;
+  assertIncludes(html, `ws-row active" onclick="selectWorkstreamFromSidebar('${w.id}')"`, 'the workstream row is active while Planning is scoped to it');
+
+  setMode('journeys');
+  renderSidebar();
+  html = document.getElementById('wsList').innerHTML;
+  assertNotIncludes(html, 'ws-row active', 'no workstream row (including "All workstreams") should read as active while Journeys — which ignores the selector entirely — is showing');
+  assertEqual(filterWorkstreamId, w.id, 'the selection itself must survive the switch, so it\'s still scoped correctly on switching back');
+
+  setMode('planning');
+  renderSidebar();
+  html = document.getElementById('wsList').innerHTML;
+  assertIncludes(html, `ws-row active" onclick="selectWorkstreamFromSidebar('${w.id}')"`, 'switching back to Planning restores the same row\'s active highlight');
+});
+
+test('switching to Journeys mode also deselects "All workstreams" itself, not just a specific workstream row', function () {
+  filterWorkstreamId = null;
+  setMode('planning');
+  renderSidebar();
+  assertIncludes(document.getElementById('wsList').innerHTML, 'ws-row-all active', '"All workstreams" is active while Planning is scoped to it');
+
+  setMode('journeys');
+  renderSidebar();
+  assertNotIncludes(document.getElementById('wsList').innerHTML, 'ws-row-all active', '"All workstreams" must not read as active either, once Journeys is showing');
+});

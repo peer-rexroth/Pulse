@@ -2141,7 +2141,18 @@ function setMode(m) {
 function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
   const el = document.getElementById('wsList');
-  let html = `<div class="ws-row ws-row-all ${filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
+  // Neither "All workstreams" nor any real workstream row shows as active
+  // while Journeys mode is showing — a user-reported bug: filterWorkstreamId
+  // stays whatever it last was (Journeys ignores it entirely, see
+  // renderJourneys()), so the workstream row someone had selected before
+  // switching to Journeys stayed visually highlighted even though nothing
+  // on screen was actually scoped to it any more. inWorkstreamScope gates
+  // both active checks below on mode !== 'journeys' rather than clearing
+  // filterWorkstreamId itself — the selection should still be remembered
+  // (and restored, visually) on switching back to Planning/Review/
+  // Dashboard, not lost the moment Journeys is opened.
+  const inWorkstreamScope = mode !== 'journeys';
+  let html = `<div class="ws-row ws-row-all ${inWorkstreamScope && filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
       <i class="fa-solid fa-layer-group ws-row-all-icon"></i>
       <span class="ws-row-name">All workstreams</span>
       <span class="ws-row-count">${items.length}</span>
@@ -2174,7 +2185,7 @@ function renderSidebar() {
     // drag buttons still show their own more specific titles when hovered
     // directly, since a title on the actual hovered element always wins
     // over an ancestor's.
-    return `<div class="ws-row ${filterWorkstreamId === w.id ? 'active' : ''}" onclick="selectWorkstreamFromSidebar('${w.id}')" title="${esc(w.name)}"${dragAttrs}>
+    return `<div class="ws-row ${inWorkstreamScope && filterWorkstreamId === w.id ? 'active' : ''}" onclick="selectWorkstreamFromSidebar('${w.id}')" title="${esc(w.name)}"${dragAttrs}>
         <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
         <span class="ws-row-name">${esc(w.name)}</span>
         ${reviewBadge}
