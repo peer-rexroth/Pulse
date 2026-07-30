@@ -203,6 +203,7 @@ async function run(argv) {
   renamingProgramme = false;
   pendingImportData = null; modalTarget = null; toastUndoAction = null;
   fileHandle = null; lastSyncedSnapshot = null; lastSyncedAt = 0; syncConflictLog = [];
+  backupDirHandle = null; lastBackupWrittenDate = null;
   normalizeData();
 }
 `;

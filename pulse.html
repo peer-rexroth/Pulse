@@ -1352,6 +1352,7 @@
         </div>
       </div>
     </div>
+    <div id="fileSyncBackupSection" style="margin-top:8px"></div>
     <div id="fileSyncWarning" style="display:flex;align-items:flex-start;gap:8px;background:var(--stat-amber-bg);border-radius:10px;padding:10px 12px;margin-top:4px">
       <i class="fa-solid fa-triangle-exclamation" style="color:var(--stat-amber);font-size:13px;margin-top:2px;flex-shrink:0"></i>
       <span style="font-size:12px;color:var(--stat-amber);line-height:1.55">Without a linked file, your programme is stored in browser storage and <strong>will be lost if you clear browsing data</strong>.</span>
@@ -5704,6 +5705,15 @@ function restoreBackup(date) {
 
 // ---------- File System Access API ----------
 let fileHandle = null;
+// A separate, independently-persisted folder handle for daily backups — see
+// writeBackupCopy()/chooseBackupFolder() below. Its lifecycle is deliberately
+// not tied to fileHandle's own: unlinking the main file doesn't clear this,
+// so relinking a file later resumes backups into the already-chosen folder
+// with no need to pick it again. lastBackupWrittenDate is session-only (not
+// persisted) — worst case on reload it just writes one extra, harmless
+// same-day copy before settling back into "once per day".
+let backupDirHandle = null;
+let lastBackupWrittenDate = null;
 // On a brand-new browser (userRole still null), initFileSync() runs
 // concurrently with the mandatory first-launch role-picker gate — opening
 // the file-sync modal right then would race the (undismissable) role modal
@@ -5719,7 +5729,7 @@ function maybeShowPendingFileSyncPrompt() {
   pendingFileSyncPrompt = null;
   openFileSyncModal(p === 'link' ? undefined : p);
 }
-const _FS = { db: 'pulse-fs', store: 'handles', key: 'linked-file' };
+const _FS = { db: 'pulse-fs', store: 'handles', key: 'linked-file', backupKey: 'backup-dir' };
 function _fsIdb(mode, fn) {
   return new Promise((res, rej) => {
     const req = indexedDB.open(_FS.db, 1);
@@ -5731,9 +5741,13 @@ function _fsIdb(mode, fn) {
     req.onerror = () => rej(req.error);
   });
 }
-const _fsGet = () => _fsIdb('readonly', (s, r, j) => { const q = s.get(_FS.key); q.onsuccess = () => r(q.result); q.onerror = () => j(q.error); });
-const _fsPut = h => _fsIdb('readwrite', (s, r, j) => { const q = s.put(h, _FS.key); q.onsuccess = () => r(); q.onerror = () => j(q.error); });
-const _fsDel = () => _fsIdb('readwrite', (s, r, j) => { const q = s.delete(_FS.key); q.onsuccess = () => r(); q.onerror = () => j(q.error); });
+// key defaults to the linked-file slot so every pre-existing call site
+// (fileHandle's own get/put/del) is unaffected; chooseBackupFolder() below
+// is the only caller that passes _FS.backupKey, to persist a second,
+// independent handle in the same object store.
+const _fsGet = (key = _FS.key) => _fsIdb('readonly', (s, r, j) => { const q = s.get(key); q.onsuccess = () => r(q.result); q.onerror = () => j(q.error); });
+const _fsPut = (h, key = _FS.key) => _fsIdb('readwrite', (s, r, j) => { const q = s.put(h, key); q.onsuccess = () => r(); q.onerror = () => j(q.error); });
+const _fsDel = (key = _FS.key) => _fsIdb('readwrite', (s, r, j) => { const q = s.delete(key); q.onsuccess = () => r(); q.onerror = () => j(q.error); });
 
 let lastSyncedSnapshot = null;
 // The last time this browser successfully reconciled with the linked file
@@ -5819,6 +5833,7 @@ async function doFileSyncWrite() {
     lastSyncedSnapshot = text;
     lastSyncedAt = Date.now();
     updateFileSyncUI();
+    await writeBackupCopy(payload);
   } catch (e) {
     // localStorage remains the authoritative fallback, but a silent failure
     // here means a change (like a rename) could look saved in the app while
@@ -5826,6 +5841,66 @@ async function doFileSyncWrite() {
     // a mystery.
     showToast('Could not save to the linked file — it will keep retrying on the next change', true);
   }
+}
+function backupFileName(dateStr) { return `pulse-backup-${dateStr}.json`; }
+// A second, independent copy of every linked-file write, dated and dropped
+// into a "Backup" subfolder of whatever folder chooseBackupFolder() below
+// was pointed at — an explicit user request, separate from (and in addition
+// to) both the linked file itself and the existing localStorage rolling
+// backups (maybeSnapshotBackup()). Deliberately best-effort and silent on
+// failure: by the time this runs, doFileSyncWrite()'s own primary write has
+// already succeeded, so a problem here (permission lapsed, folder deleted)
+// must never surface as an error over a save that otherwise worked fine.
+// Only the first save of each calendar day actually writes — todayStr()
+// changing is what starts a new dated file; every other same-day save is a
+// no-op here, mirroring maybeSnapshotBackup()'s own "one snapshot per day"
+// rule. Kept forever — nothing here ever deletes an old dated file.
+async function writeBackupCopy(data) {
+  if (!backupDirHandle) return;
+  if (lastBackupWrittenDate === todayStr()) return;
+  try {
+    if ((await backupDirHandle.queryPermission({ mode: 'readwrite' })) !== 'granted') return;
+    const sub = await backupDirHandle.getDirectoryHandle('Backup', { create: true });
+    const fh = await sub.getFileHandle(backupFileName(todayStr()), { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify(data, null, 2));
+    await w.close();
+    lastBackupWrittenDate = todayStr();
+  } catch (_) { /* silent — see comment above */ }
+}
+// Picking the backup folder is its own, separate permission grant — the
+// File System Access API has no way to walk from fileHandle (a single file
+// handle) up to its own parent folder, so there's no way to derive "the
+// folder the linked file lives in" automatically; the user has to point at
+// it directly. dir.resolve(fileHandle), when supported, is used purely as a
+// soft sanity check — it tells us whether the chosen folder actually
+// contains the linked file, so a mis-click (picking the wrong folder) surfaces
+// as a toast instead of silently backing up to an unexpected place — but a
+// mismatch doesn't block anything, since a user might deliberately want
+// backups somewhere other than right next to the linked file.
+async function chooseBackupFolder() {
+  if (!window.showDirectoryPicker) { showToast('Daily backups require Chrome or Edge', true); return; }
+  try {
+    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    if (fileHandle && dir.resolve) {
+      try {
+        const path = await dir.resolve(fileHandle);
+        if (path === null) showToast(`Note: that folder doesn't contain ${fileHandle.name} — backups will still save there`, false);
+      } catch (_) {}
+    }
+    backupDirHandle = dir;
+    lastBackupWrittenDate = null;
+    try { await _fsPut(dir, _FS.backupKey); } catch (_) {}
+    updateFileSyncUI();
+    showToast(`Daily backups enabled — saving to ${dir.name}/Backup`);
+  } catch (e) { if (e.name !== 'AbortError') showToast('Could not access that folder', true); }
+}
+async function unlinkBackupFolder() {
+  backupDirHandle = null;
+  lastBackupWrittenDate = null;
+  await _fsDel(_FS.backupKey).catch(() => {});
+  updateFileSyncUI();
+  showToast('Daily backups turned off');
 }
 // Background polling — without this, an external change (a teammate's edit,
 // synced down by OneDrive/SharePoint) only gets noticed the next time *this*
@@ -6004,6 +6079,16 @@ function updateFileSyncUI() {
 async function initFileSync() {
   if (!window.showOpenFilePicker) return;
   updateFileSyncUI();
+  // Restored independently of fileHandle's own try/catch below, in its own
+  // isolated block that can never throw into (and so never trips) that
+  // block's fileHandle-clearing catch — the two handles' lifecycles are
+  // deliberately unrelated (see backupDirHandle's own comment above).
+  try {
+    const storedBackupDir = await _fsGet(_FS.backupKey);
+    if (storedBackupDir && (await storedBackupDir.queryPermission({ mode: 'readwrite' })) === 'granted') {
+      backupDirHandle = storedBackupDir;
+    }
+  } catch (_) {}
   try {
     const handle = await _fsGet();
     // On a brand-new browser (no role chosen yet, userRole still null) this
@@ -6044,6 +6129,33 @@ async function initFileSync() {
     if (!userRole) pendingFileSyncPrompt = 'link'; else openFileSyncModal();
   }
 }
+// Same .import-option look the three main options above use, just a single
+// row that toggles between "not set up" (click to pick a folder) and
+// "on" (name of the chosen folder, plus a way to turn it back off) —
+// mirroring the linked-file indicator's own linked/unlinked toggle.
+function fileSyncBackupSectionHtml() {
+  if (backupDirHandle) {
+    return `<div class="import-option" style="cursor:default">
+        <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-purple-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fa-solid fa-clock-rotate-left" style="color:var(--ws-purple);font-size:15px"></i>
+        </div>
+        <div class="import-option-text" style="flex:1">
+          <strong>Daily backups on</strong>
+          <span>Dated copy saved to "${esc(backupDirHandle.name)}/Backup" once a day</span>
+        </div>
+        <button class="btn btn-sm" onclick="event.stopPropagation();closeFileSyncModal();unlinkBackupFolder()" title="Turn off daily backups" style="padding:4px 8px;line-height:1"><i class="fa-solid fa-link-slash"></i></button>
+      </div>`;
+  }
+  return `<div class="import-option" onclick="closeFileSyncModal();chooseBackupFolder()">
+      <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-purple-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <i class="fa-solid fa-clock-rotate-left" style="color:var(--ws-purple);font-size:15px"></i>
+      </div>
+      <div class="import-option-text">
+        <strong>Enable daily backups</strong>
+        <span>Save a dated copy to a "Backup" folder every day</span>
+      </div>
+    </div>`;
+}
 function openFileSyncModal(reconnectHandle) {
   const ro = document.getElementById('fileSyncReconnectOption');
   const rl = document.getElementById('fileSyncReconnectLabel');
@@ -6059,6 +6171,7 @@ function openFileSyncModal(reconnectHandle) {
     ro.style.display = 'none';
     warn.style.display = 'flex';
   }
+  document.getElementById('fileSyncBackupSection').innerHTML = fileSyncBackupSectionHtml();
   document.getElementById('fileSyncModalBg').classList.add('open');
 }
 function closeFileSyncModal() { document.getElementById('fileSyncModalBg')?.classList.remove('open'); }
