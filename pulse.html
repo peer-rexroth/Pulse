@@ -1157,6 +1157,13 @@
       </div>
     </div>
     <div class="field">
+      <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="itemExternalDeliveryInput" onchange="onItemExternalDeliveryChange()"> External Delivery</label>
+    </div>
+    <div class="field" id="itemExternalDeliverySpocField" style="display:none">
+      <label>External Delivery SPOC</label>
+      <input type="text" id="itemExternalDeliverySpocInput" placeholder="Name of the external delivery point of contact">
+    </div>
+    <div class="field">
       <label>Milestones</label>
       <div id="milestonesEditor"></div>
     </div>
@@ -1762,6 +1769,13 @@ function normalizeData() {
     if (!it.startDate) it.startDate = it.dueDate;
     if (typeof it.updatedAt !== 'number') it.updatedAt = Date.now();
     if (typeof it.actualDate !== 'string') it.actualDate = null;
+    if (typeof it.externalDelivery !== 'boolean') it.externalDelivery = false;
+    // The SPOC is only ever meaningful alongside the flag — self-heals both
+    // directions: a stale SPOC left over from the flag being turned off
+    // outside saveItem() (a hand-edited import, an older save) is cleared,
+    // and a non-string value backfills to null the same way actualDate does.
+    if (!it.externalDelivery) it.externalDeliverySpoc = null;
+    else if (typeof it.externalDeliverySpoc !== 'string') it.externalDeliverySpoc = null;
     ITEM_TAG_FIELDS.forEach(f => { if (!RAG3.includes(it[f])) it[f] = 'green'; });
     if (!Array.isArray(it.milestones)) it.milestones = [];
     it.milestones.forEach(m => {
@@ -2921,6 +2935,16 @@ function onItemCategoryChange() {
   editingMilestones = milestonesForCategory(categoryId, document.getElementById('itemDueInput').value);
   renderMilestonesEditor();
 }
+// The SPOC field is only ever meaningful once External Delivery is checked
+// — mirrors the Not Applicable milestone pattern (a field that only makes
+// sense conditional on a flag stays hidden, not just disabled, while the
+// flag is off). Unlike a milestone's Due/Actual dates, though, the SPOC
+// text isn't cleared the moment the box is unchecked here — only on Save
+// (see saveItem()) — so unchecking then rechecking it before saving
+// doesn't lose whatever was already typed.
+function onItemExternalDeliveryChange() {
+  document.getElementById('itemExternalDeliverySpocField').style.display = document.getElementById('itemExternalDeliveryInput').checked ? '' : 'none';
+}
 function openItemModal(id, presetWorkstreamId) {
   editingItemId = id || null;
   const it = id ? items.find(i => i.id === id) : null;
@@ -2933,6 +2957,9 @@ function openItemModal(id, presetWorkstreamId) {
   document.getElementById('itemDueInput').value = it ? it.dueDate : todayStr();
   document.getElementById('itemActualInput').value = it ? (it.actualDate || '') : '';
   document.getElementById('itemStatusSelect').value = it ? it.status : 'not-started';
+  document.getElementById('itemExternalDeliveryInput').checked = it ? !!it.externalDelivery : false;
+  document.getElementById('itemExternalDeliverySpocInput').value = it ? (it.externalDeliverySpoc || '') : '';
+  onItemExternalDeliveryChange();
   editingMilestones = it
     ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable }))
     : milestonesForCategory(categories[0].id, document.getElementById('itemDueInput').value);
@@ -2944,7 +2971,7 @@ function openItemModal(id, presetWorkstreamId) {
   // can still read everything, same spirit as Plan dates/tags/status on the
   // row itself (see itemRowHtml()).
   const editable = hasRole('editor');
-  ['itemNameInput', 'itemStartInput', 'itemDueInput', 'itemActualInput', 'itemWorkstreamSelect', 'itemCategorySelect', 'itemStatusSelect'].forEach(id => {
+  ['itemNameInput', 'itemStartInput', 'itemDueInput', 'itemActualInput', 'itemWorkstreamSelect', 'itemCategorySelect', 'itemStatusSelect', 'itemExternalDeliveryInput', 'itemExternalDeliverySpocInput'].forEach(id => {
     document.getElementById(id).disabled = !editable;
   });
   document.getElementById('itemSaveBtn').style.display = editable ? '' : 'none';
@@ -3073,6 +3100,13 @@ function saveItem() {
   const manualDueDate = document.getElementById('itemDueInput').value || todayStr();
   const manualStartDate = document.getElementById('itemStartInput').value || manualDueDate;
   const actualDate = document.getElementById('itemActualInput').value || null;
+  const externalDelivery = document.getElementById('itemExternalDeliveryInput').checked;
+  // The SPOC is only ever meaningful while External Delivery is checked —
+  // unchecking it and saving clears any previously-entered SPOC rather than
+  // leaving a stale name behind for a flag that's now off, same "don't keep
+  // a value that no longer applies" stance Not Applicable milestones take
+  // with their own Due/Actual dates.
+  const externalDeliverySpoc = externalDelivery ? (document.getElementById('itemExternalDeliverySpocInput').value.trim() || null) : null;
   // A notApplicable milestone's dueDate is left as whatever it is (null,
   // once cleared by toggleEditingMilestoneNotApplicable()) rather than
   // falling back to manualDueDate — that fallback exists so an *applicable*
@@ -3090,7 +3124,7 @@ function saveItem() {
   const range = milestones.length ? computedDateRangeFromMilestones(milestones) : null;
   const startDate = range ? range.startDate : manualStartDate;
   const dueDate = range ? range.dueDate : manualDueDate;
-  const data = { workstreamId, categoryId, name, status, startDate, dueDate, actualDate, milestones, updatedAt: Date.now() };
+  const data = { workstreamId, categoryId, name, status, startDate, dueDate, actualDate, milestones, externalDelivery, externalDeliverySpoc, updatedAt: Date.now() };
   let savedItem;
   let prevStatus = null;
   if (editingItemId) {

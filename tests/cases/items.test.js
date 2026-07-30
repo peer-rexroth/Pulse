@@ -630,6 +630,108 @@ test('editing an existing item via the modal does not reset its IT/Business/Budg
   assertEqual(items[0].budgetStatus, 'amber', 'saving the modal again should not clobber a tag it never edits');
 });
 
+// ---------- External Delivery flag + SPOC ----------
+
+test('a new item defaults externalDelivery to false and externalDeliverySpoc to null', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  assertEqual(items[0].externalDelivery, false);
+  assertEqual(items[0].externalDeliverySpoc, null);
+});
+
+test('checking External Delivery and entering a SPOC saves both fields', function () {
+  openItemModal(null);
+  fillItemForm({});
+  document.getElementById('itemExternalDeliveryInput').checked = true;
+  document.getElementById('itemExternalDeliverySpocInput').value = 'Jane Doe (Acme Corp)';
+  saveItem();
+  assertEqual(items[0].externalDelivery, true);
+  assertEqual(items[0].externalDeliverySpoc, 'Jane Doe (Acme Corp)');
+});
+
+test('saving with External Delivery unchecked clears any typed SPOC, even if text is still in the field', function () {
+  openItemModal(null);
+  fillItemForm({});
+  document.getElementById('itemExternalDeliveryInput').checked = false;
+  document.getElementById('itemExternalDeliverySpocInput').value = 'Stale name left in the field';
+  saveItem();
+  assertEqual(items[0].externalDelivery, false);
+  assertEqual(items[0].externalDeliverySpoc, null);
+});
+
+test('a blank SPOC while External Delivery is checked saves as null, not an empty string', function () {
+  openItemModal(null);
+  fillItemForm({});
+  document.getElementById('itemExternalDeliveryInput').checked = true;
+  document.getElementById('itemExternalDeliverySpocInput').value = '   ';
+  saveItem();
+  assertEqual(items[0].externalDeliverySpoc, null);
+});
+
+test('onItemExternalDeliveryChange shows the SPOC field only while the checkbox is checked', function () {
+  openItemModal(null);
+  document.getElementById('itemExternalDeliveryInput').checked = false;
+  onItemExternalDeliveryChange();
+  assertEqual(document.getElementById('itemExternalDeliverySpocField').style.display, 'none');
+  document.getElementById('itemExternalDeliveryInput').checked = true;
+  onItemExternalDeliveryChange();
+  assertEqual(document.getElementById('itemExternalDeliverySpocField').style.display, '');
+});
+
+test('openItemModal seeds the checkbox/SPOC field from an existing item and reveals the SPOC field to match', function () {
+  openItemModal(null);
+  fillItemForm({});
+  document.getElementById('itemExternalDeliveryInput').checked = true;
+  document.getElementById('itemExternalDeliverySpocInput').value = 'Jane Doe';
+  saveItem();
+  const it = items[0];
+
+  openItemModal(it.id);
+  assertTrue(document.getElementById('itemExternalDeliveryInput').checked);
+  assertEqual(document.getElementById('itemExternalDeliverySpocInput').value, 'Jane Doe');
+  assertEqual(document.getElementById('itemExternalDeliverySpocField').style.display, '');
+});
+
+test('openItemModal starts a brand-new item unchecked with the SPOC field hidden', function () {
+  openItemModal(null);
+  assertFalse(document.getElementById('itemExternalDeliveryInput').checked);
+  assertEqual(document.getElementById('itemExternalDeliverySpocInput').value, '');
+  assertEqual(document.getElementById('itemExternalDeliverySpocField').style.display, 'none');
+});
+
+test('the External Delivery checkbox and SPOC input are disabled below Editor', function () {
+  openItemModal(null);
+  fillItemForm({});
+  document.getElementById('itemExternalDeliveryInput').checked = true;
+  document.getElementById('itemExternalDeliverySpocInput').value = 'Jane Doe';
+  saveItem();
+  const it = items[0];
+
+  userRole = 'reviewer';
+  openItemModal(it.id);
+  assertTrue(document.getElementById('itemExternalDeliveryInput').disabled);
+  assertTrue(document.getElementById('itemExternalDeliverySpocInput').disabled);
+});
+
+test('normalizeData backfills a missing externalDelivery to false, and clears a stale SPOC when externalDelivery is false', function () {
+  items.push({ id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'Legacy',
+    status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [],
+    externalDeliverySpoc: 'Orphaned SPOC from before the flag existed' });
+  normalizeData();
+  assertEqual(items[0].externalDelivery, false);
+  assertEqual(items[0].externalDeliverySpoc, null, 'a SPOC with no corresponding true flag is stale and gets cleared');
+});
+
+test('normalizeData leaves a valid externalDelivery/externalDeliverySpoc pair untouched', function () {
+  items.push({ id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'Externally delivered',
+    status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [],
+    externalDelivery: true, externalDeliverySpoc: 'Jane Doe' });
+  normalizeData();
+  assertEqual(items[0].externalDelivery, true);
+  assertEqual(items[0].externalDeliverySpoc, 'Jane Doe');
+});
+
 // ---------- Scope item order: bottom-of-list creation + drag reordering ----------
 
 test('a new item is added at the bottom of its workstream\'s list, regardless of due date', function () {

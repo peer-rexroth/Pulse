@@ -74,7 +74,9 @@ An **item** (a scope item — the only top-level item type; see "Milestones" bel
   itStatus: 'green' | 'amber' | 'red',       // IT readiness tag — see "IT/Business/Budget tags" below
   businessStatus: 'green' | 'amber' | 'red', // Business readiness tag
   budgetStatus: 'green' | 'amber' | 'red',   // Budget/funding status tag
-  order: Number // manual position within this item's workstream — see "Manual item order and drag-and-drop reordering"
+  order: Number, // manual position within this item's workstream — see "Manual item order and drag-and-drop reordering"
+  externalDelivery: Boolean,           // is this item delivered by an external party? — see "External Delivery" below
+  externalDeliverySpoc: String|null    // only ever non-null while externalDelivery is true
 }
 ```
 
@@ -184,6 +186,12 @@ One `.ws-section` per visible workstream (filtered by `filterWorkstreamId` via `
 ### IT/Business/Budget tags
 
 Three item-level-only RAG flags — `itStatus`/`businessStatus`/`budgetStatus`, each one of `RAG3` (`['green','amber','red']` — no `not-started`/`complete` concept, unlike the main status). Rendered as icon-only badges (`fa-laptop-code`/`fa-briefcase`/`fa-euro-sign`, colored by the same `--stat-*` variables as the main status badge) in the item row's Tags column; clicking one calls `cycleItemAttr(itemId, field)`, which steps through `RAG3` and wraps — the same pattern as `cycleMilestoneStatus()` but scoped to a plain 3-value cycle instead of the full `STATUSES` list. These are item-only: `milestoneRowsHtml()` never renders them, and `ITEM_TAG_FIELDS` (top of the `<script>` block) is the single list normalizeData() walks to backfill any missing/invalid value back to `'green'`. A brand-new item gets its defaults at creation in `saveItem()`'s `else` branch (not as part of the shared `data` object also used for edits) specifically so re-saving an *existing* item through the modal — which never edits these fields — can't reset them back to green.
+
+### External Delivery
+
+**A plain boolean flag, `externalDelivery`, marking whether a scope item is delivered by an external party — an explicit user request — plus a conditional `externalDeliverySpoc` text field for that party's point of contact once the flag is on.** Unlike the IT/Business/Budget tags above, this is a modal-only pair, not a row-level badge: `itemModalBg` gets a plain checkbox (`#itemExternalDeliveryInput`) right before the Milestones editor, and a second field (`#itemExternalDeliverySpocField`/`#itemExternalDeliverySpocInput`) that only *shows* while the checkbox is checked — `onItemExternalDeliveryChange()` toggles its `display`, called both from the checkbox's own `onchange` and once at the end of `openItemModal()` so a reopened item starts in the right state. This mirrors the Not Applicable milestone pattern (a field only shown, not just disabled, while conditional on a flag) rather than the IT/Business/Budget tags' own always-visible-badge treatment, since a SPOC name has nowhere sensible to sit in the row's already-full grid the way a single RAG icon does — see "Column layout is a real CSS grid" above for why that grid resists casually adding another column.
+
+`saveItem()` reads the checkbox directly into `externalDelivery`, and reads the SPOC input **only while the checkbox is checked** — `externalDeliverySpoc` is forced back to `null` the moment `externalDelivery` is unchecked and saved, the same "a field that's no longer applicable doesn't keep a stale value" stance Not Applicable milestones take with their own Due/Actual dates (see "Not Applicable milestones" below). Both fields live in the same shared `data` object every other directly-editable field does (unlike `itStatus`/etc. above, which are cycle-only and deliberately excluded from `data`) — a brand-new item and an edit to an existing one both go through the identical read/write path. `openItemModal()`/the `editable` disabling loop treat both new inputs exactly like every other field: seeded from the item (or blank/unchecked for a new one) and `.disabled = !hasRole('editor')`, so the modal stays viewable but not editable below Editor, same as everything else in it. `normalizeData()` backfills `externalDelivery` to `false` for legacy data missing the field, and self-heals `externalDeliverySpoc` back to `null` whenever `externalDelivery` is falsy (or the stored value isn't a string) — the same invariant `saveItem()` enforces on save, just also covering data that arrived from an older export, a hand-edited import, or a linked file predating this feature.
 
 ### Milestone checklist
 
