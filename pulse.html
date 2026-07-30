@@ -397,7 +397,7 @@
     color: var(--text-dim); font-weight: 600; display: flex; align-items: center; gap: 6px;
   }
   .view-tab.active { background: var(--panel); color: var(--accent); box-shadow: var(--shadow); }
-  #tabAdmin.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+  #tabAdmin.active, #tabJourneys.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
   .topbar-spacer { flex: 1; }
   .icon-btn {
     border: 1px solid var(--border); background: var(--panel); color: var(--text-dim); cursor: pointer;
@@ -490,6 +490,11 @@
   .item-row:hover { background: var(--panel-2); }
   .item-chevron { text-align: center; color: var(--text-faint); cursor: pointer; }
   .item-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Marks a Journey's row apart from an ordinary scope item's — see
+     itemRowHtml()'s journeyBadgeHtml — right inside the Name cell rather
+     than a dedicated grid column, since it's the only thing distinguishing
+     the two item types wherever they sit in the same list. */
+  .journey-type-badge { color: var(--accent); font-size: 12px; }
   .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-dates { color: var(--text-dim); font-size: 12.5px; width: 150px; flex: 0 0 auto; }
   .milestone-count-badge { font-size: 11px; color: var(--text-faint); font-weight: 700; white-space: nowrap; }
@@ -640,6 +645,14 @@
   .field-row { display: flex; gap: 10px; }
   .field-row .field { flex: 1; }
   .modal-wide { width: 600px; }
+  /* One row per new scope item in the Journey decompose modal — Name /
+     Workstream / Category / Remove (a Journey has no workstream of its own
+     to inherit — see "Journeys" in CLAUDE.md — so each row picks one).
+     Nested inside the modal's own .field so the bare input/select still
+     pick up the generic ".field input"/".field select" styling above with
+     no rule duplicated here. */
+  .journey-decompose-row { display: grid; grid-template-columns: 1fr 130px 130px 30px; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .journey-decompose-row:last-child { margin-bottom: 0; }
 
   /* Color scheme picker modal — ported from mytasks (see THEME_SCHEMES). */
   .theme-options { display: flex; flex-direction: column; gap: 10px; }
@@ -973,6 +986,12 @@
   <span id="syncConflictIndicator"></span>
   <span id="fileSyncIndicator"></span>
   <span id="backupSyncIndicator"></span>
+  <!-- Journeys is deliberately not in .view-tabs above, same reasoning as
+       #tabAdmin below: it isn't workstream-scoped (a Journey never belongs
+       to a workstream — see "Journeys" in CLAUDE.md), so grouping it with
+       Dashboard/Planning/Review, which all read the shared sidebar
+       workstream filter, would incorrectly imply it did too. -->
+  <button class="btn btn-sm" id="tabJourneys" onclick="setMode('journeys')"><i class="fa-solid fa-route"></i> Journeys</button>
   <div class="data-dropdown" id="dataDropdown">
     <button class="btn btn-sm" onclick="event.stopPropagation();toggleDataMenu()"><i class="fa-solid fa-database"></i> Data <i class="fa-solid fa-chevron-down" style="font-size:9px"></i></button>
     <div class="dropdown-menu" id="dataMenu">
@@ -1003,8 +1022,11 @@
 
 <!-- Shared shell for Planning/Review/Dashboard: one sidebar (the workstream
      selector all three modes read from) + one main content area whose
-     contents swap per mode. Admin isn't workstream-scoped, so it's a
-     separate full-width container reached from its own topbar button. -->
+     contents swap per mode. Admin and Journeys are both not workstream-
+     scoped (see "Journeys" in CLAUDE.md for why a Journey never belongs to
+     one), so each gets its own separate full-width container instead,
+     reached from its own topbar button — a sidebar that filters nothing in
+     that view would just be a dead, misleading control. -->
 <div class="body-row" id="scopedBody">
   <div class="sidebar">
     <div class="sidebar-label">Workstreams <button class="sidebar-label-add" id="addWsBtn" onclick="openWorkstreamModal()" title="New workstream"><i class="fa-solid fa-plus"></i></button></div>
@@ -1024,6 +1046,7 @@
 </div>
 
 <div class="main" id="adminBody" style="display:none"></div>
+<div class="main" id="journeysBody" style="display:none"></div>
 
 <!-- Workstream modal -->
 <div class="modal-bg" id="wsModalBg">
@@ -1128,8 +1151,18 @@
       <label>Name</label>
       <input type="text" id="itemNameInput" placeholder="e.g. Finalize data schema">
     </div>
+    <!-- Read-only backlink to the Journey a scope item was decomposed from
+         (see applyJourneyDecompose()) — never editable here, and hidden
+         entirely for any item that isn't linked to one. -->
+    <div class="field" id="itemJourneyLinkField" style="display:none">
+      <label>From Journey</label>
+      <div class="status-badge" id="itemJourneyLinkBadge" style="background:var(--panel-2);color:var(--text-dim)"></div>
+    </div>
     <div class="field-row">
-      <div class="field">
+      <!-- Hidden entirely (not just disabled) for a Journey — a Journey is
+           never assigned to a workstream at all (see "Journeys" in
+           CLAUDE.md), so the field has nothing meaningful to show. -->
+      <div class="field" id="itemWorkstreamField">
         <label>Workstream</label>
         <select id="itemWorkstreamSelect"></select>
       </div>
@@ -1208,6 +1241,27 @@
     <div class="modal-actions" style="justify-content:flex-end">
       <button class="btn" onclick="closeScopeAssignModal()">Later</button>
       <button class="btn btn-primary" onclick="applyScopeAssign()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Journey decompose modal — pops up once a Journey's final milestone
+     (JOURNEY_MAPPED_MILESTONE) is marked Complete
+     (maybeOfferJourneyDecompose()), and stays reachable afterward from the
+     Journey's own status badge (itemRowHtml()) if dismissed with "Later".
+     See openJourneyDecomposeModal()/applyJourneyDecompose(). -->
+<div class="modal-bg" id="journeyDecomposeModalBg">
+  <div class="modal modal-wide">
+    <h3 id="journeyDecomposeModalTitle">Decompose Journey</h3>
+    <p style="margin-top:0;color:var(--text-dim);font-size:13px">Add the scope items this journey breaks down into — each one is linked back to this Journey and seeded with its own category's milestone checklist.</p>
+    <div class="field">
+      <label>Scope items</label>
+      <div id="journeyDecomposeRows"></div>
+      <button class="btn btn-sm" style="margin-top:8px" onclick="addJourneyDecomposeRow()"><i class="fa-solid fa-plus"></i> Add scope item</button>
+    </div>
+    <div class="modal-actions" style="justify-content:flex-end">
+      <button class="btn" onclick="closeJourneyDecomposeModal()">Later</button>
+      <button class="btn btn-primary" onclick="applyJourneyDecompose()">Add scope items</button>
     </div>
   </div>
 </div>
@@ -1427,10 +1481,17 @@ const DEFAULT_CATEGORIES = [
 // tests only ever cared about "the first/default category's own milestone
 // template", back when Development was the only one seeded.
 const DEFAULT_CATEGORY_MILESTONES = DEFAULT_CATEGORIES[0].milestones;
+// The reserved Journey category's own fixed template — a Journey decomposes
+// into scope items once its last milestone, JOURNEY_MAPPED_MILESTONE, is
+// marked Complete (see maybeOfferJourneyDecompose() below). Unlike
+// DEFAULT_CATEGORIES, this isn't one of several out-of-the-box choices — it
+// backs exactly one reserved category, seeded by seedDefaults()/
+// normalizeData() the same way the Pending category's own template is.
+const JOURNEY_DEFAULT_MILESTONES = ['Journey Defined', 'Journey Approved', 'High-level Architecture Approved', 'Journey Mapped'];
 
 const DAY_MS = 86400000;
 const REVIEW_STALE_DAYS = 30;
-const MODES = ['planning', 'review', 'dashboard', 'admin'];
+const MODES = ['planning', 'review', 'dashboard', 'journeys', 'admin'];
 
 // ---------- Roles (RBAC) ----------
 // A soft, UI-level permission ladder, NOT real access control — there's no
@@ -1492,6 +1553,12 @@ let filterWorkstreamId = null;
 let editingWsId = null;
 let wsColorChoice = WS_COLORS[0];
 let editingItemId = null;
+// 'scope' | 'journey' — set by openItemModal() for both the new-item and
+// edit-existing-item cases, and read back by saveItem() as the single
+// authoritative source for whether the item being saved is a Journey (rather
+// than re-deriving it from the disabled Category select's value, which
+// should already agree but doesn't need to be trusted to).
+let editingItemType = 'scope';
 let editingMilestones = [];
 let editingCategoryId = null;
 let editingCategoryMilestones = [];
@@ -1607,6 +1674,10 @@ function seedDefaults() {
   // category is chosen (see applyScopeCategory()).
   categories = DEFAULT_CATEGORIES.map((c, i) => ({ id: genId(), name: c.name, milestones: c.milestones.slice(), order: i }));
   categories.push({ id: genId(), name: 'Pending', milestones: ['Scope item confirmed'], pending: true, order: categories.length });
+  // The Journey category is reserved for the "Journey" item type (see
+  // "Journeys" below) — every fresh programme gets it too, seeded with its
+  // own fixed 4-milestone template, alongside Pending.
+  categories.push({ id: genId(), name: 'Journey', milestones: JOURNEY_DEFAULT_MILESTONES.slice(), journey: true, order: categories.length });
   reviewCycles = [];
   deletedWorkstreamIds = [];
   deletedItemIds = [];
@@ -1696,6 +1767,7 @@ function normalizeData() {
     if (!Array.isArray(c.milestones)) c.milestones = [];
     if (typeof c.order !== 'number') c.order = i;
     if (typeof c.pending !== 'boolean') c.pending = false;
+    if (typeof c.journey !== 'boolean') c.journey = false;
   });
   categories.sort((a, b) => a.order - b.order);
   // A programme with no categories at all (pre-categories save, or every
@@ -1710,6 +1782,12 @@ function normalizeData() {
   // `pending: true` to seed a new item into.
   if (!categories.some(c => c.pending)) {
     categories.push({ id: genId(), name: 'Pending', milestones: ['Scope item confirmed'], pending: true, order: categories.length });
+  }
+  // Same self-healing as Pending, just for the Journey category — the
+  // Journey item type (see "Journeys" below) depends on exactly one category
+  // having `journey: true` to create/lock new Journeys into.
+  if (!categories.some(c => c.journey)) {
+    categories.push({ id: genId(), name: 'Journey', milestones: JOURNEY_DEFAULT_MILESTONES.slice(), journey: true, order: categories.length });
   }
   const catIds = new Set(categories.map(c => c.id));
 
@@ -1774,6 +1852,24 @@ function normalizeData() {
     if (it.workstreamId != null && !wsIds.has(it.workstreamId)) it.workstreamId = null;
     if (it.workstreamId === undefined) it.workstreamId = null;
     if (!catIds.has(it.categoryId)) it.categoryId = categories[0].id;
+    // itemType distinguishes a Journey from a plain scope item (see
+    // "Journeys" below) — 'scope' is the only other valid value, and any
+    // legacy/hand-edited/unrecognized value falls back to it, same "unknown
+    // value resets to the safe default" treatment every other enum-like
+    // field on an item gets here.
+    if (it.itemType !== 'journey') it.itemType = 'scope';
+    // journeyId links a scope item back to the Journey it was decomposed
+    // from (see applyJourneyDecompose() below) — null for every item that
+    // wasn't. A reference to a since-deleted item, or one that's no longer a
+    // Journey, is reset to null rather than left dangling — mirrors the
+    // orphaned-workstreamId treatment just above: a broken link resets to
+    // "none" rather than pointing at something that no longer makes sense.
+    if (it.journeyId != null) {
+      const src = items.find(i => i.id === it.journeyId);
+      if (!src || src.itemType !== 'journey') it.journeyId = null;
+    } else {
+      it.journeyId = null;
+    }
     if (!it.name) it.name = 'Untitled';
     if (!STATUSES.some(s => s.id === it.status)) it.status = 'not-started';
     if (!it.dueDate) it.dueDate = todayStr();
@@ -1922,6 +2018,28 @@ function categoryById(id) { return categories.find(c => c.id === id); }
 // offered as a choice in the scope-assign modal (openScopeAssignModal()).
 function pendingCategory() { return categories.find(c => c.pending); }
 function isPendingCategory(categoryId) { const c = categoryById(categoryId); return !!(c && c.pending); }
+// The one category flagged `journey: true` (see seedDefaults()/normalizeData())
+// — reserved for Journey-type items (see "Journeys" below) and, like Pending,
+// never offered as a choice for a plain scope item (see populateCategorySelect()).
+// Unlike Pending, this isn't a temporary waypoint an item passes through on
+// the way to a real category — it's the permanent, structural category every
+// Journey stays in for its whole lifecycle, which is why the item modal
+// locks the Category select outright (rather than merely excluding it from
+// the list) whenever the item being edited is itself a Journey.
+function journeyCategory() { return categories.find(c => c.journey); }
+function isJourneyCategory(categoryId) { const c = categoryById(categoryId); return !!(c && c.journey); }
+// The literal, reserved name of a Journey's final milestone — the one whose
+// completion triggers the decompose-into-scope-items modal (see
+// maybeOfferJourneyDecompose()/isJourneyMapped() below). Matched by name, not
+// array position, so reordering the Journey category's own template (see
+// "Category template edits sync to items already using that category") can't
+// break the trigger.
+const JOURNEY_MAPPED_MILESTONE = JOURNEY_DEFAULT_MILESTONES[JOURNEY_DEFAULT_MILESTONES.length - 1];
+function isJourneyMapped(it) {
+  if (it.itemType !== 'journey') return false;
+  const m = it.milestones.find(m => m.name === JOURNEY_MAPPED_MILESTONE);
+  return !!(m && m.status === 'complete');
+}
 
 // ---------- Rendering ----------
 // render() is the single top-level dispatcher: every mutation should call
@@ -1938,8 +2056,9 @@ function render() {
   document.getElementById('programmeNameDisplay').textContent = programme.name;
   updateRoleBtn();
   MODES.forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
-  document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
+  document.getElementById('scopedBody').style.display = (mode === 'admin' || mode === 'journeys') ? 'none' : '';
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
+  document.getElementById('journeysBody').style.display = mode === 'journeys' ? '' : 'none';
   document.getElementById('reviewToolbar').style.display = mode === 'review' ? '' : 'none';
   document.getElementById('dataMenuImportItem').style.display = hasRole('admin') ? '' : 'none';
   document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
@@ -1968,6 +2087,8 @@ function render() {
     renderReview();
   } else if (mode === 'dashboard') {
     renderDashboard();
+  } else if (mode === 'journeys') {
+    renderJourneys();
   } else if (mode === 'admin') {
     renderAdmin();
   }
@@ -2041,8 +2162,14 @@ function renderMain() {
 // and with nothing in it, it's omitted entirely — there both nothing to
 // show and no way to add anything, so an empty "Unassigned" heading would
 // just be clutter.
+// A Journey also has workstreamId:null (see "Journeys" below — it's never
+// assigned to one at all, deliberately, not just awaiting triage the way an
+// Unassigned scope item is) but must never show up here: this bucket is
+// specifically for scope items waiting to be triaged into a real workstream,
+// which isn't what "overarching, no workstream on purpose" means. Journeys
+// have their own dedicated view instead (renderJourneys()).
 function unassignedItemsSorted() {
-  return items.filter(it => it.workstreamId == null).sort((a, b) => a.order - b.order);
+  return items.filter(it => it.workstreamId == null && it.itemType !== 'journey').sort((a, b) => a.order - b.order);
 }
 function unassignedSectionHtml() {
   const uItems = unassignedItemsSorted();
@@ -2097,6 +2224,51 @@ function renderStatusView(main) {
       </div>`
     : '';
   main.innerHTML = unassignedSectionHtml() + sections + noWorkstreamsHint;
+}
+
+// ---------- Journeys ----------
+// A Journey is not a separate top-level array or data shape — it's a plain
+// item (see "Data model" in CLAUDE.md), just one with itemType:'journey' and
+// forced into the reserved Journey category (see journeyCategory() above),
+// so it gets every bit of existing item machinery — milestones, status
+// roll-up, review, dashboard rollups, drag reorder — for free. This mode is
+// a dedicated, filtered view of just those items, scoped by the same shared
+// filterWorkstreamId selector Planning/Review/Dashboard already use — a
+// Journey still shows inline on Planning's own status board too, alongside
+// its workstream's scope items, just tagged with a small badge (see
+// itemRowHtml()'s journeyBadge) rather than living in a view of its own
+// there.
+// A Journey is never assigned to a workstream at all — an explicit user
+// correction to this feature's first draft ("Journey should not be assigned
+// to workstreams. They are overarching"). So unlike Planning's own status
+// board, this view is a single flat list, not one section per workstream —
+// and it deliberately ignores the shared filterWorkstreamId selector
+// entirely (ignoring it, not just defaulting to "All", since a per-
+// workstream filter has nothing to scope a workstream-less list by), the
+// same reasoning #tabJourneys itself sits outside the shared .view-tabs
+// pill for (see its own comment in the topbar markup).
+function allJourneys() {
+  return items.filter(it => it.itemType === 'journey').sort((a, b) => a.order - b.order);
+}
+function renderJourneys() {
+  const main = document.getElementById('journeysBody');
+  const journeys = allJourneys();
+  const rows = journeys.length ? journeys.map(it => itemRowHtml(it)).join('') :
+    `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No journeys yet.</div>`;
+  const addRow = hasRole('editor')
+    ? `<div class="ws-section-add"><button class="btn btn-sm" onclick="openItemModal(null,null,'journey')"><i class="fa-solid fa-plus"></i> Add Journey</button></div>`
+    : '';
+  // Same "no real workstream" visual treatment unassignedSectionHtml() uses
+  // for its own header — a transparent dot in place of a workstream color,
+  // since there isn't one here either.
+  main.innerHTML = `<div class="ws-section">
+      <div class="ws-section-header" style="background:var(--panel-2)">
+        <span class="ws-dot" style="background:transparent"></span>
+        <span class="ws-section-title">Journeys</span>
+      </div>
+      ${rows}
+      ${addRow}
+    </div>`;
 }
 
 // reviewCycle is optional — passed only when this row is rendered inside
@@ -2232,12 +2404,28 @@ function itemRowHtml(it, reviewCycle) {
   // dismissed with "Later" the first time it auto-popped up (see
   // maybeOfferScopeAssign()).
   const scopeAssignReady = hasRole('editor') && it.status === 'complete' && isPendingCategory(it.categoryId);
+  // Same "still reachable after being dismissed with Later" pattern as
+  // scopeAssignReady just above, for a Journey whose final milestone
+  // (JOURNEY_MAPPED_MILESTONE) is Complete — the status badge's own onclick
+  // becomes the entry point back into openJourneyDecomposeModal() instead of
+  // the usual "open the full edit modal" (still reachable via the pencil
+  // icon below). The two are mutually exclusive in practice (a Journey is
+  // never in the Pending category), but both are checked explicitly rather
+  // than assumed, since nothing actually enforces that exclusivity.
+  const journeyDecomposeReady = !scopeAssignReady && hasRole('editor') && isJourneyMapped(it);
   const statusBadgeHtml = scopeAssignReady
     ? `<button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openScopeAssignModal('${it.id}')" title="Scope confirmed — click to assign its real workstream and category">${esc(statusLabel(it.status))}</button>`
+    : journeyDecomposeReady
+    ? `<button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openJourneyDecomposeModal('${it.id}')" title="Journey mapped — click to decompose into scope items">${esc(statusLabel(it.status))}</button>`
     : `<button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openItemModal('${it.id}')">${esc(statusLabel(it.status))}</button>`;
+  // A Journey is a plain item under the hood (see "Journeys" in CLAUDE.md) —
+  // this icon prefix, not a dedicated grid column, is the only thing telling
+  // its row apart from an ordinary scope item's when the two sit in the same
+  // workstream section on Planning's own board.
+  const journeyBadgeHtml = it.itemType === 'journey' ? `<i class="fa-solid fa-route journey-type-badge" title="Journey"></i> ` : '';
   return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''}"${dragAttrs}>
       ${chevron}
-      <span class="item-name">${esc(it.name)}</span>
+      <span class="item-name">${journeyBadgeHtml}${esc(it.name)}</span>
       ${milestoneBadge}
       <span></span>
       ${planDatesHtml}
@@ -2463,6 +2651,15 @@ function cycleMilestoneStatus(itemId, milestoneId) {
   if (!m) return;
   const oldValue = m.status;
   const prevItemStatus = it.status;
+  // Captured by name, not reused from oldValue above — oldValue is whichever
+  // milestone m happens to be, which is only the "Journey Mapped" one when
+  // that's specifically the one being cycled. Reading it here first, before
+  // m.status changes, is what lets maybeOfferJourneyDecompose() tell a
+  // genuine not-complete-to-complete transition on *that* milestone apart
+  // from some other milestone being cycled while it already sat Complete.
+  const prevJourneyMappedStatus = it.itemType === 'journey'
+    ? (it.milestones.find(mm => mm.name === JOURNEY_MAPPED_MILESTONE) || {}).status
+    : null;
   const idx = STATUSES.findIndex(s => s.id === m.status);
   m.status = STATUSES[(idx + 1) % STATUSES.length].id;
   m.updatedAt = Date.now();
@@ -2474,6 +2671,7 @@ function cycleMilestoneStatus(itemId, milestoneId) {
   logReviewChange(it.workstreamId, it.name, m.name, `Status changed to ${statusLabel(m.status)}`, { statusChange: { oldValue, newValue: m.status }, itemId: it.id, milestoneId: m.id });
   save(); render();
   maybeOfferScopeAssign(it, prevItemStatus);
+  maybeOfferJourneyDecompose(it, prevJourneyMappedStatus);
 }
 // A milestone's notApplicable flag is independent of its status (see
 // computedStatusFromMilestones()/computedDateRangeFromMilestones() above,
@@ -2943,8 +3141,17 @@ function populateWorkstreamSelect(selectedId, elId, includeUnassigned) {
     `<option value="${w.id}" ${w.id === selectedId ? 'selected' : ''}>${esc(w.name)}</option>`
   ).join('');
 }
-function populateCategorySelect(selectedId) {
-  document.getElementById('itemCategorySelect').innerHTML = categories.map(c =>
+// journeyOnly renders (and, paired with openItemModal()'s own disabling of
+// the select, effectively locks) the picker to just the one reserved
+// Journey category — used whenever the item being created/edited is itself
+// a Journey, whose category is permanent (see journeyCategory()'s own
+// comment above). Otherwise the Journey category is excluded outright, the
+// same "never a manual destination" treatment openScopeAssignModal() already
+// gives Pending — a plain scope item should never be able to pick its way
+// into the reserved Journey category by hand.
+function populateCategorySelect(selectedId, journeyOnly) {
+  const opts = categories.filter(c => !!c.journey === !!journeyOnly);
+  document.getElementById('itemCategorySelect').innerHTML = opts.map(c =>
     `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${esc(c.name)}</option>`
   ).join('');
 }
@@ -2972,13 +3179,37 @@ function onItemCategoryChange() {
 function onItemExternalDeliveryChange() {
   document.getElementById('itemExternalDeliverySpocField').style.display = document.getElementById('itemExternalDeliveryInput').checked ? '' : 'none';
 }
-function openItemModal(id, presetWorkstreamId) {
+// presetItemType ('journey', or omitted/anything else for a plain scope
+// item) only ever matters for a brand-new item — id, when given, always
+// wins, since an existing item's own itemType is never up for negotiation
+// here (see editingItemType's own comment).
+function openItemModal(id, presetWorkstreamId, presetItemType) {
   editingItemId = id || null;
   const it = id ? items.find(i => i.id === id) : null;
-  document.getElementById('itemModalTitle').textContent = it ? 'Edit item' : 'New item';
+  const isJourneyItem = it ? it.itemType === 'journey' : presetItemType === 'journey';
+  editingItemType = isJourneyItem ? 'journey' : 'scope';
+  document.getElementById('itemModalTitle').textContent = it ? (isJourneyItem ? 'Edit Journey' : 'Edit item') : (isJourneyItem ? 'New Journey' : 'New item');
   populateStatusSelect();
+  // A Journey is never assigned to a workstream — an explicit user
+  // correction ("They are overarching") — so the whole field is hidden
+  // outright, not just left unpopulated/disabled; populating it anyway
+  // (harmlessly inert while hidden) keeps this call unconditional rather
+  // than adding a branch that skips it.
+  document.getElementById('itemWorkstreamField').style.display = isJourneyItem ? 'none' : '';
   populateWorkstreamSelect(it ? it.workstreamId : (presetWorkstreamId || (workstreams[0] && workstreams[0].id)), undefined, !!(it && it.workstreamId == null));
-  populateCategorySelect(it ? it.categoryId : categories[0].id);
+  // A brand-new plain item defaults to the first *non-Journey* category —
+  // categories[0] happens to already never be the reserved one (seeding
+  // order always puts Journey last), but finding it explicitly here doesn't
+  // depend on that happening to stay true.
+  const defaultCategoryId = isJourneyItem ? journeyCategory().id : categories.find(c => !c.journey).id;
+  populateCategorySelect(it ? it.categoryId : defaultCategoryId, isJourneyItem);
+  // A scope item created by decomposing a Journey (see
+  // applyJourneyDecompose()) carries a read-only backlink to it — shown here,
+  // never editable, since which Journey (if any) a scope item came from
+  // isn't something this modal is meant to change.
+  const sourceJourney = it && it.journeyId ? items.find(i => i.id === it.journeyId) : null;
+  document.getElementById('itemJourneyLinkField').style.display = sourceJourney ? '' : 'none';
+  if (sourceJourney) document.getElementById('itemJourneyLinkBadge').textContent = sourceJourney.name;
   document.getElementById('itemNameInput').value = it ? it.name : '';
   document.getElementById('itemStartInput').value = it ? it.startDate : todayStr();
   document.getElementById('itemDueInput').value = it ? it.dueDate : todayStr();
@@ -2989,7 +3220,7 @@ function openItemModal(id, presetWorkstreamId) {
   onItemExternalDeliveryChange();
   editingMilestones = it
     ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable }))
-    : milestonesForCategory(categories[0].id, document.getElementById('itemDueInput').value);
+    : milestonesForCategory(defaultCategoryId, document.getElementById('itemDueInput').value);
   renderMilestonesEditor();
   document.getElementById('itemDeleteBtn').style.display = (it && hasRole('editor')) ? 'inline-flex' : 'none';
   // Below Editor, the modal is still reachable to view an item's full detail —
@@ -3001,6 +3232,10 @@ function openItemModal(id, presetWorkstreamId) {
   ['itemNameInput', 'itemStartInput', 'itemDueInput', 'itemActualInput', 'itemWorkstreamSelect', 'itemCategorySelect', 'itemStatusSelect', 'itemExternalDeliveryInput', 'itemExternalDeliverySpocInput'].forEach(id => {
     document.getElementById(id).disabled = !editable;
   });
+  // A Journey's category is permanent, never a manual choice (see
+  // populateCategorySelect()'s own comment) — locked regardless of role,
+  // not just below Editor.
+  if (isJourneyItem) document.getElementById('itemCategorySelect').disabled = true;
   document.getElementById('itemSaveBtn').style.display = editable ? '' : 'none';
   document.getElementById('itemModalBg').classList.add('open');
   document.getElementById('itemNameInput').focus();
@@ -3008,6 +3243,7 @@ function openItemModal(id, presetWorkstreamId) {
 function closeItemModal() {
   document.getElementById('itemModalBg').classList.remove('open');
   editingMilestones = [];
+  editingItemType = 'scope';
 }
 // The Not Applicable toggle mirrors the status board's own (see
 // milestoneRowsHtml()/toggleMilestoneNotApplicable()): the status field
@@ -3116,14 +3352,24 @@ function removeMilestoneRow(idx) {
 }
 function saveItem() {
   if (!requireRole('editor')) return;
+  // Captured before closeItemModal() (below) resets editingItemType back to
+  // 'scope' for the next time the modal opens.
+  const savingJourney = editingItemType === 'journey';
   const name = document.getElementById('itemNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
   // Empty string is the "Unassigned" option's own value (see
   // populateWorkstreamSelect()) — every other option is a real workstream's
   // id, always non-empty, so this only ever converts that one sentinel back
   // to the same null every other Unassigned check in the app compares against.
-  const workstreamId = document.getElementById('itemWorkstreamSelect').value || null;
-  const categoryId = document.getElementById('itemCategorySelect').value;
+  // A Journey is forced to null regardless of the (hidden) select's value —
+  // it's never assigned to a workstream at all (see openItemModal()'s own
+  // comment on itemWorkstreamField).
+  const workstreamId = savingJourney ? null : (document.getElementById('itemWorkstreamSelect').value || null);
+  // A Journey's category is forced to the reserved one regardless of what
+  // the (disabled, single-option) select reports — savingJourney is the
+  // one source of truth for this, set by openItemModal() for both the new
+  // and edit-existing paths (see editingItemType's own comment).
+  const categoryId = savingJourney ? journeyCategory().id : document.getElementById('itemCategorySelect').value;
   const manualDueDate = document.getElementById('itemDueInput').value || todayStr();
   const manualStartDate = document.getElementById('itemStartInput').value || manualDueDate;
   const actualDate = document.getElementById('itemActualInput').value || null;
@@ -3154,9 +3400,18 @@ function saveItem() {
   const data = { workstreamId, categoryId, name, status, startDate, dueDate, actualDate, milestones, externalDelivery, externalDeliverySpoc, updatedAt: Date.now() };
   let savedItem;
   let prevStatus = null;
+  // Captured before target.milestones is overwritten below — the "Journey
+  // Mapped" milestone's own prior status is what maybeOfferJourneyDecompose()
+  // needs to tell an actual not-complete-to-complete transition apart from
+  // an unrelated save that happens to leave it already complete (same
+  // "capture prevStatus before the mutation" discipline maybeOfferScopeAssign()
+  // already uses for the item's overall status).
+  let prevJourneyMappedStatus = null;
   if (editingItemId) {
     const target = items.find(i => i.id === editingItemId);
     prevStatus = target.status;
+    const oldMapped = target.milestones.find(m => m.name === JOURNEY_MAPPED_MILESTONE);
+    prevJourneyMappedStatus = oldMapped ? oldMapped.status : null;
     // The modal edits a detached copy (editingMilestones) and saves the whole
     // list back at once — stamping every milestone's updatedAt here regardless
     // would make an untouched milestone look freshly edited to a future merge
@@ -3179,17 +3434,24 @@ function saveItem() {
     // similarly only matters at creation — it's what puts a new item at the
     // bottom of its workstream's list rather than wherever dueDate happens
     // to sort it — everything after that is only ever touched by dragging
-    // (see reorderItem()).
+    // (see reorderItem()). itemType is the same shape again: fixed at
+    // creation from editingItemType, never part of `data`, so re-saving an
+    // existing item (Journey or scope) through this modal can never flip its
+    // type. journeyId stays null here — a scope item only ever gets one via
+    // applyJourneyDecompose(), never through this modal.
     const order = items.filter(i => i.workstreamId === workstreamId).length;
-    savedItem = Object.assign({ id: genId(), itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order }, data);
+    savedItem = Object.assign({ id: genId(), itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', itemType: savingJourney ? 'journey' : 'scope', journeyId: null, order }, data);
     items.push(savedItem);
   }
   save(); closeItemModal(); render();
-  showToast('Item saved');
+  showToast(savingJourney ? 'Journey saved' : 'Item saved');
   // Covers the (rarer) path where a Pending item's milestone is flipped to
   // Complete via this full modal's dropdown rather than the board's inline
   // cycleMilestoneStatus() — same trigger, same guard against re-firing.
   maybeOfferScopeAssign(savedItem, prevStatus);
+  // Same shape, for a Journey's own final milestone — see
+  // maybeOfferJourneyDecompose()'s own comment.
+  maybeOfferJourneyDecompose(savedItem, prevJourneyMappedStatus);
 }
 
 // ---------- Quick-add scope items & the Pending category ----------
@@ -3266,9 +3528,11 @@ function openScopeAssignModal(itemId) {
   if (!it) return;
   scopeAssignItemId = itemId;
   populateWorkstreamSelect(it.workstreamId, 'scopeAssignWorkstreamSelect');
-  // The Pending category itself is never an option here — picking a real
-  // category is the whole point of this modal (see applyScopeCategory()).
-  document.getElementById('scopeAssignCategorySelect').innerHTML = categories.filter(c => !c.pending).map(c =>
+  // Neither reserved category (Pending or Journey) is ever an option here —
+  // picking a real, selectable category is the whole point of this modal
+  // (see applyScopeCategory()); Journey is reserved for the Journey item
+  // type, not a destination a plain scope item should land in.
+  document.getElementById('scopeAssignCategorySelect').innerHTML = categories.filter(c => !c.pending && !c.journey).map(c =>
     `<option value="${c.id}">${esc(c.name)}</option>`
   ).join('');
   document.getElementById('scopeAssignModalBg').classList.add('open');
@@ -3304,6 +3568,119 @@ function applyScopeCategory(itemId, workstreamId, categoryId) {
   logReviewChange(it.workstreamId, it.name, null, `Category set to "${categoryById(categoryId).name}"`, { itemId: it.id });
   save(); render();
   showToast('Category assigned');
+}
+
+// ---------- Journey decompose ----------
+// Auto-opens the decompose-into-scope-items prompt the moment a Journey's
+// own final milestone (JOURNEY_MAPPED_MILESTONE) is marked Complete —
+// checked wherever a milestone's status can change (cycleMilestoneStatus(),
+// saveItem()), same "only fire on the actual not-complete-to-complete
+// transition" discipline maybeOfferScopeAssign() uses for its own trigger,
+// so dismissing the modal with "Later" doesn't re-trigger it on some later
+// unrelated save. It stays reachable afterward via the Journey's own status
+// badge instead (see itemRowHtml()'s journeyDecomposeReady).
+function maybeOfferJourneyDecompose(it, prevMilestoneStatus) {
+  if (prevMilestoneStatus !== 'complete' && isJourneyMapped(it)) {
+    openJourneyDecomposeModal(it.id);
+  }
+}
+let journeyDecomposeItemId = null;
+// A working array of {name, workstreamId, categoryId} rows, mirroring
+// editingMinutesActionItems' own "detached array, edited in place, only
+// committed on Save" pattern — nothing here touches `items` until
+// applyJourneyDecompose() runs. workstreamId is its own per-row field, not
+// inherited from the Journey — a Journey has none of its own to inherit
+// (see "Journeys" in CLAUDE.md), so each new scope item needs one picked
+// explicitly, same as any other real scope item does.
+let editingDecomposeItems = [];
+function journeyDecomposeDefaultCategoryId() {
+  // Neither reserved category is ever a valid choice for a new scope item —
+  // same exclusion openScopeAssignModal() applies to its own category picker.
+  const c = categories.find(c => !c.pending && !c.journey);
+  return c ? c.id : categories[0].id;
+}
+function journeyDecomposeBlankRow() {
+  return { name: '', workstreamId: (workstreams[0] && workstreams[0].id) || null, categoryId: journeyDecomposeDefaultCategoryId() };
+}
+function openJourneyDecomposeModal(journeyId) {
+  if (!requireRole('editor')) return;
+  const journey = items.find(i => i.id === journeyId);
+  if (!journey) return;
+  journeyDecomposeItemId = journeyId;
+  // Starts with one blank row rather than none — unlike the Minutes Action
+  // Items table (where zero rows is a normal, valid end state), this modal's
+  // whole purpose is adding at least one scope item, so a first row ready to
+  // type into saves the user the extra click.
+  editingDecomposeItems = [journeyDecomposeBlankRow()];
+  renderJourneyDecomposeRows();
+  document.getElementById('journeyDecomposeModalTitle').textContent = `Decompose "${journey.name}"`;
+  document.getElementById('journeyDecomposeModalBg').classList.add('open');
+}
+function closeJourneyDecomposeModal() {
+  document.getElementById('journeyDecomposeModalBg').classList.remove('open');
+  journeyDecomposeItemId = null;
+  editingDecomposeItems = [];
+}
+function renderJourneyDecomposeRows() {
+  const categoryOptions = categories.filter(c => !c.pending && !c.journey);
+  document.getElementById('journeyDecomposeRows').innerHTML = editingDecomposeItems.map((r, idx) => `
+    <div class="journey-decompose-row">
+      <input type="text" value="${esc(r.name)}" placeholder="Scope item name" oninput="editingDecomposeItems[${idx}].name = this.value">
+      <select onchange="editingDecomposeItems[${idx}].workstreamId = this.value || null">
+        ${workstreams.map(w => `<option value="${w.id}" ${w.id === r.workstreamId ? 'selected' : ''}>${esc(w.name)}</option>`).join('')}
+      </select>
+      <select onchange="editingDecomposeItems[${idx}].categoryId = this.value">
+        ${categoryOptions.map(c => `<option value="${c.id}" ${c.id === r.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+      </select>
+      <button class="row-icon-btn" onclick="removeJourneyDecomposeRow(${idx})" title="Remove"><i class="fa-solid fa-xmark"></i></button>
+    </div>`).join('');
+}
+function addJourneyDecomposeRow() {
+  editingDecomposeItems.push(journeyDecomposeBlankRow());
+  renderJourneyDecomposeRows();
+}
+// The only structural mutation here (row count changes), so it's the only
+// one of the row-level edits that re-renders — same "no re-render on a
+// plain keystroke, only on a shape change" discipline renderMilestonesEditor()
+// already documents for the same reason (focus never gets torn out mid-type).
+function removeJourneyDecomposeRow(idx) {
+  editingDecomposeItems.splice(idx, 1);
+  renderJourneyDecomposeRows();
+}
+// Creates one brand-new scope item per non-blank row, each linked back to
+// the source Journey via journeyId — but, unlike an earlier version of this
+// feature, no longer inheriting its workstream, since a Journey doesn't
+// have one of its own to inherit; each row picks its own instead. Otherwise
+// this is the same creation shape saveInlineQuickAddItem() and saveItem()'s
+// own "new item" branch both use: a freshly-seeded milestone checklist from
+// the row's own category, computed status/date-range from that checklist,
+// and the usual green IT/Business/Budget tag defaults.
+function applyJourneyDecompose() {
+  if (!requireRole('editor')) return;
+  if (!journeyDecomposeItemId) return;
+  const journey = items.find(i => i.id === journeyDecomposeItemId);
+  if (!journey) return;
+  const rows = editingDecomposeItems.filter(r => (r.name || '').trim());
+  if (!rows.length) { showToast('Add at least one scope item', true); return; }
+  rows.forEach(r => {
+    const categoryId = r.categoryId || journeyDecomposeDefaultCategoryId();
+    const workstreamId = r.workstreamId || null;
+    const today = todayStr();
+    const milestones = milestonesForCategory(categoryId, today);
+    const range = computedDateRangeFromMilestones(milestones);
+    const order = items.filter(i => i.workstreamId === workstreamId).length;
+    items.push({
+      id: genId(), workstreamId, categoryId, name: r.name.trim(),
+      status: computedStatusFromMilestones(milestones), actualDate: null,
+      startDate: range ? range.startDate : today, dueDate: range ? range.dueDate : today,
+      milestones, itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
+      itemType: 'scope', journeyId: journey.id,
+      externalDelivery: false, externalDeliverySpoc: null,
+      order, updatedAt: Date.now()
+    });
+  });
+  save(); closeJourneyDecomposeModal(); render();
+  showToast(`${rows.length} scope item${rows.length === 1 ? '' : 's'} added`);
 }
 
 // Drag-and-drop reordering of scope items within a workstream's status-board
@@ -4958,9 +5335,10 @@ function renderAdmin() {
       ${categories.map(c => {
         const count = items.filter(it => it.categoryId === c.id).length;
         const pendingBadge = c.pending ? `<span class="review-ws-badge" style="background:var(--panel-2);color:var(--text-dim)" title="Reserved for the quick-add flow — can't be deleted">Reserved</span>` : '';
+        const journeyBadge = c.journey ? `<span class="review-ws-badge" style="background:var(--panel-2);color:var(--text-dim)" title="Reserved for the Journey item type — can't be deleted">Reserved</span>` : '';
         return `<div class="category-row">
             <span class="category-name">${esc(c.name)}</span>
-            ${pendingBadge}
+            ${pendingBadge}${journeyBadge}
             <span class="category-milestones-preview">${c.milestones.length ? esc(c.milestones.join(' → ')) : 'No milestones in template'}</span>
             <span class="milestone-count-badge">${count} item${count === 1 ? '' : 's'}</span>
             <span class="item-actions" style="display:flex">
@@ -5204,12 +5582,15 @@ function deleteCategoryFromModal() {
   // would strand any item still waiting on openScopeAssignModal(), so it's
   // never deletable regardless of how many other categories exist.
   if (cat.pending) { showToast('The Pending category can\'t be deleted', true); return; }
-  if (categories.filter(c => !c.pending).length <= 1) { showToast('At least one category is required', true); return; }
+  // Same reservation, for the same reason, on the Journey category — deleting
+  // it would strand every Journey's checklist with nothing to reference.
+  if (cat.journey) { showToast('The Journey category can\'t be deleted', true); return; }
+  if (categories.filter(c => !c.pending && !c.journey).length <= 1) { showToast('At least one category is required', true); return; }
   closeCategoryModal();
   const count = items.filter(it => it.categoryId === catId).length;
-  // Never falls back to Pending — a real item losing its category should
-  // land on another real one, not in the quick-add checklist's placeholder.
-  const fallback = categories.find(c => c.id !== catId && !c.pending);
+  // Never falls back to Pending or Journey — a real item losing its category
+  // should land on another real one, not in a reserved placeholder.
+  const fallback = categories.find(c => c.id !== catId && !c.pending && !c.journey);
   const body = (count ? `${count} item${count === 1 ? '' : 's'} using this category will move to "${fallback.name}". ` : '') + 'This cannot be undone.';
   openConfirmModal({
     title: `Delete "${cat.name}"?`,
@@ -5470,11 +5851,11 @@ function closeImportModal() {
 // "exists" locally (the fresh seed's own untouched one) and mergeData()'s
 // additive logic treats that as nothing to do.
 function isFreshLocalState() {
-  // The reserved Pending category (see pendingCategory()) always exists, even
-  // in a truly fresh programme, so it's excluded here — only a real,
-  // user-added category (beyond the out-of-the-box DEFAULT_CATEGORIES set)
-  // counts as "not fresh anymore".
-  return items.length === 0 && workstreams.length <= 1 && categories.filter(c => !c.pending).length <= DEFAULT_CATEGORIES.length && programme.name === 'New Programme';
+  // The reserved Pending and Journey categories (see pendingCategory()/
+  // journeyCategory()) always exist, even in a truly fresh programme, so
+  // both are excluded here — only a real, user-added category (beyond the
+  // out-of-the-box DEFAULT_CATEGORIES set) counts as "not fresh anymore".
+  return items.length === 0 && workstreams.length <= 1 && categories.filter(c => !c.pending && !c.journey).length <= DEFAULT_CATEGORIES.length && programme.name === 'New Programme';
 }
 // Wholesale replace from a file's contents — used only when
 // isFreshLocalState() is true, as the alternative to mergeData() in that one
