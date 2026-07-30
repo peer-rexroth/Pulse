@@ -1626,13 +1626,17 @@ test('actionLogHtml\'s header and data rows agree on where Owner/Due Date/Source
 
 // Regression test: the same shape of bug as actionLogHtml()'s header above,
 // but in milestoneHeaderHtml() — a visible "Confirm" text label used to sit
-// at column 12 in the header row, while every milestone data row below it
-// (milestoneRowsHtml()) only ever puts a bare icon there. Since each row is
-// its own independent CSS Grid instance and column 2 is the only flexible
-// track, the wider text label consumed more of the header's own width than
-// the data rows' icon did — visibly shifting Due/Actual/Status/Confirm out
-// of alignment (reported via screenshot). Fixed the same way: an invisible
-// placeholder matching the real icon, not a text label.
+// at the review-only trailing column in the header row, while every
+// milestone data row below it (milestoneRowsHtml()) only ever puts a bare
+// icon there. Since each row is its own independent CSS Grid instance and
+// column 2 is the only flexible track, the wider text label consumed more
+// of the header's own width than the data rows' icon did — visibly shifting
+// Due/Actual/Status/Confirm out of alignment (reported via screenshot).
+// Fixed the same way: an invisible placeholder matching the real icon, not
+// a text label. That trailing column was column 12 when this was first
+// fixed — now column 11, after --item-grid-cols dropped its always-blank
+// "Actual" placeholder track (an explicit later user request, "remove
+// column 6") and every explicit grid-column reference shifted down by one.
 test('milestoneHeaderHtml\'s Confirm column is an (invisible) icon placeholder, not a text label, so it stays aligned with the data rows\' own icon-only column', function () {
   const m = { id: genId(), name: 'M1', dueDate: todayStr(), status: 'not-started', actualDate: null };
   const it = addReviewItem({ name: 'Has milestone', milestones: [m] });
@@ -1643,8 +1647,8 @@ test('milestoneHeaderHtml\'s Confirm column is an (invisible) icon placeholder, 
   renderReview();
   const html = document.getElementById('main').innerHTML;
   const headerRow = html.slice(html.indexOf('milestone-header'), html.indexOf('milestone-header') + 500);
-  assertIncludes(headerRow, 'grid-column:12', 'the header row must place something at column 12 to match the data rows\' implicit toggle column');
-  assertIncludes(headerRow, 'visibility:hidden', 'the col-12 placeholder should reserve space without actually being visible');
+  assertIncludes(headerRow, 'grid-column:11', 'the header row must place something at the same trailing column the data rows\' implicit toggle column uses');
+  assertIncludes(headerRow, 'visibility:hidden', 'the placeholder should reserve space without actually being visible');
   assertNotIncludes(headerRow, '>Confirm<', 'a visible text label here is wider than the data rows\' icon and would reintroduce the misalignment');
 });
 
