@@ -2,7 +2,8 @@ function addItem(overrides) {
   const it = Object.assign({
     id: genId(), workstreamId: workstreams[0].id,
     name: 'Item', owner: '', notes: '', status: 'green',
-    startDate: todayStr(), dueDate: todayStr(), milestones: []
+    startDate: todayStr(), dueDate: todayStr(), milestones: [],
+    itemType: 'scope', journeyId: null
   }, overrides || {});
   items.push(it);
   return it;

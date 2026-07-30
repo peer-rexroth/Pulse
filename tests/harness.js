@@ -196,7 +196,7 @@ async function run(argv) {
   // role gating set userRole to a lower tier themselves (see role.test.js).
   userRole = 'admin';
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
-  editingItemType = 'scope'; journeyDecomposeItemId = null; editingDecomposeItems = [];
+  editingItemType = 'scope'; journeyConnectItemId = null;
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set();
   unassignedQuickAddOpen = false;
   editingCategoryId = null; editingCategoryMilestones = [];

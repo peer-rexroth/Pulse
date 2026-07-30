@@ -11,7 +11,7 @@ test('seedDefaults creates the out-of-the-box DEFAULT_CATEGORIES, plus the reser
   const journeyCat = categories.find(c => c.journey);
   assertEqual(journeyCat.name, 'Journey');
   assertTrue(journeyCat.journey);
-  assertDeepEqual(journeyCat.milestones, JOURNEY_DEFAULT_MILESTONES);
+  assertDeepEqual(journeyCat.milestones, [], 'a Journey has no milestone checklist of its own');
 });
 
 test('normalizeData seeds the default categories if none exist, and always ensures a Pending and a Journey one too', function () {

@@ -1,28 +1,22 @@
 // ---------- Journeys ----------
 // A Journey is not a separate top-level data shape — it's a plain item (see
 // "Data model" in CLAUDE.md) with itemType:'journey', forced into the
-// reserved Journey category (journeyCategory()/isJourneyCategory()) seeded
-// with JOURNEY_DEFAULT_MILESTONES. A Journey is deliberately never assigned
-// to a workstream at all (workstreamId is always null — an explicit user
-// correction: "Journey should not be assigned to workstreams. They are
-// overarching"), which is also why it gets its own sidebar-less
-// #journeysBody container and its own topbar button outside the shared
-// .view-tabs pill, mirroring Admin mode's own "not workstream-scoped"
-// treatment. Marking a Journey's last milestone (JOURNEY_MAPPED_MILESTONE)
-// Complete auto-opens a modal to decompose it into one or more linked scope
-// items (journeyId) — each row in that modal picks its own workstream,
-// since the Journey has none to inherit.
+// reserved Journey category (journeyCategory()/isJourneyCategory()). Unlike
+// an earlier version of this feature, a Journey has no milestone checklist
+// of its own at all (the reserved category's own template is empty) and is
+// never assigned to a workstream (workstreamId is always null — it's
+// overarching). Instead of decomposing into new scope items, a Journey
+// *connects* to existing ones (item.journeyId, set/cleared via
+// toggleJourneyConnection() in the "Connect scope items" modal) — and its
+// own "end date" is computed live, at render time, from the latest
+// milestone (due or actual) date across every connected item
+// (computeJourneyDateRange()), never persisted or manually editable.
 
 function addJourney(name) {
   openItemModal(null, null, 'journey');
   document.getElementById('itemNameInput').value = name || 'New Journey';
   saveItem();
   return items[items.length - 1];
-}
-
-function completeJourneyMappedMilestone(it) {
-  const m = it.milestones.find(m => m.name === 'Journey Mapped');
-  while (m.status !== 'complete') cycleMilestoneStatus(it.id, m.id);
 }
 
 // ---------- Reserved category ----------
@@ -35,42 +29,39 @@ test('journeyCategory/isJourneyCategory find the one category flagged journey:tr
   assertFalse(isJourneyCategory(categories.find(c => c.pending).id));
 });
 
-test('the reserved Journey category is seeded with the 4 fixed milestones, in order', function () {
-  assertDeepEqual(journeyCategory().milestones, ['Journey Defined', 'Journey Approved', 'High-level Architecture Approved', 'Journey Mapped']);
+test('the reserved Journey category has no milestone template — a Journey has no checklist of its own', function () {
+  assertDeepEqual(journeyCategory().milestones, []);
 });
 
 // ---------- Creating a Journey ----------
 
-test('openItemModal(null, null, "journey") seeds a new Journey from the reserved category, with no workstream field shown', function () {
+test('openItemModal(null, null, "journey") seeds a new Journey with no milestones, no workstream field, and a locked category', function () {
   openItemModal(null, null, 'journey');
   assertEqual(document.getElementById('itemModalTitle').textContent, 'New Journey');
   assertEqual(editingItemType, 'journey');
-  assertDeepEqual(editingMilestones.map(m => m.name), JOURNEY_DEFAULT_MILESTONES);
+  assertDeepEqual(editingMilestones, []);
   assertEqual(document.getElementById('itemWorkstreamField').style.display, 'none', 'a Journey is never assigned to a workstream, so the field is hidden outright');
+  assertEqual(document.getElementById('itemMilestonesField').style.display, 'none', 'a Journey has no milestone checklist, so the whole field is hidden');
   const catHtml = document.getElementById('itemCategorySelect').innerHTML;
   assertIncludes(catHtml, `value="${journeyCategory().id}"`);
-  assertNotIncludes(catHtml, `value="${categories.find(c => c.name === 'Development').id}"`, 'no real category should be offered for a Journey');
   assertTrue(document.getElementById('itemCategorySelect').disabled, 'a Journey\'s category is always locked, not just below Editor');
 });
 
-test('saveItem creates a new Journey with itemType, the reserved category, no workstream, and its milestone checklist', function () {
+test('saveItem creates a new Journey with itemType, the reserved category, no workstream, and zero milestones', function () {
   const it = addJourney('Customer Onboarding');
   assertEqual(it.itemType, 'journey');
   assertEqual(it.categoryId, journeyCategory().id);
   assertEqual(it.workstreamId, null, 'a Journey is overarching — never assigned to a workstream');
   assertEqual(it.journeyId, null);
-  assertDeepEqual(it.milestones.map(m => m.name), JOURNEY_DEFAULT_MILESTONES);
-  it.milestones.forEach(m => assertEqual(m.status, 'not-started'));
+  assertDeepEqual(it.milestones, []);
 });
 
-test('a plain new item never picks up itemType:"journey" and still shows the Workstream field — openItemModal with no third argument defaults to a scope item', function () {
+test('a plain new item never picks up itemType:"journey" and still shows the Workstream/Milestones fields', function () {
   openItemModal(null, workstreams[0].id);
   assertEqual(editingItemType, 'scope');
   assertFalse(document.getElementById('itemWorkstreamField').style.display === 'none');
+  assertFalse(document.getElementById('itemMilestonesField').style.display === 'none');
   document.getElementById('itemNameInput').value = 'Ordinary item';
-  // The fake <select>'s innerHTML "selected" marker doesn't sync .value the
-  // way a real browser would (documented mock limitation) — set directly,
-  // same convention as every other test that saves a select's value.
   document.getElementById('itemWorkstreamSelect').value = workstreams[0].id;
   saveItem();
   const it = items[items.length - 1];
@@ -79,13 +70,14 @@ test('a plain new item never picks up itemType:"journey" and still shows the Wor
   assertFalse(document.getElementById('itemCategorySelect').disabled);
 });
 
-test('editing an existing Journey keeps its title, locked category, hidden workstream field, and itemType', function () {
+test('editing an existing Journey keeps its title, locked category, hidden workstream/milestones fields, and itemType', function () {
   const it = addJourney('Vendor Integration');
   openItemModal(it.id);
   assertEqual(document.getElementById('itemModalTitle').textContent, 'Edit Journey');
   assertEqual(editingItemType, 'journey');
   assertTrue(document.getElementById('itemCategorySelect').disabled);
   assertEqual(document.getElementById('itemWorkstreamField').style.display, 'none');
+  assertEqual(document.getElementById('itemMilestonesField').style.display, 'none');
   document.getElementById('itemNameInput').value = 'Vendor Integration (renamed)';
   saveItem();
   assertEqual(it.name, 'Vendor Integration (renamed)');
@@ -131,184 +123,208 @@ test('itemRowHtml shows a Journey badge icon in the name cell for a Journey, not
   assertNotIncludes(itemRowHtml(scope), 'journey-type-badge');
 });
 
-// ---------- isJourneyMapped / the decompose trigger ----------
-
-test('isJourneyMapped is false until the "Journey Mapped" milestone is specifically Complete', function () {
-  const it = addJourney();
-  assertFalse(isJourneyMapped(it));
-  const other = it.milestones.find(m => m.name === 'Journey Defined');
-  cycleMilestoneStatus(it.id, other.id); // -> green, still not the right milestone
-  assertFalse(isJourneyMapped(it));
+test('itemRowHtml shows a "Connect scope items" icon for a Journey, not for a scope item', function () {
+  const journey = addJourney();
+  const scope = addItem({ name: 'Ordinary scope item' });
+  assertIncludes(itemRowHtml(journey), `onclick="openJourneyConnectModal('${journey.id}')"`);
+  assertNotIncludes(itemRowHtml(scope), 'openJourneyConnectModal');
 });
 
-test('isJourneyMapped is false for a plain scope item even if it happens to have a same-named milestone', function () {
-  const it = addItem({ name: 'Coincidence', milestones: [{ id: 'm1', name: 'Journey Mapped', dueDate: todayStr(), status: 'complete', actualDate: null }] });
-  assertFalse(isJourneyMapped(it));
+test('the Connect-scope-items icon is omitted below Editor, same as Edit/Delete', function () {
+  const journey = addJourney();
+  userRole = 'reviewer';
+  assertNotIncludes(itemRowHtml(journey), 'openJourneyConnectModal');
 });
 
-test('completing the "Journey Mapped" milestone via cycleMilestoneStatus auto-opens the decompose modal', function () {
-  const it = addJourney();
-  journeyDecomposeItemId = null;
-  completeJourneyMappedMilestone(it);
-  assertTrue(isJourneyMapped(it));
-  assertEqual(journeyDecomposeItemId, it.id);
-  assertTrue(document.getElementById('journeyDecomposeModalBg').classList.contains('open'));
+// ---------- computeJourneyDateRange / connectedScopeItems ----------
+
+test('connectedScopeItems returns only items whose journeyId matches, sorted by order', function () {
+  const journey = addJourney();
+  const other = addJourney('Other journey');
+  const a = addItem({ name: 'A', journeyId: journey.id, order: 1 });
+  const b = addItem({ name: 'B', journeyId: journey.id, order: 0 });
+  addItem({ name: 'Unconnected' });
+  addItem({ name: 'Connected elsewhere', journeyId: other.id });
+  assertDeepEqual(connectedScopeItems(journey.id).map(it => it.name), ['B', 'A']);
 });
 
-test('completing an unrelated milestone on a Journey never triggers the decompose modal', function () {
-  const it = addJourney();
-  journeyDecomposeItemId = null; // module-level state, not reset between tests by resetState() — same convention pending.test.js uses for scopeAssignItemId
-  const defined = it.milestones.find(m => m.name === 'Journey Defined');
-  cycleMilestoneStatus(it.id, defined.id); cycleMilestoneStatus(it.id, defined.id);
-  cycleMilestoneStatus(it.id, defined.id); cycleMilestoneStatus(it.id, defined.id); // -> complete
-  assertEqual(journeyDecomposeItemId, null);
+test('computeJourneyDateRange returns null when nothing is connected', function () {
+  const journey = addJourney();
+  assertEqual(computeJourneyDateRange(journey.id), null);
 });
 
-test('the decompose modal does not re-open on an unrelated save once "Journey Mapped" is already Complete', function () {
-  const it = addJourney();
-  completeJourneyMappedMilestone(it);
-  closeJourneyDecomposeModal();
-  const defined = it.milestones.find(m => m.name === 'Journey Defined');
-  cycleMilestoneStatus(it.id, defined.id); // an unrelated milestone change
-  assertEqual(journeyDecomposeItemId, null, 'should not re-trigger just because some other milestone changed');
+test('computeJourneyDateRange spans the earliest/latest due-or-actual date across every connected item\'s milestones', function () {
+  const journey = addJourney();
+  addItem({
+    name: 'Item A', journeyId: journey.id,
+    milestones: [
+      { id: 'm1', name: 'X', dueDate: '2026-03-01', status: 'not-started', actualDate: null, notApplicable: false },
+      { id: 'm2', name: 'Y', dueDate: '2026-05-01', status: 'not-started', actualDate: '2026-06-15', notApplicable: false }
+    ]
+  });
+  addItem({
+    name: 'Item B', journeyId: journey.id,
+    milestones: [{ id: 'm3', name: 'Z', dueDate: '2026-01-10', status: 'not-started', actualDate: null, notApplicable: false }]
+  });
+  const range = computeJourneyDateRange(journey.id);
+  assertEqual(range.startDate, '2026-01-10');
+  assertEqual(range.dueDate, '2026-06-15');
 });
 
-test('cycling some other milestone on a Journey whose "Journey Mapped" is already complete does not re-open the modal (regression: prevJourneyMappedStatus must key off the right milestone, not the one being cycled)', function () {
-  const it = addJourney();
-  completeJourneyMappedMilestone(it);
-  closeJourneyDecomposeModal();
-  journeyDecomposeItemId = null;
-  const approved = it.milestones.find(m => m.name === 'Journey Approved');
-  cycleMilestoneStatus(it.id, approved.id);
-  assertEqual(journeyDecomposeItemId, null);
+test('computeJourneyDateRange excludes a notApplicable milestone\'s dates', function () {
+  const journey = addJourney();
+  addItem({
+    name: 'Item A', journeyId: journey.id,
+    milestones: [
+      { id: 'm1', name: 'Skip', dueDate: '2026-01-01', status: 'not-started', actualDate: null, notApplicable: true },
+      { id: 'm2', name: 'Keep', dueDate: '2026-04-01', status: 'not-started', actualDate: null, notApplicable: false }
+    ]
+  });
+  const range = computeJourneyDateRange(journey.id);
+  assertEqual(range.startDate, '2026-04-01');
+  assertEqual(range.dueDate, '2026-04-01');
 });
 
-test('marking "Journey Mapped" Complete via the full item modal\'s dropdown also triggers the decompose modal', function () {
-  const it = addJourney();
-  openItemModal(it.id);
-  const idx = editingMilestones.findIndex(m => m.name === 'Journey Mapped');
-  editingMilestones[idx].status = 'complete';
-  journeyDecomposeItemId = null;
-  saveItem();
-  assertEqual(journeyDecomposeItemId, it.id);
-  assertTrue(document.getElementById('journeyDecomposeModalBg').classList.contains('open'));
+test('computeJourneyDateRange falls back to a connected item\'s own start/due dates when it has no milestones', function () {
+  const journey = addJourney();
+  addItem({ name: 'No milestones', journeyId: journey.id, milestones: [], startDate: '2026-02-01', dueDate: '2026-02-20' });
+  const range = computeJourneyDateRange(journey.id);
+  assertEqual(range.startDate, '2026-02-01');
+  assertEqual(range.dueDate, '2026-02-20');
 });
 
-test('itemRowHtml routes a mapped Journey\'s status badge to openJourneyDecomposeModal instead of openItemModal', function () {
-  const it = addJourney();
-  completeJourneyMappedMilestone(it);
-  closeJourneyDecomposeModal();
-  const html = itemRowHtml(it);
-  assertIncludes(html, `onclick="openJourneyDecomposeModal('${it.id}')"`);
+test('itemRowHtml shows the computed range for a Journey, and a placeholder when nothing is connected', function () {
+  const journey = addJourney();
+  assertIncludes(itemRowHtml(journey), '—');
+  addItem({ name: 'Connected', journeyId: journey.id, startDate: '2026-07-01', dueDate: '2026-07-15' });
+  const html = itemRowHtml(journey);
+  assertIncludes(html, fmtDateY('2026-07-01'));
+  assertIncludes(html, fmtDateY('2026-07-15'));
 });
 
-test('itemRowHtml uses the normal openItemModal status badge for a not-yet-mapped Journey', function () {
-  const it = addJourney();
-  const html = itemRowHtml(it);
-  assertIncludes(html, `onclick="openItemModal('${it.id}')"`);
-  assertNotIncludes(html, 'openJourneyDecomposeModal');
+test('the item modal shows a computed Plan-dates badge for an existing Journey, sourced from connected items', function () {
+  const journey = addJourney();
+  addItem({ name: 'Connected', journeyId: journey.id, startDate: '2026-08-01', dueDate: '2026-08-10' });
+  openItemModal(journey.id);
+  assertEqual(document.getElementById('itemDatesManual').style.display, 'none');
+  assertEqual(document.getElementById('itemDatesComputed').style.display, '');
+  assertIncludes(document.getElementById('itemDatesComputedBadge').textContent, fmtDateY('2026-08-01'));
 });
 
-// ---------- The decompose modal itself ----------
-
-test('openJourneyDecomposeModal seeds one blank row (defaulting to the first workstream) and sets the modal title to the Journey\'s name', function () {
-  const it = addJourney('Supplier Onboarding');
-  openJourneyDecomposeModal(it.id);
-  assertEqual(editingDecomposeItems.length, 1);
-  assertEqual(editingDecomposeItems[0].name, '');
-  assertEqual(editingDecomposeItems[0].workstreamId, workstreams[0].id);
-  assertEqual(document.getElementById('journeyDecomposeModalTitle').textContent, 'Decompose "Supplier Onboarding"');
+test('the item modal shows "No connected scope items yet" for a brand-new Journey (no id to look up connections by)', function () {
+  openItemModal(null, null, 'journey');
+  assertEqual(document.getElementById('itemDatesComputedBadge').textContent, 'No connected scope items yet');
 });
 
-test('addJourneyDecomposeRow/removeJourneyDecomposeRow grow and shrink the working rows array', function () {
-  const it = addJourney();
-  openJourneyDecomposeModal(it.id);
-  addJourneyDecomposeRow();
-  assertEqual(editingDecomposeItems.length, 2);
-  removeJourneyDecomposeRow(0);
-  assertEqual(editingDecomposeItems.length, 1);
+test('the item modal still shows a manual Status select for a Journey (no milestones to compute it from)', function () {
+  const journey = addJourney();
+  openItemModal(journey.id);
+  assertEqual(document.getElementById('itemStatusSelect').style.display, '');
+  assertEqual(document.getElementById('itemStatusComputed').style.display, 'none');
 });
 
-test('renderJourneyDecomposeRows offers every real workstream, and never offers Pending or Journey as a row\'s category choice', function () {
-  const it = addJourney();
-  openJourneyDecomposeModal(it.id);
-  const html = document.getElementById('journeyDecomposeRows').innerHTML;
-  assertIncludes(html, `value="${workstreams[0].id}"`);
-  assertNotIncludes(html, `value="${categories.find(c => c.pending).id}"`);
-  assertNotIncludes(html, `value="${journeyCategory().id}"`);
-});
+// ---------- The connect modal ----------
 
-test('applyJourneyDecompose creates one linked scope item per non-blank row, using each row\'s own workstream', function () {
+test('openJourneyConnectModal sets the title and populates the list, grouped by workstream', function () {
   const secondWs = { id: genId(), name: 'Second', color: 'teal', order: 1 };
   workstreams.push(secondWs);
-  const it = addJourney('Onboarding');
-  const devCat = categories.find(c => c.name === 'Development');
-  openJourneyDecomposeModal(it.id);
-  editingDecomposeItems[0].name = 'Design the intake form';
-  editingDecomposeItems[0].workstreamId = workstreams[0].id;
-  editingDecomposeItems[0].categoryId = devCat.id;
-  addJourneyDecomposeRow();
-  editingDecomposeItems[1].name = 'Build the API';
-  editingDecomposeItems[1].workstreamId = secondWs.id;
-  const before = items.length;
-  applyJourneyDecompose();
-  assertEqual(items.length, before + 2);
-  const created = items.slice(-2);
-  created.forEach(ci => {
-    assertEqual(ci.itemType, 'scope');
-    assertEqual(ci.journeyId, it.id);
-  });
-  assertEqual(created[0].name, 'Design the intake form');
-  assertEqual(created[0].workstreamId, workstreams[0].id);
-  assertEqual(created[0].categoryId, devCat.id);
-  assertEqual(created[1].workstreamId, secondWs.id);
-  assertDeepEqual(created[1].milestones.map(m => m.name), DEFAULT_CATEGORY_MILESTONES);
-  assertFalse(document.getElementById('journeyDecomposeModalBg').classList.contains('open'));
+  const journey = addJourney('Supplier Onboarding');
+  addItem({ name: 'In first ws' });
+  addItem({ name: 'In second ws', workstreamId: secondWs.id });
+  openJourneyConnectModal(journey.id);
+  assertEqual(document.getElementById('journeyConnectModalTitle').textContent, 'Connect scope items to "Supplier Onboarding"');
+  const html = document.getElementById('journeyConnectList').innerHTML;
+  assertIncludes(html, workstreams[0].name);
+  assertIncludes(html, 'Second');
+  assertIncludes(html, 'In first ws');
+  assertIncludes(html, 'In second ws');
 });
 
-test('applyJourneyDecompose skips blank rows and refuses to save with nothing to add', function () {
-  const it = addJourney();
-  openJourneyDecomposeModal(it.id);
-  addJourneyDecomposeRow();
-  editingDecomposeItems[1].name = '   '; // still blank after trimming
-  const before = items.length;
-  applyJourneyDecompose();
-  assertEqual(items.length, before, 'a modal with only blank rows should add nothing');
-  assertTrue(document.getElementById('journeyDecomposeModalBg').classList.contains('open'), 'the modal should stay open so the user can actually type something');
+test('renderJourneyConnectList groups an Unassigned scope item under its own "Unassigned" heading', function () {
+  const journey = addJourney();
+  items.push({ id: genId(), workstreamId: null, categoryId: categories.find(c => c.pending).id, itemType: 'scope', name: 'Needs triage', dueDate: todayStr(), startDate: todayStr(), milestones: [], order: 0 });
+  openJourneyConnectModal(journey.id);
+  const html = document.getElementById('journeyConnectList').innerHTML;
+  assertIncludes(html, 'Unassigned');
+  assertIncludes(html, 'Needs triage');
 });
 
-test('closeJourneyDecomposeModal ("Later") discards the working rows without creating anything', function () {
-  const it = addJourney();
-  openJourneyDecomposeModal(it.id);
-  editingDecomposeItems[0].name = 'Abandoned row';
-  const before = items.length;
-  closeJourneyDecomposeModal();
-  assertEqual(items.length, before);
-  assertEqual(journeyDecomposeItemId, null);
-  assertEqual(editingDecomposeItems.length, 0);
+test('renderJourneyConnectList checks a scope item already connected to this Journey', function () {
+  const journey = addJourney();
+  const connected = addItem({ name: 'Already connected', journeyId: journey.id });
+  openJourneyConnectModal(journey.id);
+  const html = document.getElementById('journeyConnectList').innerHTML;
+  assertIncludes(html, `checked onchange="toggleJourneyConnection('${connected.id}', this.checked)"`);
 });
 
-test('applyJourneyDecompose is blocked below Editor', function () {
-  const it = addJourney();
+test('renderJourneyConnectList excludes a scope item already connected to a *different* Journey', function () {
+  const journey = addJourney('This journey');
+  const other = addJourney('Other journey');
+  addItem({ name: 'Taken', journeyId: other.id });
+  openJourneyConnectModal(journey.id);
+  assertNotIncludes(document.getElementById('journeyConnectList').innerHTML, 'Taken');
+});
+
+test('renderJourneyConnectList shows a placeholder when there are no available scope items', function () {
+  const journey = addJourney();
+  openJourneyConnectModal(journey.id);
+  assertIncludes(document.getElementById('journeyConnectList').innerHTML, 'No available scope items yet.');
+});
+
+test('toggleJourneyConnection sets and clears journeyId directly', function () {
+  const journey = addJourney();
+  const it = addItem({ name: 'Target' });
+  openJourneyConnectModal(journey.id);
+  toggleJourneyConnection(it.id, true);
+  assertEqual(it.journeyId, journey.id);
+  toggleJourneyConnection(it.id, false);
+  assertEqual(it.journeyId, null);
+});
+
+test('toggleJourneyConnection re-renders the still-open modal list to reflect the new state', function () {
+  const journey = addJourney();
+  const it = addItem({ name: 'Target item' });
+  openJourneyConnectModal(journey.id);
+  toggleJourneyConnection(it.id, true);
+  assertIncludes(document.getElementById('journeyConnectList').innerHTML, `checked onchange="toggleJourneyConnection('${it.id}', this.checked)"`);
+});
+
+test('toggleJourneyConnection is blocked below Editor', function () {
+  const journey = addJourney();
+  const it = addItem({ name: 'Target' });
   userRole = 'reviewer';
-  openJourneyDecomposeModal(it.id); // returns immediately, requireRole guarded
-  assertFalse(document.getElementById('journeyDecomposeModalBg').classList.contains('open'));
+  toggleJourneyConnection(it.id, true);
+  assertEqual(it.journeyId, null);
+});
+
+test('openJourneyConnectModal is blocked below Editor', function () {
+  const journey = addJourney();
+  userRole = 'reviewer';
+  openJourneyConnectModal(journey.id);
+  assertFalse(document.getElementById('journeyConnectModalBg').classList.contains('open'));
+});
+
+test('closeJourneyConnectModal clears journeyConnectItemId', function () {
+  const journey = addJourney();
+  openJourneyConnectModal(journey.id);
+  closeJourneyConnectModal();
+  assertEqual(journeyConnectItemId, null);
+  assertFalse(document.getElementById('journeyConnectModalBg').classList.contains('open'));
 });
 
 // ---------- The "From Journey" backlink in the item modal ----------
 
-test('openItemModal shows a read-only "From Journey" line for a scope item created via decompose', function () {
+test('openItemModal shows a read-only "From Journey" line for a scope item connected to one', function () {
   const journey = addJourney('Payments Revamp');
-  openJourneyDecomposeModal(journey.id);
-  editingDecomposeItems[0].name = 'Integrate gateway';
-  applyJourneyDecompose();
-  const created = items[items.length - 1];
-  openItemModal(created.id);
+  const it = addItem({ name: 'Integrate gateway' });
+  openJourneyConnectModal(journey.id); // toggleJourneyConnection() requires the modal's own journeyConnectItemId to be set first
+  toggleJourneyConnection(it.id, true);
+  openItemModal(it.id);
   assertEqual(document.getElementById('itemJourneyLinkField').style.display, '');
   assertEqual(document.getElementById('itemJourneyLinkBadge').textContent, 'Payments Revamp');
 });
 
-test('openItemModal hides the "From Journey" line for an ordinary scope item', function () {
+test('openItemModal hides the "From Journey" line for an ordinary, unconnected scope item', function () {
   const it = addItem({ name: 'No journey here' });
   openItemModal(it.id);
   assertEqual(document.getElementById('itemJourneyLinkField').style.display, 'none');
@@ -381,8 +397,8 @@ test('setMode("journeys") is a valid mode, renders the sidebar-less journeysBody
 
 test('allJourneys returns only itemType:"journey" items, sorted by order, regardless of any workstream', function () {
   addItem({ name: 'Scope item, not a journey' });
-  const j1 = addJourney('First Journey');
-  const j2 = addJourney('Second Journey');
+  addJourney('First Journey');
+  addJourney('Second Journey');
   const names = allJourneys().map(j => j.name);
   assertDeepEqual(names, ['First Journey', 'Second Journey']);
 });
