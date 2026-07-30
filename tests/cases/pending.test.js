@@ -4,7 +4,7 @@
 // unassignedSectionHtml()) is a deliberately minimal, name-only capture —
 // no modal, no workstream picker. The new item is seeded with no workstream
 // at all (workstreamId: null — "Unassigned") and straight into the reserved
-// Pending category with its one milestone, "Scope item confirmed". Marking
+// Pending category with its one milestone, "Scope Item Confirmed". Marking
 // that milestone Complete pops up openScopeAssignModal() to pick the item's
 // real workstream/category together, which applyScopeCategory() then applies.
 
@@ -22,7 +22,7 @@ test('openInlineQuickAdd/saveInlineQuickAddItem creates an Unassigned item in th
   assertEqual(it.workstreamId, null);
   assertTrue(isPendingCategory(it.categoryId));
   assertEqual(it.milestones.length, 1);
-  assertEqual(it.milestones[0].name, 'Scope item confirmed');
+  assertEqual(it.milestones[0].name, 'Scope Item Confirmed');
   assertEqual(it.milestones[0].status, 'not-started');
   assertEqual(it.status, 'not-started');
   assertFalse(unassignedQuickAddOpen, 'the input should have closed back to the button after saving');
@@ -67,7 +67,7 @@ test('openInlineQuickAdd/saveInlineQuickAddItem are blocked below Editor', funct
   assertFalse(unassignedQuickAddOpen);
 });
 
-test('marking a Pending item\'s "Scope item confirmed" milestone Complete auto-opens the scope-assign modal', function () {
+test('marking a Pending item\'s "Scope Item Confirmed" milestone Complete auto-opens the scope-assign modal', function () {
   const it = addPendingItem();
   const mId = it.milestones[0].id;
   scopeAssignItemId = null;
@@ -173,6 +173,48 @@ test('renderMilestonesEditor renders a Pending item\'s Remove button as inert, n
   openItemModal(it.id);
   const html = document.getElementById('milestonesEditor').innerHTML;
   assertNotIncludes(html, 'onclick="removeMilestoneRow', 'no clickable Remove control should render for a Pending item\'s milestone');
+});
+
+// Regression tests for an explicit user request: "do not allow to disable
+// the one 'Scope Item Confirmed' milestone for Pending tasks" — marking it
+// Not Applicable would clear its Due/Actual dates and freeze its status
+// badge, permanently stranding the item in Pending with no way to trigger
+// maybeOfferScopeAssign() at all.
+
+test('toggleMilestoneNotApplicable refuses to mark a Pending item\'s milestone Not Applicable, from the status board', function () {
+  const it = addPendingItem();
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id);
+  assertFalse(it.milestones[0].notApplicable, 'the toggle must be blocked while the item is still Pending');
+});
+
+test('milestoneRowsHtml renders a Pending item\'s Not Applicable toggle as inert, not clickable', function () {
+  const it = addPendingItem();
+  expandedItemIds.add(it.id);
+  const html = milestoneRowsHtml(it);
+  assertNotIncludes(html, 'onclick="toggleMilestoneNotApplicable', 'no clickable N/A toggle should render for a Pending item\'s milestone');
+});
+
+test('toggleEditingMilestoneNotApplicable refuses to mark a Pending item\'s milestone Not Applicable, from the item modal', function () {
+  const it = addPendingItem();
+  openItemModal(it.id);
+  toggleEditingMilestoneNotApplicable(0);
+  assertFalse(editingMilestones[0].notApplicable, 'the toggle must be blocked while the item is still Pending');
+});
+
+test('renderMilestonesEditor renders a Pending item\'s Not Applicable toggle as inert, not clickable', function () {
+  const it = addPendingItem();
+  openItemModal(it.id);
+  const html = document.getElementById('milestonesEditor').innerHTML;
+  assertNotIncludes(html, 'onclick="toggleEditingMilestoneNotApplicable', 'no clickable N/A toggle should render for a Pending item\'s milestone');
+});
+
+test('the Not Applicable toggle works normally again once a Pending item has been scope-assigned to a real category', function () {
+  const it = addPendingItem();
+  const realCat = categories.find(c => !c.pending);
+  applyScopeCategory(it.id, workstreams[0].id, realCat.id);
+  const mId = it.milestones[0].id;
+  toggleMilestoneNotApplicable(it.id, mId);
+  assertTrue(it.milestones[0].notApplicable, 'the toggle should work normally once the item has a real category');
 });
 
 test('removeMilestoneRow works normally on a non-Pending item\'s milestones', function () {

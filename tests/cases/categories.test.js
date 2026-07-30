@@ -7,7 +7,7 @@ test('seedDefaults creates the out-of-the-box DEFAULT_CATEGORIES, plus the reser
   const pendingCat = categories.find(c => c.pending);
   assertEqual(pendingCat.name, 'Pending');
   assertTrue(pendingCat.pending);
-  assertDeepEqual(pendingCat.milestones, ['Scope item confirmed']);
+  assertDeepEqual(pendingCat.milestones, ['Scope Item Confirmed']);
 });
 
 test('normalizeData seeds the default categories if none exist, and always ensures a Pending one too', function () {

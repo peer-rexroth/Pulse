@@ -1515,7 +1515,7 @@ const THEME_SCHEMES = [
 // template with this real one.
 const DEFAULT_CATEGORIES = [
   { name: 'Development', milestones: ['Requirements Defined', 'Requirements Approved', 'Design Defined', 'Development Completed', 'Ready for SIT', 'Ready for E2E', 'Deployment Completed'] },
-  { name: 'Artefact', milestones: ['Draft Completed', 'Ready for Review', 'Artefact Approved', 'Artefact Baselined'] },
+  { name: 'Artefact', milestones: ['Draft Completed', 'Ready for Review', 'Artefact Approved'] },
   { name: 'Integration', milestones: ['Interface Specification Agreed', 'Design Defined', 'Development Completed', 'Ready for SIT', 'Ready for E2E', 'Deployment Completed'] },
   { name: 'Activity', milestones: ['Activity Defined', 'Activity Prepared', 'Ready for Execution', 'Activity Started', 'Activity Completed'] }
 ];
@@ -1710,7 +1710,7 @@ function seedDefaults() {
   // so a brand-new item always has somewhere to land before its real
   // category is chosen (see applyScopeCategory()).
   categories = DEFAULT_CATEGORIES.map((c, i) => ({ id: genId(), name: c.name, milestones: c.milestones.slice(), order: i }));
-  categories.push({ id: genId(), name: 'Pending', milestones: ['Scope item confirmed'], pending: true, order: categories.length });
+  categories.push({ id: genId(), name: 'Pending', milestones: ['Scope Item Confirmed'], pending: true, order: categories.length });
   reviewCycles = [];
   deletedWorkstreamIds = [];
   deletedItemIds = [];
@@ -1813,7 +1813,7 @@ function normalizeData() {
   // (openInlineQuickAdd()) depends on exactly one category having
   // `pending: true` to seed a new item into.
   if (!categories.some(c => c.pending)) {
-    categories.push({ id: genId(), name: 'Pending', milestones: ['Scope item confirmed'], pending: true, order: categories.length });
+    categories.push({ id: genId(), name: 'Pending', milestones: ['Scope Item Confirmed'], pending: true, order: categories.length });
   }
   const catIds = new Set(categories.map(c => c.id));
 
@@ -2736,7 +2736,16 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // there's nothing here a viewOnly list is ever meant to let anyone
     // change, unlike the below-Editor case, which still shows the real
     // on/off state for anyone who might later be able to act on it.
-    const naHtml = viewOnly ? '' : (editable
+    // A still-Pending item's one "Scope Item Confirmed" milestone can never
+    // be marked Not Applicable — an explicit user request. Marking it N/A
+    // would clear its Due/Actual dates and freeze its status badge (see
+    // toggleMilestoneNotApplicable() above) while leaving it permanently
+    // uncompletable, stranding the item in Pending forever with no way to
+    // trigger maybeOfferScopeAssign() at all. Same guard, same reasoning as
+    // the Remove-milestone button already being blocked for a Pending item
+    // (see renderMilestonesEditor()'s own isPendingItem).
+    const naEditable = editable && !isPendingCategory(it.categoryId);
+    const naHtml = viewOnly ? '' : (naEditable
       ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></button>`
       : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></span>`);
     return `
@@ -2817,6 +2826,12 @@ function toggleMilestoneNotApplicable(itemId, milestoneId) {
   if (!requireRole('editor')) return;
   const it = items.find(i => i.id === itemId);
   if (!it) return;
+  // Defense-in-depth alongside milestoneRowsHtml()'s own inert (non-
+  // clickable) toggle for a still-Pending item — same guard, so this can't
+  // be reached any other way either. See milestoneRowsHtml()'s naEditable
+  // comment for why: marking the one "Scope Item Confirmed" milestone N/A
+  // would strand the item in Pending forever.
+  if (isPendingCategory(it.categoryId)) return;
   const m = it.milestones.find(m => m.id === milestoneId);
   if (!m) return;
   m.notApplicable = !m.notApplicable;
@@ -3368,7 +3383,7 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   // modal, even at Editor+ — an explicit user request ("prevent change
   // category from unassigned scope items... they must remain pending").
   // Reassigning out of Pending is exclusively applyScopeCategory()'s job,
-  // reached only once this item's "Scope item confirmed" milestone is
+  // reached only once this item's "Scope Item Confirmed" milestone is
   // marked Complete (see maybeOfferScopeAssign()/openScopeAssignModal()) —
   // letting this select bypass that here would let someone jump an item
   // straight into a real category without ever going through that flow, or
@@ -3378,7 +3393,7 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   const stillPending = !!(it && isPendingCategory(it.categoryId));
   const categorySelect = document.getElementById('itemCategorySelect');
   categorySelect.disabled = !editable || stillPending;
-  categorySelect.title = stillPending ? 'This item is still Pending — its category is set automatically once its "Scope item confirmed" milestone is marked Complete.' : '';
+  categorySelect.title = stillPending ? 'This item is still Pending — its category is set automatically once its "Scope Item Confirmed" milestone is marked Complete.' : '';
   document.getElementById('itemSaveBtn').style.display = editable ? '' : 'none';
   document.getElementById('itemModalBg').classList.add('open');
   document.getElementById('itemNameInput').focus();
@@ -3398,7 +3413,7 @@ function closeItemModal() {
 // marked Not Applicable is still a normal edit. The toggle sits *after*
 // the status field (flipped, then flipped back again per user request),
 // matching milestoneRowsHtml()'s own column order on the status board.
-// A Pending item's one milestone ("Scope item confirmed") is what
+// A Pending item's one milestone ("Scope Item Confirmed") is what
 // maybeOfferScopeAssign() watches to know when to prompt for a real
 // workstream/category — removing it here would leave the item stuck
 // Pending with nothing left to complete. Blocked the same way deleteItem()
@@ -3421,7 +3436,12 @@ function renderMilestonesEditor() {
       : `<select ${dis} onchange="editingMilestones[${idx}].status = this.value; updateItemStatusFieldMode();">
           ${STATUSES.map(s => `<option value="${s.id}" ${s.id === m.status ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}
         </select>`;
-    const naToggleHtml = editable
+    // Blocked for a Pending item's one milestone the same way its Remove
+    // button just above already is (see isPendingItem, and this modal's own
+    // leading comment) — marking it N/A would strand the item in Pending
+    // forever, same reasoning milestoneRowsHtml()'s own naEditable guard
+    // documents.
+    const naToggleHtml = (editable && !isPendingItem)
       ? `<button class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : ''}" onclick="toggleEditingMilestoneNotApplicable(${idx})" title="${na ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${na ? 'solid' : 'regular'} fa-ban"></i></button>`
       : `<span class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : ''}" title="${na ? 'Not applicable' : ''}"><i class="fa-${na ? 'solid' : 'regular'} fa-ban"></i></span>`;
     return `
@@ -3448,6 +3468,10 @@ function renderMilestonesEditor() {
 // Due/Actual flip disabled.
 function toggleEditingMilestoneNotApplicable(idx) {
   if (!requireRole('editor')) return;
+  // Defense-in-depth alongside renderMilestonesEditor()'s own inert toggle
+  // for a Pending item — same guard as removeMilestoneRow()'s own above.
+  const editingItem = editingItemId ? items.find(i => i.id === editingItemId) : null;
+  if (editingItem && isPendingCategory(editingItem.categoryId)) return;
   const m = editingMilestones[idx];
   m.notApplicable = !m.notApplicable;
   if (m.notApplicable) { m.dueDate = null; m.actualDate = null; }
@@ -3714,7 +3738,7 @@ function applyScopeAssign() {
 // A full swap, not a diff/sync like applyCategoryMilestoneSync() (that one
 // reconciles an existing category's own template changing over time — this
 // is a one-time jump from the placeholder Pending checklist to a real
-// category's). The discarded "Scope item confirmed" milestone is tombstoned
+// category's). The discarded "Scope Item Confirmed" milestone is tombstoned
 // like any other removed milestone (see saveItem()).
 function applyScopeCategory(itemId, workstreamId, categoryId) {
   const it = items.find(i => i.id === itemId);

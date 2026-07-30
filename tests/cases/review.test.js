@@ -2129,7 +2129,7 @@ test('renderReview shows the all-workstreams review-dates overview on Scope Item
 // A cross-workstream, chronological feed of every change logged during a
 // review cycle (see logReviewChange()) — an explicit user request. This
 // introduces no new data of its own — it flattens the changeLog entries
-// already stored on each review cycle (see the "Scope item confirmed"
+// already stored on each review cycle (see the "Scope Item Confirmed"
 // tests above, which already exercise how tagChange/statusChange/
 // dateChange entries get logged in the first place).
 
