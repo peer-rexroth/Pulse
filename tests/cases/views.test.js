@@ -587,6 +587,92 @@ test('an Actual date recorded on or before its own Due date is never flagged', f
   assertNotIncludes(html, 'pill-overdue');
 });
 
+// ---------- "Completed Late" — a computed display label, not a real status ----------
+// An explicit user request: the 'complete' status value itself is unchanged
+// (STATUS_SEVERITY, the click-to-cycle, RAG counts, item roll-up), but a
+// Complete milestone/item whose actualDate landed after its own dueDate
+// renders "Completed Late" instead of "Completed" wherever its badge shows.
+
+test('the "complete" status label was renamed from "Complete" to "Completed"', function () {
+  assertEqual(statusLabel('complete'), 'Completed');
+});
+
+test('isCompletedLate is true only for a Complete, dated, past-due-and-already-happened finish', function () {
+  assertTrue(isCompletedLate('complete', '2020-01-01', '2020-03-01', false), 'late finish, already happened');
+  assertFalse(isCompletedLate('green', '2020-01-01', '2020-03-01', false), 'not Complete');
+  assertFalse(isCompletedLate('complete', '2020-06-01', '2020-05-01', false), 'finished on/before Due');
+  assertFalse(isCompletedLate('complete', '2020-01-01', '2020-03-01', true), 'notApplicable is excluded');
+  assertFalse(isCompletedLate('complete', null, '2020-03-01', false), 'no dueDate to compare against');
+  assertFalse(isCompletedLate('complete', '2020-01-01', null, false), 'no actualDate at all — nothing to flag');
+  const future = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  assertFalse(isCompletedLate('complete', '2020-01-01', future, false), 'a logged-ahead completion date in the future is a plan, not a late finish yet');
+});
+
+test('a milestone that finished after its Due date shows "Completed Late" instead of "Completed"', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Finished late', dueDate: '2020-01-01', status: 'complete', actualDate: '2020-03-01' }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Completed Late');
+  assertNotIncludes(html, '>Completed<', 'the plain label should not also render for the same milestone');
+});
+
+test('a milestone that finished on time still shows the plain "Completed" label, not "Completed Late"', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Finished on time', dueDate: '2020-06-01', status: 'complete', actualDate: '2020-05-01' }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '>Completed<');
+  assertNotIncludes(html, 'Completed Late');
+});
+
+test('itemIsCompletedLate rolls up from any one applicable milestone finishing late, even if the item itself has no dates of its own', function () {
+  const it = addItem({
+    name: 'Parent', status: 'complete',
+    milestones: [
+      { id: 'm1', name: 'On time', dueDate: '2020-01-01', status: 'complete', actualDate: '2020-01-01' },
+      { id: 'm2', name: 'Late', dueDate: '2020-01-01', status: 'complete', actualDate: '2020-03-01' }
+    ]
+  });
+  assertTrue(itemIsCompletedLate(it));
+});
+
+test('itemRowHtml shows "Completed Late" on the item\'s own row when any of its milestones finished late', function () {
+  const it = addItem({
+    name: 'Parent', status: 'complete',
+    milestones: [
+      { id: 'm1', name: 'On time', dueDate: '2020-01-01', status: 'complete', actualDate: '2020-01-01' },
+      { id: 'm2', name: 'Late', dueDate: '2020-01-01', status: 'complete', actualDate: '2020-03-01' }
+    ]
+  });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Completed Late');
+});
+
+test('a zero-milestone item that is Complete with a late actualDate shows "Completed Late" on its own row', function () {
+  const it = addItem({
+    name: 'Parent', status: 'complete', dueDate: '2020-01-01', actualDate: '2020-03-01', milestones: []
+  });
+  assertTrue(itemIsCompletedLate(it));
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Completed Late');
+});
+
+test('a zero-milestone item that is Complete with an on-time actualDate stays plain "Completed"', function () {
+  const it = addItem({
+    name: 'Parent', status: 'complete', dueDate: '2020-06-01', actualDate: '2020-05-01', milestones: []
+  });
+  assertFalse(itemIsCompletedLate(it));
+});
+
 test('an Actual date later than Due but still in the future is not flagged — it\'s a plan, not a late finish yet', function () {
   const it = addItem({
     name: 'Parent',

@@ -64,7 +64,13 @@
        CLAUDE.md for the incident where wide unused columns, combined with
        the Due/Actual columns added for milestones, pushed Status/Actions
        off-screen. */
-    --item-grid-cols: 20px minmax(140px,1.3fr) 160px 90px 190px 20px 115px 100px 90px 56px;
+    /* Status (9th track) is 116px, not the original 90px — widened once
+       "Completed Late" (see isCompletedLate() in the inline script below)
+       became the longest label a status badge can render; 90px was tuned
+       for "Off Track"/"Not Started" and wasn't enough for the new one
+       without wrapping. See .milestone-status-cell's own comment for the
+       matching widening of its internal first column. */
+    --item-grid-cols: 20px minmax(140px,1.3fr) 160px 90px 190px 20px 115px 100px 116px 56px;
 
     --ws-blue: #3b6fe0;   --ws-blue-bg: #eaf0fd;
     --ws-teal: #12968c;   --ws-teal-bg: #e3f6f4;
@@ -559,8 +565,10 @@
      connected items can still expand their own real milestone checklists
      underneath. (A third always-empty track, the Actual-date placeholder,
      used to be shrunk here too — removed outright from the shared grid
-     instead, see --item-grid-cols' own comment above.) */
-  .journeys-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 190px 10px 115px 100px 90px 120px; }
+     instead, see --item-grid-cols' own comment above.) Status (9th track)
+     was later widened to 116px in step with the shared default's own
+     widening, for "Completed Late" — see --item-grid-cols' own comment. */
+  .journeys-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 190px 10px 115px 100px 116px 120px; }
   .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-dates { color: var(--text-dim); font-size: 12.5px; width: 150px; flex: 0 0 auto; }
   .milestone-count-badge { font-size: 11px; color: var(--text-faint); font-weight: 700; white-space: nowrap; }
@@ -661,22 +669,28 @@
      content into tracks 9/10 untouched, so nothing here affects the item
      row's own column widths. milestoneHeaderHtml()'s "N/A"/"Status" labels
      span the identical 9/11 range for the same reason. */
-  /* A CSS Grid, not flex — the fixed 92px first column is what keeps the N/A
-     toggle sitting at the same x position regardless of "Complete" vs "Not
-     Started" (this cell's shortest and longest labels), a user-reported
-     alignment complaint. An earlier version put that 92px min-width on the
-     first *child* itself (stretching the .status-badge pill to fill it),
-     which fixed the N/A alignment but visually inflated the milestone
-     pill noticeably bigger than the item row's own (unconstrained,
-     content-sized) status pill — a second, later user-reported complaint.
-     Reserving the width on the *column* instead, with the child merely
-     positioned in it rather than stretched, keeps the pill itself sized
-     identically everywhere while still reserving the same width every row
-     needs for the N/A toggle to line up. justify-self:start (left), not
-     center — every header in this table is left-aligned, an explicit user
-     request that applies here too, to the Status pill/label along with it
-     (see the comment just below for why the two can't be split apart). */
-  .milestone-status-cell { display: grid; grid-template-columns: 92px auto; align-items: center; gap: 6px; }
+  /* A CSS Grid, not flex — the fixed first column is what keeps the N/A
+     toggle sitting at the same x position regardless of which status label
+     is showing, a user-reported alignment complaint. An earlier version put
+     that min-width on the first *child* itself (stretching the .status-badge
+     pill to fill it), which fixed the N/A alignment but visually inflated
+     the milestone pill noticeably bigger than the item row's own
+     (unconstrained, content-sized) status pill — a second, later
+     user-reported complaint. Reserving the width on the *column* instead,
+     with the child merely positioned in it rather than stretched, keeps the
+     pill itself sized identically everywhere while still reserving the same
+     width every row needs for the N/A toggle to line up. justify-self:start
+     (left), not center — every header in this table is left-aligned, an
+     explicit user request that applies here too, to the Status pill/label
+     along with it (see the comment just below for why the two can't be split
+     apart). Widened from an original 92px (tuned for "Complete"/"Not
+     Started", this cell's shortest/longest labels at the time) to 120px once
+     "Completed Late" (see isCompletedLate() in the inline script below)
+     became the new longest — the combined 9/11 span this cell fills was
+     widened by the same 26px, via --item-grid-cols' own Status track, so the
+     N/A toggle in the remaining "auto" column still has as much room as
+     before. */
+  .milestone-status-cell { display: grid; grid-template-columns: 120px auto; align-items: center; gap: 6px; }
   /* Targets the cell's first child structurally (:first-child), not the
      .status-badge class specifically — milestoneHeaderHtml()'s own plain
      "Status" text label is this cell's first child too, and a second
@@ -1554,7 +1568,7 @@ const STATUSES = [
   { id: 'green',       label: 'On Track' },
   { id: 'amber',       label: 'At Risk' },
   { id: 'red',         label: 'Off Track' },
-  { id: 'complete',    label: 'Complete' }
+  { id: 'complete',    label: 'Completed' }
 ];
 
 // Severity ranking for rolling an item's status up from its milestones —
@@ -2094,6 +2108,34 @@ function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 function statusLabel(id) { const s = STATUSES.find(s => s.id === id); return s ? s.label : id; }
+// "Completed Late" is a computed DISPLAY label only, not a real 6th status
+// value — an explicit user request, deliberately kept the smallest possible
+// change: the underlying `status` field stays exactly 'complete' everywhere
+// else (STATUS_SEVERITY, the click-to-cycle in cycleMilestoneStatus(), the
+// item status roll-up, RAG count summaries, the Excel export's own status
+// vocabulary). It only swaps what a badge/cell *renders* wherever a
+// milestone (or a zero-milestone item) that's genuinely Complete finished
+// after its own Due date — the same "late finish" condition already used
+// for milestoneRowsHtml()'s own red Actual-pill coloring (actualDate later
+// than dueDate, and not still in the future — a logged-ahead completion
+// date isn't a problem yet, so it stays plain "Completed"). notApplicable is
+// excluded the same way it's excluded from every other roll-up.
+function isCompletedLate(status, dueDate, actualDate, notApplicable) {
+  return status === 'complete' && !notApplicable && !!actualDate && !!dueDate && actualDate > dueDate && actualDate <= todayStr();
+}
+// The item-level counterpart: an item with milestones reads "Completed Late"
+// if ANY one of its own (applicable) milestones finished late — the same
+// "one active problem always surfaces at the parent level" reasoning
+// computedStatusFromMilestones() already applies to RAG severity, just for
+// lateness instead. An item with no milestones falls back to its own manual
+// actualDate/dueDate pair (there's nothing to roll up from).
+function itemIsCompletedLate(it) {
+  if (it.status !== 'complete') return false;
+  if (it.milestones && it.milestones.length) {
+    return it.milestones.some(m => isCompletedLate(m.status, m.dueDate, m.actualDate, m.notApplicable));
+  }
+  return isCompletedLate(it.status, it.dueDate, it.actualDate, false);
+}
 // The "weakest milestone wins" roll-up. Returns null for an empty list —
 // callers decide the fallback (an item with no milestones keeps its status
 // manual, so null there means "don't override"). A milestone marked
@@ -2758,9 +2800,16 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // isPendingCategory() never matches), so this only ever changes what the
   // badge itself shows, not which click target it routes to.
   const displayStatus = isJourney ? (computeJourneyStatus(it.id) || 'not-started') : it.status;
+  // "Completed Late" (see isCompletedLate()'s own comment) for a Journey
+  // rolls up the same way computeJourneyStatus() itself does — from its
+  // connected scope items' own already-resolved lateness — rather than
+  // reading a Journey's own (always-empty) milestones/dates.
+  const displayStatusLabel = displayStatus !== 'complete' ? statusLabel(displayStatus)
+    : (isJourney ? connectedScopeItems(it.id).some(itemIsCompletedLate) : itemIsCompletedLate(it))
+      ? 'Completed Late' : statusLabel('complete');
   const statusBadgeHtml = scopeAssignReady
-    ? `<button class="status-badge" style="background:var(--stat-${displayStatus}-bg);color:var(--stat-${displayStatus})" onclick="openScopeAssignModal('${it.id}')" title="Scope confirmed — click to assign its real workstream and category">${esc(statusLabel(displayStatus))}</button>`
-    : `<button class="status-badge" style="background:var(--stat-${displayStatus}-bg);color:var(--stat-${displayStatus})" onclick="openItemModal('${it.id}')">${esc(statusLabel(displayStatus))}</button>`;
+    ? `<button class="status-badge" style="background:var(--stat-${displayStatus}-bg);color:var(--stat-${displayStatus})" onclick="openScopeAssignModal('${it.id}')" title="Scope confirmed — click to assign its real workstream and category">${esc(displayStatusLabel)}</button>`
+    : `<button class="status-badge" style="background:var(--stat-${displayStatus}-bg);color:var(--stat-${displayStatus})" onclick="openItemModal('${it.id}')">${esc(displayStatusLabel)}</button>`;
   // A Journey is a plain item under the hood (see "Journeys" in CLAUDE.md) —
   // this icon prefix, not a dedicated grid column, is the only thing telling
   // its row apart from an ordinary scope item's when the two sit in the same
@@ -2943,11 +2992,15 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // comment for why that value is preserved, not reset) — showing e.g.
     // "Off Track" and "Not Applicable" at once on the same row would read
     // as contradictory rather than "this one's on hold".
+    // "Completed Late" (see isCompletedLate()'s own comment) reuses actualLate
+    // above rather than recomputing it — the two conditions are identical
+    // except this one also requires the milestone to actually be Complete.
+    const mStatusLabel = m.status === 'complete' && actualLate ? 'Completed Late' : statusLabel(m.status);
     const statusHtml = m.notApplicable
       ? `<span class="status-badge" style="background:var(--stat-not-started-bg);color:var(--stat-not-started);cursor:default" title="Status is ignored while marked Not Applicable">N/A</span>`
       : (editable
-          ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(statusLabel(m.status))}</button>`
-          : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`);
+          ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(mStatusLabel)}</button>`
+          : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(mStatusLabel)}</span>`);
     // The Not Applicable toggle sits immediately after the Status badge —
     // back to the original Status-then-N/A order (flipped, then flipped
     // back again per user request) — inside one shared .milestone-status-
@@ -3822,8 +3875,13 @@ function updateItemStatusFieldMode() {
   document.getElementById('itemStatusComputed').style.display = showComputedStatus ? '' : 'none';
   if (hasMilestones) {
     const computed = computedStatusFromMilestones(editingMilestones);
+    // Same computed "Completed Late" override as everywhere else (see
+    // isCompletedLate()'s own comment) — checked against the modal's
+    // detached editingMilestones working copy, not the item's own
+    // (possibly stale, pre-save) milestones.
+    const late = computed === 'complete' && editingMilestones.some(m => isCompletedLate(m.status, m.dueDate, m.actualDate, m.notApplicable));
     const badge = document.getElementById('itemStatusComputedBadge');
-    badge.textContent = statusLabel(computed);
+    badge.textContent = late ? 'Completed Late' : statusLabel(computed);
     badge.style.background = `var(--stat-${computed}-bg)`;
     badge.style.color = `var(--stat-${computed})`;
   } else if (isJourney) {
@@ -3832,8 +3890,9 @@ function updateItemStatusFieldMode() {
     // actually saved — same convention computeJourneyStatus()'s own null
     // return already establishes for the "nothing connected yet" case.
     const computed = editingItemId ? (computeJourneyStatus(editingItemId) || 'not-started') : 'not-started';
+    const late = computed === 'complete' && editingItemId && connectedScopeItems(editingItemId).some(itemIsCompletedLate);
     const badge = document.getElementById('itemStatusComputedBadge');
-    badge.textContent = statusLabel(computed);
+    badge.textContent = late ? 'Completed Late' : statusLabel(computed);
     badge.style.background = `var(--stat-${computed}-bg)`;
     badge.style.color = `var(--stat-${computed})`;
   }
@@ -6439,7 +6498,7 @@ function buildScopeItemsSheet(wb) {
     wItems.forEach(it => {
       const cat = categoryById(it.categoryId);
       const row = sheet.addRow({
-        ws: w.name, cat: cat ? cat.name : '', name: it.name, status: statusLabel(it.status),
+        ws: w.name, cat: cat ? cat.name : '', name: it.name, status: itemIsCompletedLate(it) ? 'Completed Late' : statusLabel(it.status),
         it: it.itStatus, biz: it.businessStatus, budget: it.budgetStatus
       });
       row.font = { bold: true };
@@ -6449,7 +6508,7 @@ function buildScopeItemsSheet(wb) {
       excelRagCellStyle(row.getCell('status'), it.status);
       [['it', it.itStatus], ['biz', it.businessStatus], ['budget', it.budgetStatus]].forEach(([key, val]) => excelRagCellStyle(row.getCell(key), val));
       it.milestones.forEach(m => {
-        const mrow = sheet.addRow({ name: m.name, status: m.notApplicable ? 'N/A' : statusLabel(m.status) });
+        const mrow = sheet.addRow({ name: m.name, status: m.notApplicable ? 'N/A' : (isCompletedLate(m.status, m.dueDate, m.actualDate, m.notApplicable) ? 'Completed Late' : statusLabel(m.status)) });
         mrow.getCell('name').alignment = { indent: 2 };
         mrow.font = { italic: true, color: { argb: 'FF666666' } };
         if (m.notApplicable) {
