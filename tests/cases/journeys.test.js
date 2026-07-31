@@ -611,18 +611,22 @@ test('setMode("journeys") is a valid mode, renders into the shared scopedBody/ma
   assertEqual(document.getElementById('adminBody').style.display, 'none');
 });
 
-test('renderSidebar renders a Journeys nav row in its own section, separate from the workstream list, showing the current Journey count and highlighted only in Journeys mode', function () {
+test('renderSidebar renders a Journeys nav row in the top nav group, between "All workstreams" and "External Delivery", showing the current Journey count and highlighted only in Journeys mode', function () {
   addJourney('First Journey');
   addJourney('Second Journey');
   setMode('planning');
-  let html = document.getElementById('journeysNav').innerHTML;
+  let html = document.getElementById('topNavList').innerHTML;
   assertIncludes(html, 'Journeys');
   assertIncludes(html, '>2<', 'the count badge should show allJourneys().length');
+  const allIdx = html.indexOf('All workstreams');
+  const journeysIdx = html.indexOf('Journeys');
+  const extIdx = html.indexOf('External Delivery');
+  assertTrue(allIdx < journeysIdx && journeysIdx < extIdx, 'order must be All workstreams -> Journeys -> External Delivery');
   assertNotIncludes(html, 'ws-row active', 'not active while on Planning');
 
   setMode('journeys');
-  html = document.getElementById('journeysNav').innerHTML;
-  assertIncludes(html, 'ws-row active', 'active once Journeys mode is showing');
+  html = document.getElementById('topNavList').innerHTML;
+  assertIncludes(html, `ws-row active" onclick="setMode('journeys')"`, 'active once Journeys mode is showing');
 });
 
 test('allJourneys returns only itemType:"journey" items, sorted by order, regardless of any workstream', function () {

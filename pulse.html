@@ -468,14 +468,22 @@
   .ws-row-drag { display: none; border: none; background: transparent; color: var(--text-faint); padding: 2px 4px; }
   .ws-row:hover .ws-row-drag { display: inline-flex; }
   .ws-row-drag:hover { color: var(--text); }
-  /* "All workstreams" is a pseudo-row, not a real workstream — a thin
-     rule plus extra bottom spacing sets it apart from the real, per-
-     workstream rows listed below it, the same way .ws-dot visually
-     distinguishes a real workstream's own color from this row's plain,
-     neutral icon. */
-  .ws-row-all { margin-bottom: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  /* "All workstreams" is a pseudo-row, not a real workstream — its icon
+     stays a plain, neutral one (not a colored .ws-dot the way a real
+     workstream row gets), the same shared 8px column every row in the top
+     nav group (Journeys/External Delivery) uses too, so their labels all
+     line up with the real workstream rows below them. */
   .ws-row-all-icon { width: 8px; flex: 0 0 auto; text-align: center; font-size: 11px; color: var(--text-faint); }
   .ws-row-all.active .ws-row-all-icon { color: var(--accent); }
+  /* Marks the *last* row in the top nav group (All workstreams / Journeys /
+     External Delivery, in that order — see renderSidebar()) — a thin rule
+     plus extra bottom spacing sets that whole group apart from the real,
+     per-workstream rows listed below it. Used to sit on .ws-row-all itself
+     back when "All workstreams" was the only row up here; moved to
+     whichever row is currently last once Journeys/External Delivery joined
+     it, so the separator always appears after the group, not partway
+     through it. */
+  .ws-row-group-end { margin-bottom: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 
   .main { flex: 1; min-width: 0; overflow: auto; padding: 20px 24px; }
   .planning-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -1118,8 +1126,10 @@
      before, just now sitting alongside the sidebar rather than without one. -->
 <div class="body-row" id="scopedBody">
   <div class="sidebar">
-    <div class="sidebar-label">Journeys</div>
-    <div id="journeysNav"></div>
+    <!-- All workstreams / Journeys / External Delivery — one ordered top
+         group, a separator, then the real workstream list below (see
+         renderSidebar()'s own comment). -->
+    <div id="topNavList"></div>
     <div class="sidebar-label" style="margin-top:16px">Workstreams <button class="sidebar-label-add" id="addWsBtn" onclick="openWorkstreamModal()" title="New workstream"><i class="fa-solid fa-plus"></i></button></div>
     <div id="wsList"></div>
   </div>
@@ -2257,7 +2267,7 @@ function render() {
   document.getElementById('programmeNameDisplay').textContent = programme.name;
   updateRoleBtn();
   // 'journeys' is excluded here — its entry point is the sidebar's own
-  // #journeysNav row now (see renderSidebar()), not a #tab<Mode> topbar
+  // #topNavList row now (see renderSidebar()), not a #tab<Mode> topbar
   // button, so it sets its own 'active' class as part of that row's markup
   // instead of through this generic id-based lookup. 'external' is excluded
   // for the identical reason — its own sidebar row (see renderSidebar())
@@ -2309,11 +2319,10 @@ function setMode(m) {
 
 function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
-  const el = document.getElementById('wsList');
   // Neither "All workstreams" nor any real workstream row shows as active
-  // while Journeys (or External Delivery — see below) mode is showing — a
-  // user-reported bug (for Journeys originally): filterWorkstreamId stays
-  // whatever it last was (both of these ignore it entirely, see
+  // while Journeys or External Delivery mode is showing — a user-reported
+  // bug (for Journeys originally): filterWorkstreamId stays whatever it
+  // last was (both of these ignore it entirely, see
   // renderJourneys()/renderExternalDelivery()), so the workstream row
   // someone had selected before switching stayed visually highlighted even
   // though nothing on screen was actually scoped to it any more.
@@ -2322,34 +2331,35 @@ function renderSidebar() {
   // (and restored, visually) on switching back to Planning/Review/
   // Dashboard, not lost the moment either of these modes is opened.
   const inWorkstreamScope = mode !== 'journeys' && mode !== 'external';
-  let html = `<div class="ws-row ws-row-all ${inWorkstreamScope && filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
+  // The top nav group — All workstreams, Journeys, External Delivery, in
+  // that order — an explicit user request for a single ordered block above
+  // a separator, ahead of the real workstream list below it. This replaces
+  // two earlier, separate designs: Journeys used to get its own labeled
+  // section (its own #journeysNav container, under a "Journeys" heading)
+  // and External Delivery used to sit as the 2nd row inside #wsList itself
+  // (directly under "All workstreams", ahead of the real workstream rows).
+  // Both are now built together into #topNavList instead, with #wsList left
+  // holding only the real, per-workstream rows. .ws-row-group-end (on
+  // whichever row renders last in this group) is what draws the actual
+  // separator line beneath it — see that class's own CSS comment.
+  document.getElementById('topNavList').innerHTML = `
+    <div class="ws-row ws-row-all ${inWorkstreamScope && filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
       <i class="fa-solid fa-layer-group ws-row-all-icon"></i>
       <span class="ws-row-name">All workstreams</span>
       <span class="ws-row-count">${items.length}</span>
-    </div>`;
-  // External Delivery's own entry point — an explicit user request ("add
-  // External Delivery to the left navigation pane, under 'All
-  // workstreams'"), sitting directly below "All workstreams" and above the
-  // real workstream rows, inside this same #wsList — unlike Journeys (its
-  // own separate section further down, a distinct user request at the
-  // time), this one was specifically asked for as the next row down from
-  // "All workstreams", not a standalone section. Sets its own 'active'
-  // state directly (mode === 'external') for the same reason journeysNav's
-  // own row does — it's rebuilt fresh on every renderSidebar() call anyway,
-  // and has no #tab<Mode> topbar button for render()'s generic id-toggle
-  // loop to drive instead (see that loop's own comment). Reuses
-  // .ws-row-all-icon (8px wide, same as a real row's own .ws-dot) rather
-  // than the wider 14px icon journeysNav's own row uses — a user-reported
-  // misalignment: journeysNav sits in its own separate section with nothing
-  // to line up against, but this row shares #wsList with "All workstreams"
-  // and the real workstream rows below it, so its icon column has to match
-  // theirs or its own label starts further right than every row around it.
-  html += `<div class="ws-row ${mode === 'external' ? 'active' : ''}" onclick="setMode('external')" title="External Delivery">
+    </div>
+    <div class="ws-row ${mode === 'journeys' ? 'active' : ''}" onclick="setMode('journeys')" title="Journeys">
+      <i class="fa-solid fa-route ws-row-all-icon" style="color:${mode === 'journeys' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
+      <span class="ws-row-name">Journeys</span>
+      <span class="ws-row-count">${allJourneys().length}</span>
+    </div>
+    <div class="ws-row ws-row-group-end ${mode === 'external' ? 'active' : ''}" onclick="setMode('external')" title="External Delivery">
       <i class="fa-solid fa-globe ws-row-all-icon" style="color:${mode === 'external' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
       <span class="ws-row-name">External Delivery</span>
       <span class="ws-row-count">${allExternalDeliveryItems().length}</span>
     </div>`;
-  html += workstreams.map(w => {
+  const el = document.getElementById('wsList');
+  el.innerHTML = workstreams.map(w => {
     const count = items.filter(it => it.workstreamId === w.id).length;
     const reviewBadge = activeReviewCycle(w.id)
       ? `<span class="review-ws-badge active-cycle">In review</span>`
@@ -2386,28 +2396,6 @@ function renderSidebar() {
         ${editBtn}
       </div>`;
   }).join('');
-  el.innerHTML = html;
-  // Journeys' own entry point — moved here from a standalone topbar button
-  // (an explicit user request: "move journeys in the left navigation bar,
-  // separate it from workstreams"), as its own section below Workstreams
-  // rather than folded into that list, since a Journey is never a
-  // workstream and mixing the two would misrepresent that. It's a single
-  // row, not a per-Journey list — Journeys mode itself is still one flat
-  // list (see renderJourneys()), so there's nothing here to enumerate the
-  // way individual workstreams are. This row sets its own 'active' state
-  // directly (mode === 'journeys') rather than through render()'s generic
-  // MODES.forEach id-toggle loop, since it's rebuilt fresh on every
-  // renderSidebar() call anyway. Clicking a workstream row above (or "All
-  // workstreams") always switches mode to 'dashboard' too — see
-  // selectWorkstreamFromSidebar() — so from Journeys mode specifically,
-  // picking one now navigates away to the Dashboard scoped to that
-  // selection, rather than silently updating a selector Journeys ignores.
-  document.getElementById('journeysNav').innerHTML =
-    `<div class="ws-row ${mode === 'journeys' ? 'active' : ''}" id="tabJourneys" onclick="setMode('journeys')" title="Journeys">
-        <i class="fa-solid fa-route" style="width:14px;text-align:center;color:${mode === 'journeys' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
-        <span class="ws-row-name">Journeys</span>
-        <span class="ws-row-count">${allJourneys().length}</span>
-      </div>`;
 }
 
 function visibleWorkstreams() {
@@ -2572,7 +2560,7 @@ function renderStatusView(main) {
 // entirely (ignoring it, not just defaulting to "All", since a per-
 // workstream filter has nothing to scope a workstream-less list by), even
 // though the sidebar carrying that selector is visible while this mode is
-// showing (see the sidebar's own #journeysNav comment in renderSidebar()
+// showing (see the sidebar's own #topNavList comment in renderSidebar()
 // for why that's fine — Journeys mode used to render into its own
 // sidebar-less #journeysBody specifically to avoid implying it read the
 // selector; now it shares the sidebar shell purely so its own nav entry

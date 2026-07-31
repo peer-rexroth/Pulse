@@ -224,9 +224,9 @@ test('switching to Journeys mode also deselects "All workstreams" itself, not ju
   filterWorkstreamId = null;
   setMode('planning');
   renderSidebar();
-  assertIncludes(document.getElementById('wsList').innerHTML, 'ws-row-all active', '"All workstreams" is active while Planning is scoped to it');
+  assertIncludes(document.getElementById('topNavList').innerHTML, 'ws-row-all active', '"All workstreams" is active while Planning is scoped to it');
 
   setMode('journeys');
   renderSidebar();
-  assertNotIncludes(document.getElementById('wsList').innerHTML, 'ws-row-all active', '"All workstreams" must not read as active either, once Journeys is showing');
+  assertNotIncludes(document.getElementById('topNavList').innerHTML, 'ws-row-all active', '"All workstreams" must not read as active either, once Journeys is showing');
 });
