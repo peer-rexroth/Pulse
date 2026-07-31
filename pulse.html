@@ -3367,6 +3367,19 @@ function saveWorkstream() {
   // place — nothing else can trigger openWorkstreamModal() while it's open.
   if (scopeAssignItemId) updateScopeAssignWorkstreamState(savedWs.id);
 }
+// Deleting a workstream no longer cascades to its scope items — an
+// explicit user request ("if i remove a workstream that has scope items,
+// move them to unassigned"). An earlier version deleted them right along
+// with the workstream (tombstoned, undoable only as one bundled action);
+// now they simply survive with workstreamId set to null, the exact same
+// "Unassigned" bucket a stale/orphaned workstreamId already lands in via
+// normalizeData() (see "Quick-add scope items, the Unassigned bucket..." in
+// CLAUDE.md) — losing real work (milestones, tags, dates, review history)
+// just because the workstream containing it was removed was the actual
+// complaint, not the workstream deletion itself. A moved item keeps its own
+// category/milestones/everything else untouched — this only ever touches
+// workstreamId, unlike the quick-add flow's Pending category, which this
+// item was never part of to begin with.
 function deleteWorkstreamFromModal() {
   if (!requireRole('editor')) return;
   if (!editingWsId) return;
@@ -3375,26 +3388,37 @@ function deleteWorkstreamFromModal() {
   if (!w) return;
   closeWorkstreamModal();
   const count = items.filter(it => it.workstreamId === wsId).length;
-  const body = (count ? `${count} item${count === 1 ? '' : 's'} — and their milestones — will be deleted too. ` : '') + 'You can undo this from the toast right after deleting.';
+  const body = (count ? `${count} item${count === 1 ? '' : 's'} will be moved to Unassigned. ` : '') + 'You can undo this from the toast right after deleting.';
   openConfirmModal({
     title: `Delete "${w.name}"?`,
     body,
     action: () => {
       const wsIdx = workstreams.findIndex(x => x.id === wsId);
       if (wsIdx === -1) return;
-      const itemsSnapshot = items.slice();
       const [removedWs] = workstreams.splice(wsIdx, 1);
-      const removedItemIds = items.filter(it => it.workstreamId === wsId).map(it => it.id);
-      items = items.filter(it => it.workstreamId !== wsId);
+      const movedItemIds = [];
+      items.forEach(it => {
+        if (it.workstreamId === wsId) {
+          it.workstreamId = null;
+          it.updatedAt = Date.now();
+          movedItemIds.push(it.id);
+        }
+      });
       tombstone(deletedWorkstreamIds, wsId);
-      removedItemIds.forEach(id => tombstone(deletedItemIds, id));
       if (filterWorkstreamId === wsId) filterWorkstreamId = null;
       save(); render();
       showToast('Workstream deleted', false, () => {
         untombstone(deletedWorkstreamIds, wsId);
-        removedItemIds.forEach(id => untombstone(deletedItemIds, id));
         workstreams.splice(wsIdx, 0, removedWs);
-        items = itemsSnapshot;
+        // Reassigns only the items this delete itself moved, by id, rather
+        // than restoring a whole pre-delete items snapshot — narrower, and
+        // correct even if one of them was independently reassigned to a
+        // different real workstream in the meantime (undo shouldn't clobber
+        // that unrelated, later edit).
+        movedItemIds.forEach(id => {
+          const it = items.find(i => i.id === id);
+          if (it && it.workstreamId === null) { it.workstreamId = wsId; it.updatedAt = Date.now(); }
+        });
         save(); render();
         showToast('Workstream restored');
       });

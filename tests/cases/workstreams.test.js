@@ -46,16 +46,57 @@ test('editing an existing workstream updates it in place, not a new entry', func
   assertEqual(workstreams[0].color, 'purple');
 });
 
-test('deleting a workstream also removes its items (cascade)', function () {
+// A user-reported request reversed the earlier cascade-delete behavior:
+// deleting a workstream now moves its items to Unassigned instead of
+// deleting them along with it — real work (milestones, tags, dates, review
+// history) shouldn't disappear just because the workstream containing it
+// was removed.
+
+test('deleting a workstream moves its items to Unassigned rather than deleting them', function () {
   const wsId = workstreams[0].id;
-  items.push({ id: genId(), workstreamId: wsId, name: 'A', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [] });
-  items.push({ id: genId(), workstreamId: wsId, name: 'B', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [] });
-  assertEqual(items.length, 2);
+  const a = { id: genId(), workstreamId: wsId, categoryId: categories[0].id, name: 'A', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 0 };
+  const b = { id: genId(), workstreamId: wsId, categoryId: categories[0].id, name: 'B', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 0 };
+  items.push(a, b);
   editingWsId = wsId;
   deleteWorkstreamFromModal();
   confirmModalAction(); // simulate clicking "Delete" in the confirm modal
   assertEqual(workstreams.length, 0);
-  assertEqual(items.length, 0);
+  assertEqual(items.length, 2, 'the items themselves must survive');
+  assertEqual(a.workstreamId, null);
+  assertEqual(b.workstreamId, null);
+  assertTrue(a.updatedAt > 0, 'a moved item is a real change for merge purposes, so updatedAt must bump');
+  // Neither the category nor anything else about the item should be
+  // touched — only workstreamId moves.
+  assertEqual(a.categoryId, categories[0].id);
+});
+
+test('undoing a workstream delete restores both the workstream and its items\' original workstreamId', function () {
+  const wsId = workstreams[0].id;
+  const a = { id: genId(), workstreamId: wsId, categoryId: categories[0].id, name: 'A', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 0 };
+  items.push(a);
+  editingWsId = wsId;
+  deleteWorkstreamFromModal();
+  confirmModalAction();
+  assertEqual(a.workstreamId, null);
+  triggerToastUndo();
+  assertEqual(workstreams.length, 1);
+  assertEqual(workstreams[0].id, wsId);
+  assertEqual(a.workstreamId, wsId, 'the moved item should be reassigned back to the restored workstream');
+});
+
+test('undoing a workstream delete does not clobber an item that was independently reassigned to a different real workstream in the meantime', function () {
+  const wsId = workstreams[0].id;
+  const other = { id: genId(), name: 'Other', color: 'teal', order: 1 };
+  workstreams.push(other);
+  const a = { id: genId(), workstreamId: wsId, categoryId: categories[0].id, name: 'A', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 0 };
+  items.push(a);
+  editingWsId = wsId;
+  deleteWorkstreamFromModal();
+  confirmModalAction();
+  assertEqual(a.workstreamId, null);
+  a.workstreamId = other.id; // simulates the user re-assigning it before clicking Undo
+  triggerToastUndo();
+  assertEqual(a.workstreamId, other.id, 'undo must not override a later, unrelated reassignment');
 });
 
 test('deleting the currently-filtered workstream clears the filter', function () {

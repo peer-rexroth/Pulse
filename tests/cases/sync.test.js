@@ -52,22 +52,25 @@ test('deleteItem tombstones the item and shows an undo toast that restores it', 
   assertFalse(deletedItemIds.some(x => x.id === it.id), 'undoing should clear the tombstone');
 });
 
-test('deleteWorkstreamFromModal cascades tombstones to its items, and undo restores both', function () {
+// deleteWorkstreamFromModal() no longer cascades to its items at all (see
+// workstreams.test.js for the full "moved to Unassigned, not deleted"
+// coverage) — this only tombstones the workstream id itself, and only that
+// tombstone needs undoing.
+test('deleteWorkstreamFromModal tombstones only the workstream itself (its items are moved, never tombstoned), and undo restores it', function () {
   const wsId = workstreams[0].id;
-  items.push({ id: genId(), workstreamId: wsId, name: 'A', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() });
-  items.push({ id: genId(), workstreamId: wsId, name: 'B', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() });
+  items.push({ id: genId(), workstreamId: wsId, categoryId: categories[0].id, name: 'A', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() });
   editingWsId = wsId;
   deleteWorkstreamFromModal();
   confirmModalAction();
   assertEqual(workstreams.length, 0);
-  assertEqual(items.length, 0);
+  assertEqual(items.length, 1, 'the item itself must survive');
+  assertEqual(items[0].workstreamId, null);
   assertTrue(deletedWorkstreamIds.some(x => x.id === wsId));
-  assertEqual(deletedItemIds.length, 2);
+  assertEqual(deletedItemIds.length, 0, 'items are never tombstoned by this action any more');
   triggerToastUndo();
   assertEqual(workstreams.length, 1);
-  assertEqual(items.length, 2);
+  assertEqual(items[0].workstreamId, wsId);
   assertEqual(deletedWorkstreamIds.length, 0);
-  assertEqual(deletedItemIds.length, 0);
 });
 
 // ---------- mergeData ----------
