@@ -125,7 +125,7 @@ test('a workstream with no scope items yet is not counted in the Overdue for Rev
 
 // ---------- Workstream scoping (shared filterWorkstreamId) ----------
 
-test('selecting "All workstreams" (filterWorkstreamId null) rolls up every workstream', function () {
+test('selecting "All Workstreams" (filterWorkstreamId null) rolls up every workstream', function () {
   document.getElementById('wsNameInput').value = 'Second';
   wsColorChoice = 'teal';
   saveWorkstream();

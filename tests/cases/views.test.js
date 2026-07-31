@@ -178,7 +178,7 @@ test('a workstream with no externally-delivered items shows no "External Deliver
 
 // ---------- External Delivery's own sidebar nav entry + cross-workstream view ----------
 // An explicit user request ("add External Delivery to the left navigation
-// pane, under 'All workstreams'") — a new mode, own sidebar row (mirroring
+// pane, under 'All Workstreams'") — a new mode, own sidebar row (mirroring
 // Journeys' own entry point), listing every externally-delivered item across
 // every workstream regardless of the current sidebar filter.
 
@@ -189,10 +189,10 @@ test('renderSidebar renders the External Delivery nav row last in the top nav gr
   renderSidebar();
   const html = document.getElementById('topNavList').innerHTML;
   assertIncludes(html, 'External Delivery');
-  const allIdx = html.indexOf('All workstreams');
+  const allIdx = html.indexOf('All Workstreams');
   const journeysIdx = html.indexOf('Journeys');
   const extIdx = html.indexOf('External Delivery');
-  assertTrue(allIdx < journeysIdx, 'Journeys must sit after "All workstreams"');
+  assertTrue(allIdx < journeysIdx, 'Journeys must sit after "All Workstreams"');
   assertTrue(journeysIdx < extIdx, 'External Delivery must sit after Journeys, last in the top group');
   assertNotIncludes(document.getElementById('wsList').innerHTML, 'External Delivery', 'the real workstream list (#wsList) no longer holds this row at all');
   assertIncludes(html, '<span class="ws-row-count">2</span>', 'the row shows a live count of externally-delivered items across every workstream');
@@ -208,7 +208,7 @@ test('the External Delivery nav row is active only while mode is \'external\', a
   renderSidebar();
   const html = document.getElementById('topNavList').innerHTML;
   assertIncludes(html, `ws-row ws-row-group-end active" onclick="setMode('external')"`, 'active once External Delivery mode is showing');
-  assertNotIncludes(html, 'ws-row-all active', '"All workstreams" must not read as active while External Delivery is showing');
+  assertNotIncludes(html, 'ws-row-all active', '"All Workstreams" must not read as active while External Delivery is showing');
   assertNotIncludes(document.getElementById('wsList').innerHTML, 'ws-row active', 'no real workstream row reads as active either');
   assertEqual(filterWorkstreamId, workstreams[0].id, 'the selection itself survives the switch, unaffected — External Delivery ignores it entirely');
 });

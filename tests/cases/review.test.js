@@ -124,7 +124,7 @@ test('reviewCyclesForWs returns every cycle (active and completed) for that work
 // it) never needs to bail out to Planning or hop reviewTab to a different
 // sub-tab any more; whatever tab was showing just keeps showing.
 
-test('setMode("review") stays on the Scope tab (its default) while "All workstreams" is selected', function () {
+test('setMode("review") stays on the Scope tab (its default) while "All Workstreams" is selected', function () {
   assertEqual(filterWorkstreamId, null);
   setMode('review');
   assertEqual(mode, 'review');
@@ -137,7 +137,7 @@ test('setFilterWorkstream selects a workstream, which setMode("review") then sho
   assertEqual(mode, 'review');
 });
 
-test('picking "All workstreams" while on Review\'s Scope tab stays right there, showing the review-dates overview', function () {
+test('picking "All Workstreams" while on Review\'s Scope tab stays right there, showing the review-dates overview', function () {
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
   assertEqual(reviewTab, 'scope');
@@ -146,7 +146,7 @@ test('picking "All workstreams" while on Review\'s Scope tab stays right there, 
   assertEqual(reviewTab, 'scope');
 });
 
-test('picking "All workstreams" while already on Review\'s Action Log tab stays right there', function () {
+test('picking "All Workstreams" while already on Review\'s Action Log tab stays right there', function () {
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
   setReviewTab('actionLog');
@@ -1812,8 +1812,8 @@ test('sortedActionLog\'s keyFn param sorts a list of wrapped {w, a} pairs by the
   assertDeepEqual(sorted, ['b', 'a', 'c']);
 });
 
-// ---------- "All workstreams" Action Log ----------
-// Reachable from Review mode's Action Log tab with "All workstreams"
+// ---------- "All Workstreams" Action Log ----------
+// Reachable from Review mode's Action Log tab with "All Workstreams"
 // selected in the sidebar — see setMode()/setFilterWorkstream()'s own
 // comments for why Review mode no longer requires a specific workstream
 // the way it used to (Scope Item Review still does; the Action Log doesn't).
@@ -1877,7 +1877,7 @@ test('allWorkstreamsActionLogHtml shows the same empty state as the per-workstre
   assertIncludes(html, 'No action items yet');
 });
 
-test('renderReview shows the "All workstreams" Action Log when no workstream is filtered and reviewTab is "actionLog", with an aggregate open/total count', function () {
+test('renderReview shows the "All Workstreams" Action Log when no workstream is filtered and reviewTab is "actionLog", with an aggregate open/total count', function () {
   const cycle1 = addCompletedReviewCycle();
   openMinutesModal(cycle1.id);
   addMinutesActionItemRow();
@@ -1895,13 +1895,13 @@ test('renderReview shows the "All workstreams" Action Log when no workstream is 
   setFilterWorkstream(null);
   setReviewTab('actionLog');
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, '>All workstreams<');
+  assertIncludes(html, '>All Workstreams<');
   assertIncludes(html, '2 open of 2 action items');
   assertIncludes(html, 'Item one');
   assertIncludes(html, 'Item two');
 });
 
-test('a completed action item on the "All workstreams" view is excluded from the open count, same as the per-workstream one', function () {
+test('a completed action item on the "All Workstreams" view is excluded from the open count, same as the per-workstream one', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
   addMinutesActionItemRow();
@@ -2142,7 +2142,7 @@ test('sortedDecisionLog\'s keyFn param sorts a list of wrapped {w, d} pairs by t
   assertDeepEqual(sorted, ['b', 'a']);
 });
 
-// ---------- "All workstreams" Decision Log ----------
+// ---------- "All Workstreams" Decision Log ----------
 
 test('allWorkstreamsDecisionLogHtml merges every workstream\'s own decision log into one list, each row tagged with its source workstream', function () {
   const cycle1 = addCompletedReviewCycle();
@@ -2184,7 +2184,7 @@ test('allWorkstreamsDecisionLogHtml shows the same empty state as the per-workst
   assertIncludes(html, 'No decisions yet');
 });
 
-test('renderReview shows the "All workstreams" Decision Log when no workstream is filtered and reviewTab is "decisionLog", with an aggregate count', function () {
+test('renderReview shows the "All Workstreams" Decision Log when no workstream is filtered and reviewTab is "decisionLog", with an aggregate count', function () {
   const cycle1 = addCompletedReviewCycle();
   openMinutesModal(cycle1.id);
   document.getElementById('minutesDecisionsInput').value = 'Decision one';
@@ -2200,13 +2200,13 @@ test('renderReview shows the "All workstreams" Decision Log when no workstream i
   setReviewTab('decisionLog');
   setFilterWorkstream(null);
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, '>All workstreams<');
+  assertIncludes(html, '>All Workstreams<');
   assertIncludes(html, '2 decisions');
   assertIncludes(html, 'Decision one');
   assertIncludes(html, 'Decision two');
 });
 
-// ---------- "All workstreams" review-dates overview (Scope Item Review's
+// ---------- "All Workstreams" review-dates overview (Scope Item Review's
 // own landing view with no workstream selected — an explicit user request;
 // see reviewDatesOverviewHtml()) ----------
 
@@ -2274,7 +2274,7 @@ test('renderReview shows the all-workstreams review-dates overview on Scope Item
   setMode('review');
   setFilterWorkstream(null);
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, '>All workstreams<');
+  assertIncludes(html, '>All Workstreams<');
   assertIncludes(html, 'review-date-row');
   assertIncludes(html, 'Never reviewed');
 });
@@ -2373,7 +2373,7 @@ test('setReviewTab switches renderReview to the Change Log, alongside the other 
   assertNotIncludes(html, 'Start review cycle');
 });
 
-test('renderReview shows the "All workstreams" Change Log when no workstream is filtered and reviewTab is "changeLog"', function () {
+test('renderReview shows the "All Workstreams" Change Log when no workstream is filtered and reviewTab is "changeLog"', function () {
   const it = addReviewItem({ name: 'Call Money', itStatus: 'green' });
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
@@ -2382,7 +2382,7 @@ test('renderReview shows the "All workstreams" Change Log when no workstream is 
   setFilterWorkstream(null);
   setReviewTab('changeLog');
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, '>All workstreams<');
+  assertIncludes(html, '>All Workstreams<');
   assertIncludes(html, '1 change<');
   assertIncludes(html, 'Call Money');
 });

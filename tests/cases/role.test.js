@@ -83,7 +83,7 @@ test('setUserRole leaves the Admin page for the All-workstreams Dashboard when s
   filterWorkstreamId = workstreams[0].id;
   setUserRole('editor');
   assertEqual(mode, 'dashboard');
-  assertEqual(filterWorkstreamId, null, 'should land on "All workstreams", not whatever was filtered before');
+  assertEqual(filterWorkstreamId, null, 'should land on "All Workstreams", not whatever was filtered before');
 });
 
 test('setUserRole does not touch mode/filterWorkstreamId when switching roles outside Admin mode', function () {

@@ -468,18 +468,18 @@
   .ws-row-drag { display: none; border: none; background: transparent; color: var(--text-faint); padding: 2px 4px; }
   .ws-row:hover .ws-row-drag { display: inline-flex; }
   .ws-row-drag:hover { color: var(--text); }
-  /* "All workstreams" is a pseudo-row, not a real workstream — its icon
+  /* "All Workstreams" is a pseudo-row, not a real workstream — its icon
      stays a plain, neutral one (not a colored .ws-dot the way a real
      workstream row gets), the same shared 8px column every row in the top
      nav group (Journeys/External Delivery) uses too, so their labels all
      line up with the real workstream rows below them. */
   .ws-row-all-icon { width: 8px; flex: 0 0 auto; text-align: center; font-size: 11px; color: var(--text-faint); }
   .ws-row-all.active .ws-row-all-icon { color: var(--accent); }
-  /* Marks the *last* row in the top nav group (All workstreams / Journeys /
+  /* Marks the *last* row in the top nav group (All Workstreams / Journeys /
      External Delivery, in that order — see renderSidebar()) — a thin rule
      plus extra bottom spacing sets that whole group apart from the real,
      per-workstream rows listed below it. Used to sit on .ws-row-all itself
-     back when "All workstreams" was the only row up here; moved to
+     back when "All Workstreams" was the only row up here; moved to
      whichever row is currently last once Journeys/External Delivery joined
      it, so the separator always appears after the group, not partway
      through it. */
@@ -1008,7 +1008,7 @@
   .action-log-row, .action-log-header {
     grid-template-columns: minmax(220px,1fr) 100px 90px 80px 90px 90px 40px 40px;
   }
-  /* The "All workstreams" Action Log (see allWorkstreamsActionLogHtml())
+  /* The "All Workstreams" Action Log (see allWorkstreamsActionLogHtml())
      inserts one extra Workstream column right after Action Item — every
      other column shifts one slot right accordingly (see
      actionLogRowHtml()'s showWs param). Action Item loses some of its own
@@ -1126,7 +1126,7 @@
      before, just now sitting alongside the sidebar rather than without one. -->
 <div class="body-row" id="scopedBody">
   <div class="sidebar">
-    <!-- All workstreams / Journeys / External Delivery — one ordered top
+    <!-- All Workstreams / Journeys / External Delivery — one ordered top
          group, a separator, then the real workstream list below (see
          renderSidebar()'s own comment). -->
     <div id="topNavList"></div>
@@ -1687,7 +1687,7 @@ let colorScheme = 'standard'; // one of THEME_SCHEMES' ids — see toggleTheme()
 let userRole = null;
 // The single shared workstream selector — used by Planning (status board),
 // Review (which workstream's cycle to show), and Dashboard (scopes the rollup)
-// alike. null means "All workstreams" for Planning/Dashboard; Review mode
+// alike. null means "All Workstreams" for Planning/Dashboard; Review mode
 // requires a specific one (see setMode()/setFilterWorkstream()).
 let filterWorkstreamId = null;
 
@@ -2290,7 +2290,7 @@ function render() {
     // selector — an explicit user request. With one workstream selected, its
     // own review checklist is the natural first thing to reach for, so it
     // reads as the short "Review" and sorts (via CSS order, not a DOM move)
-    // ahead of Action Log/Decision Log/Change Log. With "All workstreams"
+    // ahead of Action Log/Decision Log/Change Log. With "All Workstreams"
     // selected it shows the staleness-ranking overview instead (see
     // reviewDatesOverviewHtml()) — a different, less central kind of view —
     // so it reads as "Review Status" and sorts after Change Log, matching
@@ -2319,7 +2319,7 @@ function setMode(m) {
 
 function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
-  // Neither "All workstreams" nor any real workstream row shows as active
+  // Neither "All Workstreams" nor any real workstream row shows as active
   // while Journeys or External Delivery mode is showing — a user-reported
   // bug (for Journeys originally): filterWorkstreamId stays whatever it
   // last was (both of these ignore it entirely, see
@@ -2331,13 +2331,13 @@ function renderSidebar() {
   // (and restored, visually) on switching back to Planning/Review/
   // Dashboard, not lost the moment either of these modes is opened.
   const inWorkstreamScope = mode !== 'journeys' && mode !== 'external';
-  // The top nav group — All workstreams, Journeys, External Delivery, in
+  // The top nav group — All Workstreams, Journeys, External Delivery, in
   // that order — an explicit user request for a single ordered block above
   // a separator, ahead of the real workstream list below it. This replaces
   // two earlier, separate designs: Journeys used to get its own labeled
   // section (its own #journeysNav container, under a "Journeys" heading)
   // and External Delivery used to sit as the 2nd row inside #wsList itself
-  // (directly under "All workstreams", ahead of the real workstream rows).
+  // (directly under "All Workstreams", ahead of the real workstream rows).
   // Both are now built together into #topNavList instead, with #wsList left
   // holding only the real, per-workstream rows. .ws-row-group-end (on
   // whichever row renders last in this group) is what draws the actual
@@ -2345,7 +2345,7 @@ function renderSidebar() {
   document.getElementById('topNavList').innerHTML = `
     <div class="ws-row ws-row-all ${inWorkstreamScope && filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
       <i class="fa-solid fa-layer-group ws-row-all-icon"></i>
-      <span class="ws-row-name">All workstreams</span>
+      <span class="ws-row-name">All Workstreams</span>
       <span class="ws-row-count">${items.length}</span>
     </div>
     <div class="ws-row ${mode === 'journeys' ? 'active' : ''}" onclick="setMode('journeys')" title="Journeys">
@@ -2436,7 +2436,7 @@ function clearPlanningSearch() {
 // workstream's own section and shown regardless of the current sidebar
 // filter (visibleWorkstreams() below only affects the real sections), since
 // an unassigned item doesn't belong to any one workstream yet and shouldn't
-// require switching to "All workstreams" to see or triage. Below Editor,
+// require switching to "All Workstreams" to see or triage. Below Editor,
 // and with nothing in it, it's omitted entirely — there both nothing to
 // show and no way to add anything, so an empty "Unassigned" heading would
 // just be clutter.
@@ -2600,7 +2600,7 @@ function renderJourneys() {
 
 // ---------- External Delivery (sidebar nav entry) ----------
 // An explicit user request ("add External Delivery to the left navigation
-// pane, under 'All workstreams'") for a cross-workstream view of every
+// pane, under 'All Workstreams'") for a cross-workstream view of every
 // externally-delivered scope item, mirroring how Journeys got its own
 // sidebar entry + flat list. Unlike a Journey, an externally-delivered item
 // always belongs to a real workstream (see "External Delivery" in
@@ -3298,9 +3298,9 @@ function setFilterWorkstream(id) {
   filterWorkstreamId = id;
   save(); render();
 }
-// The sidebar's own "All workstreams"/per-workstream rows (renderSidebar())
+// The sidebar's own "All Workstreams"/per-workstream rows (renderSidebar())
 // call this instead of the plain setFilterWorkstream() above — an explicit
-// user request: picking a workstream (or "All workstreams") from the left
+// user request: picking a workstream (or "All Workstreams") from the left
 // nav should always land on the Dashboard scoped to that selection,
 // regardless of whatever mode was showing beforehand. setFilterWorkstream()
 // itself stays mode-agnostic on purpose — every other caller (Review's own
@@ -3309,7 +3309,7 @@ function setFilterWorkstream(id) {
 // just wants to narrow the scope without changing mode) depends on it not
 // touching mode. Sets both fields together and calls save()/render() once,
 // the same combined-fields pattern setUserRole() already uses for its own
-// "jump to Dashboard, All workstreams" case.
+// "jump to Dashboard, All Workstreams" case.
 function selectWorkstreamFromSidebar(id) {
   filterWorkstreamId = id;
   mode = 'dashboard';
@@ -5514,7 +5514,7 @@ function changeLogHtml(w) {
   }
   return `<div class="review-list">${entries.map(e => changeLogRowHtml(w, e, false)).join('')}</div>`;
 }
-// The "All workstreams" Change Log — allWorkstreamsActionLogHtml()'s
+// The "All Workstreams" Change Log — allWorkstreamsActionLogHtml()'s
 // counterpart, reachable from Review mode's Change Log tab with "All
 // workstreams" selected in the sidebar.
 function allWorkstreamsChangeLogHtml() {
@@ -5586,7 +5586,7 @@ function actionLogRowHtml(w, a, showWs) {
     </div>`;
 }
 // The "<X> open of <Y> action items" count — shown next to the workstream
-// name (or "All workstreams") in the shared .review-header (see
+// name (or "All Workstreams") in the shared .review-header (see
 // renderReview()), not floating disconnected above the table. .review-
 // header's <h2> is flex:1, so anything placed after it in that flex row
 // lands at the header's far right automatically, the same way a section-
@@ -5626,10 +5626,10 @@ function actionLogHtml(w) {
       ${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}
     </div>`;
 }
-// The "All workstreams" Action Log — every workstream's own actionLog
+// The "All Workstreams" Action Log — every workstream's own actionLog
 // merged into one list, each row tagged with its source workstream (see
 // actionLogRowHtml()'s showWs param). Reachable from Review mode's Action
-// Log tab with "All workstreams" selected in the sidebar (renderReview()):
+// Log tab with "All Workstreams" selected in the sidebar (renderReview()):
 // unlike Scope Item Review, which is tied to one workstream's own active
 // cycle, the Action Log has no such dependency, so it's the one part of
 // Review mode that can meaningfully show every workstream at once.
@@ -5796,7 +5796,7 @@ function decisionLogHtml(w) {
       ${sortedDecisionLog(list).map(d => decisionLogRowHtml(w, d)).join('')}
     </div>`;
 }
-// The "All workstreams" Decision Log — allWorkstreamsActionLogHtml()'s
+// The "All Workstreams" Decision Log — allWorkstreamsActionLogHtml()'s
 // counterpart, reachable from Review mode's Decision Log tab with "All
 // workstreams" selected in the sidebar.
 function allWorkstreamsDecisionLogHtml() {
@@ -5879,7 +5879,7 @@ function removeDecisionLogForCycle(cycle) {
   if (!w || !Array.isArray(w.decisionLog)) return;
   w.decisionLog = w.decisionLog.filter(d => d.cycleId !== cycle.id);
 }
-// "All workstreams" landing view for Scope Item Review — an explicit user
+// "All Workstreams" landing view for Scope Item Review — an explicit user
 // request. Scope Item Review is otherwise tied to one workstream's own
 // active cycle (unlike Action Log/Decision Log, which have no such
 // dependency — see allWorkstreamsActionLogHtml()), so with no workstream
@@ -5929,18 +5929,18 @@ function renderReview() {
   }
   if (!filterWorkstreamId) {
     if (reviewTab === 'actionLog') {
-      el.innerHTML = `<div class="review-header"><h2>All workstreams</h2>${actionLogCountHtml(workstreams.flatMap(w => Array.isArray(w.actionLog) ? w.actionLog : []))}</div>${allWorkstreamsActionLogHtml()}`;
+      el.innerHTML = `<div class="review-header"><h2>All Workstreams</h2>${actionLogCountHtml(workstreams.flatMap(w => Array.isArray(w.actionLog) ? w.actionLog : []))}</div>${allWorkstreamsActionLogHtml()}`;
       return;
     }
     if (reviewTab === 'decisionLog') {
-      el.innerHTML = `<div class="review-header"><h2>All workstreams</h2>${decisionLogCountHtml(workstreams.flatMap(w => Array.isArray(w.decisionLog) ? w.decisionLog : []))}</div>${allWorkstreamsDecisionLogHtml()}`;
+      el.innerHTML = `<div class="review-header"><h2>All Workstreams</h2>${decisionLogCountHtml(workstreams.flatMap(w => Array.isArray(w.decisionLog) ? w.decisionLog : []))}</div>${allWorkstreamsDecisionLogHtml()}`;
       return;
     }
     if (reviewTab === 'changeLog') {
-      el.innerHTML = `<div class="review-header"><h2>All workstreams</h2>${changeLogCountHtml(workstreams.flatMap(w => workstreamChangeLogEntries(w.id)))}</div>${allWorkstreamsChangeLogHtml()}`;
+      el.innerHTML = `<div class="review-header"><h2>All Workstreams</h2>${changeLogCountHtml(workstreams.flatMap(w => workstreamChangeLogEntries(w.id)))}</div>${allWorkstreamsChangeLogHtml()}`;
       return;
     }
-    el.innerHTML = `<div class="review-header"><h2>All workstreams</h2></div>${reviewDatesOverviewHtml()}`;
+    el.innerHTML = `<div class="review-header"><h2>All Workstreams</h2></div>${reviewDatesOverviewHtml()}`;
     return;
   }
   const w = wsById(filterWorkstreamId);
@@ -6020,7 +6020,7 @@ function allMilestonesFlat(itemList) {
 }
 // Dashboard scopes everything to visibleWorkstreams() — the same shared
 // filterWorkstreamId the sidebar sets for Planning/Review too. Selecting a
-// specific workstream narrows the whole rollup to it; "All workstreams"
+// specific workstream narrows the whole rollup to it; "All Workstreams"
 // (filterWorkstreamId === null) shows the full programme, same as before
 // this mode became workstream-scoped.
 function renderDashboard() {

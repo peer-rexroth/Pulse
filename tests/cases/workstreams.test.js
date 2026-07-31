@@ -160,7 +160,7 @@ test('renderSidebar renders a drag handle wired to dragStartWs for each real wor
   let html = document.getElementById('wsList').innerHTML;
   workstreams.forEach(w => assertIncludes(html, `dragStartWs(event,'${w.id}')`));
   const handleCount = (html.match(/dragStartWs\(event,/g) || []).length;
-  assertEqual(handleCount, workstreams.length, 'exactly one drag handle per real workstream — none for the "All workstreams" pseudo-row');
+  assertEqual(handleCount, workstreams.length, 'exactly one drag handle per real workstream — none for the "All Workstreams" pseudo-row');
 
   userRole = 'reviewer';
   renderSidebar();
@@ -185,7 +185,7 @@ test('selectWorkstreamFromSidebar sets the filter and switches to Dashboard, reg
   assertEqual(filterWorkstreamId, w.id);
 });
 
-test('selectWorkstreamFromSidebar(null) ("All workstreams") switches to Dashboard too, clearing the filter', function () {
+test('selectWorkstreamFromSidebar(null) ("All Workstreams") switches to Dashboard too, clearing the filter', function () {
   setMode('planning');
   filterWorkstreamId = workstreams[0].id;
   selectWorkstreamFromSidebar(null);
@@ -211,7 +211,7 @@ test('switching to Journeys mode deselects the workstream row in the sidebar, wi
   setMode('journeys');
   renderSidebar();
   html = document.getElementById('wsList').innerHTML;
-  assertNotIncludes(html, 'ws-row active', 'no workstream row (including "All workstreams") should read as active while Journeys — which ignores the selector entirely — is showing');
+  assertNotIncludes(html, 'ws-row active', 'no workstream row (including "All Workstreams") should read as active while Journeys — which ignores the selector entirely — is showing');
   assertEqual(filterWorkstreamId, w.id, 'the selection itself must survive the switch, so it\'s still scoped correctly on switching back');
 
   setMode('planning');
@@ -220,13 +220,13 @@ test('switching to Journeys mode deselects the workstream row in the sidebar, wi
   assertIncludes(html, `ws-row active" onclick="selectWorkstreamFromSidebar('${w.id}')"`, 'switching back to Planning restores the same row\'s active highlight');
 });
 
-test('switching to Journeys mode also deselects "All workstreams" itself, not just a specific workstream row', function () {
+test('switching to Journeys mode also deselects "All Workstreams" itself, not just a specific workstream row', function () {
   filterWorkstreamId = null;
   setMode('planning');
   renderSidebar();
-  assertIncludes(document.getElementById('topNavList').innerHTML, 'ws-row-all active', '"All workstreams" is active while Planning is scoped to it');
+  assertIncludes(document.getElementById('topNavList').innerHTML, 'ws-row-all active', '"All Workstreams" is active while Planning is scoped to it');
 
   setMode('journeys');
   renderSidebar();
-  assertNotIncludes(document.getElementById('topNavList').innerHTML, 'ws-row-all active', '"All workstreams" must not read as active either, once Journeys is showing');
+  assertNotIncludes(document.getElementById('topNavList').innerHTML, 'ws-row-all active', '"All Workstreams" must not read as active either, once Journeys is showing');
 });
