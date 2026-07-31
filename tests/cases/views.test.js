@@ -31,6 +31,67 @@ test('renderStatusView groups items under the correct workstream and shows RAG c
   assertIncludes(html, '1 On Track');
 });
 
+// ---------- External Delivery items get their own sub-section (renderStatusView()) ----------
+// An explicit user request: "show scope items which are flagged as
+// external separate from the scope item list ... similar like unassigned
+// scope items ... under the scope items list. Show also the External SPOC
+// in the view."
+
+test('an externally-delivered item is pulled out of the main list into its own "External Delivery" sub-section, still inside the same workstream', function () {
+  addItem({ name: 'Normal item' });
+  addItem({ name: 'Vendor-delivered item', externalDelivery: true, externalDeliverySpoc: 'Jane Doe' });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'External Delivery');
+  const subHeaderIdx = html.indexOf('External Delivery');
+  const normalIdx = html.indexOf('Normal item');
+  const externalIdx = html.indexOf('Vendor-delivered item');
+  assertTrue(normalIdx < subHeaderIdx, 'the normal item should render before the sub-section header');
+  assertTrue(subHeaderIdx < externalIdx, 'the external item should render after the sub-section header, not in the main list');
+});
+
+test('the External Delivery sub-section shows that item\'s own SPOC', function () {
+  addItem({ name: 'Vendor-delivered item', externalDelivery: true, externalDeliverySpoc: 'Jane Doe (Acme Corp)' });
+  renderMain();
+  assertIncludes(document.getElementById('main').innerHTML, 'Jane Doe (Acme Corp)');
+});
+
+test('a normal (non-external) item\'s row never shows the item-external-spoc span', function () {
+  const it = addItem({ name: 'Normal item' });
+  assertNotIncludes(itemRowHtml(it), 'item-external-spoc');
+});
+
+test('an external item with no SPOC entered yet still renders the span (with a placeholder dash), so the grid column never collapses', function () {
+  const it = addItem({ name: 'External, no SPOC yet', externalDelivery: true, externalDeliverySpoc: null });
+  assertIncludes(itemRowHtml(it), '<span class="item-external-spoc" title="External SPOC">—</span>');
+});
+
+test('RAG counts in the workstream header still include externally-delivered items, even though they render in the separate sub-section', function () {
+  addItem({ status: 'red', name: 'External blocker', externalDelivery: true, externalDeliverySpoc: 'Jane Doe' });
+  addItem({ status: 'green', name: 'Normal item' });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '1 Off Track');
+  assertIncludes(html, '1 On Track');
+});
+
+test('a workstream with only externally-delivered items shows no "No items yet." placeholder in the main list', function () {
+  addItem({ name: 'Only item, external', externalDelivery: true, externalDeliverySpoc: 'Jane Doe' });
+  renderMain();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'No items yet.');
+});
+
+test('a workstream with genuinely zero items still shows the "No items yet." placeholder', function () {
+  renderMain();
+  assertIncludes(document.getElementById('main').innerHTML, 'No items yet.');
+});
+
+test('a workstream with no externally-delivered items shows no "External Delivery" sub-section at all', function () {
+  addItem({ name: 'Normal item' });
+  renderMain();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'External Delivery');
+});
+
 test('an item with milestones shows a count badge, and its milestones are hidden until expanded', function () {
   const it = addItem({
     name: 'With milestones',

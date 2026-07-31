@@ -492,6 +492,17 @@
   .ws-section-title { font-weight: 700; font-size: 14.5px; flex: 1; }
   .rag-pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
   .rag-summary { display: flex; gap: 5px; }
+  /* External Delivery's own sub-section (renderStatusView()) — a smaller,
+     nested heading than .ws-section-header, since it labels a group inside
+     one workstream's own card rather than the workstream itself. No
+     border-radius (unlike .ws-section-header's rounded top corners) since
+     this never sits at the very top of the .ws-section card it lives in. */
+  .ws-subsection-header { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--panel-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 700; color: var(--text-dim); }
+  .ws-subsection-header i { font-size: 11px; }
+  /* An externally-delivered item's own SPOC, shown right on its row — see
+     itemRowHtml()'s own comment on reusing this column's existing
+     always-blank slot rather than adding a new grid column for it. */
+  .item-external-spoc { color: var(--text-dim); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Item rows and their nested milestone rows share --item-grid-cols so
      every cell lines up vertically regardless of which optional content
@@ -2355,15 +2366,36 @@ function renderStatusView(main) {
     const pills = STATUSES.filter(s => counts[s.id] > 0).map(s =>
       `<span class="rag-pill" style="background:var(--stat-${s.id}-bg);color:var(--stat-${s.id})">${counts[s.id]} ${esc(s.label)}</span>`
     ).join('');
-    const rows = wItems.length ? wItems.map(it => itemRowHtml(it)).join('') :
-      `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No items yet.</div>`;
+    // Items flagged External Delivery are pulled out of the main list into
+    // their own sub-section right underneath it, within the same
+    // .ws-section card — an explicit user request ("show scope items which
+    // are flagged as external separate from the scope item list...
+    // similar like unassigned scope items"), mirroring the Unassigned
+    // bucket's own "items that don't belong in the normal list" separation,
+    // just nested inside a single workstream's own section rather than as
+    // its own page-wide pinned block (an externally-delivered item still
+    // has a real workstream — this is purely a display grouping, not
+    // another Unassigned-style bucket). The RAG pill counts above still
+    // roll up every item in the workstream, external ones included — the
+    // split only changes how they're grouped in the list, not whether they
+    // count toward the workstream's own stats.
+    const mainItems = wItems.filter(it => !it.externalDelivery);
+    const externalItems = wItems.filter(it => it.externalDelivery);
+    const rows = mainItems.length ? mainItems.map(it => itemRowHtml(it)).join('')
+      : (externalItems.length ? '' : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No items yet.</div>`);
+    const externalSectionHtml = externalItems.length ? `
+        <div class="ws-subsection-header">
+          <i class="fa-solid fa-globe"></i>
+          <span>External Delivery</span>
+        </div>
+        ${externalItems.map(it => itemRowHtml(it)).join('')}` : '';
     return `<div class="ws-section">
         <div class="ws-section-header" style="background:var(--ws-${w.color}-bg)">
           <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
           <span class="ws-section-title">${esc(w.name)}</span>
           <div class="rag-summary">${pills}</div>
         </div>
-        ${rows}
+        ${rows}${externalSectionHtml}
       </div>`;
   }).join('');
   const noWorkstreamsHint = workstreams.length === 0
@@ -2541,6 +2573,23 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // modal), just never shown/edited inline on the row — this used to get a
   // dedicated (always-blank) grid column reserved for it, removed outright
   // per an explicit user request (see --item-grid-cols' own comment above).
+  // External Delivery's own SPOC surfaces on the row itself here — an
+  // explicit user request ("show also the External SPOC in the view"),
+  // reusing this column's own existing always-blank slot on an item's own
+  // row (column 7, "Milestone-Due" in --item-grid-cols' own comment — that
+  // one only ever holds a milestone's own Due date on a milestone SUB-row,
+  // never anything on the item's own row) rather than adding a whole new
+  // grid column just for this. Since items flagged externalDelivery are the
+  // only ones this ever renders for, and renderStatusView() now pulls every
+  // externally-delivered item into its own "External Delivery" sub-section
+  // (see there) rather than the workstream's main list, this only ever
+  // actually shows up in practice inside that sub-section — plus, as a
+  // harmless side effect, anywhere else this same row markup gets reused
+  // for an external item (Review's own checklist, a Journey's connected
+  // items) where the useful context is equally welcome, not filtered out.
+  const externalSpocHtml = it.externalDelivery
+    ? `<span class="item-external-spoc" title="External SPOC">${esc(it.externalDeliverySpoc || '—')}</span>`
+    : `<span></span>`;
   // IT/Business/Budget — item-level-only RAG tags, cycled by clicking. See
   // ITEM_TAG_FIELDS/RAG3/cycleItemAttr() above. Icon-only (no text label) —
   // title attr carries the full name for a hover tooltip. Rendered in column
@@ -2651,7 +2700,7 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
       ${milestoneBadge}
       ${planDatesHtml}
       <span></span>
-      <span></span>
+      ${externalSpocHtml}
       ${tagsHtml}
       ${statusBadgeHtml}
       ${(reviewCycle || !editable)
