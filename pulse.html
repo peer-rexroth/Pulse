@@ -2109,6 +2109,32 @@ function computeJourneyDateRange(journeyId) {
   dates.sort();
   return { startDate: dates[0], dueDate: dates[dates.length - 1] };
 }
+// A Journey's own status, like its plan date range just above, is computed
+// live at render time from every connected scope item's own status — an
+// explicit user request ("Journey should calculate their status based on
+// the status of the included scope items"), reversing the earlier stance
+// (a plain manual dropdown, since a Journey has no milestones of its own to
+// roll a status up from) once computing one from connected items' own
+// status was actually asked for. Same weakest-link reduce, same
+// STATUS_SEVERITY order computedStatusFromMilestones() already uses — a
+// Journey with any Red-status scope item connected reads Red overall, the
+// same "one active problem always surfaces" reasoning that function's own
+// comment gives. Deliberately never persisted onto the Journey's own
+// `status` field, for the identical reason computeJourneyDateRange() isn't:
+// recomputing fresh here avoids hooking every place a connected item's own
+// status could change (its own milestone edits, being connected/
+// disconnected) just to keep a cached value in sync. Returns null when
+// nothing is connected yet, same null-means-"nothing to compute from"
+// convention as computedStatusFromMilestones()/computeJourneyDateRange() —
+// callers fall back to 'not-started', the same neutral default a brand-new
+// item already starts at.
+function computeJourneyStatus(journeyId) {
+  const connected = connectedScopeItems(journeyId);
+  if (!connected.length) return null;
+  return connected.reduce((worst, it) =>
+    STATUS_SEVERITY[it.status] < STATUS_SEVERITY[worst] ? it.status : worst
+  , connected[0].status);
+}
 
 // ---------- Rendering ----------
 // render() is the single top-level dispatcher: every mutation should call
@@ -2578,9 +2604,16 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // dismiss/"Later" option any more (an explicit user request), so this is
   // purely a page-reload recovery path, not a "skip for now" one.
   const scopeAssignReady = editable && it.status === 'complete' && isPendingCategory(it.categoryId);
+  // A Journey's own displayed status is always computed live from its
+  // connected scope items (see computeJourneyStatus()), never its own
+  // stored `status` field — scopeAssignReady is always false for one
+  // regardless (a Journey's categoryId is always null, so
+  // isPendingCategory() never matches), so this only ever changes what the
+  // badge itself shows, not which click target it routes to.
+  const displayStatus = isJourney ? (computeJourneyStatus(it.id) || 'not-started') : it.status;
   const statusBadgeHtml = scopeAssignReady
-    ? `<button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openScopeAssignModal('${it.id}')" title="Scope confirmed — click to assign its real workstream and category">${esc(statusLabel(it.status))}</button>`
-    : `<button class="status-badge" style="background:var(--stat-${it.status}-bg);color:var(--stat-${it.status})" onclick="openItemModal('${it.id}')">${esc(statusLabel(it.status))}</button>`;
+    ? `<button class="status-badge" style="background:var(--stat-${displayStatus}-bg);color:var(--stat-${displayStatus})" onclick="openScopeAssignModal('${it.id}')" title="Scope confirmed — click to assign its real workstream and category">${esc(statusLabel(displayStatus))}</button>`
+    : `<button class="status-badge" style="background:var(--stat-${displayStatus}-bg);color:var(--stat-${displayStatus})" onclick="openItemModal('${it.id}')">${esc(statusLabel(displayStatus))}</button>`;
   // A Journey is a plain item under the hood (see "Journeys" in CLAUDE.md) —
   // this icon prefix, not a dedicated grid column, is the only thing telling
   // its row apart from an ordinary scope item's when the two sit in the same
@@ -3577,24 +3610,38 @@ function toggleEditingMilestoneNotApplicable(idx) {
 // reads itemDueInput's value as a newly re-seeded milestone's default due date.
 function updateItemStatusFieldMode() {
   const hasMilestones = editingMilestones.length > 0;
-  document.getElementById('itemStatusSelect').style.display = hasMilestones ? 'none' : '';
-  document.getElementById('itemStatusComputed').style.display = hasMilestones ? '' : 'none';
+  // A Journey's Status field, like its Plan dates just below, switches to
+  // the same read-only computed badge — an explicit user request ("Journey
+  // should calculate their status based on the status of the included
+  // scope items"), reversing the earlier "stays a plain manual dropdown"
+  // stance now that computing one from connected items was actually asked
+  // for. See computeJourneyStatus()'s own comment for why this is never
+  // persisted onto the Journey's own `status` field either, mirroring
+  // computeJourneyDateRange() exactly.
+  const isJourney = editingItemType === 'journey';
+  const showComputedStatus = hasMilestones || isJourney;
+  document.getElementById('itemStatusSelect').style.display = showComputedStatus ? 'none' : '';
+  document.getElementById('itemStatusComputed').style.display = showComputedStatus ? '' : 'none';
   if (hasMilestones) {
     const computed = computedStatusFromMilestones(editingMilestones);
     const badge = document.getElementById('itemStatusComputedBadge');
     badge.textContent = statusLabel(computed);
     badge.style.background = `var(--stat-${computed}-bg)`;
     badge.style.color = `var(--stat-${computed})`;
+  } else if (isJourney) {
+    // A brand-new, not-yet-saved Journey has no id to look up connections
+    // by, so it always shows the neutral "Not Started" fallback until it's
+    // actually saved — same convention computeJourneyStatus()'s own null
+    // return already establishes for the "nothing connected yet" case.
+    const computed = editingItemId ? (computeJourneyStatus(editingItemId) || 'not-started') : 'not-started';
+    const badge = document.getElementById('itemStatusComputedBadge');
+    badge.textContent = statusLabel(computed);
+    badge.style.background = `var(--stat-${computed}-bg)`;
+    badge.style.color = `var(--stat-${computed})`;
   }
-  // Plan dates no longer always move in lockstep with Status the way they
-  // do for every other item — a Journey has no milestones of its own
-  // (hasMilestones is always false for one), so its Status stays a plain
-  // manual dropdown, but its Plan dates are still always computed, just
-  // from a different source: connectedScopeItems()'s aggregated milestones
-  // (see computeJourneyDateRange()), not editingMilestones. A brand-new,
-  // not-yet-saved Journey has no id to look up connections by, so it always
-  // shows the "nothing connected yet" placeholder until it's actually saved.
-  const isJourney = editingItemType === 'journey';
+  // Plan dates are still always computed for a Journey too, from the same
+  // connectedScopeItems()'s aggregated milestones (see
+  // computeJourneyDateRange()), not editingMilestones.
   const journeyRange = (isJourney && editingItemId) ? computeJourneyDateRange(editingItemId) : null;
   const showComputedDates = hasMilestones || isJourney;
   document.getElementById('itemDatesManual').style.display = showComputedDates ? 'none' : '';
@@ -3676,8 +3723,17 @@ function saveItem() {
   // computed from them — the Status <select> and Start/Due <input>s are only
   // read, and only shown, when there are none to compute from. See
   // "Milestone checklist" / "Item status roll-up" in CLAUDE.md for why
-  // neither has a manual override once milestones exist.
-  const status = milestones.length ? computedStatusFromMilestones(milestones) : document.getElementById('itemStatusSelect').value;
+  // neither has a manual override once milestones exist. A Journey's own
+  // Status <select> is hidden/computed the same way (see
+  // updateItemStatusFieldMode()) — its stored `status` field is never
+  // actually displayed anywhere (computeJourneyStatus() is what itemRowHtml()/
+  // the modal read instead), so this just leaves whatever it already was
+  // (or 'not-started' for a brand-new one) rather than reading a select the
+  // user never had a chance to change, mirroring how a Journey's own stored
+  // startDate/dueDate are likewise written but never displayed.
+  const status = savingJourney
+    ? (editingItemForSave ? editingItemForSave.status : 'not-started')
+    : (milestones.length ? computedStatusFromMilestones(milestones) : document.getElementById('itemStatusSelect').value);
   const range = milestones.length ? computedDateRangeFromMilestones(milestones) : null;
   const startDate = range ? range.startDate : manualStartDate;
   const dueDate = range ? range.dueDate : manualDueDate;

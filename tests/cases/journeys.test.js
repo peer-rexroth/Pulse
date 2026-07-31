@@ -342,11 +342,72 @@ test('the item modal shows "No connected scope items yet" for a brand-new Journe
   assertEqual(document.getElementById('itemDatesComputedBadge').textContent, 'No connected scope items yet');
 });
 
-test('the item modal still shows a manual Status select for a Journey (no milestones to compute it from)', function () {
+// ---------- computeJourneyStatus() ----------
+// An explicit, later user request: "Journey should calculate their status
+// based on the status of the included scope items" — reversing the earlier
+// "plain manual dropdown" stance the two tests just above this block used
+// to cover (both replaced here, since a Journey's Status field is now
+// computed the same way its Plan-dates field already was).
+
+test('computeJourneyStatus returns null when nothing is connected', function () {
   const journey = addJourney();
+  assertEqual(computeJourneyStatus(journey.id), null);
+});
+
+test('computeJourneyStatus picks the weakest (worst) status across every connected scope item', function () {
+  const journey = addJourney();
+  addItem({ name: 'A', journeyId: journey.id, status: 'green' });
+  addItem({ name: 'B', journeyId: journey.id, status: 'red' });
+  addItem({ name: 'C', journeyId: journey.id, status: 'amber' });
+  assertEqual(computeJourneyStatus(journey.id), 'red');
+});
+
+test('computeJourneyStatus treats not-started as better than an active Green/Amber/Red, same severity order as computedStatusFromMilestones', function () {
+  const journey = addJourney();
+  addItem({ name: 'A', journeyId: journey.id, status: 'not-started' });
+  addItem({ name: 'B', journeyId: journey.id, status: 'amber' });
+  assertEqual(computeJourneyStatus(journey.id), 'amber');
+});
+
+test('computeJourneyStatus reads complete as the best status when every connected item is done', function () {
+  const journey = addJourney();
+  addItem({ name: 'A', journeyId: journey.id, status: 'complete' });
+  addItem({ name: 'B', journeyId: journey.id, status: 'complete' });
+  assertEqual(computeJourneyStatus(journey.id), 'complete');
+});
+
+test('itemRowHtml shows the computed status badge for a Journey, falling back to Not Started when nothing is connected', function () {
+  const journey = addJourney();
+  assertIncludes(itemRowHtml(journey), statusLabel('not-started'));
+  addItem({ name: 'Connected', journeyId: journey.id, status: 'red' });
+  assertIncludes(itemRowHtml(journey), statusLabel('red'));
+});
+
+test('the item modal shows a computed Status badge for an existing Journey, sourced from connected items, not a manual select', function () {
+  const journey = addJourney();
+  addItem({ name: 'Connected', journeyId: journey.id, status: 'amber' });
   openItemModal(journey.id);
-  assertEqual(document.getElementById('itemStatusSelect').style.display, '');
-  assertEqual(document.getElementById('itemStatusComputed').style.display, 'none');
+  assertEqual(document.getElementById('itemStatusSelect').style.display, 'none');
+  assertEqual(document.getElementById('itemStatusComputed').style.display, '');
+  assertEqual(document.getElementById('itemStatusComputedBadge').textContent, statusLabel('amber'));
+});
+
+test('the item modal shows the Not Started fallback for a brand-new Journey (no id to look up connections by)', function () {
+  openItemModal(null, null, 'journey');
+  assertEqual(document.getElementById('itemStatusSelect').style.display, 'none');
+  assertEqual(document.getElementById('itemStatusComputedBadge').textContent, statusLabel('not-started'));
+});
+
+test('saveItem never reads the hidden Status select for a Journey — the stored status field is inert, display always comes from computeJourneyStatus', function () {
+  const journey = addJourney('Onboarding');
+  addItem({ name: 'Connected', journeyId: journey.id, status: 'red' });
+  openItemModal(journey.id);
+  document.getElementById('itemNameInput').value = 'Onboarding v2';
+  document.getElementById('itemStatusSelect').value = 'green'; // simulates a stray/bypassed value
+  saveItem();
+  const saved = items.find(i => i.id === journey.id);
+  assertEqual(saved.name, 'Onboarding v2', 'the unrelated edit should still have saved');
+  assertEqual(computeJourneyStatus(journey.id), 'red', 'the displayed status is unaffected by whatever the hidden select reported');
 });
 
 // ---------- The connect modal ----------
