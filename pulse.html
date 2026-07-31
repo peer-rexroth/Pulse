@@ -1458,6 +1458,31 @@
   </div>
 </div>
 
+<!-- Backup-folder onboarding modal — shown right after the file-sync modal
+     above closes, as the second step of the same launch-time onboarding
+     sequence (an explicit user request: "handle file link and backup link
+     in 2 modals after each other... ask when launching the app"), or on
+     its own at launch if a file is already linked but no backup folder is
+     yet. See maybeShowBackupFolderOnboarding()/chooseBackupFolder(). -->
+<div class="modal-bg" id="backupFolderModalBg">
+  <div class="modal" style="width:400px">
+    <h3>Daily backups to a folder</h3>
+    <p>Optionally save a dated backup copy of this programme to a folder on disk every day, on top of any linked file above.</p>
+    <div class="import-options">
+      <div class="import-option" onclick="closeBackupFolderModal();chooseBackupFolder()">
+        <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-purple-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fa-solid fa-clock-rotate-left" style="color:var(--ws-purple);font-size:15px"></i>
+        </div>
+        <div class="import-option-text">
+          <strong>Choose a backup folder</strong>
+          <span>Pick a folder for daily dated backups</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions" style="justify-content:flex-end"><button class="btn" onclick="closeBackupFolderModal()">Not now</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"><span id="toastMsg"></span><button class="toast-undo" id="toastUndoBtn" style="display:none" onclick="triggerToastUndo()">Undo</button></div>
 
 <script>
@@ -6344,7 +6369,7 @@ function maybeShowPendingFileSyncPrompt() {
   if (!pendingFileSyncPrompt) return;
   const p = pendingFileSyncPrompt;
   pendingFileSyncPrompt = null;
-  openFileSyncModal(p === 'link' ? undefined : p);
+  openFileSyncModal(p === 'link' ? undefined : p, true);
 }
 const _FS = { db: 'pulse-fs', store: 'handles', key: 'linked-file', backupKey: 'backup-dir' };
 function _fsIdb(mode, fn) {
@@ -6742,7 +6767,7 @@ async function initFileSync() {
     // is parked in pendingFileSyncPrompt instead of opened immediately,
     // since opening it here would race the mandatory role-picker gate below
     // and get buried behind it before any role has actually been chosen.
-    if (!handle) { if (!userRole) pendingFileSyncPrompt = 'link'; else openFileSyncModal(); return; }
+    if (!handle) { if (!userRole) pendingFileSyncPrompt = 'link'; else openFileSyncModal(undefined, true); return; }
     fileHandle = handle;
     const perm = await handle.queryPermission({ mode: 'readwrite' });
     if (perm === 'granted') {
@@ -6766,17 +6791,37 @@ async function initFileSync() {
     } else if (!userRole) {
       pendingFileSyncPrompt = handle; // same race as the !handle branch above
     } else {
-      openFileSyncModal(handle);
+      openFileSyncModal(handle, true);
+    }
+    // The file link was already present and working (the 'granted' branch
+    // above, having fallen through without returning) — no file-sync modal
+    // was ever shown to chain the backup-folder step off of (see
+    // closeFileSyncModal()), so it's checked directly here instead. A no-op
+    // in the other two branches: pendingFileSyncPrompt defers this same
+    // check until maybeShowPendingFileSyncPrompt() eventually opens (and
+    // closes) the file modal, and the modal-now-open branch defers it to
+    // that same close.
+    if (!pendingFileSyncPrompt && !document.getElementById('fileSyncModalBg').classList.contains('open')) {
+      maybeShowBackupFolderOnboarding();
     }
     updateFileSyncUI();
   } catch (e) {
     fileHandle = null;
     _fsDel().catch(() => {});
     updateFileSyncUI();
-    if (!userRole) pendingFileSyncPrompt = 'link'; else openFileSyncModal();
+    if (!userRole) pendingFileSyncPrompt = 'link'; else openFileSyncModal(undefined, true);
   }
 }
-function openFileSyncModal(reconnectHandle) {
+// isLaunch marks a call that's part of app-startup onboarding (initFileSync()/
+// maybeShowPendingFileSyncPrompt()) rather than a manual reopen later (the
+// topbar indicator's own "Link file"/reconnect buttons, which omit it) —
+// closeFileSyncModal() reads it to decide whether to chain into the
+// backup-folder onboarding step right after (see its own comment below),
+// so a manually-reopened modal later in the session never unexpectedly
+// pops up a second modal on close.
+let fileSyncModalIsLaunchFlow = false;
+function openFileSyncModal(reconnectHandle, isLaunch) {
+  fileSyncModalIsLaunchFlow = !!isLaunch;
   const ro = document.getElementById('fileSyncReconnectOption');
   const rl = document.getElementById('fileSyncReconnectLabel');
   const warn = document.getElementById('fileSyncWarning');
@@ -6793,7 +6838,36 @@ function openFileSyncModal(reconnectHandle) {
   }
   document.getElementById('fileSyncModalBg').classList.add('open');
 }
-function closeFileSyncModal() { document.getElementById('fileSyncModalBg')?.classList.remove('open'); }
+// Chains into the backup-folder onboarding modal right after this one
+// closes — an explicit user request ("handle file link and backup link in
+// 2 modals after each other... ask when launching the app") — but only
+// when this particular open was itself part of that same launch sequence
+// (fileSyncModalIsLaunchFlow), not a manual reopen later (e.g. reconnecting
+// via the topbar indicator mid-session, where a second, unrelated modal
+// popping up on close would be surprising). Fires regardless of *how* this
+// modal was closed — Not now, or after Link/Create/Reconnect — the
+// backup-folder step is asked about either way, same as the file-link step
+// itself doesn't gate on what was chosen.
+function closeFileSyncModal() {
+  document.getElementById('fileSyncModalBg')?.classList.remove('open');
+  if (fileSyncModalIsLaunchFlow) {
+    fileSyncModalIsLaunchFlow = false;
+    maybeShowBackupFolderOnboarding();
+  }
+}
+// The second step of the launch-time onboarding sequence — see
+// closeFileSyncModal()'s own comment for when this fires, and initFileSync()
+// for the one case (file already linked and working) where it's called
+// directly instead, since no file-sync modal ever opens to chain off of
+// there. A no-op if daily backups aren't supported at all (matches
+// updateBackupSyncUI()'s own gating) or a folder's already chosen.
+function maybeShowBackupFolderOnboarding() {
+  if (!window.showDirectoryPicker) return;
+  if (backupDirHandle) return;
+  openBackupFolderModal();
+}
+function openBackupFolderModal() { document.getElementById('backupFolderModalBg').classList.add('open'); }
+function closeBackupFolderModal() { document.getElementById('backupFolderModalBg')?.classList.remove('open'); }
 
 // ---------- Data dropdown menu ----------
 function toggleDataMenu() { document.getElementById('dataMenu')?.classList.toggle('open'); }
@@ -6819,11 +6893,12 @@ document.getElementById('importModalBg').addEventListener('click', (e) => { if (
 document.getElementById('backupsModalBg').addEventListener('click', (e) => { if (e.target.id === 'backupsModalBg') closeBackupsModal(); });
 document.getElementById('syncConflictsModalBg').addEventListener('click', (e) => { if (e.target.id === 'syncConflictsModalBg') closeSyncConflictsModal(); });
 document.getElementById('fileSyncModalBg').addEventListener('click', (e) => { if (e.target.id === 'fileSyncModalBg') closeFileSyncModal(); });
+document.getElementById('backupFolderModalBg').addEventListener('click', (e) => { if (e.target.id === 'backupFolderModalBg') closeBackupFolderModal(); });
 document.getElementById('themeModalBg').addEventListener('click', (e) => { if (e.target.id === 'themeModalBg') closeThemeModal(); });
 document.getElementById('roleModalBg').addEventListener('click', (e) => { if (e.target.id === 'roleModalBg') closeRoleModal(); });
 document.getElementById('rolePasswordsModalBg').addEventListener('click', (e) => { if (e.target.id === 'rolePasswordsModalBg') closeRolePasswordsModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeJourneyConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeJourneyConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeBackupFolderModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); }
 });
 
 // A user-reported bug on some Chrome/Safari + macOS combinations: a modal's
