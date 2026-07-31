@@ -6498,12 +6498,36 @@ function backupFileName(dateStr) { return `pulse-backup-${dateStr}.json`; }
 // todayStr() changing is what starts a new dated file; every other same-day
 // save is a no-op here, mirroring maybeSnapshotBackup()'s own "one snapshot
 // per day" rule. Kept forever — nothing here ever deletes an old dated file.
+// lastBackupWrittenDate alone only guards against *this one session*
+// writing more than once a day — it's plain in-memory state, never
+// persisted, so a reload (or a different session/user entirely, pointed at
+// the same shared folder) starts with it back at null and would otherwise
+// go ahead and write again. Checking the folder itself for today's file
+// before writing (a plain getFileHandle() with no {create:true} throws if
+// it's missing) — an explicit user request, since the previous unconditional
+// getFileHandle(...,{create:true}) always got a handle back (existing or
+// freshly created) and proceeded to overwrite it either way, silently
+// clobbering whatever an earlier session/user had already written there
+// with no coordination at all. Finding it already there is treated the
+// same as this session having written it — lastBackupWrittenDate is set
+// either way, so the rest of the day's saves skip straight past the
+// (cheap, but not free) existence check too. This narrows, but can't fully
+// close, the race between two sessions saving at nearly the same instant —
+// the File System Access API has no atomic "create only if missing"
+// primitive to check-and-write in one step — but it turns "always
+// overwrites" into "only the very first writer today wins", which is what
+// was asked for.
 async function writeBackupCopy(data) {
   if (!backupDirHandle) return;
   if (lastBackupWrittenDate === todayStr()) return;
   try {
     if ((await backupDirHandle.queryPermission({ mode: 'readwrite' })) !== 'granted') return;
-    const fh = await backupDirHandle.getFileHandle(backupFileName(todayStr()), { create: true });
+    const name = backupFileName(todayStr());
+    let alreadyExists = true;
+    try { await backupDirHandle.getFileHandle(name); }
+    catch (_) { alreadyExists = false; }
+    if (alreadyExists) { lastBackupWrittenDate = todayStr(); return; }
+    const fh = await backupDirHandle.getFileHandle(name, { create: true });
     const w = await fh.createWritable();
     await w.write(JSON.stringify(data, null, 2));
     await w.close();
