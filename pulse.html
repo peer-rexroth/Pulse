@@ -3445,8 +3445,23 @@ function populateWorkstreamSelect(selectedId, elId, includeUnassigned) {
     `<option value="${w.id}" ${w.id === selectedId ? 'selected' : ''}>${esc(w.name)}</option>`
   ).join('');
 }
+// The reserved Pending category is never offered as a destination here —
+// same "one-way waypoint, never a destination" exclusion
+// openScopeAssignModal()'s own category select already applies (see "Quick-
+// add scope items, the Unassigned bucket, and the Pending category" in
+// CLAUDE.md). Without this, a real item could be manually switched *into*
+// Pending through this ordinary select — bypassing the whole point of that
+// category being reachable only via applyScopeCategory() — and would end up
+// in a broken mixed state (a real workstreamId, but a Pending categoryId
+// whose own lock then permanently disables the Workstream/Category selects
+// on it). The one exception is `selectedId` itself already being Pending —
+// a still-Pending item being edited needs its own current category to
+// actually render as the selected option (even though that select is
+// locked/disabled for it regardless — see openItemModal()'s own comment),
+// rather than silently falling back to whichever real category happens to
+// render first.
 function populateCategorySelect(selectedId) {
-  document.getElementById('itemCategorySelect').innerHTML = categories.map(c =>
+  document.getElementById('itemCategorySelect').innerHTML = categories.filter(c => !c.pending || c.id === selectedId).map(c =>
     `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${esc(c.name)}</option>`
   ).join('');
 }
@@ -3771,9 +3786,21 @@ function saveItem() {
   // falling back to manualDueDate — that fallback exists so an *applicable*
   // milestone never ends up with no due date at all, which doesn't apply
   // once the milestone is out of scope.
-  const milestones = editingMilestones.map(m => ({
-    id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: m.notApplicable ? (m.dueDate || null) : (m.dueDate || manualDueDate), status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable, updatedAt: Date.now()
-  }));
+  // A category switch on an existing item with zero current milestones has
+  // nothing to lose, so it silently picks up the new category's own
+  // template right here rather than needing the confirm-gated swap further
+  // below (see that block's own comment) — there would otherwise be no way
+  // at all to get milestones onto it under the new category, since the "+
+  // Add milestone" button was removed for an existing item's checklist (see
+  // "Milestone checklist" in CLAUDE.md) and onItemCategoryChange()
+  // deliberately no-ops once an item exists.
+  const zeroMilestoneCategorySwitch = !!(editingItemId && !savingJourney && !stillPendingOnSave
+    && editingItemForSave.categoryId !== categoryId && !editingItemForSave.milestones.length);
+  const milestones = zeroMilestoneCategorySwitch
+    ? milestonesForCategory(categoryId, editingItemForSave.dueDate)
+    : editingMilestones.map(m => ({
+        id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: m.notApplicable ? (m.dueDate || null) : (m.dueDate || manualDueDate), status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable, updatedAt: Date.now()
+      }));
   // An item with milestones always gets its status AND plan date range
   // computed from them — the Status <select> and Start/Due <input>s are only
   // read, and only shown, when there are none to compute from. See
@@ -3793,6 +3820,59 @@ function saveItem() {
   const startDate = range ? range.startDate : manualStartDate;
   const dueDate = range ? range.dueDate : manualDueDate;
   const data = { workstreamId, categoryId, name, status, startDate, dueDate, actualDate, milestones, externalDelivery, externalDeliverySpoc, updatedAt: Date.now() };
+  // Switching an existing (non-Pending, non-Journey) item's category away
+  // from whatever it already was is destructive whenever it currently has
+  // real milestones — an explicit user request ("if I change the category
+  // of a scope item which had already a category, with its respective
+  // milestones... deleting milestones and assign new milestone skeleton
+  // according to new category"). This mirrors applyScopeCategory() (Pending's
+  // own scope-assign flow) exactly — a full swap, not a name-diffed merge
+  // like applyCategoryMilestoneSync()'s same-category template-sync, since
+  // two different categories' milestone names are essentially disjoint —
+  // but unlike that flow, this one can throw away real status/dates someone
+  // already recorded, so it's confirm-gated rather than silent, the same
+  // "describe the impact, then confirm" pattern saveCategory()'s own
+  // destructive template-sync uses. Deferred to Save, not
+  // onItemCategoryChange() (which still no-ops for an existing item — see
+  // its own comment) — browsing the dropdown mid-edit doesn't trigger
+  // anything on its own; only actually committing the edit does. An item
+  // with zero milestones has nothing to lose, so it already silently picked
+  // up the new category's template above instead (no confirm needed) — see
+  // `zeroMilestoneCategorySwitch`'s own comment.
+  if (editingItemId && !savingJourney && !stillPendingOnSave && editingItemForSave.categoryId !== categoryId && editingItemForSave.milestones.length) {
+    const newCat = categoryById(categoryId);
+    const freshMilestones = milestonesForCategory(categoryId, editingItemForSave.dueDate);
+    const freshRange = computedDateRangeFromMilestones(freshMilestones);
+    const swapData = Object.assign({}, data, {
+      milestones: freshMilestones,
+      status: computedStatusFromMilestones(freshMilestones),
+      startDate: freshRange ? freshRange.startDate : data.startDate,
+      dueDate: freshRange ? freshRange.dueDate : data.dueDate
+    });
+    const oldCount = editingItemForSave.milestones.length;
+    const targetId = editingItemId;
+    closeItemModal();
+    openConfirmModal({
+      title: 'Switch category?',
+      body: `Switching to "${newCat.name}" will replace this item's ${oldCount} milestone${oldCount === 1 ? '' : 's'} with "${newCat.name}"'s own template (losing any status/dates recorded on them). This cannot be undone.`,
+      confirmLabel: 'Switch Category',
+      action: () => {
+        const target = items.find(i => i.id === targetId);
+        if (!target) return;
+        const prevStatus = target.status;
+        target.milestones.forEach(old => tombstone(deletedMilestoneIds, old.id));
+        Object.assign(target, swapData);
+        // Same "what changed while this workstream was under review" record
+        // applyScopeCategory() already leaves behind for the Pending
+        // scope-assign flow — a no-op if no cycle is currently active.
+        logReviewChange(target.workstreamId, target.name, null, `Category switched to "${newCat.name}"`, { itemId: target.id });
+        save(); render();
+        showToast('Category switched');
+        maybeOfferScopeAssign(target, prevStatus);
+      }
+    });
+    return;
+  }
   let savedItem;
   let prevStatus = null;
   if (editingItemId) {

@@ -80,6 +80,105 @@ test('onItemCategoryChange does nothing while editing an existing item (never re
   assertEqual(editingMilestones.length, 1, 'editing an existing item should not reseed its milestones on category change');
 });
 
+// ---------- Switching an existing item's category (destructive milestone swap) ----------
+// An explicit user request: "if I change the category of a scope item which
+// had already a category with its respective milestones... deleting
+// milestones and assign new milestone skeleton according to new category."
+// Unlike onItemCategoryChange() above (which only ever fires mid-edit and
+// deliberately no-ops for an existing item), this is deferred to saveItem()
+// itself — actually committing the edit is what's confirm-gated, mirroring
+// saveCategory()'s own destructive template-sync pattern.
+
+function addRealItem(name) {
+  openItemModal(null);
+  document.getElementById('itemNameInput').value = name || 'Real item';
+  document.getElementById('itemWorkstreamSelect').value = workstreams[0].id;
+  document.getElementById('itemCategorySelect').value = categories[0].id; // 'Development'
+  saveItem();
+  return items[items.length - 1];
+}
+
+test('saveItem defers to a confirm modal instead of saving immediately when switching category on an item that has milestones', function () {
+  const it = addRealItem();
+  const before = it.milestones.length;
+  assertTrue(before > 0, 'Development seeds a real milestone template');
+  const newCat = categories[1]; // 'Artefact'
+  openItemModal(it.id);
+  document.getElementById('itemCategorySelect').value = newCat.id;
+  saveItem();
+  assertEqual(it.categoryId, categories[0].id, 'not applied yet');
+  assertEqual(it.milestones.length, before, 'not applied yet');
+  assertTrue(!!modalTarget, 'a confirm modal should be armed rather than saving immediately');
+  assertFalse(document.getElementById('itemModalBg').classList.contains('open'), 'the item modal should have closed');
+  assertEqual(document.getElementById('confirmModalActionBtn').textContent, 'Switch Category', 'this is destructive, not a plain save — the button must say so');
+});
+
+test('confirming the category switch replaces the milestones with the new category\'s template and tombstones the old ones', function () {
+  const it = addRealItem();
+  const oldMilestoneIds = it.milestones.map(m => m.id);
+  const newCat = categories[1]; // 'Artefact'
+  openItemModal(it.id);
+  document.getElementById('itemCategorySelect').value = newCat.id;
+  saveItem();
+  confirmModalAction();
+  assertEqual(it.categoryId, newCat.id);
+  assertDeepEqual(it.milestones.map(m => m.name), newCat.milestones);
+  it.milestones.forEach(m => assertEqual(m.status, 'not-started'));
+  oldMilestoneIds.forEach(id => assertTrue(deletedMilestoneIds.some(x => x.id === id), 'every old milestone should be tombstoned'));
+});
+
+test('switching category recomputes status/plan dates from the fresh (all not-started) milestone template', function () {
+  const it = addRealItem();
+  it.milestones[0].status = 'red';
+  it.status = 'red'; // simulate the roll-up already having happened before the switch
+  const newCat = categories[1];
+  openItemModal(it.id);
+  document.getElementById('itemCategorySelect').value = newCat.id;
+  saveItem();
+  confirmModalAction();
+  assertEqual(it.status, 'not-started', 'a fresh template starts all not-started, so the roll-up should read not-started too');
+});
+
+test('an item with zero milestones silently picks up the new category\'s template on save — no confirm needed', function () {
+  const it = addRealItem();
+  it.milestones = []; // simulate an item that lost all its milestones some other way
+  const newCat = categories[1];
+  openItemModal(it.id);
+  document.getElementById('itemCategorySelect').value = newCat.id;
+  saveItem();
+  assertFalse(!!modalTarget, 'nothing to lose here, so no confirm gate');
+  assertEqual(it.categoryId, newCat.id);
+  assertDeepEqual(it.milestones.map(m => m.name), newCat.milestones);
+});
+
+test('saving an item without changing its category never triggers the swap, even though it has milestones', function () {
+  const it = addRealItem();
+  const originalMilestoneIds = it.milestones.map(m => m.id);
+  openItemModal(it.id);
+  document.getElementById('itemNameInput').value = 'Renamed, category untouched';
+  saveItem();
+  assertFalse(!!modalTarget);
+  assertEqual(it.name, 'Renamed, category untouched');
+  assertDeepEqual(it.milestones.map(m => m.id), originalMilestoneIds, 'milestones must be untouched');
+});
+
+test('populateCategorySelect excludes the reserved Pending category as a destination for an ordinary item', function () {
+  openItemModal(null);
+  const pendingCat = categories.find(c => c.pending);
+  assertNotIncludes(document.getElementById('itemCategorySelect').innerHTML, `value="${pendingCat.id}"`);
+});
+
+test('populateCategorySelect still shows Pending as the (locked) selected option when editing a genuinely still-Pending item', function () {
+  openInlineQuickAdd();
+  document.getElementById('unassignedQuickAddInput').value = 'Some ask';
+  saveInlineQuickAddItem();
+  const it = items[items.length - 1];
+  openItemModal(it.id);
+  const html = document.getElementById('itemCategorySelect').innerHTML;
+  const pendingCat = categories.find(c => c.pending);
+  assertIncludes(html, `value="${pendingCat.id}" selected`);
+});
+
 test('saveCategory adds a new category, and edits an existing one in place', function () {
   const baseCount = categories.length;
   document.getElementById('categoryNameInput').value = 'Vendor Onboarding';
