@@ -4289,7 +4289,16 @@ function parseMeetingMinutes(text) {
   const preamble = [];
   let current = null;
   let anyHeaderFound = false;
-  (text || '').split('\n').forEach(rawLine => {
+  // Windows/Word-style CRLF (or a lone old-Mac \r) line endings are
+  // normalized to a plain \n before splitting — a user-reported bug traced
+  // to content pasted from Word/Outlook (which use CRLF) leaving a stray
+  // \r embedded at the end of every stored line except the last: the
+  // per-line rawLine.push() below keeps whatever line-ending character was
+  // there, and the final join(lines) => lines.join('\n').trim() only trims
+  // the *outer* edges of the whole joined string, not each individual
+  // line, so an interior \r survives straight into the saved
+  // summary/decisions/nextSteps/actionItems text.
+  (text || '').replace(/\r\n?/g, '\n').split('\n').forEach(rawLine => {
     // Stripped only for header matching — markdown heading/bold/bullet
     // decoration (#, *, _, -, >) around a header line, never the stored content.
     const cleaned = rawLine.replace(/^[\s#*_>-]+/, '').replace(/[\s*_]+$/, '');
@@ -4508,7 +4517,12 @@ function applyParsedMinutesText(text) {
 function parseMinutesPaste() {
   if (!requireRole('reviewer')) return;
   const text = document.getElementById('minutesPasteInput').value;
-  if (!text.trim()) return;
+  // A user-reported bug: clicking Auto-fill with nothing pasted yet
+  // silently did nothing at all — no toast, no visible change — which
+  // read identically to the button simply being broken. Every other no-op
+  // guard in this modal (role, empty-file-drop just below) already shows
+  // one; this one didn't.
+  if (!text.trim()) { showToast('Paste some meeting notes into the box first', true); return; }
   applyParsedMinutesText(text);
 }
 // Resets the modal's working form back to blank — the paste box, all three
@@ -4770,7 +4784,11 @@ async function handleMinutesFileDrop(event) {
   document.getElementById('minutesDropzone').classList.remove('drag-over');
   if (!requireRole('reviewer')) return;
   const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
-  if (!file) return;
+  // Same "silent no-op reads as broken" bug parseMinutesPaste() just above
+  // had — dragging something that isn't a real file (e.g. dragged text/a
+  // link rather than a file) used to leave no trace that the drop was
+  // even noticed.
+  if (!file) { showToast('That drop didn\'t contain a file', true); return; }
   try {
     const text = /\.docx$/i.test(file.name) ? await extractDocxText(await file.arrayBuffer()) : await file.text();
     applyParsedMinutesText(text);

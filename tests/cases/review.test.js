@@ -590,6 +590,19 @@ test('parseMeetingMinutes falls back to putting everything in Summary when no he
   assertEqual(parsed.decisions, '');
 });
 
+// Regression test for a user-reported bug: text pasted from Word/Outlook
+// (which use CRLF line endings) left a literal \r embedded at the end of
+// every stored line except the last one — join(lines).trim() only trims
+// the outer edges of the whole joined string, not each individual line, so
+// an interior \r survived straight into the saved text.
+test('parseMeetingMinutes normalizes CRLF line endings, leaving no stray \\r embedded in multi-line sections', function () {
+  const parsed = parseMeetingMinutes('Summary:\r\nLine one.\r\nLine two.\r\n\r\nDecisions:\r\nA decision.\r\n');
+  assertEqual(parsed.summary, 'Line one.\nLine two.');
+  assertNotIncludes(parsed.summary, '\r');
+  assertEqual(parsed.decisions, 'A decision.');
+  assertNotIncludes(parsed.decisions, '\r');
+});
+
 test('parseMeetingMinutes drops unlabeled text before the first header rather than folding it into Summary', function () {
   const parsed = parseMeetingMinutes('Quick context up top.\nDecisions\nApproved budget.');
   assertEqual(parsed.summary, '', 'lead-in text with no Summary header of its own should not end up in Summary');
@@ -699,6 +712,28 @@ test('parseMinutesPaste extracts owner and due date from a pasted table under th
   assertTrue(!!editingMinutesActionItems[0].dueDate);
   assertEqual(editingMinutesActionItems[1].owner, 'M. Webb');
   assertEqual(editingMinutesActionItems[1].dueDate, null);
+});
+
+// Regression test for a user-reported bug: clicking Auto-fill with nothing
+// pasted yet silently did nothing at all — no toast, no visible change,
+// indistinguishable from the button being broken. Every other no-op guard
+// in this modal already showed one; this was the one that didn't.
+test('parseMinutesPaste shows a toast instead of silently doing nothing when the paste box is empty', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesPasteInput').value = '   ';
+  parseMinutesPaste();
+  assertIncludes(document.getElementById('toastMsg').textContent, 'Paste some meeting notes');
+});
+
+// Same bug, same fix, for the drag-and-drop path — dropping something that
+// isn't a real file (e.g. dragged text or a link, not an actual file) used
+// to leave no trace the drop was even noticed.
+test('handleMinutesFileDrop shows a toast instead of silently doing nothing when the drop has no file', async function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  await handleMinutesFileDrop({ preventDefault: () => {}, dataTransfer: { files: [] } });
+  assertIncludes(document.getElementById('toastMsg').textContent, "didn't contain a file");
 });
 
 // ---------- Owner name shortening ("Peer Rexroth" -> "P. Rexroth") ----------
