@@ -207,7 +207,7 @@ test('the External Delivery nav row is active only while mode is \'external\', a
   setMode('external');
   renderSidebar();
   const html = document.getElementById('topNavList').innerHTML;
-  assertIncludes(html, `ws-row ws-row-group-end active" onclick="setMode('external')"`, 'active once External Delivery mode is showing');
+  assertIncludes(html, `ws-row active" onclick="setMode('external')"`, 'active once External Delivery mode is showing');
   assertNotIncludes(html, 'ws-row-all active', '"All Workstreams" must not read as active while External Delivery is showing');
   assertNotIncludes(document.getElementById('wsList').innerHTML, 'ws-row active', 'no real workstream row reads as active either');
   assertEqual(filterWorkstreamId, workstreams[0].id, 'the selection itself survives the switch, unaffected — External Delivery ignores it entirely');

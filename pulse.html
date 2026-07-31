@@ -475,15 +475,19 @@
      line up with the real workstream rows below them. */
   .ws-row-all-icon { width: 8px; flex: 0 0 auto; text-align: center; font-size: 11px; color: var(--text-faint); }
   .ws-row-all.active .ws-row-all-icon { color: var(--accent); }
-  /* Marks the *last* row in the top nav group (All Workstreams / Journeys /
-     External Delivery, in that order — see renderSidebar()) — a thin rule
-     plus extra bottom spacing sets that whole group apart from the real,
-     per-workstream rows listed below it. Used to sit on .ws-row-all itself
-     back when "All Workstreams" was the only row up here; moved to
-     whichever row is currently last once Journeys/External Delivery joined
-     it, so the separator always appears after the group, not partway
-     through it. */
-  .ws-row-group-end { margin-bottom: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  /* A dedicated, full-width divider between the top nav group (All
+     Workstreams / Journeys / External Delivery, in that order — see
+     renderSidebar()) and the real workstream list below it — a
+     user-reported fix: this used to be a border-bottom on whichever row
+     rendered last in the group (.ws-row-all, then later whichever row
+     ended up last as Journeys/External Delivery joined it), but a
+     .ws-row's own border-radius rounded that border's corners and inset it
+     to the row's own padding, so it read as the bottom edge of one button
+     rather than a real section break — easy to miss entirely. A separate,
+     static element (sitting in the HTML shell, not rebuilt by
+     renderSidebar() and so immune to the group's own row order ever
+     changing again) draws a plain, un-rounded, full-width line instead. */
+  .sidebar-divider { height: 1px; background: var(--border); margin: 10px 4px 0; }
 
   .main { flex: 1; min-width: 0; overflow: auto; padding: 20px 24px; }
   .planning-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -1130,7 +1134,8 @@
          group, a separator, then the real workstream list below (see
          renderSidebar()'s own comment). -->
     <div id="topNavList"></div>
-    <div class="sidebar-label" style="margin-top:16px">Workstreams <button class="sidebar-label-add" id="addWsBtn" onclick="openWorkstreamModal()" title="New workstream"><i class="fa-solid fa-plus"></i></button></div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-label">Workstreams <button class="sidebar-label-add" id="addWsBtn" onclick="openWorkstreamModal()" title="New workstream"><i class="fa-solid fa-plus"></i></button></div>
     <div id="wsList"></div>
   </div>
   <div class="planning-main">
@@ -2339,9 +2344,11 @@ function renderSidebar() {
   // and External Delivery used to sit as the 2nd row inside #wsList itself
   // (directly under "All Workstreams", ahead of the real workstream rows).
   // Both are now built together into #topNavList instead, with #wsList left
-  // holding only the real, per-workstream rows. .ws-row-group-end (on
-  // whichever row renders last in this group) is what draws the actual
-  // separator line beneath it — see that class's own CSS comment.
+  // holding only the real, per-workstream rows. The actual separator line
+  // is a dedicated static element, `.sidebar-divider` (see the static HTML
+  // shell + that class's own CSS comment) — not drawn by any of these rows
+  // themselves, so it can't go missing/move if this group's own order ever
+  // changes again.
   document.getElementById('topNavList').innerHTML = `
     <div class="ws-row ws-row-all ${inWorkstreamScope && filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
       <i class="fa-solid fa-layer-group ws-row-all-icon"></i>
@@ -2353,7 +2360,7 @@ function renderSidebar() {
       <span class="ws-row-name">Journeys</span>
       <span class="ws-row-count">${allJourneys().length}</span>
     </div>
-    <div class="ws-row ws-row-group-end ${mode === 'external' ? 'active' : ''}" onclick="setMode('external')" title="External Delivery">
+    <div class="ws-row ${mode === 'external' ? 'active' : ''}" onclick="setMode('external')" title="External Delivery">
       <i class="fa-solid fa-globe ws-row-all-icon" style="color:${mode === 'external' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
       <span class="ws-row-name">External Delivery</span>
       <span class="ws-row-count">${allExternalDeliveryItems().length}</span>
