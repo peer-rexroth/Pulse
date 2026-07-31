@@ -2337,9 +2337,15 @@ function renderSidebar() {
   // state directly (mode === 'external') for the same reason journeysNav's
   // own row does — it's rebuilt fresh on every renderSidebar() call anyway,
   // and has no #tab<Mode> topbar button for render()'s generic id-toggle
-  // loop to drive instead (see that loop's own comment).
+  // loop to drive instead (see that loop's own comment). Reuses
+  // .ws-row-all-icon (8px wide, same as a real row's own .ws-dot) rather
+  // than the wider 14px icon journeysNav's own row uses — a user-reported
+  // misalignment: journeysNav sits in its own separate section with nothing
+  // to line up against, but this row shares #wsList with "All workstreams"
+  // and the real workstream rows below it, so its icon column has to match
+  // theirs or its own label starts further right than every row around it.
   html += `<div class="ws-row ${mode === 'external' ? 'active' : ''}" onclick="setMode('external')" title="External Delivery">
-      <i class="fa-solid fa-globe" style="width:14px;text-align:center;color:${mode === 'external' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
+      <i class="fa-solid fa-globe ws-row-all-icon" style="color:${mode === 'external' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
       <span class="ws-row-name">External Delivery</span>
       <span class="ws-row-count">${allExternalDeliveryItems().length}</span>
     </div>`;
