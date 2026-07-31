@@ -9,6 +9,90 @@ function addItem(overrides) {
   return it;
 }
 
+// ---------- Planning's own scope-item search box ----------
+// An explicit user request ("suggest UI improvements" -> "search/filter for
+// scope items"): a plain, case-insensitive substring match against the
+// item's own name, narrowing renderStatusView()'s output live.
+
+test('render toggles the planning search toolbar only for Planning mode', function () {
+  mode = 'planning';
+  render();
+  assertEqual(document.getElementById('planningSearchToolbar').style.display, '');
+  mode = 'review'; filterWorkstreamId = workstreams[0].id;
+  render();
+  assertEqual(document.getElementById('planningSearchToolbar').style.display, 'none');
+});
+
+test('setPlanningSearch narrows renderMain\'s output to items whose name matches, case-insensitively', function () {
+  addItem({ name: 'Migrate billing database' });
+  addItem({ name: 'Update onboarding flow' });
+  setPlanningSearch('BILLING');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Migrate billing database');
+  assertNotIncludes(html, 'Update onboarding flow');
+});
+
+test('setPlanningSearch shows the clear button, clearPlanningSearch hides it again and restores the full list', function () {
+  addItem({ name: 'Migrate billing database' });
+  addItem({ name: 'Update onboarding flow' });
+  setPlanningSearch('billing');
+  assertEqual(document.getElementById('planningSearchClearBtn').style.display, '');
+  clearPlanningSearch();
+  assertEqual(document.getElementById('planningSearchClearBtn').style.display, 'none');
+  assertEqual(document.getElementById('planningSearchInput').value, '');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Migrate billing database');
+  assertIncludes(html, 'Update onboarding flow');
+});
+
+test('a workstream with zero matches is omitted entirely while searching — no header, no "No items yet." placeholder', function () {
+  addItem({ name: 'Migrate billing database' });
+  setPlanningSearch('nonexistent search term');
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, workstreams[0].name);
+  assertNotIncludes(html, 'No items yet.');
+});
+
+test('RAG pill counts stay computed from the workstream\'s full, unfiltered item list while searching', function () {
+  addItem({ name: 'Migrate billing database', status: 'red' });
+  addItem({ name: 'Update onboarding flow', status: 'green' });
+  setPlanningSearch('billing');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '1 Off Track');
+  assertIncludes(html, '1 On Track');
+});
+
+test('the External Delivery split still applies within the filtered results', function () {
+  addItem({ name: 'Vendor billing task', externalDelivery: true, externalDeliverySpoc: 'Jane Doe' });
+  addItem({ name: 'Internal billing task' });
+  setPlanningSearch('billing');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'External Delivery');
+  assertIncludes(html, 'Vendor billing task');
+  assertIncludes(html, 'Internal billing task');
+});
+
+test('the Unassigned section is filtered too, and omitted entirely (even at Editor+) when searching finds nothing there', function () {
+  const it = addItem({ name: 'Orphaned billing task', workstreamId: null });
+  addItem({ name: 'Normal task' }); // has a real workstream
+  setPlanningSearch('billing');
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Orphaned billing task');
+  setPlanningSearch('something else entirely');
+  html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'Unassigned');
+  assertNotIncludes(html, it.name);
+});
+
+test('planningSearchQuery does not affect Review/Dashboard/Journeys — only Planning\'s own status board', function () {
+  addItem({ name: 'Migrate billing database' });
+  planningSearchQuery = 'nonexistent';
+  mode = 'review'; filterWorkstreamId = workstreams[0].id; reviewTab = 'scope';
+  startReviewCycle(workstreams[0].id);
+  render();
+  assertIncludes(document.getElementById('main').innerHTML, 'Migrate billing database');
+});
+
 test('setFilterWorkstream narrows visibleWorkstreams to one', function () {
   document.getElementById('wsNameInput').value = 'Second';
   wsColorChoice = 'teal';

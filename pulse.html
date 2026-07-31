@@ -475,6 +475,22 @@
   .planning-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .planning-toolbar { flex: 0 0 auto; padding: 14px 24px 0; }
   .planning-main .main { padding-top: 16px; }
+  /* Planning's own scope-item search box (setPlanningSearch()) — an icon +
+     input + conditional clear button, the same "icon and control share one
+     bordered box" composition .date-pill already uses elsewhere in this
+     app, adapted for a plain text search rather than a date. */
+  .search-box { position: relative; max-width: 320px; }
+  .search-box i.fa-magnifying-glass { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-faint); font-size: 12px; pointer-events: none; }
+  .search-box input {
+    width: 100%; padding: 7px 30px 7px 30px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel-2); color: var(--text); font-size: 13px;
+  }
+  .search-box input:focus { border-color: var(--accent); outline: none; }
+  .search-box .search-clear-btn {
+    position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: none; border: none;
+    color: var(--text-faint); cursor: pointer; padding: 4px; display: flex; border-radius: 4px;
+  }
+  .search-box .search-clear-btn:hover { color: var(--text); background: var(--panel); }
 
   .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-faint); gap: 10px; text-align: center; }
   .empty-state i { font-size: 34px; opacity: .5; }
@@ -1094,6 +1110,18 @@
     <div id="wsList"></div>
   </div>
   <div class="planning-main">
+    <!-- Planning's own toolbar — currently just the scope-item search box.
+         Only shown for mode==='planning' (see render()); the search itself
+         lives in this static toolbar, not inside #main, so a keystroke's
+         own re-render of #main (renderMain()) never steals focus from the
+         input mid-type. -->
+    <div class="planning-toolbar" id="planningSearchToolbar" style="display:none">
+      <div class="search-box">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="planningSearchInput" placeholder="Search scope items by name..." oninput="setPlanningSearch(this.value)">
+        <button type="button" class="search-clear-btn" id="planningSearchClearBtn" onclick="clearPlanningSearch()" title="Clear search" style="display:none"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
     <div class="planning-toolbar" id="reviewToolbar" style="display:none">
       <div class="view-tabs">
         <button class="view-tab" id="tabReviewActionLog" onclick="setReviewTab('actionLog')"><i class="fa-solid fa-list-check"></i> Action Log</button>
@@ -1658,6 +1686,12 @@ let editingCategoryMilestones = [];
 let editingCategoryOriginalMilestones = [];
 // Which item rows currently show their nested milestones — UI-only, not persisted.
 let expandedItemIds = new Set();
+// Planning's own scope-item search box (#planningSearchInput) — UI-only,
+// not persisted, reset on reload same as every other module-level UI flag
+// here. Lowercased/trimmed once on input (setPlanningSearch()) rather than
+// on every render, so matching stays a plain case-insensitive substring
+// check wherever it's used.
+let planningSearchQuery = '';
 // Which review-history entries currently show their change log — UI-only, not persisted.
 let expandedHistoryIds = new Set();
 // Which workstreams currently show their full review history instead of just
@@ -2187,6 +2221,7 @@ function render() {
   MODES.filter(m => m !== 'journeys').forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
   document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
+  document.getElementById('planningSearchToolbar').style.display = mode === 'planning' ? '' : 'none';
   document.getElementById('reviewToolbar').style.display = mode === 'review' ? '' : 'none';
   document.getElementById('dataMenuImportItem').style.display = hasRole('admin') ? '' : 'none';
   document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
@@ -2312,6 +2347,31 @@ function visibleWorkstreams() {
 function renderMain() {
   renderStatusView(document.getElementById('main'));
 }
+// A plain case-insensitive substring match against the item's own name —
+// deliberately not milestone names too, keeping this a quick "find one
+// scope item" tool rather than a general-purpose query. `planningSearchQuery`
+// is already lowercased/trimmed once by setPlanningSearch(), so this is a
+// cheap check with no per-item normalizing work.
+function matchesPlanningSearch(it) {
+  return !planningSearchQuery || it.name.toLowerCase().includes(planningSearchQuery);
+}
+// Lives in the static #planningSearchToolbar, not #main, specifically so
+// this can call the narrower renderMain() on every keystroke without ever
+// stealing focus from the input itself — renderMain() only rewrites #main's
+// own innerHTML, and the input isn't inside it. Also flips the clear
+// button's own visibility directly (it's static markup too, never redrawn
+// by renderMain()).
+function setPlanningSearch(value) {
+  planningSearchQuery = (value || '').trim().toLowerCase();
+  document.getElementById('planningSearchClearBtn').style.display = planningSearchQuery ? '' : 'none';
+  renderMain();
+}
+function clearPlanningSearch() {
+  planningSearchQuery = '';
+  document.getElementById('planningSearchInput').value = '';
+  document.getElementById('planningSearchClearBtn').style.display = 'none';
+  renderMain();
+}
 
 // The one place a brand-new scope item can be quick-added — see "Quick-add
 // scope items & the Pending category" in CLAUDE.md. Pinned above every real
@@ -2332,9 +2392,19 @@ function unassignedItemsSorted() {
   return items.filter(it => it.workstreamId == null && it.itemType !== 'journey').sort((a, b) => a.order - b.order);
 }
 function unassignedSectionHtml() {
-  const uItems = unassignedItemsSorted();
+  // Filtered by Planning's own search box (see matchesPlanningSearch()) —
+  // the base, unfiltered "what's genuinely unassigned" list stays in
+  // unassignedItemsSorted() itself, since that's what everything else
+  // (normalizeData()'s own reasoning, other call sites) means by the term;
+  // this is purely a display-layer narrowing.
+  const uItems = unassignedItemsSorted().filter(matchesPlanningSearch);
   const editable = hasRole('editor');
-  if (!uItems.length && !editable) return '';
+  // While actively searching, an Unassigned section with no matches is
+  // omitted entirely regardless of role — the "+ Add item" quick-add prompt
+  // that would otherwise keep it visible for an Editor isn't a useful thing
+  // to show while someone's trying to find an existing item, not add a new
+  // one.
+  if (!uItems.length && (!editable || planningSearchQuery)) return '';
   const rows = uItems.length ? uItems.map(it => itemRowHtml(it)).join('') :
     `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No unassigned items.</div>`;
   const addRow = editable
@@ -2366,6 +2436,15 @@ function renderStatusView(main) {
     const pills = STATUSES.filter(s => counts[s.id] > 0).map(s =>
       `<span class="rag-pill" style="background:var(--stat-${s.id}-bg);color:var(--stat-${s.id})">${counts[s.id]} ${esc(s.label)}</span>`
     ).join('');
+    // Planning's own search box (see matchesPlanningSearch()) narrows the
+    // list — but never the RAG pill counts above, which are always computed
+    // from the workstream's real, unfiltered wItems, same as the External
+    // Delivery split below leaves them alone. While actively searching, a
+    // workstream with zero matches is skipped entirely (no header, no empty
+    // list) rather than cluttering search results with a section that has
+    // nothing relevant in it.
+    const displayItems = wItems.filter(matchesPlanningSearch);
+    if (planningSearchQuery && !displayItems.length) return '';
     // Items flagged External Delivery are pulled out of the main list into
     // their own sub-section right underneath it, within the same
     // .ws-section card — an explicit user request ("show scope items which
@@ -2379,8 +2458,8 @@ function renderStatusView(main) {
     // roll up every item in the workstream, external ones included — the
     // split only changes how they're grouped in the list, not whether they
     // count toward the workstream's own stats.
-    const mainItems = wItems.filter(it => !it.externalDelivery);
-    const externalItems = wItems.filter(it => it.externalDelivery);
+    const mainItems = displayItems.filter(it => !it.externalDelivery);
+    const externalItems = displayItems.filter(it => it.externalDelivery);
     const rows = mainItems.length ? mainItems.map(it => itemRowHtml(it)).join('')
       : (externalItems.length ? '' : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No items yet.</div>`);
     const externalSectionHtml = externalItems.length ? `
