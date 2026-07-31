@@ -360,6 +360,74 @@ test('applyScopeAssign reads the modal\'s selects and applies them, then closes 
   assertEqual(scopeAssignItemId, null);
 });
 
+// Regression tests for a user-reported dead end: this modal has no dismiss
+// path at all (see its own HTML comment), so with zero workstreams the
+// plain Workstream select used to render with no <option>s, and Apply — the
+// only way to close the modal — silently wrote an invalid, non-null
+// workstreamId onto the item.
+
+test('openScopeAssignModal shows the "create one to continue" prompt instead of the select, and disables Apply, when there are no workstreams', function () {
+  workstreams = []; items = [];
+  const it = addPendingItem();
+  openScopeAssignModal(it.id);
+  assertEqual(document.getElementById('scopeAssignWorkstreamField').style.display, 'none');
+  assertEqual(document.getElementById('scopeAssignNoWorkstreamsField').style.display, '');
+  assertTrue(document.getElementById('scopeAssignApplyBtn').disabled);
+});
+
+test('applyScopeAssign refuses to run while there are no workstreams, even if called directly (bypassing the disabled Apply button)', function () {
+  workstreams = []; items = [];
+  const it = addPendingItem();
+  openScopeAssignModal(it.id);
+  applyScopeAssign();
+  assertEqual(it.workstreamId, null, 'must not have been set to the empty-select sentinel');
+  assertTrue(document.getElementById('scopeAssignModalBg').classList.contains('open'), 'the modal must stay open — nothing valid was applied');
+  assertEqual(scopeAssignItemId, it.id);
+});
+
+test('creating a workstream via the modal\'s "New workstream" button refreshes it back to the normal select, preselecting the one just created', function () {
+  workstreams = []; items = [];
+  const it = addPendingItem();
+  openScopeAssignModal(it.id);
+  openWorkstreamModal(null); // the "+ New workstream" button's own onclick
+  document.getElementById('wsNameInput').value = 'First Workstream';
+  saveWorkstream();
+  assertEqual(workstreams.length, 1);
+  assertFalse(document.getElementById('wsModalBg').classList.contains('open'), 'the nested workstream modal should have closed itself');
+  assertTrue(document.getElementById('scopeAssignModalBg').classList.contains('open'), 'the scope-assign modal must still be open underneath — it has no dismiss path');
+  assertEqual(document.getElementById('scopeAssignWorkstreamField').style.display, '', 'back to the real select now that a workstream exists');
+  assertEqual(document.getElementById('scopeAssignNoWorkstreamsField').style.display, 'none');
+  assertFalse(document.getElementById('scopeAssignApplyBtn').disabled);
+  assertIncludes(document.getElementById('scopeAssignWorkstreamSelect').innerHTML, `value="${workstreams[0].id}" selected`, 'the newly created workstream should be preselected');
+});
+
+test('the full flow works end to end: create the first workstream from inside scope-assign, then Apply', function () {
+  workstreams = []; items = [];
+  const it = addPendingItem();
+  openScopeAssignModal(it.id);
+  openWorkstreamModal(null);
+  document.getElementById('wsNameInput').value = 'Ops';
+  saveWorkstream();
+  // The fake <select>'s innerHTML doesn't parse into .value the way a real
+  // browser's would (see CLAUDE.md's "Tests" section) — the option really
+  // is marked selected in the rendered HTML (covered by the test right
+  // above this one), this is purely a harness limitation.
+  document.getElementById('scopeAssignWorkstreamSelect').value = workstreams[0].id;
+  document.getElementById('scopeAssignCategorySelect').value = categories.find(c => !c.pending).id;
+  applyScopeAssign();
+  assertEqual(it.workstreamId, workstreams[0].id);
+  assertFalse(document.getElementById('scopeAssignModalBg').classList.contains('open'));
+});
+
+test('saveWorkstream does not touch the scope-assign modal state when it is not the caller (the normal sidebar/edit-pencil flow)', function () {
+  const it = addPendingItem();
+  openWorkstreamModal(null);
+  document.getElementById('wsNameInput').value = 'Second Workstream';
+  saveWorkstream();
+  assertFalse(document.getElementById('scopeAssignModalBg').classList.contains('open'), 'never opened in this test, must stay closed');
+  assertEqual(scopeAssignItemId, null);
+});
+
 test('itemRowHtml routes a Pending-and-Complete item\'s status badge to openScopeAssignModal instead of openItemModal', function () {
   const it = addPendingItem();
   cycleMilestoneStatus(it.id, it.milestones[0].id); // -> green

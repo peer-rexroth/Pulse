@@ -670,6 +670,14 @@
     position: fixed; inset: 0; background: rgba(10,12,16,.4); display: none; align-items: center; justify-content: center; z-index: 50;
   }
   .modal-bg.open { display: flex; }
+  /* The only modal ever deliberately opened on top of another one — the
+     scope-assign modal's "no workstreams yet, create one" escape hatch (see
+     openScopeAssignModal()/updateScopeAssignWorkstreamState() in the inline
+     script below) opens this modal without closing itself first. Equal
+     z-index would leave stacking to DOM order, which (wsModalBg's markup
+     sits earlier in the page than scopeAssignModalBg's) would draw it
+     *behind* scopeAssignModalBg's own backdrop instead of on top of it. */
+  #wsModalBg { z-index: 60; }
   .modal {
     width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto; background: var(--panel); border-radius: 14px;
     box-shadow: var(--shadow); padding: 20px;
@@ -1280,16 +1288,27 @@
   <div class="modal">
     <h3>Assign category</h3>
     <p style="margin-top:0;color:var(--text-dim);font-size:13px">Scope confirmed. Pick the workstream and category this item belongs to — its milestone checklist will switch to match.</p>
-    <div class="field">
+    <div class="field" id="scopeAssignWorkstreamField">
       <label>Workstream</label>
       <select id="scopeAssignWorkstreamSelect"></select>
+    </div>
+    <!-- Shown instead of the select above whenever the programme has zero
+         workstreams — see updateScopeAssignWorkstreamState(). Without this,
+         the select above renders with no <option>s at all, and since this
+         modal has no dismiss path (see the comment at the top of it),
+         Apply was the only way out — silently writing an invalid,
+         non-null workstreamId onto the item. -->
+    <div class="field" id="scopeAssignNoWorkstreamsField" style="display:none">
+      <label>Workstream</label>
+      <p style="margin:0 0 8px;color:var(--text-dim);font-size:13px">This programme has no workstreams yet — create one to continue.</p>
+      <button type="button" class="btn" onclick="openWorkstreamModal(null)"><i class="fa-solid fa-plus"></i> New workstream</button>
     </div>
     <div class="field">
       <label>Category</label>
       <select id="scopeAssignCategorySelect"></select>
     </div>
     <div class="modal-actions" style="justify-content:flex-end">
-      <button class="btn btn-primary" onclick="applyScopeAssign()">Apply</button>
+      <button class="btn btn-primary" id="scopeAssignApplyBtn" onclick="applyScopeAssign()">Apply</button>
     </div>
   </div>
 </div>
@@ -3327,14 +3346,26 @@ function saveWorkstream() {
   if (!requireRole('editor')) return;
   const name = document.getElementById('wsNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
+  let savedWs;
   if (editingWsId) {
-    const w = wsById(editingWsId);
-    w.name = name; w.color = wsColorChoice;
+    savedWs = wsById(editingWsId);
+    savedWs.name = name; savedWs.color = wsColorChoice;
   } else {
-    workstreams.push({ id: genId(), name, color: wsColorChoice, order: workstreams.length });
+    savedWs = { id: genId(), name, color: wsColorChoice, order: workstreams.length };
+    workstreams.push(savedWs);
   }
   save(); closeWorkstreamModal(); render();
   showToast('Workstream saved');
+  // If this workstream was created via the scope-assign modal's own "no
+  // workstreams yet" escape hatch (see updateScopeAssignWorkstreamState()),
+  // that modal is still open underneath — it has no dismiss path at all —
+  // waiting for a real workstream to pick. Refresh it now that one exists,
+  // preselecting the one just created, rather than leaving its Workstream
+  // field stuck on the "create one" prompt. scopeAssignItemId is only ever
+  // truthy here at all because that modal (which covers the full viewport,
+  // so nothing behind it is reachable) is what opened this one in the first
+  // place — nothing else can trigger openWorkstreamModal() while it's open.
+  if (scopeAssignItemId) updateScopeAssignWorkstreamState(savedWs.id);
 }
 function deleteWorkstreamFromModal() {
   if (!requireRole('editor')) return;
@@ -3865,13 +3896,35 @@ function openScopeAssignModal(itemId) {
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   scopeAssignItemId = itemId;
-  populateWorkstreamSelect(it.workstreamId, 'scopeAssignWorkstreamSelect');
+  updateScopeAssignWorkstreamState(it.workstreamId);
   // The Pending category itself is never an option here — picking a real
   // category is the whole point of this modal (see applyScopeCategory()).
   document.getElementById('scopeAssignCategorySelect').innerHTML = categories.filter(c => !c.pending).map(c =>
     `<option value="${c.id}">${esc(c.name)}</option>`
   ).join('');
   document.getElementById('scopeAssignModalBg').classList.add('open');
+}
+// Toggles the Workstream field between the real <select> and a "no
+// workstreams yet, create one" prompt, based on whether any workstream
+// currently exists — this modal has no dismiss path at all (see its own
+// HTML comment), so with zero workstreams the plain select used to render
+// with no <option>s, and Apply — the only way to close the modal — silently
+// wrote an invalid, non-null workstreamId onto the item (a user-reported
+// dead end). selectedId is preselected the normal populateWorkstreamSelect()
+// way when there's something to select from — used both for the item's own
+// current workstream (always null/nothing-preselected here, since only a
+// still-Pending item ever reaches this modal) and for a workstream just
+// created via the "New workstream" button's nested flow (see
+// saveWorkstream()'s own call to this function).
+function updateScopeAssignWorkstreamState(selectedId) {
+  const hasWorkstreams = workstreams.length > 0;
+  document.getElementById('scopeAssignWorkstreamField').style.display = hasWorkstreams ? '' : 'none';
+  document.getElementById('scopeAssignNoWorkstreamsField').style.display = hasWorkstreams ? 'none' : '';
+  if (hasWorkstreams) populateWorkstreamSelect(selectedId, 'scopeAssignWorkstreamSelect');
+  // Disabled, not just visually hidden behind the prompt above — the select
+  // still exists in the DOM either way, so Apply must not be reachable while
+  // it has nothing valid to report.
+  document.getElementById('scopeAssignApplyBtn').disabled = !hasWorkstreams;
 }
 function closeScopeAssignModal() {
   document.getElementById('scopeAssignModalBg').classList.remove('open');
@@ -3880,6 +3933,11 @@ function closeScopeAssignModal() {
 function applyScopeAssign() {
   if (!requireRole('editor')) return;
   if (!scopeAssignItemId) return;
+  // Defense-in-depth alongside the Apply button's own disabled attribute
+  // above — mirrors how every other guarded action in this app pairs a
+  // disabled control with a function-level refusal, not just one or the
+  // other.
+  if (!workstreams.length) return;
   const workstreamId = document.getElementById('scopeAssignWorkstreamSelect').value;
   const categoryId = document.getElementById('scopeAssignCategorySelect').value;
   applyScopeCategory(scopeAssignItemId, workstreamId, categoryId);
