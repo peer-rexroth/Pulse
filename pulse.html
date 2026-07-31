@@ -2520,22 +2520,36 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   let confirmedForReview = false;
   if (reviewCycle) {
     confirmedForReview = isItemConfirmedInCycle(reviewCycle, it);
-    const onClickAttr = total
-      ? `toggleConfirmAllMilestones('${reviewCycle.id}','${it.id}')`
-      : `toggleReviewConfirm('${reviewCycle.id}','${it.id}')`;
-    const titleAttr = total
-      ? (confirmedForReview ? 'All milestones confirmed — click to unconfirm all' : 'Confirm every milestone on this item')
-      : (confirmedForReview ? 'Confirmed — click to unconfirm' : 'Confirm this item');
-    // A Visitor/Editor can still see confirmed status during a review — just
-    // not toggle it — so this renders as an inert span, not an omitted cell,
-    // when the role is below Reviewer (see toggleReviewConfirm()'s own guard).
-    reviewCellHtml = hasRole('reviewer')
-      ? `<button class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:11" onclick="${onClickAttr}" title="${titleAttr}">
-        <i class="fa-${confirmedForReview ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
-      </button>`
-      : `<span class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:11" title="${titleAttr}">
-        <i class="fa-${confirmedForReview ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
-      </span>`;
+    // A Complete zero-milestone item auto-confirms — same "mark completed
+    // task as reviewed, no need to review them again" user request as
+    // milestoneRowsHtml()'s own Complete-milestone branch — so it renders
+    // as an inert, already-checked indicator rather than a clickable
+    // toggle. Only the zero-milestone case gets this: an item *with*
+    // milestones already derives confirmedForReview correctly from each
+    // milestone's own auto-confirm (isItemConfirmedInCycle()), but its
+    // "confirm all" button stays a real, clickable bulk action regardless
+    // — clicking it when everything's already auto-confirmed is a harmless
+    // no-op, not worth a second inert-rendering branch here.
+    if (!total && it.status === 'complete') {
+      reviewCellHtml = `<span class="review-confirm-toggle item-level confirmed" style="grid-column:11" title="Complete — no review needed"><i class="fa-solid fa-circle-check"></i></span>`;
+    } else {
+      const onClickAttr = total
+        ? `toggleConfirmAllMilestones('${reviewCycle.id}','${it.id}')`
+        : `toggleReviewConfirm('${reviewCycle.id}','${it.id}')`;
+      const titleAttr = total
+        ? (confirmedForReview ? 'All milestones confirmed — click to unconfirm all' : 'Confirm every milestone on this item')
+        : (confirmedForReview ? 'Confirmed — click to unconfirm' : 'Confirm this item');
+      // A Visitor/Editor can still see confirmed status during a review — just
+      // not toggle it — so this renders as an inert span, not an omitted cell,
+      // when the role is below Reviewer (see toggleReviewConfirm()'s own guard).
+      reviewCellHtml = hasRole('reviewer')
+        ? `<button class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:11" onclick="${onClickAttr}" title="${titleAttr}">
+          <i class="fa-${confirmedForReview ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
+        </button>`
+        : `<span class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:11" title="${titleAttr}">
+          <i class="fa-${confirmedForReview ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
+        </span>`;
+    }
   }
   // A Journey's connected scope items are shown "like a normal item row" —
   // itemRowHtml() reused directly, in viewOnly mode — rather than the
@@ -2670,8 +2684,18 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
       // than a circle that would misleadingly suggest it's still pending.
       if (m.notApplicable) {
         reviewCellHtml = `<span class="review-confirm-toggle" style="grid-column:11" title="Not applicable — excluded from this review"><i class="fa-solid fa-ban" style="opacity:.4"></i></span>`;
+      } else if (m.status === 'complete') {
+        // A Complete milestone auto-confirms — an explicit user request
+        // ("mark completed task as reviewed, no need to review them
+        // again") — so it renders as an inert, already-checked indicator
+        // rather than a clickable toggle, the same "nothing here needs
+        // interaction" treatment the notApplicable branch just above
+        // already gets, not the "click to unconfirm" affordance a
+        // manually-confirmed still-open milestone shows.
+        mConfirmed = true;
+        reviewCellHtml = `<span class="review-confirm-toggle confirmed" style="grid-column:11" title="Complete — no review needed"><i class="fa-solid fa-circle-check"></i></span>`;
       } else {
-        mConfirmed = isMilestoneConfirmedInCycle(reviewCycle, m.id);
+        mConfirmed = isMilestoneConfirmedInCycle(reviewCycle, m);
         // See itemRowHtml()'s own reviewCellHtml comment: below Reviewer, this
         // renders as an inert span (visible, not togglable), not an omitted cell.
         reviewCellHtml = hasRole('reviewer')
@@ -4106,8 +4130,18 @@ function startReviewCycle(wsId) {
 // milestones are confirmed" an invariant rather than something that can
 // drift out of sync — there's no separate item-level flag to forget to
 // clear if a milestone gets unconfirmed again, or added mid-cycle.
-function isMilestoneConfirmedInCycle(cycle, milestoneId) {
-  return cycle.milestoneConfirmations.some(x => x.milestoneId === milestoneId);
+// A Complete milestone counts as confirmed automatically, with or without
+// an actual entry in cycle.milestoneConfirmations — an explicit user
+// request ("mark completed task as reviewed, no need to review them
+// again"). Once something is genuinely done, a reviewer shouldn't have to
+// re-click through it every single cycle just to satisfy the "everything
+// confirmed" gate; only milestones that are still actively open need
+// attention. Checked *before* the stored-entry lookup so it works
+// regardless of whether this milestone was ever manually confirmed in a
+// past cycle — a milestone finished a year ago and never explicitly
+// clicked still reads as confirmed today.
+function isMilestoneConfirmedInCycle(cycle, m) {
+  return m.status === 'complete' || cycle.milestoneConfirmations.some(x => x.milestoneId === m.id);
 }
 // A milestone marked notApplicable is excluded from "every milestone must
 // be confirmed" — there's nothing to confirm, so it can never be the thing
@@ -4123,8 +4157,11 @@ function isMilestoneConfirmedInCycle(cycle, milestoneId) {
 // read false.
 function isItemConfirmedInCycle(cycle, it) {
   const applicable = it.milestones.filter(m => !m.notApplicable);
-  if (it.milestones.length) return applicable.every(m => isMilestoneConfirmedInCycle(cycle, m.id));
-  return cycle.confirmations.some(c => c.itemId === it.id);
+  if (it.milestones.length) return applicable.every(m => isMilestoneConfirmedInCycle(cycle, m));
+  // A zero-milestone item's own status can be Complete too — same
+  // auto-confirm treatment as a Complete milestone just above, for the
+  // same reason.
+  return it.status === 'complete' || cycle.confirmations.some(c => c.itemId === it.id);
 }
 function toggleReviewConfirm(cycleId, itemId) {
   if (!requireRole('reviewer')) return;
@@ -4163,12 +4200,17 @@ function toggleConfirmAllMilestones(cycleId, itemId) {
   // entries.
   const applicable = it.milestones.filter(m => !m.notApplicable);
   if (!applicable.length) return;
-  const allConfirmed = applicable.every(m => isMilestoneConfirmedInCycle(cycle, m.id));
+  const allConfirmed = applicable.every(m => isMilestoneConfirmedInCycle(cycle, m));
   if (allConfirmed) {
     cycle.milestoneConfirmations = cycle.milestoneConfirmations.filter(x => !applicable.some(m => m.id === x.milestoneId));
   } else {
+    // A Complete milestone already reads as confirmed via
+    // isMilestoneConfirmedInCycle() regardless of a stored entry, so this
+    // naturally skips ever pushing a redundant one for it — same as it
+    // already skipped notApplicable ones being filtered out of `applicable`
+    // above.
     applicable.forEach(m => {
-      if (!isMilestoneConfirmedInCycle(cycle, m.id)) {
+      if (!isMilestoneConfirmedInCycle(cycle, m)) {
         cycle.milestoneConfirmations.push({ milestoneId: m.id, confirmedAt: Date.now() });
       }
     });

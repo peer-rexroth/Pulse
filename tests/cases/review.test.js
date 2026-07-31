@@ -1234,7 +1234,7 @@ test('toggleConfirmAllMilestones only confirms the applicable milestones, leavin
   const cycle = activeReviewCycle(workstreams[0].id);
   toggleConfirmAllMilestones(cycle.id, it.id);
   assertEqual(reviewCycles[0].milestoneConfirmations.length, 2, 'only the two applicable milestones should get an entry');
-  assertFalse(isMilestoneConfirmedInCycle(cycle, it.milestones[2].id));
+  assertFalse(isMilestoneConfirmedInCycle(cycle, it.milestones[2]));
   assertTrue(isItemConfirmedInCycle(cycle, it));
 });
 
@@ -1245,6 +1245,87 @@ test('toggleConfirmAllMilestones is a no-op when every milestone on the item is 
   const cycle = activeReviewCycle(workstreams[0].id);
   toggleConfirmAllMilestones(cycle.id, it.id);
   assertEqual(reviewCycles[0].milestoneConfirmations.length, 0, 'nothing to confirm — already vacuously confirmed');
+});
+
+// ---------- A Complete milestone/item auto-confirms — no manual review
+// needed (an explicit user request: "mark completed task as reviewed, no
+// need to review them again") ----------
+
+test('isMilestoneConfirmedInCycle reads a Complete milestone as confirmed with no stored confirmation entry at all', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  it.milestones[0].status = 'complete';
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  assertTrue(isMilestoneConfirmedInCycle(cycle, it.milestones[0]), 'Complete must count as confirmed without ever being clicked');
+  assertEqual(cycle.milestoneConfirmations.length, 0, 'no entry should have been written just from checking');
+});
+
+test('isItemConfirmedInCycle reads an item as confirmed once every one of its milestones is Complete, with no manual confirms', function () {
+  const it = addReviewItemWithMilestones(['A', 'B']);
+  it.milestones.forEach(m => { m.status = 'complete'; });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  assertTrue(isItemConfirmedInCycle(cycle, it));
+});
+
+test('a mix of Complete and still-open milestones only needs the open ones confirmed manually', function () {
+  const it = addReviewItemWithMilestones(['A', 'B']);
+  it.milestones[0].status = 'complete';
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  assertFalse(isItemConfirmedInCycle(cycle, it), 'the still-open milestone B must still block confirmation');
+  toggleMilestoneConfirm(cycle.id, it.milestones[1].id);
+  assertTrue(isItemConfirmedInCycle(cycle, it), 'A is auto-confirmed via Complete, B was just confirmed manually');
+});
+
+test('a zero-milestone item that is Complete auto-confirms too, with no cycle.confirmations entry needed', function () {
+  const it = addReviewItem({ status: 'complete' });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  assertTrue(isItemConfirmedInCycle(cycle, it));
+  assertEqual(cycle.confirmations.length, 0);
+});
+
+test('toggleConfirmAllMilestones never writes a redundant confirmation entry for an already-Complete milestone', function () {
+  const it = addReviewItemWithMilestones(['A', 'B']);
+  it.milestones[0].status = 'complete';
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  assertEqual(reviewCycles[0].milestoneConfirmations.length, 1, 'only B (still open) should get a real entry — A is already auto-confirmed');
+  assertEqual(reviewCycles[0].milestoneConfirmations[0].milestoneId, it.milestones[1].id);
+});
+
+test('canCompleteReviewCycle passes for a workstream whose every item/milestone is already Complete, with nothing manually confirmed', function () {
+  const it = addReviewItemWithMilestones(['A', 'B']);
+  it.milestones.forEach(m => { m.status = 'complete'; });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  assertTrue(canCompleteReviewCycle(cycle));
+});
+
+test('milestoneRowsHtml shows an inert, already-checked indicator (not a clickable toggle) for a Complete milestone during a review', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  it.milestones[0].status = 'complete';
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  const html = milestoneRowsHtml(it, cycle);
+  assertNotIncludes(html, `onclick="toggleMilestoneConfirm('${cycle.id}','${it.milestones[0].id}')"`, 'no clickable toggle for a milestone that auto-confirms');
+  assertIncludes(html, 'review-confirm-toggle confirmed');
+  assertIncludes(html, 'fa-circle-check');
+});
+
+test('itemRowHtml shows an inert, already-checked indicator for a Complete zero-milestone item during a review', function () {
+  const it = addReviewItem({ status: 'complete' });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  const html = itemRowHtml(it, cycle);
+  assertNotIncludes(html, `onclick="toggleReviewConfirm('${cycle.id}','${it.id}')"`, 'no clickable toggle for an item that auto-confirms');
+  assertIncludes(html, 'review-confirm-toggle item-level confirmed');
 });
 
 test('milestoneRowsHtml shows an inert placeholder, not a real confirm toggle, for a notApplicable milestone during a review', function () {
