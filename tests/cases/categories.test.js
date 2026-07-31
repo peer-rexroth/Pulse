@@ -215,6 +215,49 @@ test('deleteCategoryFromModal reassigns items using it to the fallback category'
   assertEqual(items[0].categoryId, categories[0].id);
 });
 
+// Undoable via the same toast-with-undo pattern deleteItem()/
+// deleteWorkstreamFromModal() already use — an explicit later user request
+// ("build an undo... for delete operations"), extending what used to be a
+// bare "This cannot be undone." confirm.
+
+test('deleteCategoryFromModal is undoable — restores the category and every item it reassigned', function () {
+  const baseCount = categories.length;
+  document.getElementById('categoryNameInput').value = 'Vendor Onboarding';
+  editingCategoryMilestones = ['Contract signed'];
+  saveCategory();
+  const newCat = categories[categories.length - 1];
+  const itA = { id: genId(), workstreamId: workstreams[0].id, categoryId: newCat.id, name: 'A', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() };
+  const itB = { id: genId(), workstreamId: workstreams[0].id, categoryId: newCat.id, name: 'B', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() };
+  items.push(itA, itB);
+  editingCategoryId = newCat.id;
+  deleteCategoryFromModal();
+  confirmModalAction();
+  assertEqual(categories.length, baseCount);
+  assertTrue(!!toastUndoAction, 'an undo action should be armed after deleting');
+  triggerToastUndo();
+  assertEqual(categories.length, baseCount + 1);
+  assertEqual(categories[categories.length - 1].name, 'Vendor Onboarding');
+  assertEqual(itA.categoryId, newCat.id);
+  assertEqual(itB.categoryId, newCat.id);
+});
+
+test('undoing a category delete does not clobber an item independently reassigned to yet another category in the meantime', function () {
+  document.getElementById('categoryNameInput').value = 'Vendor Onboarding';
+  editingCategoryMilestones = ['Contract signed'];
+  saveCategory();
+  const newCat = categories[categories.length - 1];
+  const it = { id: genId(), workstreamId: workstreams[0].id, categoryId: newCat.id, name: 'X', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: Date.now() };
+  items.push(it);
+  editingCategoryId = newCat.id;
+  deleteCategoryFromModal();
+  confirmModalAction();
+  const fallbackId = it.categoryId; // whatever it landed on
+  const anotherCat = categories.find(c => !c.pending && c.id !== fallbackId);
+  it.categoryId = anotherCat.id; // simulates the user re-assigning it before clicking Undo
+  triggerToastUndo();
+  assertEqual(it.categoryId, anotherCat.id, 'undo must not override a later, unrelated reassignment');
+});
+
 test('deleteCategoryFromModal refuses to delete the last remaining non-Pending category', function () {
   // Delete every non-Pending category but one, to actually reach the guarded
   // scenario — DEFAULT_CATEGORIES seeds several, not just one, these days.

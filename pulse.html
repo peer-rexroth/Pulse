@@ -5563,6 +5563,14 @@ function toggleActionLogItem(wsId, itemId) {
 // (no undo toast) as removeMinutes(), since this is a lightweight leaf
 // record, not something that cascades into other data the way deleteItem()'s
 // milestones do.
+// Undoable via the same toast-with-undo pattern deleteItem()/
+// deleteWorkstreamFromModal() already use, extended here to Action Log —
+// an explicit later user request ("build an undo... for delete
+// operations"). No tombstoning needed the way item/workstream deletes have
+// (deletedItemIds/deletedWorkstreamIds) — an action log entry has never
+// been part of that cross-device merge/tombstone system at all (see
+// "Merge and last-write-wins" in CLAUDE.md), so this is just a plain
+// splice-out/splice-back-in.
 function deleteActionLogItem(wsId, itemId) {
   if (!requireRole('reviewer')) return;
   const w = wsById(wsId);
@@ -5571,13 +5579,17 @@ function deleteActionLogItem(wsId, itemId) {
   if (!a) return;
   openConfirmModal({
     title: 'Delete this action item?',
-    body: 'This cannot be undone.',
+    body: 'You can undo this from the toast right after deleting.',
     action: () => {
       const idx = w.actionLog.findIndex(x => x.id === itemId);
       if (idx === -1) return;
-      w.actionLog.splice(idx, 1);
+      const [removed] = w.actionLog.splice(idx, 1);
       save(); render();
-      showToast('Action item deleted');
+      showToast('Action item deleted', false, () => {
+        w.actionLog.splice(idx, 0, removed);
+        save(); render();
+        showToast('Action item restored');
+      });
     }
   });
 }
@@ -5702,6 +5714,8 @@ function allWorkstreamsDecisionLogHtml() {
 // deleteActionLogItem() (no undo toast, and re-saving the source cycle's
 // minutes unchanged would re-add it via syncDecisionLogFromMinutes()'s own
 // text match).
+// deleteActionLogItem()'s own counterpart, same plain splice-out/splice-
+// back-in undo (no tombstoning — see that function's own comment).
 function deleteDecisionLogItem(wsId, itemId) {
   if (!requireRole('reviewer')) return;
   const w = wsById(wsId);
@@ -5710,13 +5724,17 @@ function deleteDecisionLogItem(wsId, itemId) {
   if (!d) return;
   openConfirmModal({
     title: 'Delete this decision?',
-    body: 'This cannot be undone.',
+    body: 'You can undo this from the toast right after deleting.',
     action: () => {
       const idx = w.decisionLog.findIndex(x => x.id === itemId);
       if (idx === -1) return;
-      w.decisionLog.splice(idx, 1);
+      const [removed] = w.decisionLog.splice(idx, 1);
       save(); render();
-      showToast('Decision deleted');
+      showToast('Decision deleted', false, () => {
+        w.decisionLog.splice(idx, 0, removed);
+        save(); render();
+        showToast('Decision restored');
+      });
     }
   });
 }
@@ -6253,15 +6271,33 @@ function deleteCategoryFromModal() {
   // Never falls back to Pending — a real item losing its category should
   // land on another real one, not in the quick-add checklist's placeholder.
   const fallback = categories.find(c => c.id !== catId && !c.pending);
-  const body = (count ? `${count} item${count === 1 ? '' : 's'} using this category will move to "${fallback.name}". ` : '') + 'This cannot be undone.';
+  const body = (count ? `${count} item${count === 1 ? '' : 's'} using this category will move to "${fallback.name}". ` : '') + 'You can undo this from the toast right after deleting.';
   openConfirmModal({
     title: `Delete "${cat.name}"?`,
     body,
     action: () => {
-      categories = categories.filter(c => c.id !== catId);
-      items.forEach(it => { if (it.categoryId === catId) it.categoryId = fallback.id; });
+      const catIdx = categories.findIndex(c => c.id === catId);
+      if (catIdx === -1) return;
+      const [removedCat] = categories.splice(catIdx, 1);
+      // Same "reassign, track only what this action itself moved, guard
+      // before restoring" pattern deleteWorkstreamFromModal()'s own undo
+      // uses — undo must not clobber an item that got independently
+      // reassigned to yet another category in the few seconds before the
+      // toast's Undo was clicked.
+      const movedItemIds = [];
+      items.forEach(it => {
+        if (it.categoryId === catId) { it.categoryId = fallback.id; movedItemIds.push(it.id); }
+      });
       save(); render();
-      showToast('Category deleted');
+      showToast('Category deleted', false, () => {
+        categories.splice(catIdx, 0, removedCat);
+        movedItemIds.forEach(id => {
+          const it = items.find(i => i.id === id);
+          if (it && it.categoryId === fallback.id) it.categoryId = catId;
+        });
+        save(); render();
+        showToast('Category restored');
+      });
     }
   });
 }

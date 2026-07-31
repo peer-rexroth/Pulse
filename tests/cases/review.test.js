@@ -1543,6 +1543,28 @@ test('deleteActionLogItem removes the entry only after confirmation', function (
   assertEqual(workstreams[0].actionLog.length, 0);
 });
 
+// Undoable via the same toast-with-undo pattern deleteItem() already uses —
+// an explicit later user request ("build an undo... for delete operations").
+
+test('deleteActionLogItem is undoable, restoring the entry at its original position', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'First';
+  addMinutesActionItemRow();
+  editingMinutesActionItems[1].text = 'Second';
+  saveMinutes();
+  const id = workstreams[0].actionLog[0].id;
+
+  deleteActionLogItem(workstreams[0].id, id);
+  confirmModalAction();
+  assertEqual(workstreams[0].actionLog.length, 1);
+  assertTrue(!!toastUndoAction, 'an undo action should be armed after deleting');
+  triggerToastUndo();
+  assertEqual(workstreams[0].actionLog.length, 2);
+  assertEqual(workstreams[0].actionLog[0].id, id, 'restored at its original index');
+});
+
 test('deleteActionLogItem does not touch the source cycle\'s own saved minutes', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
@@ -1999,6 +2021,22 @@ test('removeMinutes only deletes decisions from its own cycle, leaving other cyc
   confirmModalAction();
   assertEqual(workstreams[0].decisionLog.length, 1);
   assertEqual(workstreams[0].decisionLog[0].text, 'From cycle 2');
+});
+
+test('deleteDecisionLogItem is undoable, restoring the entry at its original position', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'First decision\nSecond decision';
+  saveMinutes();
+  const id = workstreams[0].decisionLog[0].id;
+
+  deleteDecisionLogItem(workstreams[0].id, id);
+  confirmModalAction();
+  assertEqual(workstreams[0].decisionLog.length, 1);
+  assertTrue(!!toastUndoAction, 'an undo action should be armed after deleting');
+  triggerToastUndo();
+  assertEqual(workstreams[0].decisionLog.length, 2);
+  assertEqual(workstreams[0].decisionLog[0].id, id, 'restored at its original index');
 });
 
 test('deleteDecisionLogItem removes the entry only after confirmation, and does not touch the source cycle\'s own saved minutes', function () {
