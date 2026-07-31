@@ -287,6 +287,32 @@ test('saveItem forces a Pending item\'s categoryId to stay Pending, even if the 
   assertEqual(it.categoryId, pendingCatId, 'only applyScopeCategory() may move an item out of Pending');
 });
 
+// Regression tests for a later, explicit user request: "do not allow to
+// assign a workstream to a pending scope item" — the identical lock as
+// Category above, applied to Workstream for the identical reason.
+
+test('openItemModal disables the Workstream select for a Pending item, even at Editor+', function () {
+  const it = addPendingItem();
+  openItemModal(it.id);
+  assertTrue(document.getElementById('itemWorkstreamSelect').disabled, 'the workstream select must be locked while the item is still Pending');
+});
+
+test('openItemModal leaves the Workstream select editable once an item has a real category (post scope-assign)', function () {
+  const it = addPendingItem();
+  const realCat = categories.find(c => !c.pending);
+  applyScopeCategory(it.id, workstreams[0].id, realCat.id);
+  openItemModal(it.id);
+  assertFalse(document.getElementById('itemWorkstreamSelect').disabled);
+});
+
+test('saveItem forces a Pending item\'s workstreamId to stay Unassigned, even if the (disabled) select somehow reports a different value', function () {
+  const it = addPendingItem();
+  openItemModal(it.id);
+  document.getElementById('itemWorkstreamSelect').value = workstreams[0].id; // simulates bypassing the disabled attribute
+  saveItem();
+  assertEqual(it.workstreamId, null, 'only applyScopeCategory() may move an item out of Unassigned');
+});
+
 // The scope-assign modal's own "no Later button, no Escape/backdrop
 // dismiss" behavior lives entirely in static HTML markup and the global
 // keydown/click listeners at the bottom of the script — neither is

@@ -3470,6 +3470,14 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   const categorySelect = document.getElementById('itemCategorySelect');
   categorySelect.disabled = !editable || stillPending;
   categorySelect.title = stillPending ? 'This item is still Pending — its category is set automatically once its "Scope Item Confirmed" milestone is marked Complete.' : '';
+  // Same lock, same reasoning, on Workstream — a still-Pending item stays
+  // Unassigned until applyScopeCategory() moves it out of Pending; letting
+  // this select assign a real workstream ahead of that would let someone
+  // half-triage an item (a workstream but still the placeholder Pending
+  // category/checklist) outside the one flow meant to do both together.
+  const workstreamSelect = document.getElementById('itemWorkstreamSelect');
+  workstreamSelect.disabled = !editable || stillPending;
+  workstreamSelect.title = stillPending ? 'This item is still Pending — its workstream is set automatically once its "Scope Item Confirmed" milestone is marked Complete.' : '';
   document.getElementById('itemSaveBtn').style.display = editable ? '' : 'none';
   document.getElementById('itemModalBg').classList.add('open');
   document.getElementById('itemNameInput').focus();
@@ -3623,6 +3631,13 @@ function saveItem() {
   const savingJourney = editingItemType === 'journey';
   const name = document.getElementById('itemNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
+  // A still-Pending item's workstream is likewise forced to stay whatever it
+  // already is (always null/Unassigned — see openItemModal()'s own comment
+  // on the Workstream select's lock), regardless of the (disabled, but
+  // defense-in-depth here too) select's value — only applyScopeCategory() is
+  // allowed to move an item out of Pending, same as its category just below.
+  const editingItemForSave = editingItemId ? items.find(i => i.id === editingItemId) : null;
+  const stillPendingOnSave = !!(editingItemForSave && isPendingCategory(editingItemForSave.categoryId));
   // Empty string is the "Unassigned" option's own value (see
   // populateWorkstreamSelect()) — every other option is a real workstream's
   // id, always non-empty, so this only ever converts that one sentinel back
@@ -3630,7 +3645,7 @@ function saveItem() {
   // A Journey is forced to null regardless of the (hidden) select's value —
   // it's never assigned to a workstream at all (see openItemModal()'s own
   // comment on itemWorkstreamField).
-  const workstreamId = savingJourney ? null : (document.getElementById('itemWorkstreamSelect').value || null);
+  const workstreamId = savingJourney ? null : (stillPendingOnSave ? editingItemForSave.workstreamId : (document.getElementById('itemWorkstreamSelect').value || null));
   // A Journey has no category at all — forced to null regardless of the
   // (hidden) select's value, same "never assigned" treatment workstreamId
   // gets just above. A still-Pending item's category is likewise forced to
@@ -3638,8 +3653,6 @@ function saveItem() {
   // defense-in-depth here too — see openItemModal()'s own comment) select's
   // value — only applyScopeCategory() is allowed to move an item out of
   // Pending.
-  const editingItemForSave = editingItemId ? items.find(i => i.id === editingItemId) : null;
-  const stillPendingOnSave = !!(editingItemForSave && isPendingCategory(editingItemForSave.categoryId));
   const categoryId = savingJourney ? null : (stillPendingOnSave ? editingItemForSave.categoryId : document.getElementById('itemCategorySelect').value);
   const manualDueDate = document.getElementById('itemDueInput').value || todayStr();
   const manualStartDate = document.getElementById('itemStartInput').value || manualDueDate;
