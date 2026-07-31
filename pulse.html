@@ -1622,7 +1622,7 @@ const DEFAULT_CATEGORIES = [
 const DEFAULT_CATEGORY_MILESTONES = DEFAULT_CATEGORIES[0].milestones;
 const DAY_MS = 86400000;
 const REVIEW_STALE_DAYS = 30;
-const MODES = ['planning', 'review', 'dashboard', 'journeys', 'admin'];
+const MODES = ['planning', 'review', 'dashboard', 'journeys', 'external', 'admin'];
 
 // ---------- Roles (RBAC) ----------
 // A soft, UI-level permission ladder, NOT real access control — there's no
@@ -1663,7 +1663,7 @@ let workstreams = [];
 let items = [];
 let categories = [];
 let reviewCycles = [];
-let mode = 'planning'; // 'planning' | 'review' | 'dashboard' | 'admin'
+let mode = 'planning'; // 'planning' | 'review' | 'dashboard' | 'journeys' | 'external' | 'admin'
 let theme = 'light';
 let colorScheme = 'standard'; // one of THEME_SCHEMES' ids — see toggleTheme() vs setColorScheme()
 // null until a role is chosen (openRoleModal() then blocks the app behind an
@@ -2259,8 +2259,11 @@ function render() {
   // 'journeys' is excluded here — its entry point is the sidebar's own
   // #journeysNav row now (see renderSidebar()), not a #tab<Mode> topbar
   // button, so it sets its own 'active' class as part of that row's markup
-  // instead of through this generic id-based lookup.
-  MODES.filter(m => m !== 'journeys').forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
+  // instead of through this generic id-based lookup. 'external' is excluded
+  // for the identical reason — its own sidebar row (see renderSidebar())
+  // sets its 'active' class directly too, since it has no #tabExternal
+  // topbar button either.
+  MODES.filter(m => m !== 'journeys' && m !== 'external').forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
   document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
   document.getElementById('planningSearchToolbar').style.display = mode === 'planning' ? '' : 'none';
@@ -2294,6 +2297,8 @@ function render() {
     renderDashboard();
   } else if (mode === 'journeys') {
     renderJourneys();
+  } else if (mode === 'external') {
+    renderExternalDelivery();
   } else if (mode === 'admin') {
     renderAdmin();
   }
@@ -2306,20 +2311,37 @@ function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
   const el = document.getElementById('wsList');
   // Neither "All workstreams" nor any real workstream row shows as active
-  // while Journeys mode is showing — a user-reported bug: filterWorkstreamId
-  // stays whatever it last was (Journeys ignores it entirely, see
-  // renderJourneys()), so the workstream row someone had selected before
-  // switching to Journeys stayed visually highlighted even though nothing
-  // on screen was actually scoped to it any more. inWorkstreamScope gates
-  // both active checks below on mode !== 'journeys' rather than clearing
+  // while Journeys (or External Delivery — see below) mode is showing — a
+  // user-reported bug (for Journeys originally): filterWorkstreamId stays
+  // whatever it last was (both of these ignore it entirely, see
+  // renderJourneys()/renderExternalDelivery()), so the workstream row
+  // someone had selected before switching stayed visually highlighted even
+  // though nothing on screen was actually scoped to it any more.
+  // inWorkstreamScope gates both active checks below rather than clearing
   // filterWorkstreamId itself — the selection should still be remembered
   // (and restored, visually) on switching back to Planning/Review/
-  // Dashboard, not lost the moment Journeys is opened.
-  const inWorkstreamScope = mode !== 'journeys';
+  // Dashboard, not lost the moment either of these modes is opened.
+  const inWorkstreamScope = mode !== 'journeys' && mode !== 'external';
   let html = `<div class="ws-row ws-row-all ${inWorkstreamScope && filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
       <i class="fa-solid fa-layer-group ws-row-all-icon"></i>
       <span class="ws-row-name">All workstreams</span>
       <span class="ws-row-count">${items.length}</span>
+    </div>`;
+  // External Delivery's own entry point — an explicit user request ("add
+  // External Delivery to the left navigation pane, under 'All
+  // workstreams'"), sitting directly below "All workstreams" and above the
+  // real workstream rows, inside this same #wsList — unlike Journeys (its
+  // own separate section further down, a distinct user request at the
+  // time), this one was specifically asked for as the next row down from
+  // "All workstreams", not a standalone section. Sets its own 'active'
+  // state directly (mode === 'external') for the same reason journeysNav's
+  // own row does — it's rebuilt fresh on every renderSidebar() call anyway,
+  // and has no #tab<Mode> topbar button for render()'s generic id-toggle
+  // loop to drive instead (see that loop's own comment).
+  html += `<div class="ws-row ${mode === 'external' ? 'active' : ''}" onclick="setMode('external')" title="External Delivery">
+      <i class="fa-solid fa-globe" style="width:14px;text-align:center;color:${mode === 'external' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
+      <span class="ws-row-name">External Delivery</span>
+      <span class="ws-row-count">${allExternalDeliveryItems().length}</span>
     </div>`;
   html += workstreams.map(w => {
     const count = items.filter(it => it.workstreamId === w.id).length;
@@ -2579,6 +2601,40 @@ function renderJourneys() {
       </div>
       ${rows}
       ${addRow}
+    </div>`;
+}
+
+// ---------- External Delivery (sidebar nav entry) ----------
+// An explicit user request ("add External Delivery to the left navigation
+// pane, under 'All workstreams'") for a cross-workstream view of every
+// externally-delivered scope item, mirroring how Journeys got its own
+// sidebar entry + flat list. Unlike a Journey, an externally-delivered item
+// always belongs to a real workstream (see "External Delivery" in
+// CLAUDE.md) — losing that context here would make the same row read
+// differently than it does in its own workstream's Planning section — so
+// this groups by workstream (one .ws-section per workstream that actually
+// has an externally-delivered item), rather than Journeys' single flat
+// list. Ignores the shared filterWorkstreamId selector entirely, same
+// reasoning as renderJourneys() — the whole point is to see every
+// externally-delivered item regardless of whatever's currently filtered.
+function allExternalDeliveryItems() {
+  return items.filter(it => it.externalDelivery);
+}
+function renderExternalDelivery() {
+  const main = document.getElementById('main');
+  const sections = workstreams.slice().sort((a, b) => a.order - b.order).map(w => {
+    const wItems = items.filter(it => it.workstreamId === w.id && it.externalDelivery).sort((a, b) => a.order - b.order);
+    if (!wItems.length) return '';
+    return `<div class="ws-section">
+        <div class="ws-section-header" style="background:var(--ws-${w.color}-bg)">
+          <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
+          <span class="ws-section-title">${esc(w.name)}</span>
+        </div>
+        ${wItems.map(it => itemRowHtml(it)).join('')}
+      </div>`;
+  }).join('');
+  main.innerHTML = sections || `<div class="empty-state"><i class="fa-solid fa-globe"></i>
+      <div>No externally-delivered items yet.</div>
     </div>`;
 }
 

@@ -176,6 +176,83 @@ test('a workstream with no externally-delivered items shows no "External Deliver
   assertNotIncludes(document.getElementById('main').innerHTML, 'External Delivery');
 });
 
+// ---------- External Delivery's own sidebar nav entry + cross-workstream view ----------
+// An explicit user request ("add External Delivery to the left navigation
+// pane, under 'All workstreams'") — a new mode, own sidebar row (mirroring
+// Journeys' own entry point), listing every externally-delivered item across
+// every workstream regardless of the current sidebar filter.
+
+test('renderSidebar renders the External Delivery nav row directly after "All workstreams", with a live count', function () {
+  addItem({ name: 'Ext 1', externalDelivery: true, externalDeliverySpoc: 'Jane' });
+  addItem({ name: 'Ext 2', externalDelivery: true, externalDeliverySpoc: 'Bob' });
+  addItem({ name: 'Not external' });
+  renderSidebar();
+  const html = document.getElementById('wsList').innerHTML;
+  assertIncludes(html, 'External Delivery');
+  const allIdx = html.indexOf('All workstreams');
+  const extIdx = html.indexOf('External Delivery');
+  const wsRowIdx = html.indexOf('ws-row-name">' + esc(workstreams[0].name));
+  assertTrue(allIdx < extIdx, 'External Delivery must sit after "All workstreams"');
+  assertTrue(extIdx < wsRowIdx, 'External Delivery must sit before the real workstream rows');
+  assertIncludes(html, '<span class="ws-row-count">2</span>', 'the row shows a live count of externally-delivered items across every workstream');
+});
+
+test('the External Delivery nav row is active only while mode is \'external\', and no workstream row reads as active alongside it', function () {
+  filterWorkstreamId = workstreams[0].id;
+  setMode('planning');
+  renderSidebar();
+  assertNotIncludes(document.getElementById('wsList').innerHTML.split('External Delivery')[0], 'ws-row active', 'not active while Planning is showing');
+
+  setMode('external');
+  renderSidebar();
+  const html = document.getElementById('wsList').innerHTML;
+  assertIncludes(html, `ws-row active" onclick="setMode('external')"`, 'active once External Delivery mode is showing');
+  assertNotIncludes(html, 'ws-row-all active', '"All workstreams" must not read as active while External Delivery is showing');
+  assertEqual(filterWorkstreamId, workstreams[0].id, 'the selection itself survives the switch, unaffected — External Delivery ignores it entirely');
+});
+
+test('setMode(\'external\') dispatches to renderExternalDelivery() without touching filterWorkstreamId', function () {
+  filterWorkstreamId = workstreams[0].id;
+  setMode('external');
+  assertEqual(mode, 'external');
+  assertEqual(filterWorkstreamId, workstreams[0].id);
+});
+
+test('allExternalDeliveryItems returns every externally-delivered item across every workstream', function () {
+  const w2 = { id: genId(), name: 'WS2', color: 'teal', order: 1 };
+  workstreams.push(w2);
+  addItem({ name: 'Ext A', externalDelivery: true });
+  addItem({ name: 'Ext B', workstreamId: w2.id, externalDelivery: true });
+  addItem({ name: 'Not external' });
+  const result = allExternalDeliveryItems();
+  assertEqual(result.length, 2);
+  assertTrue(result.every(it => it.externalDelivery));
+});
+
+test('renderExternalDelivery groups externally-delivered items by workstream, ignoring filterWorkstreamId entirely', function () {
+  const w2 = { id: genId(), name: 'Second WS', color: 'teal', order: 1 };
+  workstreams.push(w2);
+  addItem({ name: 'Ext A', externalDelivery: true, externalDeliverySpoc: 'Jane' });
+  addItem({ name: 'Ext B', workstreamId: w2.id, externalDelivery: true, externalDeliverySpoc: 'Bob' });
+  addItem({ name: 'Not external' });
+  filterWorkstreamId = workstreams[0].id; // must be ignored entirely
+  renderExternalDelivery();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Ext A');
+  assertIncludes(html, 'Ext B');
+  assertIncludes(html, esc(workstreams[0].name));
+  assertIncludes(html, esc(w2.name));
+  assertNotIncludes(html, 'Not external');
+});
+
+test('renderExternalDelivery skips a workstream with no externally-delivered items entirely — no empty section', function () {
+  addItem({ name: 'Normal item' });
+  renderExternalDelivery();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'ws-section-header');
+  assertIncludes(html, 'No externally-delivered items yet.');
+});
+
 test('an item with milestones shows a count badge, and its milestones are hidden until expanded', function () {
   const it = addItem({
     name: 'With milestones',
