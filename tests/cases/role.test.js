@@ -617,13 +617,44 @@ test('openFileSyncModal shows the real reconnect prompt or warning at every role
 // sequence, so the prompt either got buried behind the role modal. The fix:
 // initFileSync() parks what it wanted to show in pendingFileSyncPrompt when
 // userRole is still null, and closeRoleModal() surfaces it once the
-// mandatory gate actually resolves — for any first-time role pick, since
-// file sync isn't role-gated any more.
-test('closeRoleModal surfaces a pending file-sync prompt once any role is chosen for the first time', function () {
+// mandatory gate actually resolves — for any first-time role pick other
+// than Visitor, since file sync itself isn't role-gated any more, but the
+// automatic launch-time prompt now is (see the next test below).
+test('closeRoleModal surfaces a pending file-sync prompt once a non-Visitor role is chosen for the first time', function () {
   userRole = null; // simulates the brand-new-browser, pre-choice state
+  pendingFileSyncPrompt = 'link';
+  setUserRole('editor');
+  closeRoleModal();
+  assertTrue(document.getElementById('fileSyncModalBg').classList.contains('open'), 'picking a non-Visitor role for the first time must surface the deferred link/reconnect prompt');
+  assertEqual(pendingFileSyncPrompt, null, 'the pending prompt is consumed once surfaced');
+});
+
+// A later, explicit user request: "the link backup modal should not pop up
+// if I login as visitor, as I will have no write operations" — the
+// automatic launch-time onboarding (file link, then daily-backup folder)
+// should never interrupt a Visitor, though the manual entry points (the
+// topbar's own indicators) stay available at every role regardless.
+test('closeRoleModal does not surface a pending file-sync prompt when Visitor is chosen for the first time', function () {
+  userRole = null;
   pendingFileSyncPrompt = 'link';
   setUserRole('visitor');
   closeRoleModal();
-  assertTrue(document.getElementById('fileSyncModalBg').classList.contains('open'), 'picking any role for the first time must surface the deferred link/reconnect prompt');
-  assertEqual(pendingFileSyncPrompt, null, 'the pending prompt is consumed once surfaced');
+  assertFalse(document.getElementById('fileSyncModalBg').classList.contains('open'), 'a Visitor should never be interrupted by the launch-time onboarding prompt');
+  assertEqual(pendingFileSyncPrompt, null, 'the pending prompt is still consumed (discarded), not left dangling for a later role switch to accidentally trigger');
+});
+
+test('isLaunchOnboardingSuppressed is true only for Visitor', function () {
+  ROLES.forEach(r => {
+    userRole = r;
+    assertEqual(isLaunchOnboardingSuppressed(), r === 'visitor');
+  });
+});
+
+test('maybeShowBackupFolderOnboarding does not open the backup-folder modal for a Visitor, even with daily backups supported and no folder chosen yet', function () {
+  userRole = 'visitor';
+  window.showDirectoryPicker = function () {}; // feature-detected as supported
+  backupDirHandle = null;
+  maybeShowBackupFolderOnboarding();
+  assertFalse(document.getElementById('backupFolderModalBg').classList.contains('open'));
+  delete window.showDirectoryPicker;
 });

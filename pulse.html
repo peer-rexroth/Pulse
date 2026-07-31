@@ -3235,7 +3235,8 @@ function closeRoleModal() {
   document.getElementById('roleModalBg').classList.remove('open');
   // Surfaces initFileSync()'s deferred link/reconnect prompt (see
   // pendingFileSyncPrompt) now that a role actually exists — a no-op if
-  // there's nothing pending or the chosen role isn't Admin.
+  // there's nothing pending, or the just-picked role is Visitor (see
+  // isLaunchOnboardingSuppressed()'s own comment).
   maybeShowPendingFileSyncPrompt();
 }
 function setUserRole(role) {
@@ -6696,19 +6697,31 @@ let fileHandle = null;
 // same-day copy before settling back into "once per day".
 let backupDirHandle = null;
 let lastBackupWrittenDate = null;
+// A Visitor is just looking around — no write operations at all — so
+// neither launch-time onboarding modal (link a file, then choose a daily-
+// backup folder) should proactively interrupt them to set up a data-
+// durability feature they have no reason to configure themselves. An
+// explicit user request. This only suppresses the *automatic* pop-up at
+// startup — file sync itself is still deliberately available to every role,
+// including Visitor (see "Roles (RBAC)" in CLAUDE.md), so the manual entry
+// points (the topbar's own file-sync/backup indicators) are completely
+// unaffected; a Visitor who wants to link a file or choose a backup folder
+// by hand still can, any time.
+function isLaunchOnboardingSuppressed() { return userRole === 'visitor'; }
 // On a brand-new browser (userRole still null), initFileSync() runs
 // concurrently with the mandatory first-launch role-picker gate — opening
 // the file-sync modal right then would race the (undismissable) role modal
 // and get buried behind it. Instead of opening it immediately in that case,
 // initFileSync() parks what it wanted to show here ('link', or a handle
 // needing reconnect), and closeRoleModal() surfaces it once the user
-// actually has a role — any role, since file sync is available to all of
-// them (see maybeShowPendingFileSyncPrompt()).
+// actually has a role (see maybeShowPendingFileSyncPrompt()) — unless that
+// role turns out to be Visitor, per isLaunchOnboardingSuppressed() above.
 let pendingFileSyncPrompt = null;
 function maybeShowPendingFileSyncPrompt() {
   if (!pendingFileSyncPrompt) return;
   const p = pendingFileSyncPrompt;
   pendingFileSyncPrompt = null;
+  if (isLaunchOnboardingSuppressed()) return;
   openFileSyncModal(p === 'link' ? undefined : p, true);
 }
 const _FS = { db: 'pulse-fs', store: 'handles', key: 'linked-file', backupKey: 'backup-dir' };
@@ -7131,7 +7144,7 @@ async function initFileSync() {
     // is parked in pendingFileSyncPrompt instead of opened immediately,
     // since opening it here would race the mandatory role-picker gate below
     // and get buried behind it before any role has actually been chosen.
-    if (!handle) { if (!userRole) pendingFileSyncPrompt = 'link'; else openFileSyncModal(undefined, true); return; }
+    if (!handle) { if (!userRole) pendingFileSyncPrompt = 'link'; else if (!isLaunchOnboardingSuppressed()) openFileSyncModal(undefined, true); return; }
     fileHandle = handle;
     const perm = await handle.queryPermission({ mode: 'readwrite' });
     if (perm === 'granted') {
@@ -7154,7 +7167,7 @@ async function initFileSync() {
       } catch (_) { /* read failed — keep localStorage data */ }
     } else if (!userRole) {
       pendingFileSyncPrompt = handle; // same race as the !handle branch above
-    } else {
+    } else if (!isLaunchOnboardingSuppressed()) {
       openFileSyncModal(handle, true);
     }
     // The file link was already present and working (the 'granted' branch
@@ -7173,7 +7186,7 @@ async function initFileSync() {
     fileHandle = null;
     _fsDel().catch(() => {});
     updateFileSyncUI();
-    if (!userRole) pendingFileSyncPrompt = 'link'; else openFileSyncModal(undefined, true);
+    if (!userRole) pendingFileSyncPrompt = 'link'; else if (!isLaunchOnboardingSuppressed()) openFileSyncModal(undefined, true);
   }
 }
 // isLaunch marks a call that's part of app-startup onboarding (initFileSync()/
@@ -7224,10 +7237,14 @@ function closeFileSyncModal() {
 // for the one case (file already linked and working) where it's called
 // directly instead, since no file-sync modal ever opens to chain off of
 // there. A no-op if daily backups aren't supported at all (matches
-// updateBackupSyncUI()'s own gating) or a folder's already chosen.
+// updateBackupSyncUI()'s own gating), a folder's already chosen, or the
+// current role is Visitor (see isLaunchOnboardingSuppressed()) — this one
+// guard covers both call sites, since neither ever reaches here through any
+// other path.
 function maybeShowBackupFolderOnboarding() {
   if (!window.showDirectoryPicker) return;
   if (backupDirHandle) return;
+  if (isLaunchOnboardingSuppressed()) return;
   openBackupFolderModal();
 }
 function openBackupFolderModal() { document.getElementById('backupFolderModalBg').classList.add('open'); }
