@@ -123,11 +123,11 @@ test('confirming the category switch replaces the milestones with the new catego
   confirmModalAction();
   assertEqual(it.categoryId, newCat.id);
   assertDeepEqual(it.milestones.map(m => m.name), newCat.milestones);
-  it.milestones.forEach(m => assertEqual(m.status, 'not-started'));
+  it.milestones.forEach(m => assertEqual(m.status, 'pending'));
   oldMilestoneIds.forEach(id => assertTrue(deletedMilestoneIds.some(x => x.id === id), 'every old milestone should be tombstoned'));
 });
 
-test('switching category recomputes status/plan dates from the fresh (all not-started) milestone template', function () {
+test('switching category recomputes status/plan dates from the fresh (all pending) milestone template', function () {
   const it = addRealItem();
   it.milestones[0].status = 'red';
   it.status = 'red'; // simulate the roll-up already having happened before the switch
@@ -136,7 +136,7 @@ test('switching category recomputes status/plan dates from the fresh (all not-st
   document.getElementById('itemCategorySelect').value = newCat.id;
   saveItem();
   confirmModalAction();
-  assertEqual(it.status, 'not-started', 'a fresh template starts all not-started, so the roll-up should read not-started too');
+  assertEqual(it.status, 'pending', 'a fresh template starts all pending, so the roll-up should read pending too');
 });
 
 test('an item with zero milestones silently picks up the new category\'s template on save — no confirm needed', function () {

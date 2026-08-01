@@ -23,8 +23,8 @@ test('openInlineQuickAdd/saveInlineQuickAddItem creates an Unassigned item in th
   assertTrue(isPendingCategory(it.categoryId));
   assertEqual(it.milestones.length, 1);
   assertEqual(it.milestones[0].name, 'Scope Item Confirmed');
-  assertEqual(it.milestones[0].status, 'not-started');
-  assertEqual(it.status, 'not-started');
+  assertEqual(it.milestones[0].status, 'pending');
+  assertEqual(it.status, 'pending');
   assertFalse(unassignedQuickAddOpen, 'the input should have closed back to the button after saving');
 });
 
@@ -71,7 +71,8 @@ test('marking a Pending item\'s "Scope Item Confirmed" milestone Complete auto-o
   const it = addPendingItem();
   const mId = it.milestones[0].id;
   scopeAssignItemId = null;
-  cycleMilestoneStatus(it.id, mId); // not-started -> green
+  cycleMilestoneStatus(it.id, mId); // pending -> not-started
+  cycleMilestoneStatus(it.id, mId); // -> green
   assertEqual(scopeAssignItemId, null, 'not complete yet — should not have opened');
   cycleMilestoneStatus(it.id, mId); // -> amber
   cycleMilestoneStatus(it.id, mId); // -> red
@@ -83,6 +84,7 @@ test('marking a Pending item\'s "Scope Item Confirmed" milestone Complete auto-o
 
 test('the scope-assign modal does not re-open on an unrelated save once already Complete', function () {
   const it = addPendingItem();
+  cycleMilestoneStatus(it.id, it.milestones[0].id); // pending -> not-started
   cycleMilestoneStatus(it.id, it.milestones[0].id); // -> green
   cycleMilestoneStatus(it.id, it.milestones[0].id); // -> amber
   cycleMilestoneStatus(it.id, it.milestones[0].id); // -> red
@@ -343,7 +345,7 @@ test('applyScopeCategory sets the item\'s workstream (out of Unassigned) and cat
   assertEqual(it.workstreamId, secondWs.id);
   assertEqual(it.categoryId, devCat.id);
   assertDeepEqual(it.milestones.map(m => m.name), DEFAULT_CATEGORY_MILESTONES);
-  it.milestones.forEach(m => assertEqual(m.status, 'not-started'));
+  it.milestones.forEach(m => assertEqual(m.status, 'pending'));
   assertTrue(deletedMilestoneIds.some(x => x.id === oldMilestoneId), 'the discarded Pending checklist milestone should be tombstoned');
 });
 
@@ -430,6 +432,7 @@ test('saveWorkstream does not touch the scope-assign modal state when it is not 
 
 test('itemRowHtml routes a Pending-and-Complete item\'s status badge to openScopeAssignModal instead of openItemModal', function () {
   const it = addPendingItem();
+  cycleMilestoneStatus(it.id, it.milestones[0].id); // pending -> not-started
   cycleMilestoneStatus(it.id, it.milestones[0].id); // -> green
   cycleMilestoneStatus(it.id, it.milestones[0].id); // -> amber
   cycleMilestoneStatus(it.id, it.milestones[0].id); // -> red
@@ -445,7 +448,7 @@ test('itemRowHtml routes a Pending-and-Complete item\'s status badge to openScop
 test('itemRowHtml uses the normal openItemModal status badge for a not-yet-complete Pending item', function () {
   const it = addPendingItem();
   const html = itemRowHtml(it);
-  assertIncludes(html, `class="status-badge" style="background:var(--stat-not-started-bg);color:var(--stat-not-started)" onclick="openItemModal('${it.id}')"`);
+  assertIncludes(html, `class="status-badge" style="background:var(--stat-pending-bg);color:var(--stat-pending)" onclick="openItemModal('${it.id}')"`);
   assertNotIncludes(html, 'openScopeAssignModal');
 });
 

@@ -372,6 +372,98 @@ test('the Escape handler is not wired up on a milestone that already has a real 
   assertNotIncludes(html, `cancelRevealActualDate('${it.milestones[0].id}')`, 'a real, saved actual date is not a "reveal" state to cancel out of');
 });
 
+// ---------- Due-date ghost — revealDueDate()/cancelRevealDueDate()'s
+// counterpart to revealActualDate()/cancelRevealActualDate() above, added
+// alongside the new 'pending' status (see STATUSES' own comment in
+// pulse.html) — a fresh 'pending' milestone starts with no due date at all,
+// so it needs the exact same "+" reveal treatment Actual already had. ----------
+
+test('a milestone with no due date shows a "+" ghost instead of an empty editable input', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Undated milestone', dueDate: null, status: 'pending', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'due-date-ghost');
+  assertIncludes(html, `revealDueDate('${it.milestones[0].id}')`);
+  assertNotIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','dueDate'`, 'no editable Due input should render until the ghost is clicked');
+});
+
+test('revealDueDate swaps a milestone\'s "+" ghost for a real editable input', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Undated milestone', dueDate: null, status: 'pending', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  revealDueDate(it.milestones[0].id);
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'due-date-ghost');
+  assertIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','dueDate'`);
+});
+
+test('the revealed, still-empty Due input wires up an Escape handler back to cancelRevealDueDate', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Undated milestone', dueDate: null, status: 'pending', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  revealDueDate(it.milestones[0].id);
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `cancelRevealDueDate('${it.milestones[0].id}')`);
+});
+
+test('cancelRevealDueDate reverts a revealed-but-still-empty Due field back to the "+" ghost', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Undated milestone', dueDate: null, status: 'pending', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  revealDueDate(it.milestones[0].id);
+  cancelRevealDueDate(it.milestones[0].id);
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'due-date-ghost');
+  assertNotIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','dueDate'`);
+});
+
+test('the Due ghost never renders for a milestone that already has a real due date, regardless of status', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Dated milestone', dueDate: todayStr(), status: 'pending', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'due-date-ghost', 'the ghost keys off a genuinely missing due date, not the status value');
+  assertIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','dueDate'`);
+});
+
+test('a Due ghost is not clickable (renders as nothing) below Editor', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Undated milestone', dueDate: null, status: 'pending', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  userRole = 'reviewer';
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'due-date-ghost');
+  assertNotIncludes(html, `revealDueDate('${it.milestones[0].id}')`);
+});
+
+test('Due is locked to a plain read-only "—" (not a crash) during a review when the milestone has no due date yet', function () {
+  const it = addItem({
+    workstreamId: workstreams[0].id,
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Undated milestone', dueDate: null, status: 'pending', actualDate: null }]
+  });
+  const cycle = { id: 'c1', workstreamId: workstreams[0].id, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [] };
+  toggleItemExpanded(it.id);
+  const html = itemRowHtml(it, cycle);
+  assertIncludes(html, '>—<');
+});
+
 test('a milestone shows an inline actual-date input once its item is expanded', function () {
   const it = addItem({
     name: 'Parent',

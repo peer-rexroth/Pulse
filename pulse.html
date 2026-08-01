@@ -81,6 +81,7 @@
     --ws-red: #c33a3a;    --ws-red-bg: #fbe9e9;
     --ws-grey: #5b6472;   --ws-grey-bg: #eceef1;
 
+    --stat-pending: #7a6fd1;     --stat-pending-bg: #ece9fb;
     --stat-not-started: #8b93a1; --stat-not-started-bg: #eceef1;
     --stat-green: #1f9d55;       --stat-green-bg: #e1f5e8;
     --stat-amber: #c07f0a;       --stat-amber-bg: #fcf1da;
@@ -109,6 +110,7 @@
     --ws-red: #f28f8f;    --ws-red-bg: #3a2020;
     --ws-grey: #a7aeb9;   --ws-grey-bg: #2a2d33;
 
+    --stat-pending: #b0a4f5;     --stat-pending-bg: #332c52;
     --stat-not-started: #9aa1ac; --stat-not-started-bg: #2a2d33;
     --stat-green: #6fd39a;       --stat-green-bg: #163826;
     --stat-amber: #eabb5d;       --stat-amber-bg: #3a2f16;
@@ -162,6 +164,7 @@
     --ws-red: #cd3131;    --ws-red-bg: #fbe7e6;
     --ws-grey: #3b3b3b;   --ws-grey-bg: #e8e8e8;
 
+    --stat-pending: #af00db;     --stat-pending-bg: #f5e0fa;
     --stat-not-started: #8a8a8a; --stat-not-started-bg: #e8e8e8;
     --stat-green: #388a34;       --stat-green-bg: #e2f0e0;
     --stat-amber: #bf8803;       --stat-amber-bg: #faf0d0;
@@ -183,6 +186,7 @@
     --ws-red: #f14c4c;    --ws-red-bg: #4a1414;
     --ws-grey: #9d9d9d;   --ws-grey-bg: #2a2d2e;
 
+    --stat-pending: #c586c0;     --stat-pending-bg: #2e2036;
     --stat-not-started: #6a6a6a; --stat-not-started-bg: #2a2d2e;
     --stat-green: #89d185;       --stat-green-bg: #1c3320;
     --stat-amber: #cca700;       --stat-amber-bg: #3a3010;
@@ -219,6 +223,7 @@
     --ws-red: #cb3a2a;    --ws-red-bg: #fbe2df;
     --ws-grey: #6c664b;   --ws-grey-bg: #cfcfde;
 
+    --stat-pending: #98427a;     --stat-pending-bg: #f6e2ea;
     --stat-not-started: #a39d7a; --stat-not-started-bg: #cfcfde;
     --stat-green: #14710a;       --stat-green-bg: #dcf0d8;
     --stat-amber: #a34d14;       --stat-amber-bg: #f5e2ce;
@@ -240,6 +245,7 @@
     --ws-red: #ff5555;    --ws-red-bg: #47272a;
     --ws-grey: #6272a4;   --ws-grey-bg: #44475a;
 
+    --stat-pending: #de74a7;     --stat-pending-bg: #452a3d;
     --stat-not-started: #4d5673; --stat-not-started-bg: #44475a;
     --stat-green: #50fa7b;       --stat-green-bg: #1c3a26;
     --stat-amber: #ffb86c;       --stat-amber-bg: #4a3820;
@@ -274,6 +280,7 @@
     --ws-red: #cf222e;    --ws-red-bg: #ffebe9;
     --ws-grey: #656d76;   --ws-grey-bg: #eaeef2;
 
+    --stat-pending: #8250df;     --stat-pending-bg: #fbefff;
     --stat-not-started: #8c959f; --stat-not-started-bg: #eaeef2;
     --stat-green: #1a7f37;       --stat-green-bg: #dafbe1;
     --stat-amber: #9a6700;       --stat-amber-bg: #fff8c5;
@@ -295,6 +302,7 @@
     --ws-red: #f85149;    --ws-red-bg: #3c1618;
     --ws-grey: #9198a1;   --ws-grey-bg: #21262d;
 
+    --stat-pending: #a371f7;     --stat-pending-bg: #2e2140;
     --stat-not-started: #6e7681; --stat-not-started-bg: #21262d;
     --stat-green: #3fb950;       --stat-green-bg: #14261d;
     --stat-amber: #d29922;       --stat-amber-bg: #3b2900;
@@ -328,6 +336,7 @@
     --ws-red: #cf222e;    --ws-red-bg: #ffebe9;
     --ws-grey: #656d76;   --ws-grey-bg: #eaeef2;
 
+    --stat-pending: #8250df;     --stat-pending-bg: #fbefff;
     --stat-not-started: #8c959f; --stat-not-started-bg: #eaeef2;
     --stat-green: #1a7f37;       --stat-green-bg: #dafbe1;
     --stat-amber: #9a6700;       --stat-amber-bg: #fff8c5;
@@ -349,6 +358,7 @@
     --ws-red: #e5534b;    --ws-red-bg: #3d211d;
     --ws-grey: #9198a1;   --ws-grey-bg: #2d3640;
 
+    --stat-pending: #986ee2;     --stat-pending-bg: #2e2246;
     --stat-not-started: #6b7280; --stat-not-started-bg: #2d3640;
     --stat-green: #57ab5a;       --stat-green-bg: #1c3320;
     --stat-amber: #c69026;       --stat-amber-bg: #3a2e14;
@@ -633,13 +643,17 @@
   .item-dates-arrow { color: var(--text-faint); font-size: 11px; }
   .milestone-sub-actual-inline { display: flex; align-items: center; }
   .milestone-sub-actual-inline .date-pill { color: var(--stat-complete); }
-  .actual-date-ghost {
+  /* .due-date-ghost shares this styling exactly (see revealDueDate() below,
+     a Due-date counterpart to revealActualDate()) — kept as its own class
+     rather than reused directly under the "actual" name, so a future reader
+     doesn't have to wonder why a Due-date button has "actual" in its class. */
+  .actual-date-ghost, .due-date-ghost {
     display: inline-flex; align-items: center; justify-content: center;
     width: 20px; height: 20px; border-radius: 999px; border: none;
     background: transparent; color: var(--text-faint); font-size: 10px;
     cursor: pointer; padding: 0; opacity: .55;
   }
-  .actual-date-ghost:hover { background: var(--panel-2); opacity: 1; color: var(--text-dim); }
+  .actual-date-ghost:hover, .due-date-ghost:hover { background: var(--panel-2); opacity: 1; color: var(--text-dim); }
   .status-badge { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; cursor: pointer; border: none; justify-self: start; }
   .item-tags { display: flex; gap: 4px; flex-wrap: wrap; }
   .tag-badge { font-size: 11px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; padding: 0; border-radius: 6px; cursor: pointer; border: none; line-height: 1; }
@@ -1631,7 +1645,26 @@ const STORAGE_KEY = 'pulse-v1';
 const BACKUPS_KEY = 'pulse-backups';
 const MAX_BACKUPS = 7;
 
+// 'pending' — an explicit user request — is a genuine 6th status value, not
+// a computed display override the way "Completed Late" is (see
+// isCompletedLate() below): it's a real, hand-set/cycleable STATUSES entry
+// like any other. It means "no dates have been planned for this yet",
+// sitting one step earlier in the lifecycle than 'not-started' (which
+// implies a real target date already exists, just hasn't been acted on) —
+// placed first in the array for that "earliest lifecycle stage" reading,
+// and because milestonesForCategory() (see below) now seeds every freshly-
+// templated milestone at 'pending' rather than 'not-started'.
+// NOTE — naming collision, deliberate: this status shares its label with
+// the unrelated, pre-existing *Pending category* (see "Quick-add scope
+// items, the Unassigned bucket, and the Pending category" in CLAUDE.md) —
+// the reserved category a quick-added item starts in before real triage.
+// The two are completely independent concepts that happen to reuse the
+// same word for the same reason ("nothing real has happened here yet") —
+// same "same word, different concept" tolerance this file already has for
+// "Admin" (the role) vs "Admin mode" (now labeled "Settings" in the UI) and
+// "Review" (the mode) vs "Reviewer" (the role).
 const STATUSES = [
+  { id: 'pending',     label: 'Pending' },
   { id: 'not-started', label: 'Not Started' },
   { id: 'green',       label: 'On Track' },
   { id: 'amber',       label: 'At Risk' },
@@ -1643,7 +1676,14 @@ const STATUSES = [
 // lower number = worse/weaker. An item with any milestones has its status
 // computed as whichever milestone ranks lowest here, never hand-set; see
 // computedStatusFromMilestones() and "Milestone checklist" in CLAUDE.md.
-const STATUS_SEVERITY = { red: 0, amber: 1, green: 2, 'not-started': 3, complete: 4 };
+// 'pending' ranks just below 'not-started' (worse) — a milestone that
+// hasn't even been dated yet is a bigger gap than one that's dated but not
+// yet begun, so a mix of the two rolls the parent item up to 'pending' as
+// the more attention-worthy of the pair; both still rank far better than an
+// active green/amber/red problem, matching 'not-started''s own existing
+// "hasn't started yet needs no attention the way an active problem does"
+// reasoning.
+const STATUS_SEVERITY = { red: 0, amber: 1, green: 2, pending: 3, 'not-started': 4, complete: 5 };
 
 // The 3 item-level attribute flags (IT/Business/Budget) are simple RAG tags,
 // distinct from the main status/milestone status — no "not started" or
@@ -1785,6 +1825,10 @@ let historyShowAllWs = new Set();
 // starts hidden behind a "+" affordance instead of looking like a blank
 // field waiting to be filled in.
 let revealedActualIds = new Set();
+// revealedActualIds' counterpart for Due — UI-only, not persisted. A
+// 'pending' milestone (see STATUSES' own comment) starts with no due date
+// at all, so an empty one starts hidden the same way an empty Actual does.
+let revealedDueIds = new Set();
 // Whether the Unassigned section's inline "Add item" input is currently
 // showing in place of its button — UI-only, not persisted. See
 // unassignedSectionHtml()/openInlineQuickAdd().
@@ -2096,8 +2140,13 @@ function normalizeData() {
       // even when blank — toggleMilestoneNotApplicable()/
       // toggleEditingMilestoneNotApplicable() clear it on purpose, and this
       // backfill would otherwise silently refill it from the parent item's
-      // own dueDate on the very next normalizeData() pass, undoing that.
-      if (!m.dueDate && !m.notApplicable) m.dueDate = it.dueDate;
+      // own dueDate on the very next normalizeData() pass, undoing that. A
+      // 'pending' milestone gets the same exemption for the identical
+      // reason — milestonesForCategory() now seeds it with a deliberately
+      // null dueDate (see that function's own comment), and this backfill
+      // would otherwise silently overwrite "no date planned yet" with the
+      // parent item's date on the very next load.
+      if (!m.dueDate && !m.notApplicable && m.status !== 'pending') m.dueDate = it.dueDate;
       if (!STATUSES.some(s => s.id === m.status)) m.status = 'not-started';
       if (typeof m.actualDate !== 'string') m.actualDate = null;
       // Backfilled from the parent item's own updatedAt (not Date.now()) —
@@ -2656,7 +2705,7 @@ function renderJourneys() {
   // since there isn't one here either.
   main.innerHTML = `<div class="ws-section journeys-list">
       <div class="ws-section-header" style="background:var(--panel-2)">
-        <span class="ws-dot" style="background:transparent"></span>
+        <i class="fa-solid fa-route" style="width:10px;text-align:center;font-size:12px;color:var(--accent)" title="Journeys"></i>
         <span class="ws-section-title">Journeys</span>
       </div>
       ${rows}
@@ -3080,13 +3129,27 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // (status !== 'complete' && dueDate < today) — a milestone still open
     // past its own Due date gets flagged the same way.
     const dueOverdue = !m.notApplicable && m.status !== 'complete' && m.dueDate && m.dueDate < todayStr();
+    // An unset Due date starts hidden behind the same muted "+" ghost Actual
+    // already uses (see actualHtml below) — an explicit user request. This
+    // is the normal state for a 'pending' milestone (milestonesForCategory()
+    // now seeds one with dueDate:null — see that function's and STATUSES'
+    // own comments for why "no date planned yet" is what 'pending' means),
+    // but the ghost itself keys off !m.dueDate directly, not status — any
+    // milestone with no due date gets the same treatment, the same way
+    // Actual's ghost has never checked status either. revealDueDate()/
+    // cancelRevealDueDate()/revealedDueIds mirror revealActualDate()/
+    // cancelRevealActualDate()/revealedActualIds exactly, right down to the
+    // Escape-while-still-empty cancel behavior.
+    const isDueRevealedEmpty = !m.dueDate && revealedDueIds.has(m.id);
     const dueHtml = m.notApplicable
       ? `<span></span>`
       : (reviewCycle
-          ? `<span class="item-dates-computed" ${dueOverdue ? 'style="color:var(--stat-red)"' : ''} title="${dueOverdue ? 'Overdue — ' : ''}Not editable during a review">${fmtDate(m.dueDate)}</span>`
-          : `<span class="item-dates-inline">
-            ${dateInputHtml(m.dueDate, `title="${dueOverdue ? 'Overdue — ' : ''}Due date" ${dueEditable ? `onchange="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)" onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value); else this.value='${m.dueDate || ''}'"` : 'disabled'}`, dueOverdue ? 'pill-overdue' : '')}
-          </span>`);
+          ? `<span class="item-dates-computed" ${dueOverdue ? 'style="color:var(--stat-red)"' : ''} title="${dueOverdue ? 'Overdue — ' : ''}Not editable during a review">${m.dueDate ? fmtDate(m.dueDate) : '—'}</span>`
+          : ((!m.dueDate && !revealedDueIds.has(m.id))
+              ? (dueEditable ? `<button class="due-date-ghost" title="Set a due date — not planned yet" onclick="revealDueDate('${m.id}')"><i class="fa-solid fa-plus"></i></button>` : '')
+              : `<span class="item-dates-inline">
+                ${dateInputHtml(m.dueDate, `id="due-input-${m.id}" title="${dueOverdue ? 'Overdue — ' : ''}Due date" ${dueEditable ? `onchange="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value)" onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value); else this.value='${m.dueDate || ''}'" ${isDueRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealDueDate('${m.id}')"` : ''}` : 'disabled'}`, dueOverdue ? 'pill-overdue' : '')}
+              </span>`));
     // An unset Actual date starts hidden behind a muted "+" — it only needs
     // a value when a milestone actually finishes on a different date than
     // planned, so a permanently-empty pill here would misread as a required
@@ -3198,6 +3261,19 @@ function revealActualDate(milestoneId) {
 
 function cancelRevealActualDate(milestoneId) {
   revealedActualIds.delete(milestoneId);
+  render();
+}
+
+// revealActualDate()/cancelRevealActualDate()'s counterpart for Due — see
+// revealedDueIds' own comment.
+function revealDueDate(milestoneId) {
+  revealedDueIds.add(milestoneId);
+  render();
+  document.getElementById(`due-input-${milestoneId}`)?.focus();
+}
+
+function cancelRevealDueDate(milestoneId) {
+  revealedDueIds.delete(milestoneId);
   render();
 }
 
@@ -3770,11 +3846,26 @@ function populateCategorySelect(selectedId) {
 }
 // Builds a fresh editingMilestones array from a category's template — used
 // both for a brand-new item's initial seed and when switching category
-// while still creating one (see onItemCategoryChange). Each milestone gets
-// its own freshly-generated id and defaults to the given due date.
+// while still creating one (see onItemCategoryChange), and by every other
+// "get milestones from a category" call site (applyScopeCategory(), an
+// existing item's zero-milestone/destructive category switch — see
+// "Switching an existing item's category" in CLAUDE.md). Each milestone
+// gets its own freshly-generated id.
+// Status defaults to 'pending', not 'not-started' — an explicit user
+// request ("if a scope item gets initially milestones from a category,
+// assign them status pending"): nothing has been dated or reviewed yet, so
+// it shouldn't read as though a real plan is already in place. dueDate is
+// deliberately null (no longer copied from the item's own due date the way
+// it used to be) — 'pending' specifically means "no dates have been planned
+// yet" (see STATUSES' own comment), so seeding a real-looking due date here
+// would contradict the status sitting right next to it. The `dueDate`
+// parameter is kept only for call-site/signature stability (several
+// callers still pass the item's own due date) but is no longer read here;
+// see milestoneRowsHtml()'s due-date-ghost handling for what a milestone
+// with no due date yet actually looks like on the board.
 function milestonesForCategory(categoryId, dueDate) {
   const cat = categoryById(categoryId);
-  return (cat ? cat.milestones : []).map(name => ({ id: genId(), name, dueDate, status: 'not-started', actualDate: null, notApplicable: false }));
+  return (cat ? cat.milestones : []).map(name => ({ id: genId(), name, dueDate: null, status: 'pending', actualDate: null, notApplicable: false }));
 }
 function onItemCategoryChange() {
   if (editingItemId) return; // editing an existing item never re-seeds its already-customized checklist
@@ -3942,6 +4033,12 @@ function renderMilestonesEditor() {
     return `
     <div class="milestone-row">
       <input type="text" value="${esc(m.name)}" title="Milestone name" ${dis} oninput="editingMilestones[${idx}].name = this.value">
+      <!-- esc(m.dueDate) already coerces a null dueDate to '' safely — this
+           modal has no ghost/+ reveal pattern for either date field (unlike
+           milestoneRowsHtml() on the status board), so a fresh 'pending'
+           milestone (see STATUSES' own comment) just starts as a genuinely
+           blank date input here, same as it always has for any other
+           momentarily-empty field in this flat form. -->
       <input type="date" value="${esc(m.dueDate)}" title="Due date" ${datesDis} oninput="editingMilestones[${idx}].dueDate = this.value; updateItemStatusFieldMode();">
       <input type="date" value="${esc(m.actualDate || '')}" title="Actual completion date" ${datesDis} oninput="editingMilestones[${idx}].actualDate = this.value || null; updateItemStatusFieldMode();">
       ${statusHtml}
@@ -4094,7 +4191,10 @@ function saveItem() {
   // once cleared by toggleEditingMilestoneNotApplicable()) rather than
   // falling back to manualDueDate — that fallback exists so an *applicable*
   // milestone never ends up with no due date at all, which doesn't apply
-  // once the milestone is out of scope.
+  // once the milestone is out of scope. A 'pending' milestone gets the same
+  // exemption, for the same "no date has been planned yet, and that's the
+  // whole point of this status" reason milestonesForCategory() and
+  // normalizeData()'s own backfill guard already carve out.
   // A category switch on an existing item with zero current milestones has
   // nothing to lose, so it silently picks up the new category's own
   // template right here rather than needing the confirm-gated swap further
@@ -4108,7 +4208,7 @@ function saveItem() {
   const milestones = zeroMilestoneCategorySwitch
     ? milestonesForCategory(categoryId, editingItemForSave.dueDate)
     : editingMilestones.map(m => ({
-        id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: m.notApplicable ? (m.dueDate || null) : (m.dueDate || manualDueDate), status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable, updatedAt: Date.now()
+        id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: (m.notApplicable || m.status === 'pending') ? (m.dueDate || null) : (m.dueDate || manualDueDate), status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable, updatedAt: Date.now()
       }));
   // An item with milestones always gets its status AND plan date range
   // computed from them — the Status <select> and Start/Due <input>s are only
@@ -6567,6 +6667,7 @@ function exportProgramme() {
 // active in the browser at export time; this is always the "standard"
 // theme's own RAG palette, matching the very first :root block up top.
 const EXCEL_RAG_COLORS = {
+  pending: { fg: 'FF7A6FD1', bg: 'FFECE9FB' },
   'not-started': { fg: 'FF8B93A1', bg: 'FFECEEF1' },
   green: { fg: 'FF1F9D55', bg: 'FFE1F5E8' },
   amber: { fg: 'FFC07F0A', bg: 'FFFCF1DA' },

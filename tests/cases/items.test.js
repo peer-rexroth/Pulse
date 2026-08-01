@@ -16,14 +16,18 @@ test('opening a new item modal seeds the standard set of milestones', function (
   assertEqual(editingMilestones.length, DEFAULT_CATEGORY_MILESTONES.length);
   assertEqual(editingMilestones[0].name, 'Requirements Defined');
   assertEqual(editingMilestones[editingMilestones.length - 1].name, 'Deployment Completed');
-  editingMilestones.forEach(m => assertEqual(m.status, 'not-started'));
+  editingMilestones.forEach(m => assertEqual(m.status, 'pending'));
 });
 
-test('standard milestones default their date to the due date shown when the modal opened', function () {
+// A milestone freshly seeded from a category template starts at status
+// 'pending' with no due date at all — an explicit user request ("if a scope
+// item gets initially milestones from a category, assign them status
+// pending") — reversing the previous behavior this test used to cover
+// (every milestone pre-dated to the item's own due date). See
+// milestonesForCategory()'s own comment in pulse.html.
+test('standard milestones start with no due date at all (status pending), not pre-dated to the item\'s own due date', function () {
   openItemModal(null);
-  const due = document.getElementById('itemDueInput').value;
-  assertTrue(!!due, 'due date field should be pre-filled for a new item');
-  editingMilestones.forEach(m => assertEqual(m.dueDate, due));
+  editingMilestones.forEach(m => assertEqual(m.dueDate, null));
 });
 
 // ---------- Editing an Unassigned item keeps it Unassigned ----------
@@ -84,12 +88,13 @@ test('saveItem creates a scope item carrying the standard milestones through', f
   assertEqual(items.length, 1);
   const it = items[0];
   assertEqual(it.name, 'Ship schema v1');
-  // Start/Due are computed from the milestones (all seeded to today's date
-  // at modal-open time, before fillItemForm's manual dates were entered) —
-  // see "Item date range roll-up" in CLAUDE.md for why the manual Start/Due
-  // fields in fillItemForm() are ignored once an item has milestones.
-  assertEqual(it.startDate, todayStr());
-  assertEqual(it.dueDate, todayStr());
+  // A freshly-seeded milestone has no due date at all (see
+  // milestonesForCategory()'s own comment) — computedDateRangeFromMilestones()
+  // therefore has nothing to compute a range from and returns null, so
+  // saveItem() falls back to the manual Start/Due fields from the form
+  // itself, same fallback an item with zero milestones always used.
+  assertEqual(it.startDate, '2026-08-01');
+  assertEqual(it.dueDate, '2026-08-15');
   assertEqual(it.milestones.length, DEFAULT_CATEGORY_MILESTONES.length);
   assertEqual(it.milestones[0].name, 'Requirements Defined');
 });
@@ -183,7 +188,9 @@ test('cycleMilestoneStatus advances through the STATUSES list and wraps around',
   saveItem();
   const it = items[0];
   const mId = it.milestones[0].id;
-  assertEqual(it.milestones[0].status, 'not-started');
+  assertEqual(it.milestones[0].status, 'pending');
+  cycleMilestoneStatus(it.id, mId);
+  assertEqual(items[0].milestones[0].status, 'not-started');
   cycleMilestoneStatus(it.id, mId);
   assertEqual(items[0].milestones[0].status, 'green');
   cycleMilestoneStatus(it.id, mId);
@@ -193,7 +200,7 @@ test('cycleMilestoneStatus advances through the STATUSES list and wraps around',
   cycleMilestoneStatus(it.id, mId);
   assertEqual(items[0].milestones[0].status, 'complete');
   cycleMilestoneStatus(it.id, mId);
-  assertEqual(items[0].milestones[0].status, 'not-started');
+  assertEqual(items[0].milestones[0].status, 'pending');
 });
 
 test('deleteItemFromModal removes the item and all its nested milestones', function () {
@@ -286,13 +293,27 @@ test('removing a milestone\'s actual date via the editor saves it back to null',
 
 // ---------- Item status computed from the weakest milestone ----------
 
-test('computedStatusFromMilestones picks the worst status: Red > Amber > Green > Not Started > Complete', function () {
+test('computedStatusFromMilestones picks the worst status: Red > Amber > Green > Pending > Not Started > Complete', function () {
   assertEqual(computedStatusFromMilestones([{ status: 'green' }, { status: 'red' }, { status: 'amber' }]), 'red');
   assertEqual(computedStatusFromMilestones([{ status: 'green' }, { status: 'amber' }]), 'amber');
   assertEqual(computedStatusFromMilestones([{ status: 'green' }, { status: 'not-started' }]), 'green');
+  assertEqual(computedStatusFromMilestones([{ status: 'green' }, { status: 'pending' }]), 'green');
+  assertEqual(computedStatusFromMilestones([{ status: 'pending' }, { status: 'not-started' }]), 'pending', 'pending has no date planned yet at all, so it outranks (is a bigger gap than) not-started');
   assertEqual(computedStatusFromMilestones([{ status: 'not-started' }, { status: 'complete' }]), 'not-started');
   assertEqual(computedStatusFromMilestones([{ status: 'complete' }, { status: 'complete' }]), 'complete');
   assertEqual(computedStatusFromMilestones([]), null);
+});
+
+test('milestonesForCategory seeds every milestone at status "pending" with no due date, regardless of the dueDate argument passed in', function () {
+  const cat = categories.find(c => c.name === 'Development');
+  const milestones = milestonesForCategory(cat.id, '2026-09-01');
+  assertEqual(milestones.length, cat.milestones.length);
+  milestones.forEach(m => {
+    assertEqual(m.status, 'pending');
+    assertEqual(m.dueDate, null);
+    assertEqual(m.actualDate, null);
+    assertEqual(m.notApplicable, false);
+  });
 });
 
 test('saveItem computes the item status from its milestones, ignoring the Status select', function () {
@@ -317,12 +338,15 @@ test('cycleMilestoneStatus recomputes the parent item status after each change',
   fillItemForm({});
   saveItem();
   const it = items[0];
-  assertEqual(it.status, 'not-started'); // all milestones start not-started
-  cycleMilestoneStatus(it.id, it.milestones[1].id); // -> green, which outranks (is weaker than) not-started
-  assertEqual(items[0].status, 'green', 'green is weaker than not-started under this severity order');
+  assertEqual(it.status, 'pending'); // all milestones start pending
+  cycleMilestoneStatus(it.id, it.milestones[1].id);
+  cycleMilestoneStatus(it.id, it.milestones[1].id); // pending -> not-started -> green, which outranks (is weaker than) both
+  assertEqual(items[0].status, 'green', 'green is weaker than pending/not-started under this severity order');
+  cycleMilestoneStatus(it.id, it.milestones[2].id);
   cycleMilestoneStatus(it.id, it.milestones[2].id);
   cycleMilestoneStatus(it.id, it.milestones[2].id); // -> amber
   assertEqual(items[0].status, 'amber');
+  cycleMilestoneStatus(it.id, it.milestones[3].id);
   cycleMilestoneStatus(it.id, it.milestones[3].id);
   cycleMilestoneStatus(it.id, it.milestones[3].id);
   cycleMilestoneStatus(it.id, it.milestones[3].id); // -> red
@@ -448,6 +472,13 @@ test('toggleMilestoneNotApplicable flips the flag without touching the milestone
   openItemModal(null);
   editingMilestones[0].status = 'red';
   editingMilestones[1].dueDate = '2099-12-31'; // would otherwise be the item's computed due date
+  // A 3rd milestone with its own real date, left applicable throughout —
+  // otherwise, once both 0 and 1 are marked N/A below, every remaining
+  // milestone would be a fresh, still-dateless 'pending' one (see
+  // milestonesForCategory()'s own comment), and computedDateRangeFromMilestones()
+  // has nothing to recompute a fresh range from, leaving the item's stale
+  // date sitting there untouched rather than genuinely dropping out.
+  editingMilestones[2].dueDate = '2026-04-01';
   fillItemForm({});
   saveItem();
   const it = items[0];
@@ -468,11 +499,15 @@ test('toggleMilestoneNotApplicable flips the flag without touching the milestone
 
 test('toggleMilestoneNotApplicable clears both Due and Actual dates, and leaves them cleared when un-marked', function () {
   openItemModal(null);
+  // A freshly-seeded milestone starts with no due date at all (see
+  // milestonesForCategory()'s own comment) — set one by hand here so there's
+  // something real for the N/A toggle to actually clear.
+  editingMilestones[0].dueDate = '2026-05-01';
   editingMilestones[0].actualDate = '2026-06-01';
   fillItemForm({});
   saveItem();
   const it = items[0];
-  assertTrue(!!it.milestones[0].dueDate, 'sanity check — a milestone always starts with a due date');
+  assertEqual(it.milestones[0].dueDate, '2026-05-01', 'sanity check');
   assertEqual(it.milestones[0].actualDate, '2026-06-01', 'sanity check');
 
   toggleMilestoneNotApplicable(it.id, it.milestones[0].id);
@@ -493,6 +528,17 @@ test('normalizeData does not refill a notApplicable milestone\'s cleared due dat
   assertEqual(items[0].milestones[0].dueDate, null, 'sanity check');
   normalizeData();
   assertEqual(items[0].milestones[0].dueDate, null, 'the backfill-from-parent-item rule must not undo a deliberate clear');
+});
+
+test('normalizeData does not refill a pending milestone\'s null due date from the parent item either', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  assertEqual(it.milestones[0].status, 'pending', 'sanity check');
+  assertEqual(it.milestones[0].dueDate, null, 'sanity check');
+  normalizeData();
+  assertEqual(items[0].milestones[0].dueDate, null, 'a fresh pending milestone deliberately has no date planned yet — normalizeData() must not silently fill one in');
 });
 
 test('toggleMilestoneNotApplicable is blocked below Editor', function () {
