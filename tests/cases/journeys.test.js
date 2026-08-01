@@ -232,13 +232,21 @@ test('openSubJourneyQuickAdd is blocked below Editor', function () {
 });
 
 // ---------- Row badges ----------
+// An explicit user request ("remove the icons for Journey and SubJourney in
+// list view. maintain the one journey icon in the headline") removed the
+// per-row .journey-type-badge icon entirely — a Journey/Sub Journey row now
+// renders its name exactly like an ordinary scope item's, distinguished
+// only by indentation/position in the list. renderJourneys()'s own
+// .ws-section-header keeps its single fa-route icon next to the page's
+// "Journeys" title — see the "single headline icon, not per-row" test in
+// views.test.js-style page-header coverage.
 
-test('itemRowHtml shows a route icon badge for a Journey and a distinct diagram-project badge for a Sub Journey, neither for a scope item', function () {
+test('itemRowHtml no longer shows a per-row journey-type-badge icon for a Journey, a Sub Journey, or a scope item', function () {
   const journey = addJourney('Onboarding Journey');
   const sub = addSubJourney(journey.id, 'Intake');
   const scope = addItem({ name: 'Ordinary scope item' });
-  assertIncludes(itemRowHtml(journey), 'fa-route journey-type-badge');
-  assertIncludes(itemRowHtml(sub), 'fa-diagram-project journey-type-badge');
+  assertNotIncludes(itemRowHtml(journey), 'journey-type-badge');
+  assertNotIncludes(itemRowHtml(sub), 'journey-type-badge');
   assertNotIncludes(itemRowHtml(scope), 'journey-type-badge');
 });
 
@@ -365,6 +373,55 @@ test('a connected item with its own milestones can still be expanded to view the
   assertNotIncludes(html, 'MS Req.');
   assertNotIncludes(html, `toggleMilestoneNotApplicable('${it.id}'`, 'the Not Applicable toggle itself must be gone too, not just its label');
   assertNotIncludes(html, `cycleMilestoneStatus('${it.id}'`, 'the milestone status badge must be read-only too');
+});
+
+// ---------- Nesting indent (rows + milestones) ----------
+// An explicit user request ("indent the milestones and headers in
+// alignment with the Sub journey"): a connected scope item's own row was
+// already indented under its Sub Journey (.item-row-indent-2), but an
+// expanded one's milestone header/rows rendered flush-left underneath it,
+// breaking the nested look.
+
+test('a Sub Journey\'s own row is indented one level (item-row-indent-1)', function () {
+  const journey = addJourney();
+  const sub = addSubJourney(journey.id);
+  toggleItemExpanded(journey.id);
+  assertIncludes(itemRowHtml(journey), `item-row-indent-1`);
+});
+
+test('a Sub Journey\'s connected scope item row is indented two levels (item-row-indent-2)', function () {
+  const journey = addJourney();
+  const sub = addSubJourney(journey.id);
+  const it = addItem({ name: 'Design the intake form' });
+  it.journeyId = sub.id;
+  toggleItemExpanded(sub.id);
+  assertIncludes(itemRowHtml(sub), 'item-row-indent-2');
+});
+
+test('an expanded connected item\'s milestone header and milestone rows match its own item-row-indent-2', function () {
+  const journey = addJourney();
+  const sub = addSubJourney(journey.id);
+  const it = addItem({
+    name: 'Design the intake form',
+    milestones: [{ id: 'm1', name: 'Draft ready', dueDate: todayStr(), status: 'not-started', actualDate: null, notApplicable: false }]
+  });
+  it.journeyId = sub.id;
+  toggleItemExpanded(sub.id);
+  expandedItemIds.add(it.id);
+  const html = itemRowHtml(sub);
+  assertIncludes(html, 'class="milestone-header item-row-indent-2"');
+  assertIncludes(html, 'class="milestone-sub-row  item-row-indent-2"');
+});
+
+test('an ordinary (non-nested) scope item\'s own milestone header/rows get no indent class', function () {
+  const it = addItem({
+    name: 'Plain scope item',
+    milestones: [{ id: 'm1', name: 'Kickoff', dueDate: todayStr(), status: 'not-started', actualDate: null, notApplicable: false }]
+  });
+  expandedItemIds.add(it.id);
+  const html = itemRowHtml(it);
+  assertNotIncludes(html, 'item-row-indent-1');
+  assertNotIncludes(html, 'item-row-indent-2');
 });
 
 test('a collapsed Sub Journey never shows its connected scope items, even with some connected', function () {

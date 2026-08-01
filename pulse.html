@@ -612,11 +612,6 @@
   .item-row-indent-2 { padding-left: 54px; }
   .item-chevron { text-align: center; color: var(--text-faint); cursor: pointer; }
   .item-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* Marks a Journey's row apart from an ordinary scope item's — see
-     itemRowHtml()'s journeyBadgeHtml — right inside the Name cell rather
-     than a dedicated grid column, since it's the only thing distinguishing
-     the two item types wherever they sit in the same list. */
-  .journey-type-badge { color: var(--accent); font-size: 12px; }
   /* The Journeys list reuses --item-grid-cols wholesale (same .item-row/
      .milestone-header/.milestone-sub-row classes itemRowHtml() and
      milestoneHeaderHtml()/milestoneRowsHtml() already build on — a
@@ -738,6 +733,19 @@
     display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px; padding: 7px 20px 7px 14px; border-bottom: 1px solid var(--border);
     font-size: 12.5px; background: var(--panel-2);
   }
+  /* A Sub Journey's own connected scope items are indented (.item-row-
+     indent-2, see above) — an expanded one's milestone header/rows need the
+     same indent, or they'd render flush-left below an indented parent row,
+     breaking the "everything nests visually" contract the indent exists
+     for — an explicit user request ("indent the milestones and headers in
+     alignment with the Sub journey"). Explicit compound selectors, not just
+     relying on .item-row-indent-1/-2 alone: those rules are defined earlier
+     in this stylesheet (right after .item-row), so .milestone-header's/
+     .milestone-sub-row's own full `padding` shorthand just above — which
+     also sets padding-left, and comes later in source order — would
+     otherwise win the cascade and reset it straight back to the base 14px. */
+  .milestone-header.item-row-indent-1, .milestone-sub-row.item-row-indent-1 { padding-left: 34px; }
+  .milestone-header.item-row-indent-2, .milestone-sub-row.item-row-indent-2 { padding-left: 54px; }
   .milestone-sub-name { font-weight: 600; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* The Not Applicable toggle + Status badge share one cell spanning both
      of the row's trailing tracks (9/11 — the Status and Actions tracks,
@@ -3228,14 +3236,6 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   const statusBadgeHtml = scopeAssignReady
     ? `<button class="status-badge" style="background:var(--stat-${displayStatus}-bg);color:var(--stat-${displayStatus})" onclick="openScopeAssignModal('${it.id}')" title="Scope confirmed — click to assign its real workstream and category">${esc(displayStatusLabel)}</button>`
     : `<button class="status-badge" style="background:var(--stat-${displayStatus}-bg);color:var(--stat-${displayStatus})" onclick="openItemModal('${it.id}')">${esc(displayStatusLabel)}</button>`;
-  // A Journey/Sub Journey is a plain item under the hood (see "Journeys" in
-  // CLAUDE.md) — this icon prefix, not a dedicated grid column, is the only
-  // thing telling its row apart from an ordinary scope item's (or, for a Sub
-  // Journey nested under a Journey, from its own parent's row) when they sit
-  // in the same list.
-  const journeyBadgeHtml = isJourney ? `<i class="fa-solid fa-route journey-type-badge" title="Journey"></i> `
-    : isSubJourney ? `<i class="fa-solid fa-diagram-project journey-type-badge" title="Sub Journey"></i> `
-    : '';
   // Only a Sub Journey has milestones of its own to (not) trigger anything
   // from — connecting it to existing scope items is a standing action,
   // always available via its own icon in .item-actions, right alongside
@@ -3253,7 +3253,7 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   const indentClass = isSubJourney ? 'item-row-indent-1' : viewOnly ? 'item-row-indent-2' : '';
   return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''} ${indentClass}"${dragAttrs}>
       ${chevron}
-      <span class="item-name" style="grid-column: 2 / 4">${journeyBadgeHtml}${esc(it.name)}</span>
+      <span class="item-name" style="grid-column: 2 / 4">${esc(it.name)}</span>
       ${milestoneBadge}
       <span></span>
       ${planDatesHtml}
@@ -3307,7 +3307,14 @@ function milestoneHeaderHtml(reviewCycle, viewOnly) {
   // --item-grid-cols' own comment for the column-5 spacer this now also
   // has to account for, which is why there are 5 blanks between "Milestone"
   // and "Due", not 4.
-  return `<div class="milestone-header">
+  // viewOnly is only ever true here for a Sub Journey's own connected scope
+  // item (see itemRowHtml()'s subRows) — matches that row's own
+  // item-row-indent-2 (see itemRowHtml()'s indentClass) so an expanded
+  // connected item's milestone header lines up under its own indented row
+  // rather than sticking out flush-left below it, an explicit user request
+  // ("indent the milestones and headers in alignment with the Sub
+  // journey").
+  return `<div class="milestone-header ${viewOnly ? 'item-row-indent-2' : ''}">
       <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span class="milestone-status-cell" style="grid-column:10/12"><span>Status</span><span>${viewOnly ? '' : 'MS Req.'}</span></span>${reviewLabel}
     </div>`;
 }
@@ -3502,7 +3509,7 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
       ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></button>`
       : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></span>`);
     return `
-    <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''}">
+    <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''} ${viewOnly ? 'item-row-indent-2' : ''}">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
       <span class="milestone-sub-name" style="grid-column: 2 / 7; ${m.notApplicable ? 'opacity:.55' : ''}">${esc(m.name)}</span>
       <span></span>
