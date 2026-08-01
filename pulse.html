@@ -3552,18 +3552,22 @@ function setFilterWorkstream(id) {
 // The sidebar's own "All Workstreams"/per-workstream rows (renderSidebar())
 // call this instead of the plain setFilterWorkstream() above — an explicit
 // user request: picking a workstream (or "All Workstreams") from the left
-// nav should always land on the Dashboard scoped to that selection,
-// regardless of whatever mode was showing beforehand. setFilterWorkstream()
-// itself stays mode-agnostic on purpose — every other caller (Review's own
-// reviewDatesOverviewHtml() rows, which deliberately land on that
-// workstream's Scope Item Review rather than Dashboard; every test that
-// just wants to narrow the scope without changing mode) depends on it not
-// touching mode. Sets both fields together and calls save()/render() once,
-// the same combined-fields pattern setUserRole() already uses for its own
-// "jump to Dashboard, All Workstreams" case.
+// nav should always land on Planning scoped to that selection, regardless
+// of whatever mode was showing beforehand. This originally landed on
+// Dashboard instead — reversed by a later, separate explicit user request
+// ("switching between workstream/all workstream should always go to
+// planning tab"). setFilterWorkstream() itself stays mode-agnostic on
+// purpose — every other caller (Review's own reviewDatesOverviewHtml()
+// rows, which deliberately land on that workstream's Scope Item Review
+// rather than Planning/Dashboard; every test that just wants to narrow the
+// scope without changing mode) depends on it not touching mode. Sets both
+// fields together and calls save()/render() once, the same combined-fields
+// pattern setUserRole() already uses for its own "jump to Dashboard, All
+// Workstreams" case (unrelated — that one fires on leaving Admin mode, not
+// on picking a workstream, and still deliberately lands on Dashboard).
 function selectWorkstreamFromSidebar(id) {
   filterWorkstreamId = id;
-  mode = 'dashboard';
+  mode = 'planning';
   save(); render();
 }
 let renamingProgramme = false;

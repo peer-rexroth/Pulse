@@ -175,21 +175,20 @@ test('renderSidebar sets a title tooltip on the whole workstream row (not just t
   assertIncludes(html, `onclick="selectWorkstreamFromSidebar('${w.id}')" title="${w.name}"`, 'the title must sit on the row div itself, not buried on an inner span the hover-reveal reflow can shift the cursor off of');
 });
 
-// ---------- Sidebar workstream rows always land on Dashboard ----------
+// ---------- Sidebar workstream rows always land on Planning ----------
 
-test('selectWorkstreamFromSidebar sets the filter and switches to Dashboard, regardless of the current mode', function () {
+test('selectWorkstreamFromSidebar sets the filter and switches to Planning, regardless of the current mode', function () {
   const w = workstreams[0];
   setMode('review');
   selectWorkstreamFromSidebar(w.id);
-  assertEqual(mode, 'dashboard');
+  assertEqual(mode, 'planning');
   assertEqual(filterWorkstreamId, w.id);
 });
 
-test('selectWorkstreamFromSidebar(null) ("All Workstreams") switches to Dashboard too, clearing the filter', function () {
-  setMode('planning');
-  filterWorkstreamId = workstreams[0].id;
+test('selectWorkstreamFromSidebar(null) ("All Workstreams") switches to Planning too, clearing the filter', function () {
+  setMode('review'); filterWorkstreamId = workstreams[0].id;
   selectWorkstreamFromSidebar(null);
-  assertEqual(mode, 'dashboard');
+  assertEqual(mode, 'planning');
   assertEqual(filterWorkstreamId, null);
 });
 
