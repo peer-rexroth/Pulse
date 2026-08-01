@@ -1122,6 +1122,67 @@ test('renderJourneys works even with zero workstreams (a Journey needs none to e
   assertIncludes(html, 'Standalone Journey');
 });
 
+// ---------- Journeys' own "Expand all"/"Collapse all" ----------
+// An explicit user request to bring the same per-section control Planning's
+// status board already has (expandAllToggleHtml()) to Journeys mode too.
+// journeysExpandAllIds()/journeysExpandAllToggleHtml() are its own
+// counterparts, since "expandable" means something different here (every
+// Journey/Sub Journey, not "has milestones") and there are two nested
+// levels to unfold, not one.
+
+test('journeysExpandAllIds collects every top-level Journey plus every one of its own Sub Journeys, but not connected scope items', function () {
+  const j1 = addJourney('Journey A');
+  const sub1 = addSubJourney(j1.id, 'Sub A1');
+  const it = addItem({ name: 'Connected item' });
+  it.journeyId = sub1.id;
+  const j2 = addJourney('Journey B');
+  const ids = journeysExpandAllIds();
+  assertDeepEqual(ids.sort(), [j1.id, sub1.id, j2.id].sort());
+});
+
+test('journeysExpandAllToggleHtml is omitted (empty string) when there are no journeys at all', function () {
+  assertEqual(journeysExpandAllToggleHtml(), '');
+});
+
+test('renderJourneys shows the Expand-all/Collapse-all icon in its own page header once at least one journey exists', function () {
+  addJourney('Journey A');
+  setMode('journeys');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'toggleExpandAllForItems');
+  assertIncludes(html, 'Expand all');
+});
+
+test('clicking Expand-all in Journeys mode expands every Journey and every Sub Journey at once', function () {
+  const j1 = addJourney('Journey A');
+  const sub1 = addSubJourney(j1.id, 'Sub A1');
+  const j2 = addJourney('Journey B');
+  assertFalse(expandedItemIds.has(j1.id));
+  assertFalse(expandedItemIds.has(sub1.id));
+  assertFalse(expandedItemIds.has(j2.id));
+  toggleExpandAllForItems(journeysExpandAllIds());
+  assertTrue(expandedItemIds.has(j1.id));
+  assertTrue(expandedItemIds.has(sub1.id));
+  assertTrue(expandedItemIds.has(j2.id));
+});
+
+test('clicking Expand-all a second time (once everything is already expanded) collapses everything back', function () {
+  const j1 = addJourney('Journey A');
+  const sub1 = addSubJourney(j1.id, 'Sub A1');
+  toggleExpandAllForItems(journeysExpandAllIds());
+  toggleExpandAllForItems(journeysExpandAllIds());
+  assertFalse(expandedItemIds.has(j1.id));
+  assertFalse(expandedItemIds.has(sub1.id));
+});
+
+test('renderJourneys still renders correctly (and updates, not just Planning) after toggleExpandAllForItems, since it now calls the general render()', function () {
+  const j1 = addJourney('Journey A');
+  const sub1 = addSubJourney(j1.id, 'Sub A1');
+  setMode('journeys');
+  toggleExpandAllForItems(journeysExpandAllIds());
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Sub A1', 'expanding the Journey should reveal its Sub Journey in the live-rendered page, not just in expandedItemIds state');
+});
+
 // ---------- Reserved-category protections (deletion, pickers) already
 // covered in categories.test.js/pending.test.js — see:
 //  - "deleteCategoryFromModal refuses to delete the reserved Journey category..."

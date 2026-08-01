@@ -2980,6 +2980,7 @@ function renderJourneys() {
   // since there isn't one here either.
   main.innerHTML = `<div class="ws-section journeys-list">
       <div class="ws-section-header" style="background:var(--panel-2)">
+        ${journeysExpandAllToggleHtml()}
         <i class="fa-solid fa-route" style="width:10px;text-align:center;font-size:12px;color:var(--accent)" title="Journeys"></i>
         <span class="ws-section-title">Journeys</span>
       </div>
@@ -3571,20 +3572,23 @@ function toggleItemExpanded(id) {
 // "Expand all"/"Collapse all" for a whole section at once — an explicit
 // user request: once a section holds more than a handful of multi-
 // milestone items, expanding each one individually via its own chevron
-// gets tedious. Unlike toggleItemExpanded() above, this is only ever
-// reachable from Planning's own status board (renderStatusView()/
-// unassignedSectionHtml() — see expandAllToggleHtml() below), never from
-// Review, so it safely calls the narrower renderMain() instead of the
-// general render(). Takes an explicit list of ids — the section's own
-// *currently displayed* expandable items, i.e. already filtered by
-// search/status/external — rather than re-deriving them from workstreamId
-// here, so it only ever acts on what's actually visible on screen right
-// now, never a hidden item a filter is currently narrowing out.
+// gets tedious. Reachable from Planning's own status board
+// (renderStatusView()/unassignedSectionHtml() — see expandAllToggleHtml()
+// below) and, per a later explicit user request, from Journeys mode too
+// (see journeysExpandAllToggleHtml() below) — calls the general render()
+// rather than a narrower renderMain(), since it's no longer safe to assume
+// Planning is the only mode showing when this runs. Takes an explicit list
+// of ids — the section's own *currently displayed* expandable items, i.e.
+// already filtered by search/status/external for Planning, or the current
+// Journey/Sub Journey tree for Journeys — rather than re-deriving them
+// from workstreamId here, so it only ever acts on what's actually visible
+// on screen right now, never a hidden item a filter is currently narrowing
+// out.
 function toggleExpandAllForItems(ids) {
   if (!ids.length) return;
   const allExpanded = ids.every(id => expandedItemIds.has(id));
   ids.forEach(id => { if (allExpanded) expandedItemIds.delete(id); else expandedItemIds.add(id); });
-  renderMain();
+  render();
 }
 // Shared by renderStatusView()'s per-workstream sections and
 // unassignedSectionHtml() — both render one .ws-section per group of
@@ -3610,6 +3614,33 @@ function expandAllToggleHtml(sectionItems) {
   if (!expandableIds.length) return '';
   const allExpanded = expandableIds.every(id => expandedItemIds.has(id));
   const idsLiteral = expandableIds.map(id => `'${id}'`).join(',');
+  return `<button class="row-icon-btn" onclick="toggleExpandAllForItems([${idsLiteral}])" title="${allExpanded ? 'Collapse all' : 'Expand all'}"><i class="fa-solid ${allExpanded ? 'fa-angles-up' : 'fa-angles-down'}"></i></button>`;
+}
+// expandAllToggleHtml()'s own counterpart for Journeys mode — an explicit
+// user request. "Expandable" means something different here: a
+// Journey/Sub Journey is always expandable, even with zero connections
+// (see itemRowHtml()'s own `expandable` check), not "has milestones" —
+// expandAllToggleHtml()'s own filter would find nothing to expand at all,
+// since neither a Journey nor a Sub Journey ever has milestones (see
+// "Journeys" in CLAUDE.md). There are also two nested levels to unfold
+// here (every top-level Journey, plus every one of its own Sub Journeys)
+// rather than Planning's single level of milestone nesting — this stops
+// there deliberately, leaving a Sub Journey's own connected scope items'
+// milestone checklists collapsed, the same "one more click for genuinely
+// deep detail" boundary the rest of this app already draws.
+function journeysExpandAllIds() {
+  const ids = [];
+  allJourneys().forEach(j => {
+    ids.push(j.id);
+    connectedSubJourneys(j.id).forEach(sj => ids.push(sj.id));
+  });
+  return ids;
+}
+function journeysExpandAllToggleHtml() {
+  const ids = journeysExpandAllIds();
+  if (!ids.length) return '';
+  const allExpanded = ids.every(id => expandedItemIds.has(id));
+  const idsLiteral = ids.map(id => `'${id}'`).join(',');
   return `<button class="row-icon-btn" onclick="toggleExpandAllForItems([${idsLiteral}])" title="${allExpanded ? 'Collapse all' : 'Expand all'}"><i class="fa-solid ${allExpanded ? 'fa-angles-up' : 'fa-angles-down'}"></i></button>`;
 }
 
