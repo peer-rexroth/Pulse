@@ -610,22 +610,6 @@
      indent level is exactly what signals nesting depth here. */
   .item-row-indent-1 { padding-left: 34px; }
   .item-row-indent-2 { padding-left: 54px; }
-  /* Tree "guide line" — a thin vertical rule anchored at an indented row's
-     own depth, so the Journey → Sub Journey → scope item nesting reads
-     from position/structure, not just the padding shift — an explicit user
-     request following a design discussion on telling the three row types
-     apart now that per-row icons are gone. Sits in the padding gutter the
-     indent itself creates (well before that depth's own content start), so
-     it never collides with the chevron/name. Bare class selectors, not
-     scoped to .item-row specifically, since the same class also lands on
-     .milestone-header/.milestone-sub-row (see their own indent rule below)
-     and this needs to apply there too. position:relative is what anchors
-     the pseudo-element to this one row's own box rather than some further
-     -out ancestor; since sibling rows sit flush against each other with no
-     margin, same-depth segments read as one continuous line down the page. */
-  .item-row-indent-1, .item-row-indent-2 { position: relative; }
-  .item-row-indent-1::before { content: ''; position: absolute; left: 20px; top: 0; bottom: 0; width: 2px; background: var(--border); }
-  .item-row-indent-2::before { content: ''; position: absolute; left: 40px; top: 0; bottom: 0; width: 2px; background: var(--border); }
   /* A top-level Journey's own row — see itemRowHtml()'s journeyHeaderClass.
      Mirrors .ws-section-header's own tinted-background/bolder-name
      treatment, so a Journey visually reads as "a container for what's

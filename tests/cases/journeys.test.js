@@ -424,13 +424,14 @@ test('an ordinary (non-nested) scope item\'s own milestone header/rows get no in
   assertNotIncludes(html, 'item-row-indent-2');
 });
 
-// ---------- Journey "header" tint + tree guide-line (visual, no new icons) ----------
-// Two explicit user requests ("build 1 and 2", following a design
-// discussion on telling Journey/Sub Journey/scope item rows apart now that
-// per-row icons are gone): a top-level Journey's own row gets the same
-// tinted "section header" treatment .ws-section-header uses for a
-// workstream, and every indented row gets a CSS-only tree guide-line
-// anchored at its own depth.
+// ---------- Journey "header" tint (visual, no new icons) ----------
+// An explicit user request ("build 1 and 2", following a design discussion
+// on telling Journey/Sub Journey/scope item rows apart now that per-row
+// icons are gone): a top-level Journey's own row gets the same tinted
+// "section header" treatment .ws-section-header uses for a workstream. (A
+// companion CSS-only tree guide-line, "build 2" of that same pair, was
+// added alongside this and later removed again per a separate explicit
+// user request ("remove 2") — see CLAUDE.md's "Journeys" section.)
 
 test('a top-level Journey\'s own row gets the item-row-journey-header class; a Sub Journey\'s does not', function () {
   const journey = addJourney();
