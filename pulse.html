@@ -2704,9 +2704,9 @@ function unassignedSectionHtml() {
     : '';
   return `<div class="ws-section">
       <div class="ws-section-header" style="background:var(--panel-2)">
+        ${expandAllToggleHtml(uItems)}
         <span class="ws-dot" style="background:transparent"></span>
         <span class="ws-section-title">Unassigned</span>
-        ${expandAllToggleHtml(uItems)}
       </div>
       ${rows}
       ${addRow}
@@ -2763,10 +2763,10 @@ function renderStatusView(main) {
         ${externalItems.map(it => itemRowHtml(it)).join('')}` : '';
     return `<div class="ws-section">
         <div class="ws-section-header" style="background:var(--ws-${w.color}-bg)">
+          ${expandAllToggleHtml(displayItems)}
           <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
           <span class="ws-section-title">${esc(w.name)}</span>
           <div class="rag-summary">${pills}</div>
-          ${expandAllToggleHtml(displayItems)}
         </div>
         ${rows}${externalSectionHtml}
       </div>`;
@@ -3373,17 +3373,22 @@ function toggleExpandAllForItems(ids) {
 // (omitted, not just disabled) when there's nothing to expand at all, the
 // same "hide, don't clutter with a dead control" treatment this app's
 // other optional section controls already get (e.g. the Unassigned
-// section's own "+ Add item" row). The label reflects the group's own
-// aggregate state — "Expand all" whenever at least one of its items isn't
-// currently expanded, "Collapse all" only once every one of them already
-// is — the same aggregate-state-driven toggle shape "Show more"/"Show
-// less" already uses elsewhere in this app (see historyShowAllWs).
+// section's own "+ Add item" row). Icon-only (a double-chevron, reusing
+// .row-icon-btn's own small-icon-button styling rather than a labeled
+// .btn) — an explicit user request to match a reference screenshot — sat
+// at the very start of the header, right before the workstream dot/name,
+// rather than trailing after the RAG pills. The icon and its title tooltip
+// both reflect the group's own aggregate state — pointing down ("Expand
+// all") whenever at least one of its items isn't currently expanded,
+// pointing up ("Collapse all") only once every one of them already is —
+// the same aggregate-state-driven toggle shape "Show more"/"Show less"
+// already uses elsewhere in this app (see historyShowAllWs).
 function expandAllToggleHtml(sectionItems) {
   const expandableIds = sectionItems.filter(it => it.milestones.length > 0).map(it => it.id);
   if (!expandableIds.length) return '';
   const allExpanded = expandableIds.every(id => expandedItemIds.has(id));
   const idsLiteral = expandableIds.map(id => `'${id}'`).join(',');
-  return `<button class="btn btn-sm" onclick="toggleExpandAllForItems([${idsLiteral}])">${allExpanded ? 'Collapse all' : 'Expand all'}</button>`;
+  return `<button class="row-icon-btn" onclick="toggleExpandAllForItems([${idsLiteral}])" title="${allExpanded ? 'Collapse all' : 'Expand all'}"><i class="fa-solid ${allExpanded ? 'fa-angles-up' : 'fa-angles-down'}"></i></button>`;
 }
 
 function revealActualDate(milestoneId) {

@@ -399,12 +399,13 @@ test('a workstream section with no expandable items shows no "Expand all" button
   assertNotIncludes(document.getElementById('main').innerHTML, 'Expand all');
 });
 
-test('toggleExpandAllForItems expands every item in the list, and the button flips to "Collapse all"', function () {
+test('toggleExpandAllForItems expands every item in the list, and the icon/title flip to "Collapse all"', function () {
   const a = addItem({ name: 'Item A', milestones: [{ id: 'm1', name: 'M1', dueDate: todayStr(), status: 'not-started' }] });
   const b = addItem({ name: 'Item B', milestones: [{ id: 'm2', name: 'M2', dueDate: todayStr(), status: 'not-started' }] });
   renderMain();
   let html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'Expand all');
+  assertIncludes(html, 'title="Expand all"');
+  assertIncludes(html, 'fa-angles-down', 'the icon itself, not just the tooltip text, must reflect the collapsed state');
   assertNotIncludes(html, 'M1');
   assertNotIncludes(html, 'M2');
 
@@ -412,8 +413,9 @@ test('toggleExpandAllForItems expands every item in the list, and the button fli
   html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'M1');
   assertIncludes(html, 'M2');
-  assertIncludes(html, 'Collapse all');
-  assertNotIncludes(html, 'Expand all');
+  assertIncludes(html, 'title="Collapse all"');
+  assertIncludes(html, 'fa-angles-up');
+  assertNotIncludes(html, 'title="Expand all"');
 });
 
 test('toggleExpandAllForItems collapses every item back once all are already expanded', function () {
