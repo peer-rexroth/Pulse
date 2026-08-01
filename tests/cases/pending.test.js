@@ -461,6 +461,12 @@ test('unassignedSectionHtml shows the inline Add-item button (not the input) by 
   assertNotIncludes(html, 'id="unassignedQuickAddInput"');
 });
 
+test('unassignedSectionHtml renders an inbox icon in its header, in place of a (non-existent) workstream color dot', function () {
+  const html = unassignedSectionHtml();
+  assertIncludes(html, 'fa-inbox');
+  assertIncludes(html, 'title="Unassigned"');
+});
+
 test('unassignedSectionHtml shows the input once opened', function () {
   openInlineQuickAdd();
   const html = unassignedSectionHtml();
