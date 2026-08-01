@@ -500,14 +500,14 @@
   /* "All Workstreams" is a pseudo-row, not a real workstream — its icon
      stays a plain, neutral one (not a colored .ws-dot the way a real
      workstream row gets), the same shared 8px column every row in the top
-     nav group (Journeys/External Deliveries) uses too, so their labels all
+     nav group (Journeys) uses too, so their labels all
      line up with the real workstream rows below them. */
   .ws-row-all-icon { width: 8px; flex: 0 0 auto; text-align: center; font-size: 11px; color: var(--text-faint); }
   .ws-row-all.active .ws-row-all-icon { color: var(--accent); }
-  /* A dedicated, full-width divider between the top nav group (All
-     Workstreams / Journeys / External Deliveries, in that order — see
-     renderSidebar()) and the real workstream list below it — a
-     user-reported fix: this used to be a border-bottom on whichever row
+  /* A dedicated, full-width divider between the top nav group (Journeys /
+     All Workstreams, in that order — see renderSidebar()) and the real
+     workstream list below it — a user-reported fix: this used to be a
+     border-bottom on whichever row
      rendered last in the group (.ws-row-all, then later whichever row
      ended up last as Journeys/External Deliveries joined it), but a
      .ws-row's own border-radius rounded that border's corners and inset it
@@ -540,12 +540,12 @@
   .search-box .search-clear-btn:hover { color: var(--text); background: var(--panel); }
 
   /* Quick-filter chips (renderPlanningStatusChips()/setPlanningStatusFilter()/
-     setPlanningExternalFilter()) — a lighter alternative to a full saved-
+     setPlanningDependencyFilter()) — a lighter alternative to a full saved-
      filter-presets feature: one toggle chip per STATUSES entry (single-
      select — clicking the active one again clears it) plus, after a small
-     divider, a standalone External Deliveries on/off toggle — an explicit
+     divider, a standalone Dependencies on/off toggle — an explicit
      user request, folded in here after starting life as its own separate
-     mode/topbar button (see "External Delivery" in CLAUDE.md). All compose
+     mode/topbar button (see "Dependencies" in CLAUDE.md). All compose
      with the search box and each other via a plain AND. Each chip's own
      color is passed in as inline custom properties (--chip-color/--chip-bg)
      rather than a per-status CSS class, since the status set itself lives
@@ -558,7 +558,7 @@
   }
   .status-filter-chip:hover { border-color: var(--chip-color); color: var(--chip-color); }
   .status-filter-chip.active { background: var(--chip-bg); color: var(--chip-color); border-color: var(--chip-color); }
-  /* Separates the 6 status chips from the standalone External Deliveries
+  /* Separates the 6 status chips from the standalone Dependencies
      toggle right after them — a plain vertical rule, sized to roughly a
      chip's own height rather than stretching the full row height. */
   .chip-divider { width: 1px; height: 18px; background: var(--border); flex: 0 0 auto; margin: 0 2px; }
@@ -579,7 +579,7 @@
   .ws-section-title { font-weight: 700; font-size: 14.5px; flex: 1; }
   .rag-pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
   .rag-summary { display: flex; gap: 5px; }
-  /* External Delivery's own sub-section (renderStatusView()) — a smaller,
+  /* Dependency's own sub-section (renderStatusView()) — a smaller,
      nested heading than .ws-section-header, since it labels a group inside
      one workstream's own card rather than the workstream itself. No
      border-radius (unlike .ws-section-header's rounded top corners) since
@@ -1221,9 +1221,9 @@
      before, just now sitting alongside the sidebar rather than without one. -->
 <div class="body-row" id="scopedBody">
   <div class="sidebar">
-    <!-- All Workstreams / Journeys / External Deliveries — one ordered top
-         group, a separator, then the real workstream list below (see
-         renderSidebar()'s own comment). -->
+    <!-- Journeys / All Workstreams — one ordered top group, a separator,
+         then the real workstream list below (see renderSidebar()'s own
+         comment). -->
     <div id="topNavList"></div>
     <div class="sidebar-divider"></div>
     <div class="sidebar-label">Workstreams <button class="sidebar-label-add" id="addWsBtn" onclick="openWorkstreamModal()" title="New workstream"><i class="fa-solid fa-plus"></i></button></div>
@@ -1446,12 +1446,12 @@
         </div>
       </div>
     </div>
-    <div class="field" id="itemExternalDeliveryField">
-      <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="itemExternalDeliveryInput" onchange="onItemExternalDeliveryChange()"> External Delivery</label>
+    <div class="field" id="itemDependencyField">
+      <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="itemDependencyInput" onchange="onItemDependencyChange()"> Dependency</label>
     </div>
-    <div class="field" id="itemExternalDeliverySpocField" style="display:none">
-      <label>External Delivery SPOC</label>
-      <input type="text" id="itemExternalDeliverySpocInput" placeholder="Name of the external delivery point of contact">
+    <div class="field" id="itemDependencySpocField" style="display:none">
+      <label>Dependency SPOC</label>
+      <input type="text" id="itemDependencySpocInput" placeholder="Name of the dependency point of contact">
     </div>
     <!-- A Journey has no milestone checklist at all (see "Journeys" in
          CLAUDE.md) — this whole field is hidden outright for one, not left
@@ -1831,7 +1831,7 @@ let workstreams = [];
 let items = [];
 let categories = [];
 let reviewCycles = [];
-let mode = 'planning'; // 'planning' | 'review' | 'dashboard' | 'journeys' | 'external' | 'admin'
+let mode = 'planning'; // 'planning' | 'review' | 'dashboard' | 'journeys' | 'admin' — see MODES
 let theme = 'light';
 let colorScheme = 'standard'; // one of THEME_SCHEMES' ids — see toggleTheme() vs setColorScheme()
 // null until a role is chosen (openRoleModal() then blocks the app behind an
@@ -1879,16 +1879,19 @@ let planningSearchQuery = '';
 // persisted, reset on reload — same treatment as planningSearchQuery, and
 // composes with it the same way (both independently narrow the board).
 let planningStatusFilter = null;
-// The "External Deliveries" quick-filter chip's own on/off state — a plain
-// boolean toggle, not a STATUSES id, sitting in the same chip row as
-// planningStatusFilter but visually set apart from it by a small divider
-// (see renderPlanningStatusChips()). UI-only, not persisted, composes with
-// both the search box and the status filter the same way they compose with
-// each other. This started as its own separate mode/topbar button/sidebar
-// nav row (`mode === 'external'`, renderExternalDelivery()) before an
-// explicit user request folded it into Planning's own quick-filter row
-// instead, alongside the status chips.
-let planningExternalFilter = false;
+// The "Dependencies" quick-filter chip's own on/off state (this field, the
+// item flag it reads, and every function/id built on it were originally
+// named "External Delivery"/"externalDelivery" — renamed to "Dependency"/
+// "dependency" to match the newer Dependency category, an explicit user
+// request) — a plain boolean toggle, not a STATUSES id, sitting in the same
+// chip row as planningStatusFilter but visually set apart from it by a
+// small divider (see renderPlanningStatusChips()). UI-only, not persisted,
+// composes with both the search box and the status filter the same way
+// they compose with each other. This started as its own separate
+// mode/topbar button/sidebar nav row (`mode === 'external'`,
+// renderExternalDelivery()) before an explicit user request folded it into
+// Planning's own quick-filter row instead, alongside the status chips.
+let planningDependencyFilter = false;
 // Which review-history entries currently show their change log — UI-only, not persisted.
 let expandedHistoryIds = new Set();
 // Which workstreams currently show their full review history instead of just
@@ -2222,13 +2225,28 @@ function normalizeData() {
     if (!it.startDate) it.startDate = it.dueDate;
     if (typeof it.updatedAt !== 'number') it.updatedAt = Date.now();
     if (typeof it.actualDate !== 'string') it.actualDate = null;
-    if (typeof it.externalDelivery !== 'boolean') it.externalDelivery = false;
+    // A pre-rename export/linked file/backup still uses the old field names
+    // (externalDelivery/externalDeliverySpoc — this pair, and the whole
+    // feature, was renamed to dependency/dependencySpoc, an explicit user
+    // request — see "Dependencies" below); without this, importing one
+    // would silently drop the flag and SPOC, since dependency would just
+    // backfill to false below as if neither field was ever there. Only
+    // migrates when dependency isn't already a real boolean — a genuinely
+    // modern item, which never has the old fields at all, is untouched. The
+    // old fields themselves are left in place afterward as inert,
+    // never-read leftovers, the same "orphaned field is harmless" stance
+    // the removed owner field already takes elsewhere in this file.
+    if (typeof it.dependency !== 'boolean' && typeof it.externalDelivery === 'boolean') {
+      it.dependency = it.externalDelivery;
+      if (typeof it.externalDeliverySpoc === 'string') it.dependencySpoc = it.externalDeliverySpoc;
+    }
+    if (typeof it.dependency !== 'boolean') it.dependency = false;
     // The SPOC is only ever meaningful alongside the flag — self-heals both
     // directions: a stale SPOC left over from the flag being turned off
     // outside saveItem() (a hand-edited import, an older save) is cleared,
     // and a non-string value backfills to null the same way actualDate does.
-    if (!it.externalDelivery) it.externalDeliverySpoc = null;
-    else if (typeof it.externalDeliverySpoc !== 'string') it.externalDeliverySpoc = null;
+    if (!it.dependency) it.dependencySpoc = null;
+    else if (typeof it.dependencySpoc !== 'string') it.dependencySpoc = null;
     ITEM_TAG_FIELDS.forEach(f => { if (!RAG3.includes(it[f])) it[f] = 'green'; });
     if (!Array.isArray(it.milestones)) it.milestones = [];
     it.milestones.forEach(m => {
@@ -2522,8 +2540,8 @@ function render() {
   // identical reason (its own sidebar row) — no longer: a later, explicit
   // user request ("move External Deliveries... to the top navigation bar,
   // detached from... Planning/Dashboard/Review") moved its entry point out
-  // of the sidebar into its own plain #tabExternal button (see "External
-  // Delivery" in CLAUDE.md), so it now picks up its 'active' state through
+  // of the sidebar into its own plain #tabExternal button (see
+  // "Dependencies" in CLAUDE.md), so it now picks up its 'active' state through
   // this same generic loop like Dashboard/Review/Planning/Admin do.
   MODES.filter(m => m !== 'journeys').forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
   document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
@@ -2588,7 +2606,7 @@ function renderSidebar() {
   // treatment (it used to ignore filterWorkstreamId too) — no longer: a
   // later, explicit user request moved it out of this sidebar group
   // entirely into its own topbar button and made it genuinely respect the
-  // shared selector (see "External Delivery" in CLAUDE.md), so a workstream
+  // shared selector (see "Dependencies" in CLAUDE.md), so a workstream
   // row correctly reads as active while External Deliveries mode is
   // showing, same as Planning/Review/Dashboard.
   const inWorkstreamScope = mode !== 'journeys';
@@ -2597,8 +2615,8 @@ function renderSidebar() {
   // workstream list below it. Journeys and All Workstreams were swapped
   // from their original order (All Workstreams first) per a later, separate
   // explicit user request. External Deliveries used to be the 3rd row here
-  // too — moved out into its own topbar button instead (see "External
-  // Delivery" in CLAUDE.md), so this group is back to two rows. This
+  // too — moved out into its own topbar button instead (see
+  // "Dependencies" in CLAUDE.md), so this group is back to two rows. This
   // replaces an even earlier design: Journeys used to get its own labeled
   // section (its own #journeysNav container, under a "Journeys" heading).
   // Both rows are built together into #topNavList, with #wsList left
@@ -2713,27 +2731,27 @@ function matchesPlanningStatusFilter(it) {
   if (it.status === planningStatusFilter) return true;
   return (it.milestones || []).some(m => !m.notApplicable && m.status === planningStatusFilter);
 }
-// The External Deliveries chip's own predicate — a plain boolean gate
-// rather than a value match, since externalDelivery is itself a boolean
+// The Dependencies chip's own predicate — a plain boolean gate
+// rather than a value match, since dependency is itself a boolean
 // field. Composes with the other two the same way.
-function matchesPlanningExternalFilter(it) {
-  return !planningExternalFilter || it.externalDelivery;
+function matchesPlanningDependencyFilter(it) {
+  return !planningDependencyFilter || it.dependency;
 }
 // Rebuilds the whole quick-filter chip row — the 6 status chips, a small
-// divider, then the External Deliveries toggle — from STATUSES + the
+// divider, then the Dependencies toggle — from STATUSES + the
 // current selection. Cheap enough (7 small buttons) to call on every
 // render() regardless of mode, same as renderSidebar() already does,
 // rather than threading a mode==='planning' check through here too. The
-// External Deliveries chip reuses the identical --chip-color/--chip-bg
+// Dependencies chip reuses the identical --chip-color/--chip-bg
 // custom-property mechanism the status chips use, just with --accent/
-// --accent-bg in place of a --stat-* pair, since "externally delivered"
+// --accent-bg in place of a --stat-* pair, since "is a dependency"
 // isn't one of the RAG statuses.
 function renderPlanningStatusChips() {
   const el = document.getElementById('planningStatusFilterChips');
   if (!el) return;
   const statusChips = STATUSES.map(s => `<button class="status-filter-chip ${planningStatusFilter === s.id ? 'active' : ''}" style="--chip-color:var(--stat-${s.id});--chip-bg:var(--stat-${s.id}-bg)" onclick="setPlanningStatusFilter('${s.id}')">${esc(s.label)}</button>`).join('');
-  const externalChip = `<button class="status-filter-chip ${planningExternalFilter ? 'active' : ''}" style="--chip-color:var(--accent);--chip-bg:var(--accent-bg)" onclick="setPlanningExternalFilter()"><i class="fa-solid fa-globe"></i> External Deliveries</button>`;
-  el.innerHTML = statusChips + '<span class="chip-divider"></span>' + externalChip;
+  const dependencyChip = `<button class="status-filter-chip ${planningDependencyFilter ? 'active' : ''}" style="--chip-color:var(--accent);--chip-bg:var(--accent-bg)" onclick="setPlanningDependencyFilter()"><i class="fa-solid fa-globe"></i> Dependencies</button>`;
+  el.innerHTML = statusChips + '<span class="chip-divider"></span>' + dependencyChip;
 }
 // Single-select toggle for a status chip: clicking the already-active chip
 // clears the filter back to "everything", same "click again to clear"
@@ -2744,11 +2762,11 @@ function setPlanningStatusFilter(statusId) {
   renderPlanningStatusChips();
   renderMain();
 }
-// The External Deliveries chip's own toggle — a plain on/off flip, not a
+// The Dependencies chip's own toggle — a plain on/off flip, not a
 // single-select against a set of values the way setPlanningStatusFilter()
 // is, since there's only one boolean to toggle here.
-function setPlanningExternalFilter() {
-  planningExternalFilter = !planningExternalFilter;
+function setPlanningDependencyFilter() {
+  planningDependencyFilter = !planningDependencyFilter;
   renderPlanningStatusChips();
   renderMain();
 }
@@ -2775,19 +2793,19 @@ function unassignedItemsSorted() {
 function unassignedSectionHtml() {
   // Filtered by Planning's own search box and quick-filter chips (see
   // matchesPlanningSearch()/matchesPlanningStatusFilter()/
-  // matchesPlanningExternalFilter()) — the base, unfiltered "what's
+  // matchesPlanningDependencyFilter()) — the base, unfiltered "what's
   // genuinely unassigned" list stays in unassignedItemsSorted() itself,
   // since that's what everything else (normalizeData()'s own reasoning,
   // other call sites) means by the term; this is purely a display-layer
   // narrowing.
-  const uItems = unassignedItemsSorted().filter(it => matchesPlanningSearch(it) && matchesPlanningStatusFilter(it) && matchesPlanningExternalFilter(it));
+  const uItems = unassignedItemsSorted().filter(it => matchesPlanningSearch(it) && matchesPlanningStatusFilter(it) && matchesPlanningDependencyFilter(it));
   const editable = hasRole('editor');
   // While actively searching/filtering, an Unassigned section with no
   // matches is omitted entirely regardless of role — the "+ Add item"
   // quick-add prompt that would otherwise keep it visible for an Editor
   // isn't a useful thing to show while someone's trying to find or narrow
   // down existing items, not add a new one.
-  if (!uItems.length && (!editable || planningSearchQuery || planningStatusFilter || planningExternalFilter)) return '';
+  if (!uItems.length && (!editable || planningSearchQuery || planningStatusFilter || planningDependencyFilter)) return '';
   const rows = uItems.length ? uItems.map(it => itemRowHtml(it)).join('') :
     `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No unassigned items.</div>`;
   const addRow = editable
@@ -2822,38 +2840,40 @@ function renderStatusView(main) {
     ).join('');
     // Planning's own search box and quick-filter chips (see
     // matchesPlanningSearch()/matchesPlanningStatusFilter()/
-    // matchesPlanningExternalFilter()) narrow the list — but never the RAG
+    // matchesPlanningDependencyFilter()) narrow the list — but never the RAG
     // pill counts above, which are always computed from the workstream's
-    // real, unfiltered wItems, same as the External Delivery split below
+    // real, unfiltered wItems, same as the Dependency split below
     // leaves them alone. While actively searching or filtering, a
     // workstream with zero matches is skipped entirely (no header, no empty
     // list) rather than cluttering the results with a section that has
     // nothing relevant in it.
-    const displayItems = wItems.filter(it => matchesPlanningSearch(it) && matchesPlanningStatusFilter(it) && matchesPlanningExternalFilter(it));
-    if ((planningSearchQuery || planningStatusFilter || planningExternalFilter) && !displayItems.length) return '';
-    // Items flagged External Delivery are pulled out of the main list into
+    const displayItems = wItems.filter(it => matchesPlanningSearch(it) && matchesPlanningStatusFilter(it) && matchesPlanningDependencyFilter(it));
+    if ((planningSearchQuery || planningStatusFilter || planningDependencyFilter) && !displayItems.length) return '';
+    // Items flagged as a Dependency are pulled out of the main list into
     // their own sub-section right underneath it, within the same
     // .ws-section card — an explicit user request ("show scope items which
     // are flagged as external separate from the scope item list...
-    // similar like unassigned scope items"), mirroring the Unassigned
-    // bucket's own "items that don't belong in the normal list" separation,
-    // just nested inside a single workstream's own section rather than as
-    // its own page-wide pinned block (an externally-delivered item still
-    // has a real workstream — this is purely a display grouping, not
-    // another Unassigned-style bucket). The RAG pill counts above still
-    // roll up every item in the workstream, external ones included — the
-    // split only changes how they're grouped in the list, not whether they
-    // count toward the workstream's own stats.
-    const mainItems = displayItems.filter(it => !it.externalDelivery);
-    const externalItems = displayItems.filter(it => it.externalDelivery);
+    // similar like unassigned scope items" — the feature was later renamed
+    // from "External Delivery" to "Dependency", see the field's own
+    // declaration comment above), mirroring the Unassigned bucket's own
+    // "items that don't belong in the normal list" separation, just nested
+    // inside a single workstream's own section rather than as its own
+    // page-wide pinned block (a dependency item still has a real
+    // workstream — this is purely a display grouping, not another
+    // Unassigned-style bucket). The RAG pill counts above still roll up
+    // every item in the workstream, dependency ones included — the split
+    // only changes how they're grouped in the list, not whether they count
+    // toward the workstream's own stats.
+    const mainItems = displayItems.filter(it => !it.dependency);
+    const dependencyItems = displayItems.filter(it => it.dependency);
     const rows = mainItems.length ? mainItems.map(it => itemRowHtml(it)).join('')
-      : (externalItems.length ? '' : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No items yet.</div>`);
-    const externalSectionHtml = externalItems.length ? `
+      : (dependencyItems.length ? '' : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No items yet.</div>`);
+    const dependencySectionHtml = dependencyItems.length ? `
         <div class="ws-subsection-header">
           <i class="fa-solid fa-globe"></i>
-          <span>External Deliveries</span>
+          <span>Dependencies</span>
         </div>
-        ${externalItems.map(it => itemRowHtml(it)).join('')}` : '';
+        ${dependencyItems.map(it => itemRowHtml(it)).join('')}` : '';
     return `<div class="ws-section">
         <div class="ws-section-header" style="background:var(--ws-${w.color}-bg)">
           ${expandAllToggleHtml(displayItems)}
@@ -2861,7 +2881,7 @@ function renderStatusView(main) {
           <span class="ws-section-title">${esc(w.name)}</span>
           <div class="rag-summary">${pills}</div>
         </div>
-        ${rows}${externalSectionHtml}
+        ${rows}${dependencySectionHtml}
       </div>`;
   }).join('');
   const noWorkstreamsHint = workstreams.length === 0
@@ -3081,7 +3101,7 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // "Column layout is a real CSS grid" in CLAUDE.md) — an omitted element
   // would collapse the column and shift everything after it out of
   // alignment with rows that still have content there.
-  const externalSpocHtml = `<span></span>`;
+  const dependencySpocHtml = `<span></span>`;
   // IT/Business/Budget — item-level-only RAG tags, cycled by clicking. See
   // ITEM_TAG_FIELDS/RAG3/cycleItemAttr() above. Icon-only (no text label) —
   // title attr carries the full name for a hover tooltip. Rendered in column
@@ -3238,7 +3258,7 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
       <span></span>
       ${planDatesHtml}
       <span></span>
-      ${externalSpocHtml}
+      ${dependencySpocHtml}
       ${tagsHtml}
       ${statusBadgeHtml}
       ${(reviewCycle || !editable)
@@ -4202,15 +4222,15 @@ function onItemCategoryChange() {
   editingMilestones = milestonesForCategory(categoryId, document.getElementById('itemDueInput').value);
   renderMilestonesEditor();
 }
-// The SPOC field is only ever meaningful once External Delivery is checked
+// The SPOC field is only ever meaningful once Dependency is checked
 // — mirrors the Not Applicable milestone pattern (a field that only makes
 // sense conditional on a flag stays hidden, not just disabled, while the
 // flag is off). Unlike a milestone's Due/Actual dates, though, the SPOC
 // text isn't cleared the moment the box is unchecked here — only on Save
 // (see saveItem()) — so unchecking then rechecking it before saving
 // doesn't lose whatever was already typed.
-function onItemExternalDeliveryChange() {
-  document.getElementById('itemExternalDeliverySpocField').style.display = document.getElementById('itemExternalDeliveryInput').checked ? '' : 'none';
+function onItemDependencyChange() {
+  document.getElementById('itemDependencySpocField').style.display = document.getElementById('itemDependencyInput').checked ? '' : 'none';
 }
 // presetItemType ('journey', 'subjourney', or omitted/anything else for a
 // plain scope item) only ever matters for a brand-new item — id, when
@@ -4242,15 +4262,15 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   document.getElementById('itemWorkstreamField').style.display = isJourneyLike ? 'none' : '';
   document.getElementById('itemCategoryField').style.display = isJourneyLike ? 'none' : '';
   document.getElementById('itemMilestonesField').style.display = isJourneyLike ? 'none' : '';
-  // Actual completion date and External Delivery are hidden outright for a
+  // Actual completion date and Dependency are hidden outright for a
   // still-Pending item — an explicit user request. Neither is meaningful
   // yet: the item hasn't been scope-assigned to a real workstream/category
   // at all, so there's nothing to record an actual finish date against, and
-  // "delivered by an external party" isn't a call worth making before the
+  // whether it's a dependency isn't a call worth making before the
   // item's real scope is even known. Both become available again the
   // moment applyScopeCategory() moves it out of Pending.
   document.getElementById('itemActualField').style.display = stillPending ? 'none' : '';
-  document.getElementById('itemExternalDeliveryField').style.display = stillPending ? 'none' : '';
+  document.getElementById('itemDependencyField').style.display = stillPending ? 'none' : '';
   populateWorkstreamSelect(it ? it.workstreamId : (presetWorkstreamId || (workstreams[0] && workstreams[0].id)), undefined, !!(it && it.workstreamId == null));
   const defaultCategoryId = categories[0].id;
   if (!isJourneyLike) populateCategorySelect(it ? it.categoryId : defaultCategoryId);
@@ -4275,15 +4295,15 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   document.getElementById('itemDueInput').value = it ? it.dueDate : todayStr();
   document.getElementById('itemActualInput').value = it ? (it.actualDate || '') : '';
   document.getElementById('itemStatusSelect').value = it ? it.status : 'not-started';
-  document.getElementById('itemExternalDeliveryInput').checked = it ? !!it.externalDelivery : false;
-  document.getElementById('itemExternalDeliverySpocInput').value = it ? (it.externalDeliverySpoc || '') : '';
-  onItemExternalDeliveryChange();
-  // Re-asserted after onItemExternalDeliveryChange() above, which would
+  document.getElementById('itemDependencyInput').checked = it ? !!it.dependency : false;
+  document.getElementById('itemDependencySpocInput').value = it ? (it.dependencySpoc || '') : '';
+  onItemDependencyChange();
+  // Re-asserted after onItemDependencyChange() above, which would
   // otherwise reveal the SPOC field for a still-Pending item that somehow
-  // has externalDelivery already true (an edge case: an import, a
+  // has dependency already true (an edge case: an import, a
   // hand-edited file) — the checkbox driving that toggle is itself hidden
   // here, so nothing should be able to show this field regardless.
-  if (stillPending) document.getElementById('itemExternalDeliverySpocField').style.display = 'none';
+  if (stillPending) document.getElementById('itemDependencySpocField').style.display = 'none';
   editingMilestones = isJourneyLike ? [] : it
     ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable }))
     : milestonesForCategory(defaultCategoryId, document.getElementById('itemDueInput').value);
@@ -4295,7 +4315,7 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   // can still read everything, same spirit as Plan dates/tags/status on the
   // row itself (see itemRowHtml()).
   const editable = hasRole('editor');
-  ['itemNameInput', 'itemStartInput', 'itemDueInput', 'itemActualInput', 'itemWorkstreamSelect', 'itemCategorySelect', 'itemStatusSelect', 'itemExternalDeliveryInput', 'itemExternalDeliverySpocInput'].forEach(id => {
+  ['itemNameInput', 'itemStartInput', 'itemDueInput', 'itemActualInput', 'itemWorkstreamSelect', 'itemCategorySelect', 'itemStatusSelect', 'itemDependencyInput', 'itemDependencySpocInput'].forEach(id => {
     document.getElementById(id).disabled = !editable;
   });
   // A still-Pending item's category can never be changed through this
@@ -4541,13 +4561,13 @@ function saveItem() {
   const manualDueDate = document.getElementById('itemDueInput').value || todayStr();
   const manualStartDate = document.getElementById('itemStartInput').value || manualDueDate;
   const actualDate = document.getElementById('itemActualInput').value || null;
-  const externalDelivery = document.getElementById('itemExternalDeliveryInput').checked;
-  // The SPOC is only ever meaningful while External Delivery is checked —
+  const dependency = document.getElementById('itemDependencyInput').checked;
+  // The SPOC is only ever meaningful while Dependency is checked —
   // unchecking it and saving clears any previously-entered SPOC rather than
   // leaving a stale name behind for a flag that's now off, same "don't keep
   // a value that no longer applies" stance Not Applicable milestones take
   // with their own Due/Actual dates.
-  const externalDeliverySpoc = externalDelivery ? (document.getElementById('itemExternalDeliverySpocInput').value.trim() || null) : null;
+  const dependencySpoc = dependency ? (document.getElementById('itemDependencySpocInput').value.trim() || null) : null;
   // A notApplicable milestone's dueDate is left as whatever it is (null,
   // once cleared by toggleEditingMilestoneNotApplicable()) rather than
   // falling back to manualDueDate — that fallback exists so an *applicable*
@@ -4599,7 +4619,7 @@ function saveItem() {
   const range = milestones.length ? computedDateRangeFromMilestones(milestones) : null;
   const startDate = range ? range.startDate : manualStartDate;
   const dueDate = range ? range.dueDate : manualDueDate;
-  const data = { workstreamId, categoryId, name, status, startDate, dueDate, actualDate, milestones, externalDelivery, externalDeliverySpoc, updatedAt: Date.now() };
+  const data = { workstreamId, categoryId, name, status, startDate, dueDate, actualDate, milestones, dependency, dependencySpoc, updatedAt: Date.now() };
   // Switching an existing (non-Pending, non-Journey) item's category away
   // from whatever it already was is destructive whenever it currently has
   // real milestones — an explicit user request ("if I change the category
@@ -4892,7 +4912,7 @@ function saveJourneyQuickAddItem() {
     status: 'not-started', startDate: today, dueDate: today, actualDate: null,
     milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
     itemType: 'journey', journeyId: null,
-    externalDelivery: false, externalDeliverySpoc: null,
+    dependency: false, dependencySpoc: null,
     order, updatedAt: Date.now()
   });
   save(); render();
@@ -4939,7 +4959,7 @@ function saveSubJourneyQuickAddItem() {
     status: 'not-started', startDate: today, dueDate: today, actualDate: null,
     milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
     itemType: 'subjourney', journeyId: null, parentJourneyId: journeyId,
-    externalDelivery: false, externalDeliverySpoc: null,
+    dependency: false, dependencySpoc: null,
     order, updatedAt: Date.now()
   });
   save(); render();

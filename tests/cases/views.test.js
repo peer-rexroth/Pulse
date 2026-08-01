@@ -62,12 +62,12 @@ test('RAG pill counts stay computed from the workstream\'s full, unfiltered item
   assertIncludes(html, '1 On Track');
 });
 
-test('the External Delivery split still applies within the filtered results', function () {
-  addItem({ name: 'Vendor billing task', externalDelivery: true, externalDeliverySpoc: 'Jane Doe' });
+test('the Dependency split still applies within the filtered results', function () {
+  addItem({ name: 'Vendor billing task', dependency: true, dependencySpoc: 'Jane Doe' });
   addItem({ name: 'Internal billing task' });
   setPlanningSearch('billing');
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'External Deliveries');
+  assertIncludes(html, 'Dependencies');
   assertIncludes(html, 'Vendor billing task');
   assertIncludes(html, 'Internal billing task');
 });
@@ -232,23 +232,27 @@ test('renderStatusView groups items under the correct workstream and shows RAG c
   assertIncludes(html, '1 On Track');
 });
 
-// ---------- External Delivery items get their own sub-section (renderStatusView()) ----------
+// ---------- Dependency items get their own sub-section (renderStatusView()) ----------
 // An explicit user request: "show scope items which are flagged as
 // external separate from the scope item list ... similar like unassigned
 // scope items ... under the scope items list. Show also the External SPOC
-// in the view."
+// in the view." (The feature — and its data-model field, dependency/
+// dependencySpoc — was itself later renamed from "External Delivery"/
+// externalDelivery to "Dependency"/dependency, an explicit user request to
+// match the newer Dependency category; the quotes above are the original,
+// pre-rename request text.)
 
-test('an externally-delivered item is pulled out of the main list into its own "External Deliveries" sub-section, still inside the same workstream', function () {
+test('a dependency item is pulled out of the main list into its own "Dependencies" sub-section, still inside the same workstream', function () {
   addItem({ name: 'Normal item' });
-  addItem({ name: 'Vendor-delivered item', externalDelivery: true, externalDeliverySpoc: 'Jane Doe' });
+  addItem({ name: 'Vendor-delivered item', dependency: true, dependencySpoc: 'Jane Doe' });
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'External Deliveries');
-  const subHeaderIdx = html.indexOf('External Deliveries');
+  assertIncludes(html, 'Dependencies');
+  const subHeaderIdx = html.indexOf('Dependencies');
   const normalIdx = html.indexOf('Normal item');
   const externalIdx = html.indexOf('Vendor-delivered item');
   assertTrue(normalIdx < subHeaderIdx, 'the normal item should render before the sub-section header');
-  assertTrue(subHeaderIdx < externalIdx, 'the external item should render after the sub-section header, not in the main list');
+  assertTrue(subHeaderIdx < externalIdx, 'the dependency item should render after the sub-section header, not in the main list');
 });
 
 // The row-level SPOC display above was later removed by an explicit user
@@ -256,26 +260,26 @@ test('an externally-delivered item is pulled out of the main list into its own "
 // field itself is untouched (still stored, still editable in the item
 // modal), only the row's own rendering of it is gone.
 
-test('the External Deliveries sub-section no longer shows that item\'s own SPOC on the row', function () {
-  addItem({ name: 'Vendor-delivered item', externalDelivery: true, externalDeliverySpoc: 'Jane Doe (Acme Corp)' });
+test('the Dependencies sub-section no longer shows that item\'s own SPOC on the row', function () {
+  addItem({ name: 'Vendor-delivered item', dependency: true, dependencySpoc: 'Jane Doe (Acme Corp)' });
   renderMain();
   assertNotIncludes(document.getElementById('main').innerHTML, 'Jane Doe (Acme Corp)');
 });
 
-test('an external item\'s row never shows the item-external-spoc span, with or without a SPOC entered', function () {
-  const withSpoc = addItem({ name: 'External, with SPOC', externalDelivery: true, externalDeliverySpoc: 'Jane Doe' });
-  const withoutSpoc = addItem({ name: 'External, no SPOC yet', externalDelivery: true, externalDeliverySpoc: null });
+test('a dependency item\'s row never shows the item-external-spoc span, with or without a SPOC entered', function () {
+  const withSpoc = addItem({ name: 'Dependency, with SPOC', dependency: true, dependencySpoc: 'Jane Doe' });
+  const withoutSpoc = addItem({ name: 'Dependency, no SPOC yet', dependency: true, dependencySpoc: null });
   assertNotIncludes(itemRowHtml(withSpoc), 'item-external-spoc');
   assertNotIncludes(itemRowHtml(withoutSpoc), 'item-external-spoc');
 });
 
-test('a normal (non-external) item\'s row never shows the item-external-spoc span either', function () {
+test('a normal (non-dependency) item\'s row never shows the item-external-spoc span either', function () {
   const it = addItem({ name: 'Normal item' });
   assertNotIncludes(itemRowHtml(it), 'item-external-spoc');
 });
 
-test('RAG counts in the workstream header still include externally-delivered items, even though they render in the separate sub-section', function () {
-  addItem({ status: 'red', name: 'External blocker', externalDelivery: true, externalDeliverySpoc: 'Jane Doe' });
+test('RAG counts in the workstream header still include dependency items, even though they render in the separate sub-section', function () {
+  addItem({ status: 'red', name: 'Dependency blocker', dependency: true, dependencySpoc: 'Jane Doe' });
   addItem({ status: 'green', name: 'Normal item' });
   renderMain();
   const html = document.getElementById('main').innerHTML;
@@ -283,8 +287,8 @@ test('RAG counts in the workstream header still include externally-delivered ite
   assertIncludes(html, '1 On Track');
 });
 
-test('a workstream with only externally-delivered items shows no "No items yet." placeholder in the main list', function () {
-  addItem({ name: 'Only item, external', externalDelivery: true, externalDeliverySpoc: 'Jane Doe' });
+test('a workstream with only dependency items shows no "No items yet." placeholder in the main list', function () {
+  addItem({ name: 'Only item, dependency', dependency: true, dependencySpoc: 'Jane Doe' });
   renderMain();
   assertNotIncludes(document.getElementById('main').innerHTML, 'No items yet.');
 });
@@ -294,13 +298,13 @@ test('a workstream with genuinely zero items still shows the "No items yet." pla
   assertIncludes(document.getElementById('main').innerHTML, 'No items yet.');
 });
 
-test('a workstream with no externally-delivered items shows no "External Deliveries" sub-section at all', function () {
+test('a workstream with no dependency items shows no "Dependencies" sub-section at all', function () {
   addItem({ name: 'Normal item' });
   renderMain();
-  assertNotIncludes(document.getElementById('main').innerHTML, 'External Deliveries');
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Dependencies');
 });
 
-// ---------- External Deliveries quick-filter chip ----------
+// ---------- Dependencies quick-filter chip ----------
 // An explicit user request ("add External Delivery to the left navigation
 // pane, under 'All Workstreams'") originally added this as a new mode with
 // its own sidebar row (mirroring Journeys' own entry point). A later,
@@ -309,48 +313,51 @@ test('a workstream with no externally-delivered items shows no "External Deliver
 // third, separate explicit user request removed the standalone mode
 // entirely — the topbar button, MODES entry, and renderExternalDelivery()
 // are all gone — folding it into a single boolean quick-filter chip
-// (setPlanningExternalFilter()) sitting in Planning's own toolbar, right
+// (setPlanningDependencyFilter()) sitting in Planning's own toolbar, right
 // alongside the status chips (separated by a small .chip-divider), rather
-// than being a separate page at all.
+// than being a separate page at all. The feature (and its data-model field,
+// `dependency`/`dependencySpoc`) was itself later renamed from "External
+// Delivery"/`externalDelivery` to "Dependency"/`dependency`, an explicit
+// user request to match the newer Dependency category.
 
-test('renderPlanningStatusChips appends an External Deliveries toggle after a divider, inactive by default', function () {
+test('renderPlanningStatusChips appends a Dependencies toggle after a divider, inactive by default', function () {
   render();
   const html = document.getElementById('planningStatusFilterChips').innerHTML;
   assertIncludes(html, 'chip-divider');
-  assertIncludes(html, 'External Deliveries');
+  assertIncludes(html, 'Dependencies');
   const dividerIdx = html.indexOf('chip-divider');
-  const extIdx = html.indexOf('External Deliveries');
-  assertTrue(dividerIdx < extIdx, 'the divider must sit before the External Deliveries chip, after the status chips');
+  const extIdx = html.indexOf('Dependencies');
+  assertTrue(dividerIdx < extIdx, 'the divider must sit before the Dependencies chip, after the status chips');
   assertNotIncludes(html, 'status-filter-chip active');
 });
 
-test('setPlanningExternalFilter toggles the board down to only externally-delivered items, and back', function () {
-  addItem({ name: 'Vendor task', externalDelivery: true, externalDeliverySpoc: 'Jane' });
+test('setPlanningDependencyFilter toggles the board down to only dependency items, and back', function () {
+  addItem({ name: 'Vendor task', dependency: true, dependencySpoc: 'Jane' });
   addItem({ name: 'Internal task' });
-  setPlanningExternalFilter();
+  setPlanningDependencyFilter();
   let html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Vendor task');
   assertNotIncludes(html, 'Internal task');
   assertIncludes(document.getElementById('planningStatusFilterChips').innerHTML, 'status-filter-chip active');
 
-  setPlanningExternalFilter(); // toggle back off
+  setPlanningDependencyFilter(); // toggle back off
   html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Vendor task');
   assertIncludes(html, 'Internal task');
   assertNotIncludes(document.getElementById('planningStatusFilterChips').innerHTML, 'status-filter-chip active');
 });
 
-test('the External Deliveries filter composes with both the search box and the status chips', function () {
-  addItem({ name: 'Vendor billing task', status: 'red', externalDelivery: true, externalDeliverySpoc: 'Jane' });
-  addItem({ name: 'Vendor onboarding task', status: 'green', externalDelivery: true, externalDeliverySpoc: 'Bob' });
+test('the Dependencies filter composes with both the search box and the status chips', function () {
+  addItem({ name: 'Vendor billing task', status: 'red', dependency: true, dependencySpoc: 'Jane' });
+  addItem({ name: 'Vendor onboarding task', status: 'green', dependency: true, dependencySpoc: 'Bob' });
   addItem({ name: 'Internal billing task', status: 'red' });
   setPlanningSearch('billing');
   setPlanningStatusFilter('red');
-  setPlanningExternalFilter();
+  setPlanningDependencyFilter();
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Vendor billing task');
   assertNotIncludes(html, 'Vendor onboarding task', 'wrong status');
-  assertNotIncludes(html, 'Internal billing task', 'not external');
+  assertNotIncludes(html, 'Internal billing task', 'not a dependency');
 });
 
 test('External Deliveries mode/topbar button/renderExternalDelivery() no longer exist', function () {

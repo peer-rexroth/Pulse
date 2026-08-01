@@ -228,8 +228,8 @@ test('openItemModal hides Actual completion date and External Delivery for a Pen
   const it = addPendingItem();
   openItemModal(it.id);
   assertEqual(document.getElementById('itemActualField').style.display, 'none');
-  assertEqual(document.getElementById('itemExternalDeliveryField').style.display, 'none');
-  assertEqual(document.getElementById('itemExternalDeliverySpocField').style.display, 'none');
+  assertEqual(document.getElementById('itemDependencyField').style.display, 'none');
+  assertEqual(document.getElementById('itemDependencySpocField').style.display, 'none');
 });
 
 test('openItemModal shows Actual completion date and External Delivery again once an item has a real category (post scope-assign)', function () {
@@ -238,13 +238,13 @@ test('openItemModal shows Actual completion date and External Delivery again onc
   applyScopeCategory(it.id, workstreams[0].id, realCat.id);
   openItemModal(it.id);
   assertEqual(document.getElementById('itemActualField').style.display, '');
-  assertEqual(document.getElementById('itemExternalDeliveryField').style.display, '');
+  assertEqual(document.getElementById('itemDependencyField').style.display, '');
 });
 
 test('openItemModal shows both fields for a brand-new item (never Pending to begin with)', function () {
   openItemModal(null, workstreams[0].id);
   assertEqual(document.getElementById('itemActualField').style.display, '');
-  assertEqual(document.getElementById('itemExternalDeliveryField').style.display, '');
+  assertEqual(document.getElementById('itemDependencyField').style.display, '');
 });
 
 test('removeMilestoneRow works normally on a non-Pending item\'s milestones', function () {
