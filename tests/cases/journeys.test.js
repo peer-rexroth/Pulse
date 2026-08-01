@@ -106,7 +106,18 @@ test('closeItemModal resets editingItemType back to "scope"', function () {
   assertEqual(editingItemType, 'scope');
 });
 
-test('creating a Journey is blocked below Editor', function () {
+// Journey/Sub Journey management is gated on canManageJourneys() (Planner
+// or Editor+), not the plain hasRole('editor') an ordinary item uses — see
+// "Roles (RBAC)" in CLAUDE.md for the Planner role and why it's a
+// deliberate exception to the plain ROLES ladder (Reviewer outranks
+// Planner there, yet is still excluded from Journey management). The tests
+// below still say "blocked for Reviewer" specifically, since Reviewer is
+// the one role this session's Planner change actually reasoned through —
+// see the dedicated "Planner: Journey/Sub Journey management" section
+// further down for the positive Planner-can-do-this coverage and the
+// explicit Reviewer-stays-blocked-despite-outranking-Planner regression
+// guard.
+test('creating a Journey is blocked for Reviewer', function () {
   userRole = 'reviewer';
   openItemModal(null, null, 'journey');
   assertEqual(document.getElementById('itemSaveBtn').style.display, 'none');
@@ -155,7 +166,7 @@ test('saveJourneyQuickAddItem is a no-op if called again after it already closed
   assertEqual(items.length, 1, 'a second call after the input already closed must not create a duplicate');
 });
 
-test('openJourneyQuickAdd is blocked below Editor', function () {
+test('openJourneyQuickAdd is blocked for Reviewer', function () {
   userRole = 'reviewer';
   openJourneyQuickAdd();
   assertFalse(journeyQuickAddOpen);
@@ -173,7 +184,7 @@ test('renderJourneys shows the button by default, and swaps in the input once op
   assertIncludes(html, 'id="journeyQuickAddInput"');
 });
 
-test('renderJourneys omits the Add-Journey button (and the quick-add input) below Editor', function () {
+test('renderJourneys omits the Add-Journey button (and the quick-add input) for Reviewer', function () {
   addJourney('Existing Journey');
   userRole = 'reviewer';
   setMode('journeys');
@@ -224,7 +235,7 @@ test('cancelSubJourneyQuickAdd discards whatever was typed, closing the input', 
   assertFalse(!!subJourneyQuickAddOpenFor);
 });
 
-test('openSubJourneyQuickAdd is blocked below Editor', function () {
+test('openSubJourneyQuickAdd is blocked for Reviewer', function () {
   const journey = addJourney('Parent Journey');
   userRole = 'reviewer';
   openSubJourneyQuickAdd(journey.id);
@@ -259,7 +270,7 @@ test('itemRowHtml shows a "Connect scope items" icon for a Sub Journey, but not 
   assertNotIncludes(itemRowHtml(scope), 'openJourneyConnectModal');
 });
 
-test('the Connect-scope-items icon is omitted below Editor, same as Edit/Delete', function () {
+test('the Connect-scope-items icon is omitted for Reviewer, same as Edit/Delete', function () {
   const journey = addJourney();
   const sub = addSubJourney(journey.id);
   userRole = 'reviewer';
@@ -881,7 +892,7 @@ test('toggleJourneyConnection re-renders the still-open modal list to reflect th
   assertIncludes(document.getElementById('journeyConnectList').innerHTML, `checked onchange="toggleJourneyConnection('${it.id}', this.checked)"`);
 });
 
-test('toggleJourneyConnection is blocked below Editor', function () {
+test('toggleJourneyConnection is blocked for Reviewer', function () {
   const journey = addJourney();
   const sub = addSubJourney(journey.id);
   const it = addItem({ name: 'Target' });
@@ -890,7 +901,7 @@ test('toggleJourneyConnection is blocked below Editor', function () {
   assertEqual(it.journeyId, null);
 });
 
-test('openJourneyConnectModal is blocked below Editor', function () {
+test('openJourneyConnectModal is blocked for Reviewer', function () {
   const journey = addJourney();
   const sub = addSubJourney(journey.id);
   userRole = 'reviewer';
@@ -1093,15 +1104,6 @@ test('renderJourneys shows "No journeys yet" when there are none', function () {
   assertIncludes(html, 'No journeys yet.');
 });
 
-test('renderJourneys omits the Add-Journey button below Editor', function () {
-  addJourney('Existing Journey');
-  userRole = 'reviewer';
-  setMode('journeys');
-  const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'Existing Journey');
-  assertNotIncludes(html, 'Add Journey');
-});
-
 test('renderJourneys ignores the shared filterWorkstreamId selector entirely — it always shows every journey', function () {
   const secondWs = { id: genId(), name: 'Second', color: 'teal', order: 1 };
   workstreams.push(secondWs);
@@ -1181,6 +1183,103 @@ test('renderJourneys still renders correctly (and updates, not just Planning) af
   toggleExpandAllForItems(journeysExpandAllIds());
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Sub A1', 'expanding the Journey should reveal its Sub Journey in the live-rendered page, not just in expandedItemIds state');
+});
+
+// ---------- Planner: Journey/Sub Journey management ----------
+// The Planner role — an explicit user request ("Create the role Planner...
+// It should be able to create and edit journeys (also linking/delinking
+// scope items to journeys). The other access rights should be inherited
+// from visitor"). See "Roles (RBAC)" in CLAUDE.md for the full design: ROLES
+// is ['visitor','planner','reviewer','editor','admin'] — Planner sits
+// directly above Visitor, not between Reviewer and Editor, specifically so
+// the plain cumulative hasRole() ladder doesn't also hand it Reviewer's own
+// review-cycle actions. Journey/Sub Journey management itself is granted by
+// a separate, non-ladder predicate, canManageJourneys() (`userRole ===
+// 'planner' || hasRole('editor')`) — every one of the individual
+// "...is blocked for Reviewer" tests above already covers the negative case
+// for that one function; these tests instead exercise the actual new
+// branching logic end-to-end (Planner succeeds, Editor/Admin are
+// unaffected, Reviewer is still excluded despite outranking Planner on the
+// ladder) and confirm Planner gets nothing beyond Journeys.
+
+test('canManageJourneys is true for Planner, Editor, and Admin, false for Reviewer and Visitor', function () {
+  ['planner', 'editor', 'admin'].forEach(r => { userRole = r; assertTrue(canManageJourneys(), r); });
+  ['reviewer', 'visitor'].forEach(r => { userRole = r; assertFalse(canManageJourneys(), r); });
+});
+
+test('a Planner can create a Journey and a Sub Journey', function () {
+  userRole = 'planner';
+  const journey = addJourney('Planner-made Journey');
+  assertEqual(journey.itemType, 'journey');
+  const sub = addSubJourney(journey.id, 'Planner-made Sub Journey');
+  assertEqual(sub.itemType, 'subjourney');
+  assertEqual(sub.parentJourneyId, journey.id);
+});
+
+test('a Planner can edit and delete a Journey', function () {
+  const journey = addJourney('Original name');
+  userRole = 'planner';
+  openItemModal(journey.id);
+  assertEqual(document.getElementById('itemSaveBtn').style.display, '', 'Save must be visible for a Planner editing a Journey');
+  document.getElementById('itemNameInput').value = 'Renamed by Planner';
+  saveItem();
+  assertEqual(journey.name, 'Renamed by Planner');
+
+  deleteItem(journey.id);
+  confirmModalAction();
+  assertFalse(items.some(it => it.id === journey.id), 'a Planner must be able to delete a Journey too');
+});
+
+test('a Planner can link and delink a scope item to a Sub Journey', function () {
+  const journey = addJourney();
+  const sub = addSubJourney(journey.id);
+  const it = addItem({ name: 'Linkable scope item' });
+  userRole = 'planner';
+  openJourneyConnectModal(sub.id);
+  assertTrue(document.getElementById('journeyConnectModalBg').classList.contains('open'));
+  toggleJourneyConnection(it.id, true);
+  assertEqual(it.journeyId, sub.id, 'a Planner must be able to link a scope item to a Sub Journey');
+  toggleJourneyConnection(it.id, false);
+  assertEqual(it.journeyId, null, 'a Planner must be able to delink it again too');
+});
+
+test('a Planner can drag-reorder Journeys', function () {
+  const j1 = addJourney('First');
+  const j2 = addJourney('Second');
+  userRole = 'planner';
+  reorderItem(j2.id, j1.id);
+  assertEqual(j2.order, 0, 'a Planner must be able to reorder Journeys via drag-and-drop, same as an Editor');
+});
+
+test('Reviewer stays blocked from every Journey/Sub Journey action above, despite outranking Planner on the plain ROLES ladder', function () {
+  const j1 = addJourney('First');
+  const j2 = addJourney('Second');
+  const sub = addSubJourney(j1.id);
+  const it = addItem({ name: 'X' });
+  const j2OrderBefore = j2.order;
+  userRole = 'reviewer';
+  reorderItem(j2.id, j1.id);
+  assertEqual(j2.order, j2OrderBefore, 'Reviewer must not be able to reorder Journeys');
+  toggleJourneyConnection(it.id, true);
+  assertEqual(it.journeyId, null, 'Reviewer must not be able to link a scope item to a Sub Journey');
+  deleteItem(sub.id);
+  assertTrue(items.some(i => i.id === sub.id), 'Reviewer must not be able to delete a Sub Journey');
+});
+
+test('a Planner\'s other access rights are inherited from Visitor — ordinary scope items, workstreams, and categories stay off-limits', function () {
+  userRole = 'planner';
+  const wsBefore = workstreams.length;
+  document.getElementById('wsNameInput').value = 'Should not save';
+  saveWorkstream();
+  assertEqual(workstreams.length, wsBefore, 'a Planner must not be able to create/edit workstreams');
+
+  const itemsBefore = items.length;
+  openItemModal(null, workstreams[0] && workstreams[0].id); // a plain scope item, not a Journey
+  document.getElementById('itemNameInput').value = 'Should not save either';
+  saveItem();
+  assertEqual(items.length, itemsBefore, 'a Planner must not be able to create/edit an ordinary scope item');
+
+  assertFalse(hasRole('reviewer'), 'a Planner must not gain Reviewer\'s own review-cycle actions just by outranking it numerically were the ladder read naively');
 });
 
 // ---------- Reserved-category protections (deletion, pickers) already

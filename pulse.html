@@ -1586,7 +1586,7 @@
 <div class="modal-bg" id="roleModalBg">
   <div class="modal" style="width:440px">
     <h3 id="roleModalTitle">Choose your role</h3>
-    <p id="roleModalIntro">This is a workflow setting, not a security boundary — Pulse has no accounts or server, so it only guides what's shown/enabled in the UI. The role you pick is saved to this browser only, never written to a shared/synced data file — but Reviewer/Editor/Admin can each optionally require a password (set by an Admin, under Settings &gt; Role Passwords) to cut down on accidental switches. Only a salted hash of that password is stored in the shared data file, not the password itself — but the check still runs in this page's own code, so it's a soft deterrent, not real access control.</p>
+    <p id="roleModalIntro">This is a workflow setting, not a security boundary — Pulse has no accounts or server, so it only guides what's shown/enabled in the UI. The role you pick is saved to this browser only, never written to a shared/synced data file — but Planner/Reviewer/Editor/Admin can each optionally require a password (set by an Admin, under Settings &gt; Role Passwords) to cut down on accidental switches. Only a salted hash of that password is stored in the shared data file, not the password itself — but the check still runs in this page's own code, so it's a soft deterrent, not real access control.</p>
     <div class="theme-options" id="roleOptions"></div>
     <div id="roleModalPasswordStep" style="display:none">
       <p id="roleModalPasswordIntro" style="margin-top:0"></p>
@@ -1608,6 +1608,11 @@
   <div class="modal" style="width:420px">
     <h3>Role Passwords</h3>
     <p>Required to switch into that role from the role picker. Only a salted hash is stored, never the password itself, so these fields always start blank — type a new password to set or change one, and leave it blank to leave that role unchanged.</p>
+    <div class="field">
+      <label>Planner password</label>
+      <input type="text" id="rolePasswordPlannerInput">
+      <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400"><input type="checkbox" id="rolePasswordPlannerClear"> Remove password requirement</label>
+    </div>
     <div class="field">
       <label>Reviewer password</label>
       <input type="text" id="rolePasswordReviewerInput">
@@ -1833,17 +1838,52 @@ const MODES = ['planning', 'review', 'dashboard', 'journeys', 'admin'];
 // ROLES is an increasing ladder — each role can do everything the one before
 // it can, plus more (see hasRole()); it is never treated as a set of
 // independent, non-overlapping permissions.
-const ROLES = ['visitor', 'reviewer', 'editor', 'admin'];
+// Planner sits directly above Visitor, not between Reviewer and Editor — an
+// explicit user request ("create the role Planner... other access rights
+// should be inherited from visitor"). Placing it any higher in the ladder
+// would mean it also inherits Reviewer's review-cycle actions via the plain
+// cumulative hasRole() check below (roleLevel(userRole) >= roleLevel(min)),
+// which the request specifically ruled out — a Planner is Visitor-plus-
+// Journeys, nothing more. This does mean Planner is *not* a strict subset of
+// Reviewer the way every other adjacent pair in this ladder is (Editor is
+// still everything Reviewer can do, plus more; Reviewer is still everything
+// Visitor can do, plus more) — Planner is the one deliberate exception, a
+// sideways capability rather than another rung on the same staircase. See
+// canManageJourneys() below for how Journey access itself is actually
+// granted (a separate, non-ladder check), since the plain ladder alone can't
+// express "Planner and Editor+ can, but Reviewer can't" once Planner sits
+// below Reviewer.
+const ROLES = ['visitor', 'planner', 'reviewer', 'editor', 'admin'];
 const ROLE_META = {
   visitor: { label: 'Visitor', icon: 'fa-eye', desc: 'View Planning, Review, and Dashboard — no edits.' },
+  planner: { label: 'Planner', icon: 'fa-route', desc: 'Everything a Visitor can see, plus create/edit Journeys and Sub Journeys, and link/delink scope items to them.' },
   reviewer: { label: 'Reviewer', icon: 'fa-clipboard-check', desc: 'Everything a Visitor can see, plus run review cycles, attach meeting minutes, and manage the Action Log.' },
-  editor: { label: 'Editor', icon: 'fa-pen', desc: 'Everything a Reviewer can do, plus create/edit/delete workstreams, scope items, milestones, and categories.' },
+  editor: { label: 'Editor', icon: 'fa-pen', desc: 'Everything a Reviewer can do, plus create/edit/delete workstreams, scope items, milestones, and categories (including Journeys/Sub Journeys, same as a Planner).' },
   admin: { label: 'Admin', icon: 'fa-user-shield', desc: 'Everything an Editor can do, plus import/restore data.' }
 };
 function roleLevel(r) { return ROLES.indexOf(r); }
 // True once the *current* role's level is at or above minRole's — e.g.
 // hasRole('editor') is also true for a reviewer or admin, per the ladder.
+// NOT true for Planner against 'reviewer'/'editor' — Planner's ladder
+// position (directly above Visitor) is deliberately below both, per
+// canManageJourneys()'s own comment above.
 function hasRole(minRole) { return roleLevel(userRole) >= roleLevel(minRole); }
+// Journey/Sub Journey management's own access check — deliberately not a
+// plain hasRole() call. Planner sits below Reviewer/Editor in the ladder
+// (see ROLES' own comment above), so a Planner can create/edit Journeys and
+// link/delink scope items to them, and so can an Editor/Admin (who already
+// could, unchanged, via the plain hasRole('editor') half of this check) —
+// but a Reviewer, despite outranking Planner on the ladder, is deliberately
+// excluded, since Journey management was never asked to fold into Reviewer's
+// own capabilities. Used everywhere a Journey/Sub Journey-specific action
+// would otherwise gate on hasRole('editor')/requireRole('editor') — see
+// "Roles (RBAC)" in CLAUDE.md.
+function canManageJourneys() { return userRole === 'planner' || hasRole('editor'); }
+function requireJourneyAccess() {
+  if (canManageJourneys()) return true;
+  showToast('Planner or Editor role required for this action', true);
+  return false;
+}
 // Defense-in-depth guard for every state-mutating function below (the real,
 // user-facing gate is hiding/disabling the controls themselves in the render
 // functions — see "Role-based UI" in CLAUDE.md) — shows a toast and returns
@@ -2970,7 +3010,7 @@ function renderJourneys() {
   // no workstream/category/milestones to ask for up front anyway (see
   // "Journeys" in CLAUDE.md), so the modal was never asking for more than a
   // name here in practice — this just skips opening it at all.
-  const addRow = hasRole('editor')
+  const addRow = canManageJourneys()
     ? (journeyQuickAddOpen
         ? `<div class="ws-section-add"><input type="text" class="inline-quick-add-input" id="journeyQuickAddInput" placeholder="Journey name" onkeydown="if(event.key==='Enter') saveJourneyQuickAddItem(); if(event.key==='Escape') cancelJourneyQuickAdd();" onblur="saveJourneyQuickAddItem()"></div>`
         : `<div class="ws-section-add"><button class="btn btn-sm" onclick="openJourneyQuickAdd()"><i class="fa-solid fa-plus"></i> Add Journey</button></div>`)
@@ -3024,10 +3064,6 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   const applicableTotal = applicableMilestones.length;
   const done = applicableMilestones.filter(m => m.status === 'complete').length;
   const expanded = expandedItemIds.has(it.id);
-  // The single source of truth every editing affordance below checks,
-  // instead of calling hasRole('editor') directly — folds viewOnly in
-  // alongside the role check so nothing has to be special-cased twice.
-  const editable = !viewOnly && hasRole('editor');
   // Neither a Journey nor a Sub Journey has milestones to expand — a
   // Journey expands to show its connected Sub Journeys, and a Sub Journey
   // expands to show its own connected scope items instead (see
@@ -3044,6 +3080,15 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // there's no other on-row signal that expanding one does anything.
   const isJourney = it.itemType === 'journey';
   const isSubJourney = it.itemType === 'subjourney';
+  // The single source of truth every editing affordance below checks,
+  // instead of calling hasRole('editor') directly — folds viewOnly in
+  // alongside the role check so nothing has to be special-cased twice. A
+  // Journey/Sub Journey's own row uses canManageJourneys() instead of the
+  // plain hasRole('editor') an ordinary scope item's row uses — a Planner
+  // can edit these rows (rename, drag-reorder, connect scope items) despite
+  // not otherwise holding Editor-tier access — see canManageJourneys()'s
+  // own comment near ROLES above.
+  const editable = !viewOnly && ((isJourney || isSubJourney) ? canManageJourneys() : hasRole('editor'));
   const subJourneys = isJourney ? connectedSubJourneys(it.id) : [];
   const connected = isSubJourney ? connectedScopeItems(it.id) : [];
   const expandable = total || isJourney || isSubJourney;
@@ -4040,7 +4085,7 @@ async function verifyRolePassword(password, stored) {
   if (!stored) return false;
   return (await sha256Hex(stored.salt + ':' + password)) === stored.hash;
 }
-// Reviewer/Editor/Admin can each optionally require a password (set by an
+// Planner/Reviewer/Editor/Admin can each optionally require a password (set by an
 // Admin — see saveRolePasswords()) before switching into them; Visitor never
 // does (it's the base, view-only role — nothing to gate), and any role an
 // Admin hasn't set a password for yet (programme.rolePasswords[role] ===
@@ -4377,13 +4422,15 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
     ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable }))
     : milestonesForCategory(defaultCategoryId, document.getElementById('itemDueInput').value);
   renderMilestonesEditor();
-  document.getElementById('itemDeleteBtn').style.display = (it && hasRole('editor')) ? 'inline-flex' : 'none';
   // Below Editor, the modal is still reachable to view an item's full detail —
   // just not to change or save anything. Disabling every field (rather than
   // omitting the modal entirely) is what makes "view only" actually mean you
   // can still read everything, same spirit as Plan dates/tags/status on the
-  // row itself (see itemRowHtml()).
-  const editable = hasRole('editor');
+  // row itself. A Journey/Sub Journey uses canManageJourneys() instead of the
+  // plain hasRole('editor') an ordinary item uses — see itemRowHtml()'s own
+  // editable and canManageJourneys()'s comment near ROLES above.
+  const editable = isJourneyLike ? canManageJourneys() : hasRole('editor');
+  document.getElementById('itemDeleteBtn').style.display = (it && editable) ? 'inline-flex' : 'none';
   ['itemNameInput', 'itemStartInput', 'itemDueInput', 'itemActualInput', 'itemWorkstreamSelect', 'itemCategorySelect', 'itemStatusSelect', 'itemDependencyInput', 'itemDependencySpocInput'].forEach(id => {
     document.getElementById(id).disabled = !editable;
   });
@@ -4597,11 +4644,14 @@ function removeMilestoneRow(idx) {
   renderMilestonesEditor();
 }
 function saveItem() {
-  if (!requireRole('editor')) return;
   // Captured before closeItemModal() (below) resets editingItemType back to
   // 'scope' for the next time the modal opens.
   const savingType = editingItemType;
   const savingJourneyLike = savingType === 'journey' || savingType === 'subjourney';
+  // A Journey/Sub Journey save is gated on canManageJourneys() (Planner or
+  // Editor+) instead of the plain requireRole('editor') an ordinary item
+  // save needs — see canManageJourneys()'s own comment near ROLES above.
+  if (!(savingJourneyLike ? requireJourneyAccess() : requireRole('editor'))) return;
   const name = document.getElementById('itemNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
   // A still-Pending item's workstream is likewise forced to stay whatever it
@@ -4952,7 +5002,7 @@ function applyScopeCategory(itemId, workstreamId, categoryId) {
 // see "Journeys" in CLAUDE.md), so the modal was never doing more here than
 // collecting a name; this just skips opening it.
 function openJourneyQuickAdd() {
-  if (!requireRole('editor')) return;
+  if (!requireJourneyAccess()) return;
   journeyQuickAddOpen = true;
   render();
   document.getElementById('journeyQuickAddInput')?.focus();
@@ -4999,7 +5049,7 @@ function saveJourneyQuickAddItem() {
 // unlike journeyQuickAddOpen, which only ever has one possible place to
 // render (renderJourneys()'s own single flat list).
 function openSubJourneyQuickAdd(journeyId) {
-  if (!requireRole('editor')) return;
+  if (!requireJourneyAccess()) return;
   subJourneyQuickAddOpenFor = journeyId;
   render();
   document.getElementById('subJourneyQuickAddInput')?.focus();
@@ -5056,7 +5106,7 @@ function saveSubJourneyQuickAddItem() {
 // CLAUDE.md).
 let journeyConnectItemId = null;
 function openJourneyConnectModal(subJourneyId) {
-  if (!requireRole('editor')) return;
+  if (!requireJourneyAccess()) return;
   const subJourney = items.find(i => i.id === subJourneyId);
   if (!subJourney) return;
   journeyConnectItemId = subJourneyId;
@@ -5107,7 +5157,7 @@ function renderJourneyConnectList() {
   document.getElementById('journeyConnectList').innerHTML = sections;
 }
 function toggleJourneyConnection(itemId, checked) {
-  if (!requireRole('editor')) return;
+  if (!requireJourneyAccess()) return;
   if (!journeyConnectItemId) return;
   const it = items.find(i => i.id === itemId);
   if (!it) return;
@@ -5145,10 +5195,18 @@ function dropOnItem(e, targetId) {
 // fractional value in between two neighbors, so order never needs a repair
 // pass and always exactly matches array position once sorted.
 function reorderItem(fromId, targetId) {
-  if (!requireRole('editor')) return;
   const dragged = items.find(i => i.id === fromId);
   const target = items.find(i => i.id === targetId);
-  if (!dragged || !target || dragged.workstreamId !== target.workstreamId) return;
+  if (!dragged || !target) return;
+  // Dragging a Journey/Sub Journey row is gated on canManageJourneys()
+  // (Planner or Editor+) instead of the plain requireRole('editor') dragging
+  // an ordinary item needs — see canManageJourneys()'s own comment near
+  // ROLES above. The dragged item's own type decides which check applies;
+  // it and the drop target always share a type in practice, since a drag
+  // is already scoped to one .journeys-list or one Planning section.
+  const isJourneyLike = dragged.itemType === 'journey' || dragged.itemType === 'subjourney';
+  if (!(isJourneyLike ? requireJourneyAccess() : requireRole('editor'))) return;
+  if (dragged.workstreamId !== target.workstreamId) return;
   const wsItems = items.filter(i => i.workstreamId === dragged.workstreamId).sort((a, b) => a.order - b.order);
   const fromIdx = wsItems.findIndex(i => i.id === fromId);
   const toIdx = wsItems.findIndex(i => i.id === targetId);
@@ -5205,9 +5263,13 @@ function deleteItemFromModal() {
 // the full edit modal's Delete button (deleteItemFromModal()) — since both
 // funnel through this one function.
 function deleteItem(id) {
-  if (!requireRole('editor')) return;
   const it = items.find(i => i.id === id);
   if (!it) return;
+  // A Journey/Sub Journey delete is gated on canManageJourneys() (Planner or
+  // Editor+) instead of the plain requireRole('editor') an ordinary item
+  // delete needs — see canManageJourneys()'s own comment near ROLES above.
+  const isJourneyLike = it.itemType === 'journey' || it.itemType === 'subjourney';
+  if (!(isJourneyLike ? requireJourneyAccess() : requireRole('editor'))) return;
   openConfirmModal({
     title: `Delete "${it.name}"?`,
     body: 'You can undo this from the toast right after deleting.',
@@ -6868,7 +6930,7 @@ function rolePasswordsSectionHtml() {
       <h2>Role Passwords</h2>
       <button class="btn btn-primary" onclick="openRolePasswordsModal()"><i class="fa-solid fa-key"></i> Manage</button>
     </div>
-    <p style="margin-bottom:16px">Optional per-role password required to switch into Reviewer, Editor, or Admin from the role picker. ${set.length ? `Currently set for: ${set.map(r => esc(ROLE_META[r].label)).join(', ')}.` : 'No passwords set yet — anyone can switch to any role.'}</p>`;
+    <p style="margin-bottom:16px">Optional per-role password required to switch into Planner, Reviewer, Editor, or Admin from the role picker. ${set.length ? `Currently set for: ${set.map(r => esc(ROLE_META[r].label)).join(', ')}.` : 'No passwords set yet — anyone can switch to any role.'}</p>`;
 }
 // Plain text inputs, not type="password" — this is an Admin setting the
 // values (not someone else entering one to unlock a role, which does mask
@@ -6879,13 +6941,14 @@ function rolePasswordsSectionHtml() {
 // one set; the placeholder says which state it's actually in instead.
 function openRolePasswordsModal() {
   if (!requireRole('admin')) return;
-  ['reviewer', 'editor', 'admin'].forEach(role => {
+  ['planner', 'reviewer', 'editor', 'admin'].forEach(role => {
     const input = document.getElementById(`rolePassword${role[0].toUpperCase()}${role.slice(1)}Input`);
     input.value = '';
     input.placeholder = programme.rolePasswords[role] ? 'Currently set — type a new password to change it' : 'No password set — type one to require it';
   });
   // Admin has no clear checkbox at all (see saveRolePasswords()) — nothing
   // to reset here for it.
+  document.getElementById('rolePasswordPlannerClear').checked = false;
   document.getElementById('rolePasswordReviewerClear').checked = false;
   document.getElementById('rolePasswordEditorClear').checked = false;
   document.getElementById('rolePasswordsModalBg').classList.add('open');
@@ -6893,7 +6956,7 @@ function openRolePasswordsModal() {
 function closeRolePasswordsModal() {
   document.getElementById('rolePasswordsModalBg').classList.remove('open');
 }
-// Reviewer/Editor can be freely turned on and off: the "Remove" checkbox
+// Planner/Reviewer/Editor can be freely turned on and off: the "Remove" checkbox
 // wins outright (drops the password requirement back to null, regardless
 // of anything typed alongside it), a non-blank field hashes and replaces
 // the password, and a blank field with "Remove" unchecked leaves the
@@ -6917,6 +6980,7 @@ async function saveRolePasswords() {
     const value = document.getElementById(inputId).value.trim();
     if (value) programme.rolePasswords[role] = await hashRolePassword(value);
   }
+  await applyOne('planner', 'rolePasswordPlannerInput', 'rolePasswordPlannerClear');
   await applyOne('reviewer', 'rolePasswordReviewerInput', 'rolePasswordReviewerClear');
   await applyOne('editor', 'rolePasswordEditorInput', 'rolePasswordEditorClear');
   await applyOne('admin', 'rolePasswordAdminInput', null);
