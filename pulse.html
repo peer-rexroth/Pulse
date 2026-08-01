@@ -598,6 +598,18 @@
   }
   .item-row:last-child { border-bottom: none; }
   .item-row:hover { background: var(--panel-2); }
+  /* Visually nests a Sub Journey's own row under its parent Journey, and a
+     Sub Journey's connected scope items one level further under that —
+     an explicit user request ("in journey view, indent subjourney"). Plain
+     extra left padding on top of .item-row's own 14px base, rather than a
+     wrapper element or margin, so the row's own border-bottom still spans
+     the card's full width (a wrapper/margin wouldn't) — the same reasoning
+     already documented for the asymmetric left/right padding above. This
+     deliberately does NOT try to keep columns strictly aligned with an
+     unindented row's own — narrowing the grid's available width per
+     indent level is exactly what signals nesting depth here. */
+  .item-row-indent-1 { padding-left: 34px; }
+  .item-row-indent-2 { padding-left: 54px; }
   .item-chevron { text-align: center; color: var(--text-faint); cursor: pointer; }
   .item-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Marks a Journey's row apart from an ordinary scope item's — see
@@ -3214,7 +3226,12 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   const connectBtnHtml = isSubJourney
     ? `<button class="row-icon-btn" onclick="openJourneyConnectModal('${it.id}')" title="Connect scope items"><i class="fa-solid fa-link"></i></button>`
     : '';
-  return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''}"${dragAttrs}>
+  // Nests a Sub Journey's own row visually under its parent Journey, and a
+  // Sub Journey's own connected scope items (always rendered viewOnly, and
+  // only ever rendered nested under one — see viewOnly's own comment above)
+  // one level further under that — see .item-row-indent-1/-2's own comment.
+  const indentClass = isSubJourney ? 'item-row-indent-1' : viewOnly ? 'item-row-indent-2' : '';
+  return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''} ${indentClass}"${dragAttrs}>
       ${chevron}
       <span class="item-name" style="grid-column: 2 / 4">${journeyBadgeHtml}${esc(it.name)}</span>
       ${milestoneBadge}
