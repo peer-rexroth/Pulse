@@ -415,6 +415,64 @@ test('updateMilestoneDateField recomputes the parent item\'s plan date range imm
   assertEqual(items[0].dueDate, '2099-12-31', 'a milestone pushed further out should widen the item\'s computed due date');
 });
 
+// ---------- Pending auto-advances to Not Started once it receives a due date ----------
+
+test('updateMilestoneDateField auto-advances a pending milestone to not-started the moment it receives a due date', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  it.milestones = [it.milestones[0]]; // isolate to one milestone so the item's own roll-up is unambiguous
+  assertEqual(it.milestones[0].status, 'pending', 'sanity check');
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'dueDate', '2026-09-01');
+  assertEqual(items[0].milestones[0].status, 'not-started');
+  assertEqual(items[0].status, 'not-started', 'the item\'s own roll-up must be recomputed too, not just the milestone');
+});
+
+test('updateMilestoneDateField does not auto-advance a milestone that is not pending', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  it.milestones[0].status = 'red';
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'dueDate', '2026-09-01');
+  assertEqual(items[0].milestones[0].status, 'red', 'a real, hand-set status must never be silently overwritten');
+});
+
+test('updateMilestoneDateField does not auto-advance on an actual-date edit, only a due-date one', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'dueDate', '2026-09-01'); // first give it a real due date (also advances it)
+  it.milestones[0].status = 'pending'; // then simulate it somehow being pending again
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'actualDate', '2026-09-05');
+  assertEqual(items[0].milestones[0].status, 'pending', 'Actual is about completion, not planning — it must not trigger the advance');
+});
+
+test('updateMilestoneDateField auto-advance is logged to the active review cycle as its own statusChange entry', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  startReviewCycle(it.workstreamId);
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'dueDate', '2026-09-01');
+  const cycle = activeReviewCycle(it.workstreamId);
+  const statusEntry = cycle.changeLog.find(e => e.statusChange);
+  assertTrue(!!statusEntry, 'a statusChange entry should have been logged alongside the dateChange one');
+  assertEqual(statusEntry.statusChange.oldValue, 'pending');
+  assertEqual(statusEntry.statusChange.newValue, 'not-started');
+});
+
+test('saveItem also auto-advances a pending milestone that received a due date via the modal\'s own plain input', function () {
+  openItemModal(null);
+  assertEqual(editingMilestones[0].status, 'pending');
+  editingMilestones[0].dueDate = '2026-09-01';
+  fillItemForm({});
+  saveItem();
+  assertEqual(items[0].milestones[0].status, 'not-started');
+});
+
 test('the item modal shows a read-only computed date range when milestones exist, and editable Start/Due inputs when they don\'t', function () {
   openItemModal(null);
   assertEqual(document.getElementById('itemDatesManual').style.display, 'none');

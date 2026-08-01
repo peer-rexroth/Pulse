@@ -204,8 +204,8 @@ test('renderSidebar renders the External Deliveries nav row last in the top nav 
   const allIdx = html.indexOf('All Workstreams');
   const journeysIdx = html.indexOf('Journeys');
   const extIdx = html.indexOf('External Deliveries');
-  assertTrue(allIdx < journeysIdx, 'Journeys must sit after "All Workstreams"');
-  assertTrue(journeysIdx < extIdx, 'External Deliveries must sit after Journeys, last in the top group');
+  assertTrue(journeysIdx < allIdx, 'Journeys must sit before "All Workstreams"');
+  assertTrue(allIdx < extIdx, 'External Deliveries must sit after "All Workstreams", last in the top group');
   assertNotIncludes(document.getElementById('wsList').innerHTML, 'External Deliveries', 'the real workstream list (#wsList) no longer holds this row at all');
   assertIncludes(html, '<span class="ws-row-count">2</span>', 'the row shows a live count of externally-delivered items across every workstream');
 });
@@ -323,6 +323,50 @@ test('a milestone with no actual date shows a "+" ghost instead of an empty edit
   assertIncludes(html, 'actual-date-ghost');
   assertIncludes(html, `revealActualDate('${it.milestones[0].id}')`);
   assertNotIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','actualDate'`, 'no editable Actual input should render until the ghost is clicked');
+});
+
+// ---------- The Actual ghost is disabled until a due date exists ----------
+// An explicit user request: recording when something actually finished
+// doesn't make sense before it's even been given a planned date — the
+// common case now that a fresh 'pending' milestone starts with
+// dueDate:null (see "Pending status" in CLAUDE.md).
+
+test('the Actual ghost renders disabled (not clickable) when the milestone has no due date yet', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Undated milestone', dueDate: null, status: 'pending', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'actual-date-ghost');
+  assertIncludes(html, 'disabled');
+  assertNotIncludes(html, `revealActualDate('${it.milestones[0].id}')`, 'no click handler should be wired up while disabled');
+});
+
+test('revealActualDate is not reachable while the Actual ghost is disabled — a due date must be set first', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Undated milestone', dueDate: null, status: 'pending', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'dueDate', '2026-09-01');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `revealActualDate('${it.milestones[0].id}')`, 'once a due date exists, the ghost becomes clickable');
+  assertNotIncludes(html, 'actual-date-ghost" disabled');
+});
+
+test('an already-set Actual date still renders as a normal editable pill even with no due date', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Undated milestone', dueDate: null, status: 'pending', actualDate: '2026-08-01' }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'actual-date-ghost', 'an already-set Actual date is never a ghost, regardless of Due');
+  assertIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','actualDate'`);
 });
 
 test('revealActualDate swaps a milestone\'s "+" ghost for a real editable input', function () {

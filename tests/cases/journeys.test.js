@@ -611,17 +611,17 @@ test('setMode("journeys") is a valid mode, renders into the shared scopedBody/ma
   assertEqual(document.getElementById('adminBody').style.display, 'none');
 });
 
-test('renderSidebar renders a Journeys nav row in the top nav group, between "All Workstreams" and "External Deliveries", showing the current Journey count and highlighted only in Journeys mode', function () {
+test('renderSidebar renders a Journeys nav row in the top nav group, before "All Workstreams" and "External Deliveries", showing the current Journey count and highlighted only in Journeys mode', function () {
   addJourney('First Journey');
   addJourney('Second Journey');
   setMode('planning');
   let html = document.getElementById('topNavList').innerHTML;
   assertIncludes(html, 'Journeys');
   assertIncludes(html, '>2<', 'the count badge should show allJourneys().length');
-  const allIdx = html.indexOf('All Workstreams');
   const journeysIdx = html.indexOf('Journeys');
+  const allIdx = html.indexOf('All Workstreams');
   const extIdx = html.indexOf('External Deliveries');
-  assertTrue(allIdx < journeysIdx && journeysIdx < extIdx, 'order must be All Workstreams -> Journeys -> External Deliveries');
+  assertTrue(journeysIdx < allIdx && allIdx < extIdx, 'order must be Journeys -> All Workstreams -> External Deliveries');
   assertNotIncludes(html, 'ws-row active', 'not active while on Planning');
 
   setMode('journeys');

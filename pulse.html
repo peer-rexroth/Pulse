@@ -654,6 +654,12 @@
     cursor: pointer; padding: 0; opacity: .55;
   }
   .actual-date-ghost:hover, .due-date-ghost:hover { background: var(--panel-2); opacity: 1; color: var(--text-dim); }
+  /* The Actual ghost's own disabled state (no due date yet — see
+     milestoneRowsHtml()'s actualGhostOpenable) — higher specificity than
+     the plain :hover rule above (one extra pseudo-class), so hovering a
+     disabled ghost doesn't still lighten it up the way a real one does. */
+  .actual-date-ghost:disabled { cursor: default; opacity: .3; }
+  .actual-date-ghost:disabled:hover { background: transparent; opacity: .3; color: var(--text-faint); }
   .status-badge { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; cursor: pointer; border: none; justify-self: start; }
   .item-tags { display: flex; gap: 4px; flex-wrap: wrap; }
   .tag-badge { font-size: 11px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; padding: 0; border-radius: 6px; cursor: pointer; border: none; line-height: 1; }
@@ -2439,34 +2445,37 @@ function renderSidebar() {
   // (and restored, visually) on switching back to Planning/Review/
   // Dashboard, not lost the moment either of these modes is opened.
   const inWorkstreamScope = mode !== 'journeys' && mode !== 'external';
-  // The top nav group — All Workstreams, Journeys, External Deliveries, in
+  // The top nav group — Journeys, All Workstreams, External Deliveries, in
   // that order — an explicit user request for a single ordered block above
-  // a separator, ahead of the real workstream list below it. This replaces
-  // two earlier, separate designs: Journeys used to get its own labeled
-  // section (its own #journeysNav container, under a "Journeys" heading)
-  // and External Delivery used to sit as the 2nd row inside #wsList itself
-  // (directly under "All Workstreams", ahead of the real workstream rows) —
-  // labeled "External Delivery" (singular) at the time, later pluralized to
+  // a separator, ahead of the real workstream list below it. Journeys and
+  // All Workstreams were swapped from their original order (All Workstreams
+  // first) per a later, separate explicit user request; External Deliveries
+  // has stayed last throughout both. This replaces two earlier, separate
+  // designs: Journeys used to get its own labeled section (its own
+  // #journeysNav container, under a "Journeys" heading) and External
+  // Delivery used to sit as the 2nd row inside #wsList itself (directly
+  // under "All Workstreams", ahead of the real workstream rows) — labeled
+  // "External Delivery" (singular) at the time, later pluralized to
   // "External Deliveries" to match Journeys/Workstreams' own plural-noun
   // convention for a row that names a whole list of things, not a
   // yes/no field the way the item modal's own "External Delivery" checkbox
   // still reads.
-  // Both are now built together into #topNavList instead, with #wsList left
-  // holding only the real, per-workstream rows. The actual separator line
-  // is a dedicated static element, `.sidebar-divider` (see the static HTML
-  // shell + that class's own CSS comment) — not drawn by any of these rows
-  // themselves, so it can't go missing/move if this group's own order ever
-  // changes again.
+  // All three are built together into #topNavList instead, with #wsList
+  // left holding only the real, per-workstream rows. The actual separator
+  // line is a dedicated static element, `.sidebar-divider` (see the static
+  // HTML shell + that class's own CSS comment) — not drawn by any of these
+  // rows themselves, so it can't go missing/move if this group's own order
+  // ever changes again.
   document.getElementById('topNavList').innerHTML = `
-    <div class="ws-row ws-row-all ${inWorkstreamScope && filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
-      <i class="fa-solid fa-layer-group ws-row-all-icon"></i>
-      <span class="ws-row-name">All Workstreams</span>
-      <span class="ws-row-count">${items.length}</span>
-    </div>
     <div class="ws-row ${mode === 'journeys' ? 'active' : ''}" onclick="setMode('journeys')" title="Journeys">
       <i class="fa-solid fa-route ws-row-all-icon" style="color:${mode === 'journeys' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
       <span class="ws-row-name">Journeys</span>
       <span class="ws-row-count">${allJourneys().length}</span>
+    </div>
+    <div class="ws-row ws-row-all ${inWorkstreamScope && filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
+      <i class="fa-solid fa-layer-group ws-row-all-icon"></i>
+      <span class="ws-row-name">All Workstreams</span>
+      <span class="ws-row-count">${items.length}</span>
     </div>
     <div class="ws-row ${mode === 'external' ? 'active' : ''}" onclick="setMode('external')" title="External Deliveries">
       <i class="fa-solid fa-globe ws-row-all-icon" style="color:${mode === 'external' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
@@ -3168,8 +3177,22 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // (a planned/logged-ahead completion) isn't a problem yet, just a plan —
     // red is reserved for a late finish that's already occurred.
     const actualLate = !m.notApplicable && m.actualDate && m.dueDate && m.actualDate > m.dueDate && m.actualDate <= todayStr();
+    // The Actual ghost itself is disabled (greyed, not clickable) while
+    // there's no due date yet — an explicit user request: recording when
+    // something actually finished doesn't make sense before it's even been
+    // given a planned date (the common case now that a fresh 'pending'
+    // milestone starts with dueDate:null — see "Pending status" in
+    // CLAUDE.md). This only gates the ghost's ability to *open*; an Actual
+    // date that's already set (however it got there — hand-edited data, an
+    // import, or set before this restriction existed) still renders as the
+    // normal, fully editable pill regardless of whether a due date exists.
+    const actualGhostOpenable = actualEditable && !!m.dueDate;
     const actualHtml = (!m.actualDate && !revealedActualIds.has(m.id))
-      ? (actualEditable ? `<button class="actual-date-ghost" title="Set an actual date — only needed if this milestone finished on a different date than planned" onclick="revealActualDate('${m.id}')"><i class="fa-solid fa-plus"></i></button>` : '')
+      ? (actualEditable
+          ? (actualGhostOpenable
+              ? `<button class="actual-date-ghost" title="Set an actual date — only needed if this milestone finished on a different date than planned" onclick="revealActualDate('${m.id}')"><i class="fa-solid fa-plus"></i></button>`
+              : `<button class="actual-date-ghost" disabled title="Set a due date first"><i class="fa-solid fa-plus"></i></button>`)
+          : '')
       : dateInputHtml(m.actualDate, `id="actual-input-${m.id}" ${actualLate ? 'title="Finished after its Due date"' : ''} ${actualEditable ? `onchange="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value)" onblur="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)" ${isRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealActualDate('${m.id}')"` : ''}` : 'disabled'}`, actualLate ? 'pill-overdue' : '');
     // The status badge freezes to a plain "N/A" while notApplicable — never
     // cycleable, and deliberately not showing whatever RAG color m.status
@@ -3376,12 +3399,30 @@ function updateMilestoneDateField(itemId, milestoneId, field, value) {
   m.updatedAt = Date.now();
   const oldDue = m.dueDate;
   const oldActual = m.actualDate;
+  const oldStatus = m.status;
   m[field] = value;
+  // A milestone that had no date planned at all (status 'pending' — see
+  // "Pending status" in CLAUDE.md) automatically graduates to 'not-started'
+  // the instant it actually receives a real due date — an explicit user
+  // request ("as soon as one milestone... has received a date, switch
+  // status from Pending to Not Started"). Deliberately scoped to Due only
+  // (Actual is about completion, not planning — receiving one doesn't mean
+  // this milestone was ever actually planned) and only forward: setting a
+  // date is what graduates it, but clearing one back to empty (revealing an
+  // Actual ghost and then cancelling, or a Due edit landing back on the
+  // stored value) never reverts an already-Not-Started milestone back to
+  // Pending — nothing else in this app un-does a status this way either.
+  const autoAdvanced = field === 'dueDate' && oldStatus === 'pending' && !!value && !m.notApplicable;
+  if (autoAdvanced) m.status = 'not-started';
   // A milestone's due/actual date is one of the inputs to the item's own
   // computed plan date range — keep it in sync immediately, same as
-  // cycleMilestoneStatus() does for the computed status.
+  // cycleMilestoneStatus() does for the computed status. The status roll-up
+  // itself is normally untouched by a plain date edit (dates don't factor
+  // into computedStatusFromMilestones()) — recomputed here only because the
+  // auto-advance just above may have actually changed what it's rolling up.
   const range = computedDateRangeFromMilestones(it.milestones);
   if (range) { it.startDate = range.startDate; it.dueDate = range.dueDate; }
+  if (autoAdvanced) it.status = computedStatusFromMilestones(it.milestones);
   // For an actual date, "former" is whatever actual date was already there,
   // or — if this is the first one — the milestone's own plan (due) date, so
   // the log always reads as a real before→after transition rather than just
@@ -3398,6 +3439,11 @@ function updateMilestoneDateField(itemId, milestoneId, field, value) {
     dateChange = { label: 'Due', oldValue: oldDue, newValue: value };
   }
   logReviewChange(it.workstreamId, it.name, m.name, changeText, { dateChange, itemId: it.id, milestoneId: m.id });
+  // Logged as its own separate change-log entry, the same statusChange
+  // shape cycleMilestoneStatus() itself uses — a reviewer reading the
+  // change log later should see "Status changed to Not Started" as a real
+  // entry, not something silently folded into the date-change line above.
+  if (autoAdvanced) logReviewChange(it.workstreamId, it.name, m.name, `Status changed to ${statusLabel(m.status)}`, { statusChange: { oldValue: oldStatus, newValue: m.status }, itemId: it.id, milestoneId: m.id });
   save(); render();
 }
 
@@ -4207,9 +4253,18 @@ function saveItem() {
     && editingItemForSave.categoryId !== categoryId && !editingItemForSave.milestones.length);
   const milestones = zeroMilestoneCategorySwitch
     ? milestonesForCategory(categoryId, editingItemForSave.dueDate)
-    : editingMilestones.map(m => ({
-        id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate: (m.notApplicable || m.status === 'pending') ? (m.dueDate || null) : (m.dueDate || manualDueDate), status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable, updatedAt: Date.now()
-      }));
+    : editingMilestones.map(m => {
+        const dueDate = (m.notApplicable || m.status === 'pending') ? (m.dueDate || null) : (m.dueDate || manualDueDate);
+        // Same auto-advance updateMilestoneDateField() applies to the status
+        // board's own inline edit (see that function's own comment) —
+        // mirrored here so typing a due date directly into this modal's
+        // plain input (which has no ghost/reveal of its own — see
+        // renderMilestonesEditor()) has the identical effect on Save,
+        // rather than the two editing surfaces disagreeing about whether
+        // "received a date" counts.
+        const status = (m.status === 'pending' && !!dueDate && !m.notApplicable) ? 'not-started' : m.status;
+        return { id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate, status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable, updatedAt: Date.now() };
+      });
   // An item with milestones always gets its status AND plan date range
   // computed from them — the Status <select> and Start/Due <input>s are only
   // read, and only shown, when there are none to compute from. See
