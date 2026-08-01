@@ -532,15 +532,18 @@
   }
   .search-box .search-clear-btn:hover { color: var(--text); background: var(--panel); }
 
-  /* Quick-filter status chips (renderPlanningStatusChips()/
-     setPlanningStatusFilter()) — a lighter alternative to a full saved-
-     filter-presets feature: one toggle chip per STATUSES entry, single-
-     select (clicking the active one again clears it), composing with the
-     search box above via a plain AND. Each chip's own RAG color is passed
-     in as inline custom properties (--chip-color/--chip-bg) rather than a
-     per-status CSS class, since the status set itself lives in STATUSES
-     (JS), not in this stylesheet. */
-  .status-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  /* Quick-filter chips (renderPlanningStatusChips()/setPlanningStatusFilter()/
+     setPlanningExternalFilter()) — a lighter alternative to a full saved-
+     filter-presets feature: one toggle chip per STATUSES entry (single-
+     select — clicking the active one again clears it) plus, after a small
+     divider, a standalone External Deliveries on/off toggle — an explicit
+     user request, folded in here after starting life as its own separate
+     mode/topbar button (see "External Delivery" in CLAUDE.md). All compose
+     with the search box and each other via a plain AND. Each chip's own
+     color is passed in as inline custom properties (--chip-color/--chip-bg)
+     rather than a per-status CSS class, since the status set itself lives
+     in STATUSES (JS), not in this stylesheet. */
+  .status-filter-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
   .status-filter-chip {
     font-size: 11.5px; font-weight: 700; padding: 4px 11px; border-radius: 999px;
     border: 1px solid var(--border); background: var(--panel); color: var(--text-dim);
@@ -548,6 +551,10 @@
   }
   .status-filter-chip:hover { border-color: var(--chip-color); color: var(--chip-color); }
   .status-filter-chip.active { background: var(--chip-bg); color: var(--chip-color); border-color: var(--chip-color); }
+  /* Separates the 6 status chips from the standalone External Deliveries
+     toggle right after them — a plain vertical rule, sized to roughly a
+     chip's own height rather than stretching the full row height. */
+  .chip-divider { width: 1px; height: 18px; background: var(--border); flex: 0 0 auto; margin: 0 2px; }
 
   .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-faint); gap: 10px; text-align: center; }
   .empty-state i { font-size: 34px; opacity: .5; }
@@ -1758,7 +1765,7 @@ const DEFAULT_CATEGORIES = [
 const DEFAULT_CATEGORY_MILESTONES = DEFAULT_CATEGORIES[0].milestones;
 const DAY_MS = 86400000;
 const REVIEW_STALE_DAYS = 30;
-const MODES = ['planning', 'review', 'dashboard', 'journeys', 'external', 'admin'];
+const MODES = ['planning', 'review', 'dashboard', 'journeys', 'admin'];
 
 // ---------- Roles (RBAC) ----------
 // A soft, UI-level permission ladder, NOT real access control — there's no
@@ -1847,6 +1854,16 @@ let planningSearchQuery = '';
 // persisted, reset on reload — same treatment as planningSearchQuery, and
 // composes with it the same way (both independently narrow the board).
 let planningStatusFilter = null;
+// The "External Deliveries" quick-filter chip's own on/off state — a plain
+// boolean toggle, not a STATUSES id, sitting in the same chip row as
+// planningStatusFilter but visually set apart from it by a small divider
+// (see renderPlanningStatusChips()). UI-only, not persisted, composes with
+// both the search box and the status filter the same way they compose with
+// each other. This started as its own separate mode/topbar button/sidebar
+// nav row (`mode === 'external'`, renderExternalDelivery()) before an
+// explicit user request folded it into Planning's own quick-filter row
+// instead, alongside the status chips.
+let planningExternalFilter = false;
 // Which review-history entries currently show their change log — UI-only, not persisted.
 let expandedHistoryIds = new Set();
 // Which workstreams currently show their full review history instead of just
@@ -2407,13 +2424,16 @@ function render() {
   document.getElementById('programmeNameDisplay').textContent = programme.name;
   updateRoleBtn();
   // 'journeys' is excluded here — its entry point is the sidebar's own
-  // #topNavList row now (see renderSidebar()), not a #tab<Mode> topbar
-  // button, so it sets its own 'active' class as part of that row's markup
-  // instead of through this generic id-based lookup. 'external' is excluded
-  // for the identical reason — its own sidebar row (see renderSidebar())
-  // sets its 'active' class directly too, since it has no #tabExternal
-  // topbar button either.
-  MODES.filter(m => m !== 'journeys' && m !== 'external').forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
+  // #topNavList row, not a #tab<Mode> topbar button, so it sets its own
+  // 'active' class as part of that row's markup instead of through this
+  // generic id-based lookup. 'external' used to be excluded for the
+  // identical reason (its own sidebar row) — no longer: a later, explicit
+  // user request ("move External Deliveries... to the top navigation bar,
+  // detached from... Planning/Dashboard/Review") moved its entry point out
+  // of the sidebar into its own plain #tabExternal button (see "External
+  // Delivery" in CLAUDE.md), so it now picks up its 'active' state through
+  // this same generic loop like Dashboard/Review/Planning/Admin do.
+  MODES.filter(m => m !== 'journeys').forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
   document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
   document.getElementById('planningSearchToolbar').style.display = mode === 'planning' ? '' : 'none';
@@ -2449,8 +2469,6 @@ function render() {
     renderDashboard();
   } else if (mode === 'journeys') {
     renderJourneys();
-  } else if (mode === 'external') {
-    renderExternalDelivery();
   } else if (mode === 'admin') {
     renderAdmin();
   }
@@ -2462,38 +2480,36 @@ function setMode(m) {
 function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
   // Neither "All Workstreams" nor any real workstream row shows as active
-  // while Journeys or External Deliveries mode is showing — a user-reported
-  // bug (for Journeys originally): filterWorkstreamId stays whatever it
-  // last was (both of these ignore it entirely, see
-  // renderJourneys()/renderExternalDelivery()), so the workstream row
-  // someone had selected before switching stayed visually highlighted even
-  // though nothing on screen was actually scoped to it any more.
-  // inWorkstreamScope gates both active checks below rather than clearing
-  // filterWorkstreamId itself — the selection should still be remembered
-  // (and restored, visually) on switching back to Planning/Review/
-  // Dashboard, not lost the moment either of these modes is opened.
-  const inWorkstreamScope = mode !== 'journeys' && mode !== 'external';
-  // The top nav group — Journeys, All Workstreams, External Deliveries, in
-  // that order — an explicit user request for a single ordered block above
-  // a separator, ahead of the real workstream list below it. Journeys and
-  // All Workstreams were swapped from their original order (All Workstreams
-  // first) per a later, separate explicit user request; External Deliveries
-  // has stayed last throughout both. This replaces two earlier, separate
-  // designs: Journeys used to get its own labeled section (its own
-  // #journeysNav container, under a "Journeys" heading) and External
-  // Delivery used to sit as the 2nd row inside #wsList itself (directly
-  // under "All Workstreams", ahead of the real workstream rows) — labeled
-  // "External Delivery" (singular) at the time, later pluralized to
-  // "External Deliveries" to match Journeys/Workstreams' own plural-noun
-  // convention for a row that names a whole list of things, not a
-  // yes/no field the way the item modal's own "External Delivery" checkbox
-  // still reads.
-  // All three are built together into #topNavList instead, with #wsList
-  // left holding only the real, per-workstream rows. The actual separator
-  // line is a dedicated static element, `.sidebar-divider` (see the static
-  // HTML shell + that class's own CSS comment) — not drawn by any of these
-  // rows themselves, so it can't go missing/move if this group's own order
-  // ever changes again.
+  // while Journeys mode is showing — a user-reported bug: filterWorkstreamId
+  // stays whatever it last was (Journeys ignores it entirely, see
+  // renderJourneys()), so the workstream row someone had selected before
+  // switching stayed visually highlighted even though nothing on screen was
+  // actually scoped to it any more. inWorkstreamScope gates both active
+  // checks below rather than clearing filterWorkstreamId itself — the
+  // selection should still be remembered (and restored, visually) on
+  // switching back to Planning/Review/Dashboard, not lost the moment
+  // Journeys is opened. External Deliveries used to need this same
+  // treatment (it used to ignore filterWorkstreamId too) — no longer: a
+  // later, explicit user request moved it out of this sidebar group
+  // entirely into its own topbar button and made it genuinely respect the
+  // shared selector (see "External Delivery" in CLAUDE.md), so a workstream
+  // row correctly reads as active while External Deliveries mode is
+  // showing, same as Planning/Review/Dashboard.
+  const inWorkstreamScope = mode !== 'journeys';
+  // The top nav group — Journeys, then All Workstreams — an explicit user
+  // request for a single ordered block above a separator, ahead of the real
+  // workstream list below it. Journeys and All Workstreams were swapped
+  // from their original order (All Workstreams first) per a later, separate
+  // explicit user request. External Deliveries used to be the 3rd row here
+  // too — moved out into its own topbar button instead (see "External
+  // Delivery" in CLAUDE.md), so this group is back to two rows. This
+  // replaces an even earlier design: Journeys used to get its own labeled
+  // section (its own #journeysNav container, under a "Journeys" heading).
+  // Both rows are built together into #topNavList, with #wsList left
+  // holding only the real, per-workstream rows. The actual separator line
+  // is a dedicated static element, `.sidebar-divider` (see the static HTML
+  // shell + that class's own CSS comment) — not drawn by either row itself,
+  // so it can't go missing/move if this group's own order ever changes again.
   document.getElementById('topNavList').innerHTML = `
     <div class="ws-row ${mode === 'journeys' ? 'active' : ''}" onclick="setMode('journeys')" title="Journeys">
       <i class="fa-solid fa-route ws-row-all-icon" style="color:${mode === 'journeys' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
@@ -2504,11 +2520,6 @@ function renderSidebar() {
       <i class="fa-solid fa-layer-group ws-row-all-icon"></i>
       <span class="ws-row-name">All Workstreams</span>
       <span class="ws-row-count">${items.length}</span>
-    </div>
-    <div class="ws-row ${mode === 'external' ? 'active' : ''}" onclick="setMode('external')" title="External Deliveries">
-      <i class="fa-solid fa-globe ws-row-all-icon" style="color:${mode === 'external' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
-      <span class="ws-row-name">External Deliveries</span>
-      <span class="ws-row-count">${allExternalDeliveryItems().length}</span>
     </div>`;
   const el = document.getElementById('wsList');
   el.innerHTML = workstreams.map(w => {
@@ -2591,21 +2602,42 @@ function clearPlanningSearch() {
 function matchesPlanningStatusFilter(it) {
   return !planningStatusFilter || it.status === planningStatusFilter;
 }
-// Rebuilds the chip row from STATUSES + the current selection — cheap
-// enough (6 small buttons) to call on every render() regardless of mode,
-// same as renderSidebar() already does, rather than threading a
-// mode==='planning' check through here too.
+// The External Deliveries chip's own predicate — a plain boolean gate
+// rather than a value match, since externalDelivery is itself a boolean
+// field. Composes with the other two the same way.
+function matchesPlanningExternalFilter(it) {
+  return !planningExternalFilter || it.externalDelivery;
+}
+// Rebuilds the whole quick-filter chip row — the 6 status chips, a small
+// divider, then the External Deliveries toggle — from STATUSES + the
+// current selection. Cheap enough (7 small buttons) to call on every
+// render() regardless of mode, same as renderSidebar() already does,
+// rather than threading a mode==='planning' check through here too. The
+// External Deliveries chip reuses the identical --chip-color/--chip-bg
+// custom-property mechanism the status chips use, just with --accent/
+// --accent-bg in place of a --stat-* pair, since "externally delivered"
+// isn't one of the RAG statuses.
 function renderPlanningStatusChips() {
   const el = document.getElementById('planningStatusFilterChips');
   if (!el) return;
-  el.innerHTML = STATUSES.map(s => `<button class="status-filter-chip ${planningStatusFilter === s.id ? 'active' : ''}" style="--chip-color:var(--stat-${s.id});--chip-bg:var(--stat-${s.id}-bg)" onclick="setPlanningStatusFilter('${s.id}')">${esc(s.label)}</button>`).join('');
+  const statusChips = STATUSES.map(s => `<button class="status-filter-chip ${planningStatusFilter === s.id ? 'active' : ''}" style="--chip-color:var(--stat-${s.id});--chip-bg:var(--stat-${s.id}-bg)" onclick="setPlanningStatusFilter('${s.id}')">${esc(s.label)}</button>`).join('');
+  const externalChip = `<button class="status-filter-chip ${planningExternalFilter ? 'active' : ''}" style="--chip-color:var(--accent);--chip-bg:var(--accent-bg)" onclick="setPlanningExternalFilter()"><i class="fa-solid fa-globe"></i> External Deliveries</button>`;
+  el.innerHTML = statusChips + '<span class="chip-divider"></span>' + externalChip;
 }
-// Single-select toggle: clicking the already-active chip clears the filter
-// back to "everything", same "click again to clear" shape clearPlanningSearch()'s
-// own clear button gives the search box, just without a separate dedicated
-// button for it.
+// Single-select toggle for a status chip: clicking the already-active chip
+// clears the filter back to "everything", same "click again to clear"
+// shape clearPlanningSearch()'s own clear button gives the search box, just
+// without a separate dedicated button for it.
 function setPlanningStatusFilter(statusId) {
   planningStatusFilter = planningStatusFilter === statusId ? null : statusId;
+  renderPlanningStatusChips();
+  renderMain();
+}
+// The External Deliveries chip's own toggle — a plain on/off flip, not a
+// single-select against a set of values the way setPlanningStatusFilter()
+// is, since there's only one boolean to toggle here.
+function setPlanningExternalFilter() {
+  planningExternalFilter = !planningExternalFilter;
   renderPlanningStatusChips();
   renderMain();
 }
@@ -2629,20 +2661,21 @@ function unassignedItemsSorted() {
   return items.filter(it => it.workstreamId == null && it.itemType !== 'journey').sort((a, b) => a.order - b.order);
 }
 function unassignedSectionHtml() {
-  // Filtered by Planning's own search box and quick-filter status chips
-  // (see matchesPlanningSearch()/matchesPlanningStatusFilter()) — the base,
-  // unfiltered "what's genuinely unassigned" list stays in
-  // unassignedItemsSorted() itself, since that's what everything else
-  // (normalizeData()'s own reasoning, other call sites) means by the term;
-  // this is purely a display-layer narrowing.
-  const uItems = unassignedItemsSorted().filter(it => matchesPlanningSearch(it) && matchesPlanningStatusFilter(it));
+  // Filtered by Planning's own search box and quick-filter chips (see
+  // matchesPlanningSearch()/matchesPlanningStatusFilter()/
+  // matchesPlanningExternalFilter()) — the base, unfiltered "what's
+  // genuinely unassigned" list stays in unassignedItemsSorted() itself,
+  // since that's what everything else (normalizeData()'s own reasoning,
+  // other call sites) means by the term; this is purely a display-layer
+  // narrowing.
+  const uItems = unassignedItemsSorted().filter(it => matchesPlanningSearch(it) && matchesPlanningStatusFilter(it) && matchesPlanningExternalFilter(it));
   const editable = hasRole('editor');
   // While actively searching/filtering, an Unassigned section with no
   // matches is omitted entirely regardless of role — the "+ Add item"
   // quick-add prompt that would otherwise keep it visible for an Editor
   // isn't a useful thing to show while someone's trying to find or narrow
   // down existing items, not add a new one.
-  if (!uItems.length && (!editable || planningSearchQuery || planningStatusFilter)) return '';
+  if (!uItems.length && (!editable || planningSearchQuery || planningStatusFilter || planningExternalFilter)) return '';
   const rows = uItems.length ? uItems.map(it => itemRowHtml(it)).join('') :
     `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No unassigned items.</div>`;
   const addRow = editable
@@ -2674,16 +2707,17 @@ function renderStatusView(main) {
     const pills = STATUSES.filter(s => counts[s.id] > 0).map(s =>
       `<span class="rag-pill" style="background:var(--stat-${s.id}-bg);color:var(--stat-${s.id})">${counts[s.id]} ${esc(s.label)}</span>`
     ).join('');
-    // Planning's own search box and quick-filter status chips (see
-    // matchesPlanningSearch()/matchesPlanningStatusFilter()) narrow the
-    // list — but never the RAG pill counts above, which are always computed
-    // from the workstream's real, unfiltered wItems, same as the External
-    // Delivery split below leaves them alone. While actively searching or
-    // filtering, a workstream with zero matches is skipped entirely (no
-    // header, no empty list) rather than cluttering the results with a
-    // section that has nothing relevant in it.
-    const displayItems = wItems.filter(it => matchesPlanningSearch(it) && matchesPlanningStatusFilter(it));
-    if ((planningSearchQuery || planningStatusFilter) && !displayItems.length) return '';
+    // Planning's own search box and quick-filter chips (see
+    // matchesPlanningSearch()/matchesPlanningStatusFilter()/
+    // matchesPlanningExternalFilter()) narrow the list — but never the RAG
+    // pill counts above, which are always computed from the workstream's
+    // real, unfiltered wItems, same as the External Delivery split below
+    // leaves them alone. While actively searching or filtering, a
+    // workstream with zero matches is skipped entirely (no header, no empty
+    // list) rather than cluttering the results with a section that has
+    // nothing relevant in it.
+    const displayItems = wItems.filter(it => matchesPlanningSearch(it) && matchesPlanningStatusFilter(it) && matchesPlanningExternalFilter(it));
+    if ((planningSearchQuery || planningStatusFilter || planningExternalFilter) && !displayItems.length) return '';
     // Items flagged External Delivery are pulled out of the main list into
     // their own sub-section right underneath it, within the same
     // .ws-section card — an explicit user request ("show scope items which
@@ -2776,47 +2810,6 @@ function renderJourneys() {
       </div>
       ${rows}
       ${addRow}
-    </div>`;
-}
-
-// ---------- External Deliveries (sidebar nav entry) ----------
-// An explicit user request ("add External Delivery to the left navigation
-// pane, under 'All Workstreams'") for a cross-workstream view of every
-// externally-delivered scope item, mirroring how Journeys got its own
-// sidebar entry + flat list. The nav row/mode itself was later renamed to
-// the plural "External Deliveries" (see renderSidebar()'s own comment) to
-// match Journeys/Workstreams' own plural-noun convention — this section's
-// own function/variable names (allExternalDeliveryItems(),
-// renderExternalDelivery()) keep the original singular form, unchanged, the
-// same way `mode === 'external'` and every other internal identifier in
-// this file stay stable across a purely user-facing label rename. Unlike a
-// Journey, an externally-delivered item always belongs to a real workstream
-// (see "External Delivery" in CLAUDE.md) — losing that context here would
-// make the same row read
-// differently than it does in its own workstream's Planning section — so
-// this groups by workstream (one .ws-section per workstream that actually
-// has an externally-delivered item), rather than Journeys' single flat
-// list. Ignores the shared filterWorkstreamId selector entirely, same
-// reasoning as renderJourneys() — the whole point is to see every
-// externally-delivered item regardless of whatever's currently filtered.
-function allExternalDeliveryItems() {
-  return items.filter(it => it.externalDelivery);
-}
-function renderExternalDelivery() {
-  const main = document.getElementById('main');
-  const sections = workstreams.slice().sort((a, b) => a.order - b.order).map(w => {
-    const wItems = items.filter(it => it.workstreamId === w.id && it.externalDelivery).sort((a, b) => a.order - b.order);
-    if (!wItems.length) return '';
-    return `<div class="ws-section">
-        <div class="ws-section-header" style="background:var(--ws-${w.color}-bg)">
-          <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
-          <span class="ws-section-title">${esc(w.name)}</span>
-        </div>
-        ${wItems.map(it => itemRowHtml(it)).join('')}
-      </div>`;
-  }).join('');
-  main.innerHTML = sections || `<div class="empty-state"><i class="fa-solid fa-globe"></i>
-      <div>No externally-delivered items yet.</div>
     </div>`;
 }
 

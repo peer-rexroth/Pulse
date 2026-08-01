@@ -267,88 +267,62 @@ test('a workstream with no externally-delivered items shows no "External Deliver
   assertNotIncludes(document.getElementById('main').innerHTML, 'External Deliveries');
 });
 
-// ---------- External Deliveries' own sidebar nav entry + cross-workstream view ----------
+// ---------- External Deliveries quick-filter chip ----------
 // An explicit user request ("add External Delivery to the left navigation
-// pane, under 'All Workstreams'") — a new mode, own sidebar row (mirroring
-// Journeys' own entry point), listing every externally-delivered item across
-// every workstream regardless of the current sidebar filter. The row/mode's
-// own label was later renamed to the plural "External Deliveries" (a
-// follow-up user request) to match Journeys/Workstreams' own plural-noun
-// convention — the item modal's own "External Delivery" checkbox and
-// Planning's own per-workstream sub-section header are unaffected, still
-// singular.
+// pane, under 'All Workstreams'") originally added this as a new mode with
+// its own sidebar row (mirroring Journeys' own entry point). A later,
+// separate explicit user request moved it to its own #tabExternal topbar
+// button instead, and made it genuinely respect filterWorkstreamId. A
+// third, separate explicit user request removed the standalone mode
+// entirely — the topbar button, MODES entry, and renderExternalDelivery()
+// are all gone — folding it into a single boolean quick-filter chip
+// (setPlanningExternalFilter()) sitting in Planning's own toolbar, right
+// alongside the status chips (separated by a small .chip-divider), rather
+// than being a separate page at all.
 
-test('renderSidebar renders the External Deliveries nav row last in the top nav group, after Journeys, with a live count', function () {
-  addItem({ name: 'Ext 1', externalDelivery: true, externalDeliverySpoc: 'Jane' });
-  addItem({ name: 'Ext 2', externalDelivery: true, externalDeliverySpoc: 'Bob' });
-  addItem({ name: 'Not external' });
-  renderSidebar();
-  const html = document.getElementById('topNavList').innerHTML;
+test('renderPlanningStatusChips appends an External Deliveries toggle after a divider, inactive by default', function () {
+  render();
+  const html = document.getElementById('planningStatusFilterChips').innerHTML;
+  assertIncludes(html, 'chip-divider');
   assertIncludes(html, 'External Deliveries');
-  const allIdx = html.indexOf('All Workstreams');
-  const journeysIdx = html.indexOf('Journeys');
+  const dividerIdx = html.indexOf('chip-divider');
   const extIdx = html.indexOf('External Deliveries');
-  assertTrue(journeysIdx < allIdx, 'Journeys must sit before "All Workstreams"');
-  assertTrue(allIdx < extIdx, 'External Deliveries must sit after "All Workstreams", last in the top group');
-  assertNotIncludes(document.getElementById('wsList').innerHTML, 'External Deliveries', 'the real workstream list (#wsList) no longer holds this row at all');
-  assertIncludes(html, '<span class="ws-row-count">2</span>', 'the row shows a live count of externally-delivered items across every workstream');
+  assertTrue(dividerIdx < extIdx, 'the divider must sit before the External Deliveries chip, after the status chips');
+  assertNotIncludes(html, 'status-filter-chip active');
 });
 
-test('the External Deliveries nav row is active only while mode is \'external\', and no workstream row reads as active alongside it', function () {
-  filterWorkstreamId = workstreams[0].id;
-  setMode('planning');
-  renderSidebar();
-  assertNotIncludes(document.getElementById('topNavList').innerHTML, 'ws-row active', 'not active while Planning is showing');
+test('setPlanningExternalFilter toggles the board down to only externally-delivered items, and back', function () {
+  addItem({ name: 'Vendor task', externalDelivery: true, externalDeliverySpoc: 'Jane' });
+  addItem({ name: 'Internal task' });
+  setPlanningExternalFilter();
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Vendor task');
+  assertNotIncludes(html, 'Internal task');
+  assertIncludes(document.getElementById('planningStatusFilterChips').innerHTML, 'status-filter-chip active');
 
-  setMode('external');
-  renderSidebar();
-  const html = document.getElementById('topNavList').innerHTML;
-  assertIncludes(html, `ws-row active" onclick="setMode('external')"`, 'active once External Deliveries mode is showing');
-  assertNotIncludes(html, 'ws-row-all active', '"All Workstreams" must not read as active while External Deliveries is showing');
-  assertNotIncludes(document.getElementById('wsList').innerHTML, 'ws-row active', 'no real workstream row reads as active either');
-  assertEqual(filterWorkstreamId, workstreams[0].id, 'the selection itself survives the switch, unaffected — External Deliveries ignores it entirely');
+  setPlanningExternalFilter(); // toggle back off
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Vendor task');
+  assertIncludes(html, 'Internal task');
+  assertNotIncludes(document.getElementById('planningStatusFilterChips').innerHTML, 'status-filter-chip active');
 });
 
-test('setMode(\'external\') dispatches to renderExternalDelivery() without touching filterWorkstreamId', function () {
-  filterWorkstreamId = workstreams[0].id;
-  setMode('external');
-  assertEqual(mode, 'external');
-  assertEqual(filterWorkstreamId, workstreams[0].id);
-});
-
-test('allExternalDeliveryItems returns every externally-delivered item across every workstream', function () {
-  const w2 = { id: genId(), name: 'WS2', color: 'teal', order: 1 };
-  workstreams.push(w2);
-  addItem({ name: 'Ext A', externalDelivery: true });
-  addItem({ name: 'Ext B', workstreamId: w2.id, externalDelivery: true });
-  addItem({ name: 'Not external' });
-  const result = allExternalDeliveryItems();
-  assertEqual(result.length, 2);
-  assertTrue(result.every(it => it.externalDelivery));
-});
-
-test('renderExternalDelivery groups externally-delivered items by workstream, ignoring filterWorkstreamId entirely', function () {
-  const w2 = { id: genId(), name: 'Second WS', color: 'teal', order: 1 };
-  workstreams.push(w2);
-  addItem({ name: 'Ext A', externalDelivery: true, externalDeliverySpoc: 'Jane' });
-  addItem({ name: 'Ext B', workstreamId: w2.id, externalDelivery: true, externalDeliverySpoc: 'Bob' });
-  addItem({ name: 'Not external' });
-  filterWorkstreamId = workstreams[0].id; // must be ignored entirely
-  renderExternalDelivery();
+test('the External Deliveries filter composes with both the search box and the status chips', function () {
+  addItem({ name: 'Vendor billing task', status: 'red', externalDelivery: true, externalDeliverySpoc: 'Jane' });
+  addItem({ name: 'Vendor onboarding task', status: 'green', externalDelivery: true, externalDeliverySpoc: 'Bob' });
+  addItem({ name: 'Internal billing task', status: 'red' });
+  setPlanningSearch('billing');
+  setPlanningStatusFilter('red');
+  setPlanningExternalFilter();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'Ext A');
-  assertIncludes(html, 'Ext B');
-  assertIncludes(html, esc(workstreams[0].name));
-  assertIncludes(html, esc(w2.name));
-  assertNotIncludes(html, 'Not external');
+  assertIncludes(html, 'Vendor billing task');
+  assertNotIncludes(html, 'Vendor onboarding task', 'wrong status');
+  assertNotIncludes(html, 'Internal billing task', 'not external');
 });
 
-test('renderExternalDelivery skips a workstream with no externally-delivered items entirely — no empty section', function () {
-  addItem({ name: 'Normal item' });
-  renderExternalDelivery();
-  const html = document.getElementById('main').innerHTML;
-  assertNotIncludes(html, 'ws-section-header');
-  assertIncludes(html, 'No externally-delivered items yet.');
+test('External Deliveries mode/topbar button/renderExternalDelivery() no longer exist', function () {
+  assertFalse(MODES.includes('external'));
+  assertEqual(typeof renderExternalDelivery, 'undefined');
 });
 
 test('an item with milestones shows a count badge, and its milestones are hidden until expanded', function () {
