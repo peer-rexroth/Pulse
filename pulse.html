@@ -610,6 +610,28 @@
      indent level is exactly what signals nesting depth here. */
   .item-row-indent-1 { padding-left: 34px; }
   .item-row-indent-2 { padding-left: 54px; }
+  /* Tree "guide line" — a thin vertical rule anchored at an indented row's
+     own depth, so the Journey → Sub Journey → scope item nesting reads
+     from position/structure, not just the padding shift — an explicit user
+     request following a design discussion on telling the three row types
+     apart now that per-row icons are gone. Sits in the padding gutter the
+     indent itself creates (well before that depth's own content start), so
+     it never collides with the chevron/name. Bare class selectors, not
+     scoped to .item-row specifically, since the same class also lands on
+     .milestone-header/.milestone-sub-row (see their own indent rule below)
+     and this needs to apply there too. position:relative is what anchors
+     the pseudo-element to this one row's own box rather than some further
+     -out ancestor; since sibling rows sit flush against each other with no
+     margin, same-depth segments read as one continuous line down the page. */
+  .item-row-indent-1, .item-row-indent-2 { position: relative; }
+  .item-row-indent-1::before { content: ''; position: absolute; left: 20px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+  .item-row-indent-2::before { content: ''; position: absolute; left: 40px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+  /* A top-level Journey's own row — see itemRowHtml()'s journeyHeaderClass.
+     Mirrors .ws-section-header's own tinted-background/bolder-name
+     treatment, so a Journey visually reads as "a container for what's
+     below it" the same way a workstream's own section header does. */
+  .item-row-journey-header { background: var(--panel-2); padding-top: 12px; padding-bottom: 12px; }
+  .item-row-journey-header .item-name { font-weight: 700; font-size: 14.5px; }
   .item-chevron { text-align: center; color: var(--text-faint); cursor: pointer; }
   .item-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* The Journeys list reuses --item-grid-cols wholesale (same .item-row/
@@ -3268,7 +3290,15 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // only ever rendered nested under one — see viewOnly's own comment above)
   // one level further under that — see .item-row-indent-1/-2's own comment.
   const indentClass = isSubJourney ? 'item-row-indent-1' : viewOnly ? 'item-row-indent-2' : '';
-  return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''} ${indentClass}"${dragAttrs}>
+  // A top-level Journey's own row gets the same tinted, bolder "this groups
+  // what's below it" treatment .ws-section-header already uses for a
+  // workstream — an explicit user request, part of a visual pass to tell
+  // Journey/Sub Journey/scope item rows apart now that per-row type icons
+  // are gone (see the removed journeyBadgeHtml above). Sub Journey and
+  // connected-scope-item rows deliberately stay plain — only the top-level
+  // container gets the header treatment.
+  const journeyHeaderClass = isJourney ? 'item-row-journey-header' : '';
+  return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''} ${indentClass} ${journeyHeaderClass}"${dragAttrs}>
       ${chevron}
       <span class="item-name" style="grid-column: 2 / 4">${esc(it.name)}</span>
       ${milestoneBadge}

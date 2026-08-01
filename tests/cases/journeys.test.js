@@ -424,6 +424,32 @@ test('an ordinary (non-nested) scope item\'s own milestone header/rows get no in
   assertNotIncludes(html, 'item-row-indent-2');
 });
 
+// ---------- Journey "header" tint + tree guide-line (visual, no new icons) ----------
+// Two explicit user requests ("build 1 and 2", following a design
+// discussion on telling Journey/Sub Journey/scope item rows apart now that
+// per-row icons are gone): a top-level Journey's own row gets the same
+// tinted "section header" treatment .ws-section-header uses for a
+// workstream, and every indented row gets a CSS-only tree guide-line
+// anchored at its own depth.
+
+test('a top-level Journey\'s own row gets the item-row-journey-header class; a Sub Journey\'s does not', function () {
+  const journey = addJourney();
+  const sub = addSubJourney(journey.id);
+  const scope = addItem({ name: 'Ordinary scope item' });
+  assertIncludes(itemRowHtml(journey), 'item-row-journey-header');
+  assertNotIncludes(itemRowHtml(sub), 'item-row-journey-header');
+  assertNotIncludes(itemRowHtml(scope), 'item-row-journey-header');
+});
+
+test('a Sub Journey\'s connected scope item (rendered viewOnly) does not get item-row-journey-header either', function () {
+  const journey = addJourney();
+  const sub = addSubJourney(journey.id);
+  const it = addItem({ name: 'Design the intake form' });
+  it.journeyId = sub.id;
+  toggleItemExpanded(sub.id);
+  assertNotIncludes(itemRowHtml(sub), 'item-row-journey-header');
+});
+
 test('a collapsed Sub Journey never shows its connected scope items, even with some connected', function () {
   const journey = addJourney();
   const sub = addSubJourney(journey.id);
