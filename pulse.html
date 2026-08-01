@@ -1379,11 +1379,15 @@
       <label>Name</label>
       <input type="text" id="itemNameInput" placeholder="e.g. Finalize data schema">
     </div>
-    <!-- Read-only backlink to the Journey a scope item is connected to
-         (see toggleJourneyConnection()) — never editable here, and hidden
-         entirely for any item that isn't linked to one. -->
+    <!-- Read-only backlink — "From Sub Journey" for a scope item connected
+         to one (see toggleJourneyConnection()), or "From Journey" for a Sub
+         Journey itself, showing its own parent Journey
+         (parentJourneyId) — never editable here, and hidden entirely for
+         any item that isn't linked to one. Label text is set in JS
+         (openItemModal()) since which of the two applies depends on the
+         item being edited. -->
     <div class="field" id="itemJourneyLinkField" style="display:none">
-      <label>From Journey</label>
+      <label id="itemJourneyLinkLabel">From Journey</label>
       <div class="status-badge" id="itemJourneyLinkBadge" style="background:var(--panel-2);color:var(--text-dim)"></div>
     </div>
     <div class="field-row">
@@ -1836,11 +1840,11 @@ let filterWorkstreamId = null;
 let editingWsId = null;
 let wsColorChoice = WS_COLORS[0];
 let editingItemId = null;
-// 'scope' | 'journey' — set by openItemModal() for both the new-item and
-// edit-existing-item cases, and read back by saveItem() as the single
-// authoritative source for whether the item being saved is a Journey (rather
-// than re-deriving it from the disabled Category select's value, which
-// should already agree but doesn't need to be trusted to).
+// 'scope' | 'journey' | 'subjourney' — set by openItemModal() for both the
+// new-item and edit-existing-item cases, and read back by saveItem() as the
+// single authoritative source for which of the three the item being saved
+// is (rather than re-deriving it from the disabled Category select's value,
+// which should already agree but doesn't need to be trusted to).
 let editingItemType = 'scope';
 let editingMilestones = [];
 let editingCategoryId = null;
@@ -1895,6 +1899,14 @@ let unassignedQuickAddOpen = false;
 // Journeys' own counterpart — UI-only, not persisted. See
 // renderJourneys()/openJourneyQuickAdd().
 let journeyQuickAddOpen = false;
+// A Sub Journey's own counterpart — the id of whichever Journey currently
+// has its own inline "Add Sub Journey" input open (itemRowHtml()'s
+// subJourneyQuickAddHtml), or null when none does. A single slot, not a Set
+// — only one Journey's quick-add can realistically be open at a time, same
+// as unassignedQuickAddOpen/journeyQuickAddOpen being plain booleans rather
+// than per-row state. UI-only, not persisted. See
+// openSubJourneyQuickAdd()/saveSubJourneyQuickAddItem() below.
+let subJourneyQuickAddOpenFor = null;
 // Review mode's own two sub-tabs: 'scope' (the existing checklist + cycle
 // history) or 'actionLog' (the workstream-wide action log) — UI-only, not
 // persisted, same as view above but scoped one level deeper.
@@ -2151,30 +2163,46 @@ function normalizeData() {
     // silently landing in whichever workstream happens to be first.
     if (it.workstreamId != null && !wsIds.has(it.workstreamId)) it.workstreamId = null;
     if (it.workstreamId === undefined) it.workstreamId = null;
-    // itemType distinguishes a Journey from a plain scope item (see
-    // "Journeys" below) — 'scope' is the only other valid value, and any
-    // legacy/hand-edited/unrecognized value falls back to it, same "unknown
-    // value resets to the safe default" treatment every other enum-like
-    // field on an item gets here. Backfilled before the categoryId repair
-    // just below, since that repair needs to know whether it's dealing with
-    // a Journey (which has no category at all — see there) or a plain item.
-    if (it.itemType !== 'journey') it.itemType = 'scope';
-    // A Journey has no category — categoryId stays null for one, never
-    // repaired into a real category the way a plain item's stale/missing
-    // categoryId is just below.
-    if (it.itemType === 'journey') it.categoryId = null;
+    // itemType distinguishes a Journey/Sub Journey from a plain scope item
+    // (see "Journeys" below) — 'journey'/'subjourney' are the only other
+    // valid values, and any legacy/hand-edited/unrecognized value falls back
+    // to 'scope', same "unknown value resets to the safe default" treatment
+    // every other enum-like field on an item gets here. Backfilled before
+    // the categoryId repair just below, since that repair needs to know
+    // whether it's dealing with a Journey/Sub Journey (neither has a
+    // category at all — see "Journeys") or a plain item.
+    if (it.itemType !== 'journey' && it.itemType !== 'subjourney') it.itemType = 'scope';
+    // Neither a Journey nor a Sub Journey has a category — categoryId stays
+    // null for either, never repaired into a real category the way a plain
+    // item's stale/missing categoryId is just below.
+    if (it.itemType === 'journey' || it.itemType === 'subjourney') it.categoryId = null;
     else if (!catIds.has(it.categoryId)) it.categoryId = categories[0].id;
-    // journeyId links a scope item to the Journey it's connected to (see
-    // toggleJourneyConnection() below) — null for every item that isn't.
-    // A reference to a since-deleted item, or one that's no longer a
+    // journeyId links a scope item to the Sub Journey it's connected to (see
+    // toggleJourneyConnection() below) — only ever meaningful on a scope
+    // item; a Journey/Sub Journey's own journeyId is always null (a Sub
+    // Journey links *up* to its parent Journey via parentJourneyId instead,
+    // just below — a Journey has nothing above it to link to at all). A
+    // reference to a since-deleted item, or one that's no longer a Sub
     // Journey, is reset to null rather than left dangling — mirrors the
     // orphaned-workstreamId treatment just above: a broken link resets to
     // "none" rather than pointing at something that no longer makes sense.
-    if (it.journeyId != null) {
+    if (it.itemType === 'scope' && it.journeyId != null) {
       const src = items.find(i => i.id === it.journeyId);
-      if (!src || src.itemType !== 'journey') it.journeyId = null;
+      if (!src || src.itemType !== 'subjourney') it.journeyId = null;
     } else {
       it.journeyId = null;
+    }
+    // parentJourneyId is a Sub Journey's own link up to the top-level
+    // Journey it belongs to (see connectedSubJourneys() below) — only ever
+    // meaningful on a Sub Journey; reset to null for every other item type,
+    // and the same orphaned-reference treatment journeyId gets just above
+    // applies here too (a reference to a since-deleted item, or one that's
+    // no longer a Journey, resets to null rather than staying dangling).
+    if (it.itemType === 'subjourney' && it.parentJourneyId != null) {
+      const src = items.find(i => i.id === it.parentJourneyId);
+      if (!src || src.itemType !== 'journey') it.parentJourneyId = null;
+    } else {
+      it.parentJourneyId = null;
     }
     if (!it.name) it.name = 'Untitled';
     if (!STATUSES.some(s => s.id === it.status)) it.status = 'not-started';
@@ -2357,25 +2385,38 @@ function categoryById(id) { return categories.find(c => c.id === id); }
 // offered as a choice in the scope-assign modal (openScopeAssignModal()).
 function pendingCategory() { return categories.find(c => c.pending); }
 function isPendingCategory(categoryId) { const c = categoryById(categoryId); return !!(c && c.pending); }
-// Every scope item currently linked to the given Journey (item.journeyId —
-// set/cleared by toggleJourneyConnection(), see "Journeys" below), in
-// itemRowHtml()/renderStatusView()'s own manual-order sort.
+// Every scope item currently linked to the given Sub Journey (item.journeyId
+// — set/cleared by toggleJourneyConnection(), see "Journeys" below), in
+// itemRowHtml()/renderStatusView()'s own manual-order sort. Despite the
+// generic-sounding name, this is now only ever called with a Sub Journey's
+// own id — a scope item connects to a Sub Journey, never directly to a
+// top-level Journey (see "Journeys" below) — kept from before the Sub
+// Journey level existed, when "the Journey" and "the thing a scope item
+// connects to" were the same object.
 function connectedScopeItems(journeyId) {
   return items.filter(it => it.journeyId === journeyId).sort((a, b) => a.order - b.order);
 }
-// A Journey has no milestones of its own (see "Journeys" below) — its plan
-// date range is instead derived live, at render time, from every connected
-// scope item's own milestones (or, for a connected item with none, that
-// item's own manual date). Deliberately never persisted onto the Journey's
-// own startDate/dueDate — recomputing fresh here avoids having to hook
-// every place a connected item's dates could change (its own milestone
-// edits, a category-template sync, being connected/disconnected) just to
-// keep a cached value in sync; the same "no persisted state, always fresh
-// at render time" choice Dashboard mode already makes for the same reason.
-// Returns null if nothing connected has a date to contribute.
-function computeJourneyDateRange(journeyId) {
+// Every Sub Journey belonging to the given top-level Journey
+// (item.parentJourneyId — set only at Sub Journey creation, see
+// saveSubJourneyQuickAddItem() below; never reassigned afterward, so a Sub
+// Journey can't be moved between Journeys), in the same manual-order sort
+// connectedScopeItems() already uses.
+function connectedSubJourneys(journeyId) {
+  return items.filter(it => it.itemType === 'subjourney' && it.parentJourneyId === journeyId).sort((a, b) => a.order - b.order);
+}
+// A Sub Journey has no milestones of its own (see "Journeys" below) — its
+// plan date range is instead derived live, at render time, from every
+// connected scope item's own milestones (or, for a connected item with
+// none, that item's own manual date). Deliberately never persisted onto the
+// Sub Journey's own startDate/dueDate — recomputing fresh here avoids
+// having to hook every place a connected item's dates could change (its own
+// milestone edits, a category-template sync, being connected/disconnected)
+// just to keep a cached value in sync; the same "no persisted state, always
+// fresh at render time" choice Dashboard mode already makes for the same
+// reason. Returns null if nothing connected has a date to contribute.
+function computeSubJourneyDateRange(subJourneyId) {
   const dates = [];
-  connectedScopeItems(journeyId).forEach(it => {
+  connectedScopeItems(subJourneyId).forEach(it => {
     if (it.milestones.length) {
       it.milestones.forEach(m => {
         if (m.notApplicable) return;
@@ -2391,31 +2432,61 @@ function computeJourneyDateRange(journeyId) {
   dates.sort();
   return { startDate: dates[0], dueDate: dates[dates.length - 1] };
 }
-// A Journey's own status, like its plan date range just above, is computed
-// live at render time from every connected scope item's own status — an
-// explicit user request ("Journey should calculate their status based on
-// the status of the included scope items"), reversing the earlier stance
-// (a plain manual dropdown, since a Journey has no milestones of its own to
-// roll a status up from) once computing one from connected items' own
+// A top-level Journey's own plan date range is one level further removed —
+// computed from every connected Sub Journey's own (already-computed) range,
+// rather than reading connected scope items directly. Same "returns null
+// when there's nothing to contribute" convention.
+function computeJourneyDateRange(journeyId) {
+  const dates = [];
+  connectedSubJourneys(journeyId).forEach(sj => {
+    const r = computeSubJourneyDateRange(sj.id);
+    if (r) { dates.push(r.startDate, r.dueDate); }
+  });
+  if (!dates.length) return null;
+  dates.sort();
+  return { startDate: dates[0], dueDate: dates[dates.length - 1] };
+}
+// A Sub Journey's own status, like its plan date range just above, is
+// computed live at render time from every connected scope item's own status
+// — an explicit user request ("Journey should calculate their status based
+// on the status of the included scope items"), reversing the earlier stance
+// (a plain manual dropdown, since neither level has milestones of its own
+// to roll a status up from) once computing one from connected items' own
 // status was actually asked for. Same weakest-link reduce, same
-// STATUS_SEVERITY order computedStatusFromMilestones() already uses — a
+// STATUS_SEVERITY order computedStatusFromMilestones() already uses — a Sub
 // Journey with any Red-status scope item connected reads Red overall, the
 // same "one active problem always surfaces" reasoning that function's own
-// comment gives. Deliberately never persisted onto the Journey's own
-// `status` field, for the identical reason computeJourneyDateRange() isn't:
-// recomputing fresh here avoids hooking every place a connected item's own
-// status could change (its own milestone edits, being connected/
-// disconnected) just to keep a cached value in sync. Returns null when
-// nothing is connected yet, same null-means-"nothing to compute from"
-// convention as computedStatusFromMilestones()/computeJourneyDateRange() —
-// callers fall back to 'not-started', the same neutral default a brand-new
-// item already starts at.
-function computeJourneyStatus(journeyId) {
-  const connected = connectedScopeItems(journeyId);
+// comment gives. Deliberately never persisted onto the Sub Journey's own
+// `status` field, for the identical reason computeSubJourneyDateRange()
+// isn't: recomputing fresh here avoids hooking every place a connected
+// item's own status could change (its own milestone edits, being
+// connected/disconnected) just to keep a cached value in sync. Returns null
+// when nothing is connected yet, same null-means-"nothing to compute from"
+// convention as computedStatusFromMilestones()/computeSubJourneyDateRange()
+// — callers fall back to 'not-started', the same neutral default a
+// brand-new item already starts at.
+function computeSubJourneyStatus(subJourneyId) {
+  const connected = connectedScopeItems(subJourneyId);
   if (!connected.length) return null;
   return connected.reduce((worst, it) =>
     STATUS_SEVERITY[it.status] < STATUS_SEVERITY[worst] ? it.status : worst
   , connected[0].status);
+}
+// A top-level Journey's own status is the same weakest-link reduce one
+// level further up — over every connected Sub Journey's own (already-
+// computed) status, not over scope items directly. A Sub Journey with
+// nothing connected yet contributes 'not-started' (the same neutral
+// fallback every other caller of computeSubJourneyStatus() already applies)
+// rather than being skipped outright, so an empty Sub Journey can still
+// legitimately drag a Journey's overall status down to "nothing started" —
+// consistent with a brand-new item's own default.
+function computeJourneyStatus(journeyId) {
+  const subJourneys = connectedSubJourneys(journeyId);
+  if (!subJourneys.length) return null;
+  return subJourneys.reduce((worst, sj) => {
+    const s = computeSubJourneyStatus(sj.id) || 'not-started';
+    return STATUS_SEVERITY[s] < STATUS_SEVERITY[worst] ? s : worst;
+  }, computeSubJourneyStatus(subJourneys[0].id) || 'not-started');
 }
 
 // ---------- Rendering ----------
@@ -2679,14 +2750,15 @@ function setPlanningExternalFilter() {
 // and with nothing in it, it's omitted entirely — there both nothing to
 // show and no way to add anything, so an empty "Unassigned" heading would
 // just be clutter.
-// A Journey also has workstreamId:null (see "Journeys" below — it's never
-// assigned to one at all, deliberately, not just awaiting triage the way an
-// Unassigned scope item is) but must never show up here: this bucket is
-// specifically for scope items waiting to be triaged into a real workstream,
-// which isn't what "overarching, no workstream on purpose" means. Journeys
-// have their own dedicated view instead (renderJourneys()).
+// A Journey/Sub Journey also has workstreamId:null (see "Journeys" below —
+// neither is ever assigned to one at all, deliberately, not just awaiting
+// triage the way an Unassigned scope item is) but must never show up here:
+// this bucket is specifically for scope items waiting to be triaged into a
+// real workstream, which isn't what "overarching, no workstream on purpose"
+// means. Journeys/Sub Journeys have their own dedicated view instead
+// (renderJourneys()).
 function unassignedItemsSorted() {
-  return items.filter(it => it.workstreamId == null && it.itemType !== 'journey').sort((a, b) => a.order - b.order);
+  return items.filter(it => it.workstreamId == null && it.itemType !== 'journey' && it.itemType !== 'subjourney').sort((a, b) => a.order - b.order);
 }
 function unassignedSectionHtml() {
   // Filtered by Planning's own search box and quick-filter chips (see
@@ -2790,13 +2862,23 @@ function renderStatusView(main) {
 }
 
 // ---------- Journeys ----------
-// A Journey is not a separate top-level array or data shape — it's a plain
-// item (see "Data model" in CLAUDE.md) with itemType:'journey', so it gets
-// the row's Edit/Delete actions and itemRowHtml()'s entire rendering
-// machinery for free. Unlike a scope item, it has no category, no
-// workstream, and no milestones at all (an explicit user simplification —
-// its "end date" is instead computed from whichever existing scope items
-// get connected to it, see computeJourneyDateRange() below).
+// A Journey has two levels — Journey and Sub Journey — an explicit user
+// request ("Journey consists of 2 levels. Journey and sub journey. Scope
+// items can only be attached to subjourneys"). Neither is a separate
+// top-level array or data shape — both are plain items (see "Data model" in
+// CLAUDE.md), itemType:'journey' or itemType:'subjourney', so both get the
+// row's Edit/Delete actions and itemRowHtml()'s entire rendering machinery
+// for free. Neither has a category, a workstream, or milestones of its own
+// (an explicit user simplification carried over from the original
+// single-level design) — a scope item only ever connects to a Sub Journey
+// (item.journeyId), never directly to a top-level Journey; a Sub Journey in
+// turn links up to exactly one Journey (item.parentJourneyId, set once at
+// creation — see saveSubJourneyQuickAddItem()). Both levels' own "end date"
+// and status are instead computed live from whatever's connected beneath
+// them — a Sub Journey from its connected scope items directly
+// (computeSubJourneyDateRange()/computeSubJourneyStatus()), a Journey one
+// level further removed, from its connected Sub Journeys' own already-
+// computed values (computeJourneyDateRange()/computeJourneyStatus()).
 // A Journey is never assigned to a workstream at all — an explicit user
 // correction to this feature's first draft ("Journey should not be assigned
 // to workstreams. They are overarching"). So unlike Planning's own status
@@ -2882,18 +2964,25 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // instead of calling hasRole('editor') directly — folds viewOnly in
   // alongside the role check so nothing has to be special-cased twice.
   const editable = !viewOnly && hasRole('editor');
-  // A Journey has no milestones to expand — it expands to show its
-  // connected scope items instead (see connectedScopeItems() above),
-  // reusing this very function (itemRowHtml(ci, null, true)) for each one —
-  // an explicit user request to show them "like a normal item row". They
-  // stay collapsed by default (expandedItemIds starts empty for them, same
-  // as any other item) rather than auto-expanding their own milestones the
-  // moment the Journey itself opens. The chevron is always clickable for a
-  // Journey (even with zero connections yet), since there's no other on-row
-  // signal that expanding it does anything.
+  // Neither a Journey nor a Sub Journey has milestones to expand — a
+  // Journey expands to show its connected Sub Journeys, and a Sub Journey
+  // expands to show its own connected scope items instead (see
+  // connectedSubJourneys()/connectedScopeItems() above). A Sub Journey's
+  // connected items reuse this very function (itemRowHtml(ci, null, true))
+  // for each one — an explicit user request to show them "like a normal
+  // item row" — while a Journey's connected Sub Journeys are real,
+  // fully-interactive rows (itemRowHtml(sj)), not viewOnly, since managing
+  // them (renaming, deleting, connecting scope items to one) is the whole
+  // point of expanding a Journey. Both stay collapsed by default
+  // (expandedItemIds starts empty for them, same as any other item) rather
+  // than auto-expanding the moment their own parent opens. The chevron is
+  // always clickable for either (even with zero connections yet), since
+  // there's no other on-row signal that expanding one does anything.
   const isJourney = it.itemType === 'journey';
-  const connected = isJourney ? connectedScopeItems(it.id) : [];
-  const expandable = total || isJourney;
+  const isSubJourney = it.itemType === 'subjourney';
+  const subJourneys = isJourney ? connectedSubJourneys(it.id) : [];
+  const connected = isSubJourney ? connectedScopeItems(it.id) : [];
+  const expandable = total || isJourney || isSubJourney;
   const chevron = expandable
     ? `<span class="item-chevron" onclick="toggleItemExpanded('${it.id}')"><i class="fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
     : `<span class="item-chevron"></span>`;
@@ -2902,6 +2991,8 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // have milestones (see "Status board" in CLAUDE.md).
   const milestoneBadge = `<span class="milestone-count-badge">${
     isJourney
+      ? (subJourneys.length ? `${subJourneys.length} sub journey${subJourneys.length === 1 ? '' : 's'}` : '')
+      : isSubJourney
       ? (connected.length ? `${connected.length} scope item${connected.length === 1 ? '' : 's'}` : '')
       : (applicableTotal ? `${done}/${applicableTotal} milestones` : '')
   }</span>`;
@@ -2934,16 +3025,24 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // alongside onblur (same guarded call) on every date input in this app —
   // onblur stays too, since it's still what a completed keyboard edit relies
   // on and what resets an incomplete one (see above).
-  // A Journey's own plan dates are never stored/manual at all — always
-  // computed live from whatever scope items are currently connected to it
-  // (see computeJourneyDateRange()), regardless of reviewCycle (a Journey
-  // never appears inside a review to begin with — see "Journeys" in
-  // CLAUDE.md — but the same read-only treatment applies for consistency).
-  const journeyRange = it.itemType === 'journey' ? computeJourneyDateRange(it.id) : null;
-  const planDatesHtml = it.itemType === 'journey'
+  // A Journey/Sub Journey's own plan dates are never stored/manual at all —
+  // always computed live, regardless of reviewCycle (neither ever appears
+  // inside a review to begin with — see "Journeys" in CLAUDE.md — but the
+  // same read-only treatment applies for consistency). A Sub Journey's range
+  // is computed the same way the single-level Journey always was — from
+  // whatever scope items are currently connected to it directly (see
+  // computeSubJourneyDateRange()) — while a Journey's own range is one level
+  // further removed, computed from its connected Sub Journeys' own ranges
+  // (see computeJourneyDateRange()).
+  const journeyRange = isJourney ? computeJourneyDateRange(it.id) : isSubJourney ? computeSubJourneyDateRange(it.id) : null;
+  const journeyRangeTitle = isJourney
+    ? 'Computed from the date range of every connected Sub Journey'
+    : 'Computed from the latest milestone (due or actual) date across every connected scope item';
+  const journeyRangeEmptyTitle = isJourney ? 'No connected Sub Journeys with a date yet' : 'No connected scope items with a date yet';
+  const planDatesHtml = (isJourney || isSubJourney)
     ? (journeyRange
-        ? `<span class="item-dates-computed" title="Computed from the latest milestone (due or actual) date across every connected scope item">${fmtDateY(journeyRange.startDate)} → ${fmtDateY(journeyRange.dueDate)}</span>`
-        : `<span class="item-dates-computed" style="color:var(--text-faint)" title="No connected scope items with a date yet">—</span>`)
+        ? `<span class="item-dates-computed" title="${journeyRangeTitle}">${fmtDateY(journeyRange.startDate)} → ${fmtDateY(journeyRange.dueDate)}</span>`
+        : `<span class="item-dates-computed" style="color:var(--text-faint)" title="${journeyRangeEmptyTitle}">—</span>`)
     : (total || reviewCycle)
     ? `<span class="item-dates-computed" title="${total ? 'Computed from the earliest and latest milestone date (due or actual)' : 'Not editable during a review'}">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>`
     : `<span class="item-dates-inline">
@@ -3026,21 +3125,36 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
         </span>`;
     }
   }
-  // A Journey's connected scope items are shown "like a normal item row" —
-  // itemRowHtml() reused directly, in viewOnly mode — rather than the
-  // milestone header/rows a plain item's own checklist uses.
+  // A Journey's connected Sub Journeys are real, fully-interactive rows
+  // (itemRowHtml(sj) — not viewOnly), plus a per-Journey "+ Add Sub Journey"
+  // quick-add at the end, the only place one can be created (see the
+  // "Sub Journey quick-add" section below). A Sub Journey's own connected
+  // scope items are shown "like a normal item row" — itemRowHtml() reused
+  // directly, in viewOnly mode, same as the single-level Journey always did
+  // — rather than the milestone header/rows a plain item's own checklist
+  // uses.
+  const subJourneyQuickAddHtml = (isJourney && !viewOnly && editable)
+    ? (subJourneyQuickAddOpenFor === it.id
+        ? `<div class="ws-section-add"><input type="text" class="inline-quick-add-input" id="subJourneyQuickAddInput" placeholder="Sub Journey name" onkeydown="if(event.key==='Enter') saveSubJourneyQuickAddItem(); if(event.key==='Escape') cancelSubJourneyQuickAdd();" onblur="saveSubJourneyQuickAddItem()"></div>`
+        : `<div class="ws-section-add"><button class="btn btn-sm" onclick="openSubJourneyQuickAdd('${it.id}')"><i class="fa-solid fa-plus"></i> Add Sub Journey</button></div>`)
+    : '';
   const subRows = !expanded ? '' : isJourney
+    ? (subJourneys.length
+        ? subJourneys.map(sj => itemRowHtml(sj)).join('')
+        : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No Sub Journeys yet.</div>`) + subJourneyQuickAddHtml
+    : isSubJourney
     ? (connected.length
         ? connected.map(ci => itemRowHtml(ci, null, true)).join('')
         : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No scope items connected yet.</div>`)
     : (total ? milestoneHeaderHtml(reviewCycle, viewOnly) + milestoneRowsHtml(it, reviewCycle, viewOnly) : '');
   // Drag-and-drop reordering is Planning-only, same gating as Edit/Delete
   // below — a review is for confirming, not restructuring, and viewOnly
-  // rows (a Journey's own connected items) are never restructured from here
-  // either. Only the grip handle itself is draggable="true" (not the whole
-  // row), so dragging doesn't fight with clicking the tags/status/actions
-  // packed into the rest of the row; the drop target is the whole row, so
-  // dropping anywhere on it (not just precisely on its own handle) works.
+  // rows (a Sub Journey's own connected items) are never restructured from
+  // here either. Only the grip handle itself is draggable="true" (not the
+  // whole row), so dragging doesn't fight with clicking the tags/status/
+  // actions packed into the rest of the row; the drop target is the whole
+  // row, so dropping anywhere on it (not just precisely on its own handle)
+  // works.
   const dragAttrs = (reviewCycle || viewOnly) ? '' : ` ondragover="event.preventDefault()" ondrop="dropOnItem(event,'${it.id}')"`;
   // A quick-added item (see openInlineQuickAdd()) whose sole "Scope item
   // confirmed" milestone has been marked Complete still sits in the reserved
@@ -3053,33 +3167,51 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // dismiss/"Later" option any more (an explicit user request), so this is
   // purely a page-reload recovery path, not a "skip for now" one.
   const scopeAssignReady = editable && it.status === 'complete' && isPendingCategory(it.categoryId);
-  // A Journey's own displayed status is always computed live from its
-  // connected scope items (see computeJourneyStatus()), never its own
-  // stored `status` field — scopeAssignReady is always false for one
-  // regardless (a Journey's categoryId is always null, so
+  // A Journey/Sub Journey's own displayed status is always computed live —
+  // never its own stored `status` field — scopeAssignReady is always false
+  // for either regardless (their categoryId is always null, so
   // isPendingCategory() never matches), so this only ever changes what the
-  // badge itself shows, not which click target it routes to.
-  const displayStatus = isJourney ? (computeJourneyStatus(it.id) || 'not-started') : it.status;
-  // "Completed Late" (see isCompletedLate()'s own comment) for a Journey
-  // rolls up the same way computeJourneyStatus() itself does — from its
-  // connected scope items' own already-resolved lateness — rather than
-  // reading a Journey's own (always-empty) milestones/dates.
+  // badge itself shows, not which click target it routes to. A Sub
+  // Journey's status rolls up from its connected scope items directly (see
+  // computeSubJourneyStatus()); a Journey's own status is one level further
+  // removed, rolling up from its connected Sub Journeys' own status (see
+  // computeJourneyStatus()).
+  const displayStatus = isJourney ? (computeJourneyStatus(it.id) || 'not-started')
+    : isSubJourney ? (computeSubJourneyStatus(it.id) || 'not-started')
+    : it.status;
+  // "Completed Late" (see isCompletedLate()'s own comment) for a Sub
+  // Journey rolls up the same way computeSubJourneyStatus() itself does —
+  // from its connected scope items' own already-resolved lateness — rather
+  // than reading a Sub Journey's own (always-empty) milestones/dates. A
+  // Journey goes one level further, checking every scope item under every
+  // one of its connected Sub Journeys — displayStatus can only ever be
+  // 'complete' here if every single one of those is itself 'complete' (see
+  // computeJourneyStatus()'s weakest-link reduce), so there's no need to
+  // re-check each Sub Journey's own rolled-up status here too.
   const displayStatusLabel = displayStatus !== 'complete' ? statusLabel(displayStatus)
-    : (isJourney ? connectedScopeItems(it.id).some(itemIsCompletedLate) : itemIsCompletedLate(it))
+    : (isJourney ? subJourneys.some(sj => connectedScopeItems(sj.id).some(itemIsCompletedLate))
+        : isSubJourney ? connected.some(itemIsCompletedLate)
+        : itemIsCompletedLate(it))
       ? 'Completed Late' : statusLabel('complete');
   const statusBadgeHtml = scopeAssignReady
     ? `<button class="status-badge" style="background:var(--stat-${displayStatus}-bg);color:var(--stat-${displayStatus})" onclick="openScopeAssignModal('${it.id}')" title="Scope confirmed — click to assign its real workstream and category">${esc(displayStatusLabel)}</button>`
     : `<button class="status-badge" style="background:var(--stat-${displayStatus}-bg);color:var(--stat-${displayStatus})" onclick="openItemModal('${it.id}')">${esc(displayStatusLabel)}</button>`;
-  // A Journey is a plain item under the hood (see "Journeys" in CLAUDE.md) —
-  // this icon prefix, not a dedicated grid column, is the only thing telling
-  // its row apart from an ordinary scope item's when the two sit in the same
-  // workstream section on Planning's own board.
-  const journeyBadgeHtml = it.itemType === 'journey' ? `<i class="fa-solid fa-route journey-type-badge" title="Journey"></i> ` : '';
-  // A Journey has no milestones of its own to trigger anything from (see
-  // "Journeys" in CLAUDE.md) — connecting it to existing scope items is
-  // instead a standing action, always available via its own icon in
-  // .item-actions, right alongside Edit/Delete.
-  const connectBtnHtml = it.itemType === 'journey'
+  // A Journey/Sub Journey is a plain item under the hood (see "Journeys" in
+  // CLAUDE.md) — this icon prefix, not a dedicated grid column, is the only
+  // thing telling its row apart from an ordinary scope item's (or, for a Sub
+  // Journey nested under a Journey, from its own parent's row) when they sit
+  // in the same list.
+  const journeyBadgeHtml = isJourney ? `<i class="fa-solid fa-route journey-type-badge" title="Journey"></i> `
+    : isSubJourney ? `<i class="fa-solid fa-diagram-project journey-type-badge" title="Sub Journey"></i> `
+    : '';
+  // Only a Sub Journey has milestones of its own to (not) trigger anything
+  // from — connecting it to existing scope items is a standing action,
+  // always available via its own icon in .item-actions, right alongside
+  // Edit/Delete, same as the single-level Journey always had. A top-level
+  // Journey never connects directly to scope items any more (see "Journeys"
+  // in CLAUDE.md — that's what the Sub Journey level exists for), so it gets
+  // no connect icon of its own here at all.
+  const connectBtnHtml = isSubJourney
     ? `<button class="row-icon-btn" onclick="openJourneyConnectModal('${it.id}')" title="Connect scope items"><i class="fa-solid fa-link"></i></button>`
     : '';
   return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''}"${dragAttrs}>
@@ -4063,28 +4195,36 @@ function onItemCategoryChange() {
 function onItemExternalDeliveryChange() {
   document.getElementById('itemExternalDeliverySpocField').style.display = document.getElementById('itemExternalDeliveryInput').checked ? '' : 'none';
 }
-// presetItemType ('journey', or omitted/anything else for a plain scope
-// item) only ever matters for a brand-new item — id, when given, always
-// wins, since an existing item's own itemType is never up for negotiation
-// here (see editingItemType's own comment).
+// presetItemType ('journey', 'subjourney', or omitted/anything else for a
+// plain scope item) only ever matters for a brand-new item — id, when
+// given, always wins, since an existing item's own itemType is never up for
+// negotiation here (see editingItemType's own comment). In practice neither
+// a Journey nor a Sub Journey is ever created through this modal at all any
+// more (both are quick-add only — see saveJourneyQuickAddItem()/
+// saveSubJourneyQuickAddItem()), so presetItemType only ever matters for
+// this function's own generic new-item code path, kept correct rather than
+// assumed dead.
 function openItemModal(id, presetWorkstreamId, presetItemType) {
   editingItemId = id || null;
   const it = id ? items.find(i => i.id === id) : null;
-  const isJourneyItem = it ? it.itemType === 'journey' : presetItemType === 'journey';
-  editingItemType = isJourneyItem ? 'journey' : 'scope';
+  const editingType = it ? it.itemType : (presetItemType === 'journey' || presetItemType === 'subjourney' ? presetItemType : 'scope');
+  editingItemType = editingType;
+  const isJourneyLike = editingType === 'journey' || editingType === 'subjourney';
+  const typeLabel = editingType === 'journey' ? 'Journey' : editingType === 'subjourney' ? 'Sub Journey' : 'item';
   // Computed once, up front, so both the field-visibility pass just below
   // and the Category-select lock further down (see its own comment) share
   // one definition — a still-Pending item's data, not who's looking at it.
   const stillPending = !!(it && isPendingCategory(it.categoryId));
-  document.getElementById('itemModalTitle').textContent = it ? (isJourneyItem ? 'Edit Journey' : 'Edit item') : (isJourneyItem ? 'New Journey' : 'New item');
+  document.getElementById('itemModalTitle').textContent = it ? `Edit ${typeLabel}` : `New ${typeLabel}`;
   populateStatusSelect();
-  // A Journey has no workstream, no category, and no milestones at all — an
-  // explicit user simplification ("do not add milestones to it... you can
-  // remove the Journey category completely"). All three fields are hidden
-  // outright for one, not left unpopulated/disabled/empty.
-  document.getElementById('itemWorkstreamField').style.display = isJourneyItem ? 'none' : '';
-  document.getElementById('itemCategoryField').style.display = isJourneyItem ? 'none' : '';
-  document.getElementById('itemMilestonesField').style.display = isJourneyItem ? 'none' : '';
+  // Neither a Journey nor a Sub Journey has a workstream, a category, or
+  // milestones at all — an explicit user simplification ("do not add
+  // milestones to it... you can remove the Journey category completely"),
+  // carried over unchanged to the Sub Journey level. All three fields are
+  // hidden outright for either, not left unpopulated/disabled/empty.
+  document.getElementById('itemWorkstreamField').style.display = isJourneyLike ? 'none' : '';
+  document.getElementById('itemCategoryField').style.display = isJourneyLike ? 'none' : '';
+  document.getElementById('itemMilestonesField').style.display = isJourneyLike ? 'none' : '';
   // Actual completion date and External Delivery are hidden outright for a
   // still-Pending item — an explicit user request. Neither is meaningful
   // yet: the item hasn't been scope-assigned to a real workstream/category
@@ -4096,14 +4236,23 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   document.getElementById('itemExternalDeliveryField').style.display = stillPending ? 'none' : '';
   populateWorkstreamSelect(it ? it.workstreamId : (presetWorkstreamId || (workstreams[0] && workstreams[0].id)), undefined, !!(it && it.workstreamId == null));
   const defaultCategoryId = categories[0].id;
-  if (!isJourneyItem) populateCategorySelect(it ? it.categoryId : defaultCategoryId);
-  // A scope item connected to a Journey (see toggleJourneyConnection())
-  // carries a read-only backlink to it — shown here, never editable, since
-  // which Journey (if any) a scope item is connected to isn't something
-  // this modal is meant to change (that's the connect modal's own job).
-  const sourceJourney = it && it.journeyId ? items.find(i => i.id === it.journeyId) : null;
+  if (!isJourneyLike) populateCategorySelect(it ? it.categoryId : defaultCategoryId);
+  // A scope item connected to a Sub Journey (see toggleJourneyConnection())
+  // carries a read-only backlink to it, and a Sub Journey itself carries the
+  // same kind of read-only backlink up to its own parent Journey
+  // (parentJourneyId, set once at creation — see
+  // saveSubJourneyQuickAddItem()) — shown here, never editable, since
+  // neither link is something this modal is meant to change (the connect
+  // modal is the only thing that ever sets a scope item's journeyId; a Sub
+  // Journey's parentJourneyId is never reassigned at all once created).
+  const sourceJourney = it && it.itemType === 'scope' && it.journeyId ? items.find(i => i.id === it.journeyId)
+    : it && it.itemType === 'subjourney' && it.parentJourneyId ? items.find(i => i.id === it.parentJourneyId)
+    : null;
   document.getElementById('itemJourneyLinkField').style.display = sourceJourney ? '' : 'none';
-  if (sourceJourney) document.getElementById('itemJourneyLinkBadge').textContent = sourceJourney.name;
+  if (sourceJourney) {
+    document.getElementById('itemJourneyLinkLabel').textContent = it.itemType === 'subjourney' ? 'From Journey' : 'From Sub Journey';
+    document.getElementById('itemJourneyLinkBadge').textContent = sourceJourney.name;
+  }
   document.getElementById('itemNameInput').value = it ? it.name : '';
   document.getElementById('itemStartInput').value = it ? it.startDate : todayStr();
   document.getElementById('itemDueInput').value = it ? it.dueDate : todayStr();
@@ -4118,7 +4267,7 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   // hand-edited file) — the checkbox driving that toggle is itself hidden
   // here, so nothing should be able to show this field regardless.
   if (stillPending) document.getElementById('itemExternalDeliverySpocField').style.display = 'none';
-  editingMilestones = isJourneyItem ? [] : it
+  editingMilestones = isJourneyLike ? [] : it
     ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable }))
     : milestonesForCategory(defaultCategoryId, document.getElementById('itemDueInput').value);
   renderMilestonesEditor();
@@ -4260,16 +4409,19 @@ function toggleEditingMilestoneNotApplicable(idx) {
 // reads itemDueInput's value as a newly re-seeded milestone's default due date.
 function updateItemStatusFieldMode() {
   const hasMilestones = editingMilestones.length > 0;
-  // A Journey's Status field, like its Plan dates just below, switches to
-  // the same read-only computed badge — an explicit user request ("Journey
-  // should calculate their status based on the status of the included
-  // scope items"), reversing the earlier "stays a plain manual dropdown"
-  // stance now that computing one from connected items was actually asked
-  // for. See computeJourneyStatus()'s own comment for why this is never
-  // persisted onto the Journey's own `status` field either, mirroring
-  // computeJourneyDateRange() exactly.
+  // A Journey/Sub Journey's Status field, like its Plan dates just below,
+  // switches to the same read-only computed badge — an explicit user
+  // request ("Journey should calculate their status based on the status of
+  // the included scope items"), reversing the earlier "stays a plain manual
+  // dropdown" stance now that computing one from connected items was
+  // actually asked for, and carried over unchanged to the Sub Journey level
+  // once it was added. See computeJourneyStatus()'s/
+  // computeSubJourneyStatus()'s own comments for why neither is ever
+  // persisted onto its own `status` field either, mirroring
+  // computeJourneyDateRange()/computeSubJourneyDateRange() exactly.
   const isJourney = editingItemType === 'journey';
-  const showComputedStatus = hasMilestones || isJourney;
+  const isSubJourney = editingItemType === 'subjourney';
+  const showComputedStatus = hasMilestones || isJourney || isSubJourney;
   document.getElementById('itemStatusSelect').style.display = showComputedStatus ? 'none' : '';
   document.getElementById('itemStatusComputed').style.display = showComputedStatus ? '' : 'none';
   if (hasMilestones) {
@@ -4283,23 +4435,32 @@ function updateItemStatusFieldMode() {
     badge.textContent = late ? 'Completed Late' : statusLabel(computed);
     badge.style.background = `var(--stat-${computed}-bg)`;
     badge.style.color = `var(--stat-${computed})`;
-  } else if (isJourney) {
-    // A brand-new, not-yet-saved Journey has no id to look up connections
-    // by, so it always shows the neutral "Not Started" fallback until it's
-    // actually saved — same convention computeJourneyStatus()'s own null
-    // return already establishes for the "nothing connected yet" case.
-    const computed = editingItemId ? (computeJourneyStatus(editingItemId) || 'not-started') : 'not-started';
-    const late = computed === 'complete' && editingItemId && connectedScopeItems(editingItemId).some(itemIsCompletedLate);
+  } else if (isJourney || isSubJourney) {
+    // A brand-new, not-yet-saved Journey/Sub Journey has no id to look up
+    // connections by, so it always shows the neutral "Not Started" fallback
+    // until it's actually saved — same convention computeJourneyStatus()'s/
+    // computeSubJourneyStatus()'s own null return already establishes for
+    // the "nothing connected yet" case.
+    const computed = editingItemId
+      ? ((isJourney ? computeJourneyStatus(editingItemId) : computeSubJourneyStatus(editingItemId)) || 'not-started')
+      : 'not-started';
+    const late = computed === 'complete' && editingItemId && (isJourney
+      ? connectedSubJourneys(editingItemId).some(sj => connectedScopeItems(sj.id).some(itemIsCompletedLate))
+      : connectedScopeItems(editingItemId).some(itemIsCompletedLate));
     const badge = document.getElementById('itemStatusComputedBadge');
     badge.textContent = late ? 'Completed Late' : statusLabel(computed);
     badge.style.background = `var(--stat-${computed}-bg)`;
     badge.style.color = `var(--stat-${computed})`;
   }
-  // Plan dates are still always computed for a Journey too, from the same
-  // connectedScopeItems()'s aggregated milestones (see
-  // computeJourneyDateRange()), not editingMilestones.
-  const journeyRange = (isJourney && editingItemId) ? computeJourneyDateRange(editingItemId) : null;
-  const showComputedDates = hasMilestones || isJourney;
+  // Plan dates are still always computed for a Journey/Sub Journey too — a
+  // Sub Journey's from its own connectedScopeItems()'s aggregated
+  // milestones (computeSubJourneyDateRange()), a Journey's one level
+  // further removed, from its connected Sub Journeys' own ranges
+  // (computeJourneyDateRange()) — not editingMilestones either way.
+  const journeyRange = (editingItemId && (isJourney || isSubJourney))
+    ? (isJourney ? computeJourneyDateRange(editingItemId) : computeSubJourneyDateRange(editingItemId))
+    : null;
+  const showComputedDates = hasMilestones || isJourney || isSubJourney;
   document.getElementById('itemDatesManual').style.display = showComputedDates ? 'none' : '';
   document.getElementById('itemDatesComputed').style.display = showComputedDates ? '' : 'none';
   if (hasMilestones) {
@@ -4310,11 +4471,13 @@ function updateItemStatusFieldMode() {
       document.getElementById('itemDueInput').value = range.dueDate;
     }
     document.getElementById('itemDatesComputedNote').textContent = 'Computed from the earliest and latest milestone date (due or actual)';
-  } else if (isJourney) {
+  } else if (isJourney || isSubJourney) {
     document.getElementById('itemDatesComputedBadge').textContent = journeyRange
       ? `${fmtDateY(journeyRange.startDate)} → ${fmtDateY(journeyRange.dueDate)}`
-      : 'No connected scope items yet';
-    document.getElementById('itemDatesComputedNote').textContent = 'Computed from the latest milestone (due or actual) date across every connected scope item';
+      : (isJourney ? 'No connected Sub Journeys yet' : 'No connected scope items yet');
+    document.getElementById('itemDatesComputedNote').textContent = isJourney
+      ? 'Computed from the date range of every connected Sub Journey'
+      : 'Computed from the latest milestone (due or actual) date across every connected scope item';
   }
 }
 function removeMilestoneRow(idx) {
@@ -4331,7 +4494,8 @@ function saveItem() {
   if (!requireRole('editor')) return;
   // Captured before closeItemModal() (below) resets editingItemType back to
   // 'scope' for the next time the modal opens.
-  const savingJourney = editingItemType === 'journey';
+  const savingType = editingItemType;
+  const savingJourneyLike = savingType === 'journey' || savingType === 'subjourney';
   const name = document.getElementById('itemNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
   // A still-Pending item's workstream is likewise forced to stay whatever it
@@ -4345,18 +4509,18 @@ function saveItem() {
   // populateWorkstreamSelect()) — every other option is a real workstream's
   // id, always non-empty, so this only ever converts that one sentinel back
   // to the same null every other Unassigned check in the app compares against.
-  // A Journey is forced to null regardless of the (hidden) select's value —
-  // it's never assigned to a workstream at all (see openItemModal()'s own
-  // comment on itemWorkstreamField).
-  const workstreamId = savingJourney ? null : (stillPendingOnSave ? editingItemForSave.workstreamId : (document.getElementById('itemWorkstreamSelect').value || null));
-  // A Journey has no category at all — forced to null regardless of the
-  // (hidden) select's value, same "never assigned" treatment workstreamId
-  // gets just above. A still-Pending item's category is likewise forced to
-  // stay whatever it already is, regardless of the (disabled, but
-  // defense-in-depth here too — see openItemModal()'s own comment) select's
-  // value — only applyScopeCategory() is allowed to move an item out of
-  // Pending.
-  const categoryId = savingJourney ? null : (stillPendingOnSave ? editingItemForSave.categoryId : document.getElementById('itemCategorySelect').value);
+  // A Journey/Sub Journey is forced to null regardless of the (hidden)
+  // select's value — neither is ever assigned to a workstream at all (see
+  // openItemModal()'s own comment on itemWorkstreamField).
+  const workstreamId = savingJourneyLike ? null : (stillPendingOnSave ? editingItemForSave.workstreamId : (document.getElementById('itemWorkstreamSelect').value || null));
+  // Neither a Journey nor a Sub Journey has a category at all — forced to
+  // null regardless of the (hidden) select's value, same "never assigned"
+  // treatment workstreamId gets just above. A still-Pending item's category
+  // is likewise forced to stay whatever it already is, regardless of the
+  // (disabled, but defense-in-depth here too — see openItemModal()'s own
+  // comment) select's value — only applyScopeCategory() is allowed to move
+  // an item out of Pending.
+  const categoryId = savingJourneyLike ? null : (stillPendingOnSave ? editingItemForSave.categoryId : document.getElementById('itemCategorySelect').value);
   const manualDueDate = document.getElementById('itemDueInput').value || todayStr();
   const manualStartDate = document.getElementById('itemStartInput').value || manualDueDate;
   const actualDate = document.getElementById('itemActualInput').value || null;
@@ -4383,7 +4547,7 @@ function saveItem() {
   // Add milestone" button was removed for an existing item's checklist (see
   // "Milestone checklist" in CLAUDE.md) and onItemCategoryChange()
   // deliberately no-ops once an item exists.
-  const zeroMilestoneCategorySwitch = !!(editingItemId && !savingJourney && !stillPendingOnSave
+  const zeroMilestoneCategorySwitch = !!(editingItemId && !savingJourneyLike && !stillPendingOnSave
     && editingItemForSave.categoryId !== categoryId && !editingItemForSave.milestones.length);
   const milestones = zeroMilestoneCategorySwitch
     ? milestonesForCategory(categoryId, editingItemForSave.dueDate)
@@ -4403,15 +4567,16 @@ function saveItem() {
   // computed from them — the Status <select> and Start/Due <input>s are only
   // read, and only shown, when there are none to compute from. See
   // "Milestone checklist" / "Item status roll-up" in CLAUDE.md for why
-  // neither has a manual override once milestones exist. A Journey's own
-  // Status <select> is hidden/computed the same way (see
+  // neither has a manual override once milestones exist. A Journey/Sub
+  // Journey's own Status <select> is hidden/computed the same way (see
   // updateItemStatusFieldMode()) — its stored `status` field is never
-  // actually displayed anywhere (computeJourneyStatus() is what itemRowHtml()/
-  // the modal read instead), so this just leaves whatever it already was
-  // (or 'not-started' for a brand-new one) rather than reading a select the
-  // user never had a chance to change, mirroring how a Journey's own stored
+  // actually displayed anywhere (computeJourneyStatus()/
+  // computeSubJourneyStatus() is what itemRowHtml()/the modal read instead),
+  // so this just leaves whatever it already was (or 'not-started' for a
+  // brand-new one) rather than reading a select the user never had a chance
+  // to change, mirroring how a Journey/Sub Journey's own stored
   // startDate/dueDate are likewise written but never displayed.
-  const status = savingJourney
+  const status = savingJourneyLike
     ? (editingItemForSave ? editingItemForSave.status : 'not-started')
     : (milestones.length ? computedStatusFromMilestones(milestones) : document.getElementById('itemStatusSelect').value);
   const range = milestones.length ? computedDateRangeFromMilestones(milestones) : null;
@@ -4437,7 +4602,7 @@ function saveItem() {
   // with zero milestones has nothing to lose, so it already silently picked
   // up the new category's template above instead (no confirm needed) — see
   // `zeroMilestoneCategorySwitch`'s own comment.
-  if (editingItemId && !savingJourney && !stillPendingOnSave && editingItemForSave.categoryId !== categoryId && editingItemForSave.milestones.length) {
+  if (editingItemId && !savingJourneyLike && !stillPendingOnSave && editingItemForSave.categoryId !== categoryId && editingItemForSave.milestones.length) {
     const newCat = categoryById(categoryId);
     const freshMilestones = milestonesForCategory(categoryId, editingItemForSave.dueDate);
     const freshRange = computedDateRangeFromMilestones(freshMilestones);
@@ -4500,15 +4665,19 @@ function saveItem() {
     // to sort it — everything after that is only ever touched by dragging
     // (see reorderItem()). itemType is the same shape again: fixed at
     // creation from editingItemType, never part of `data`, so re-saving an
-    // existing item (Journey or scope) through this modal can never flip its
-    // type. journeyId stays null here — a scope item only ever gets one via
-    // toggleJourneyConnection(), never through this modal.
+    // existing item (Journey, Sub Journey, or scope) through this modal can
+    // never flip its type. journeyId stays null here — a scope item only
+    // ever gets one via toggleJourneyConnection(), never through this
+    // modal. parentJourneyId likewise stays null — in practice a brand-new
+    // Sub Journey is never created through this modal at all (see
+    // saveSubJourneyQuickAddItem(), the only path that ever sets one), so
+    // there's no source to read it from here even defensively.
     const order = items.filter(i => i.workstreamId === workstreamId).length;
-    savedItem = Object.assign({ id: genId(), itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', itemType: savingJourney ? 'journey' : 'scope', journeyId: null, order }, data);
+    savedItem = Object.assign({ id: genId(), itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', itemType: savingJourneyLike ? savingType : 'scope', journeyId: null, parentJourneyId: null, order }, data);
     items.push(savedItem);
   }
   save(); closeItemModal(); render();
-  showToast(savingJourney ? 'Journey saved' : 'Item saved');
+  showToast(savingType === 'journey' ? 'Journey saved' : savingType === 'subjourney' ? 'Sub Journey saved' : 'Item saved');
   // Covers the (rarer) path where a Pending item's milestone is flipped to
   // Complete via this full modal's dropdown rather than the board's inline
   // cycleMilestoneStatus() — same trigger, same guard against re-firing.
@@ -4713,23 +4882,79 @@ function saveJourneyQuickAddItem() {
   showToast('Journey added');
 }
 
-// ---------- Journey connect ----------
-// A Journey has no milestones and nothing of its own to trigger a modal from
-// (see "Journeys" in CLAUDE.md) — connecting it to existing scope items is a
-// plain, standing action instead, reached via the row's own link icon
-// (itemRowHtml()'s connectBtnHtml). Unlike the item modal's own "detached
-// working copy, committed on Save" editors, this one writes straight to
-// `items` the moment a checkbox is toggled — there's no natural "row" to
-// stage here (the list itself is just every existing scope item), and each
-// toggle is trivially reversible by unchecking again, so there's nothing a
-// deferred commit would actually protect against.
-let journeyConnectItemId = null;
-function openJourneyConnectModal(journeyId) {
+// ---------- Sub Journey quick-add ----------
+// A Sub Journey's own counterpart to the Journey quick-add just above — the
+// only way one is ever created (there's no "+ Add Sub Journey" path through
+// the full item modal the way a brand-new scope item never has one either —
+// see "Quick-add scope items" in CLAUDE.md). Scoped per-parent-Journey via
+// subJourneyQuickAddOpenFor (the Journey's own id, or null) rather than a
+// plain boolean, since the input itself lives nested inside whichever
+// Journey's own row is expanded (itemRowHtml()'s subJourneyQuickAddHtml) —
+// unlike journeyQuickAddOpen, which only ever has one possible place to
+// render (renderJourneys()'s own single flat list).
+function openSubJourneyQuickAdd(journeyId) {
   if (!requireRole('editor')) return;
-  const journey = items.find(i => i.id === journeyId);
-  if (!journey) return;
-  journeyConnectItemId = journeyId;
-  document.getElementById('journeyConnectModalTitle').textContent = `Connect scope items to "${journey.name}"`;
+  subJourneyQuickAddOpenFor = journeyId;
+  render();
+  document.getElementById('subJourneyQuickAddInput')?.focus();
+}
+function cancelSubJourneyQuickAdd() {
+  subJourneyQuickAddOpenFor = null;
+  render();
+}
+// Builds the same shape saveJourneyQuickAddItem() does for a top-level
+// Journey (itemType forced, workstreamId/categoryId forced null, no
+// milestones, default green tags, 'not-started' status), plus its own
+// parentJourneyId linking it up to the Journey it was created under —
+// journeyId stays null here, same as it always does at creation for every
+// item type; a scope item is the only thing that ever gets one, and only
+// via toggleJourneyConnection(), never at creation.
+function saveSubJourneyQuickAddItem() {
+  const journeyId = subJourneyQuickAddOpenFor;
+  if (!journeyId) return;
+  subJourneyQuickAddOpenFor = null;
+  const name = (document.getElementById('subJourneyQuickAddInput').value || '').trim();
+  if (!name) { render(); return; } // blurring/Enter with nothing typed just closes it, no error
+  const today = todayStr();
+  const order = items.filter(i => i.workstreamId === null).length;
+  items.push({
+    id: genId(), workstreamId: null, categoryId: null, name,
+    status: 'not-started', startDate: today, dueDate: today, actualDate: null,
+    milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
+    itemType: 'subjourney', journeyId: null, parentJourneyId: journeyId,
+    externalDelivery: false, externalDeliverySpoc: null,
+    order, updatedAt: Date.now()
+  });
+  save(); render();
+  showToast('Sub Journey added');
+}
+
+// ---------- Journey connect ----------
+// A Sub Journey (the only level a scope item ever connects to — see
+// "Journeys" in CLAUDE.md) has no milestones and nothing of its own to
+// trigger a modal from — connecting it to existing scope items is a plain,
+// standing action instead, reached via its own row's link icon
+// (itemRowHtml()'s connectBtnHtml, rendered only for a Sub Journey since a
+// top-level Journey no longer connects to scope items directly). Unlike the
+// item modal's own "detached working copy, committed on Save" editors, this
+// one writes straight to `items` the moment a checkbox is toggled — there's
+// no natural "row" to stage here (the list itself is just every existing
+// scope item), and each toggle is trivially reversible by unchecking again,
+// so there's nothing a deferred commit would actually protect against.
+// Names here (journeyConnectItemId, openJourneyConnectModal(), ...) predate
+// the Sub Journey level and still say "journey" throughout, but every one
+// of them now only ever operates on a Sub Journey's own id, never a
+// top-level Journey's — kept as-is rather than renamed wholesale, the same
+// "internal name doesn't need to track a display-only relabel" precedent
+// Admin/Settings mode already sets (see "Categories (Admin mode)" in
+// CLAUDE.md).
+let journeyConnectItemId = null;
+function openJourneyConnectModal(subJourneyId) {
+  if (!requireRole('editor')) return;
+  const subJourney = items.find(i => i.id === subJourneyId);
+  if (!subJourney) return;
+  journeyConnectItemId = subJourneyId;
+  document.getElementById('journeyConnectModalTitle').textContent = `Connect scope items to Sub Journey "${subJourney.name}"`;
   renderJourneyConnectList();
   document.getElementById('journeyConnectModalBg').classList.add('open');
 }
@@ -4740,21 +4965,21 @@ function closeJourneyConnectModal() {
 // Grouped by workstream (plus Unassigned), the same visual structure
 // Planning's own status board uses, so the picker reads familiarly rather
 // than as an undifferentiated flat list. A scope item already claimed by a
-// *different* Journey is left off entirely — connecting it here would
+// *different* Sub Journey is left off entirely — connecting it here would
 // silently steal it from wherever it already belongs. The candidates check
-// is `itemType !== 'journey'`, not `=== 'scope'` — a user-reported bug
-// (some available scope items weren't showing up here) traced to the
-// stricter `=== 'scope'` check excluding any item whose `itemType` hasn't
-// been backfilled yet (only normalizeData(), run on load/merge/import,
-// ever does that — see "Data integrity" in CLAUDE.md), most visibly a
-// scope item quick-added via openInlineQuickAdd() earlier in the same
-// session. Every other itemType check in this file already uses the
-// defensive `!== 'journey'` form (unassignedItemsSorted(),
-// buildScopeItemsSheet()) for exactly this reason; this was the one place
-// that didn't.
+// excludes both `itemType === 'journey'` and `'subjourney'`, rather than
+// checking `=== 'scope'` — a user-reported bug (some available scope items
+// weren't showing up here) traced to the stricter `=== 'scope'` check
+// excluding any item whose `itemType` hasn't been backfilled yet (only
+// normalizeData(), run on load/merge/import, ever does that — see "Data
+// integrity" in CLAUDE.md), most visibly a scope item quick-added via
+// openInlineQuickAdd() earlier in the same session. Every other itemType
+// check in this file already uses the same defensive `!==` form
+// (unassignedItemsSorted(), buildScopeItemsSheet()) for exactly this
+// reason.
 function renderJourneyConnectList() {
-  const journeyId = journeyConnectItemId;
-  const candidates = items.filter(it => it.itemType !== 'journey' && (it.journeyId == null || it.journeyId === journeyId));
+  const subJourneyId = journeyConnectItemId;
+  const candidates = items.filter(it => it.itemType !== 'journey' && it.itemType !== 'subjourney' && (it.journeyId == null || it.journeyId === subJourneyId));
   if (!candidates.length) {
     document.getElementById('journeyConnectList').innerHTML = `<p style="color:var(--text-faint);font-size:13px;margin:0">No available scope items yet.</p>`;
     return;
@@ -4768,7 +4993,7 @@ function renderJourneyConnectList() {
         <div class="journey-connect-ws-label">${esc(g.name)}</div>
         ${wsItems.map(it => `
           <label class="journey-connect-row">
-            <input type="checkbox" ${it.journeyId === journeyId ? 'checked' : ''} onchange="toggleJourneyConnection('${it.id}', this.checked)">
+            <input type="checkbox" ${it.journeyId === subJourneyId ? 'checked' : ''} onchange="toggleJourneyConnection('${it.id}', this.checked)">
             <span>${esc(it.name)}</span>
           </label>`).join('')}
       </div>`;
@@ -6915,10 +7140,11 @@ function buildScopeItemsSheet(wb) {
   // own manual order, same as the status board.
   const sections = [{ id: null, name: 'Unassigned' }, ...workstreams.slice().sort((a, b) => a.order - b.order)];
   sections.forEach(w => {
-    // A Journey also has workstreamId:null (see "Journeys" above), but it's
-    // never a scope item — excluded here the same way unassignedItemsSorted()
-    // excludes it from the Unassigned bucket on Planning's own board.
-    const wItems = items.filter(it => it.workstreamId === w.id && it.itemType !== 'journey').sort((a, b) => a.order - b.order);
+    // A Journey/Sub Journey also has workstreamId:null (see "Journeys"
+    // above), but neither is ever a scope item — excluded here the same way
+    // unassignedItemsSorted() excludes both from the Unassigned bucket on
+    // Planning's own board.
+    const wItems = items.filter(it => it.workstreamId === w.id && it.itemType !== 'journey' && it.itemType !== 'subjourney').sort((a, b) => a.order - b.order);
     wItems.forEach(it => {
       const cat = categoryById(it.categoryId);
       const row = sheet.addRow({
