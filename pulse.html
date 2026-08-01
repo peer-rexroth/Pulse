@@ -2706,6 +2706,7 @@ function unassignedSectionHtml() {
       <div class="ws-section-header" style="background:var(--panel-2)">
         <span class="ws-dot" style="background:transparent"></span>
         <span class="ws-section-title">Unassigned</span>
+        ${expandAllToggleHtml(uItems)}
       </div>
       ${rows}
       ${addRow}
@@ -2765,6 +2766,7 @@ function renderStatusView(main) {
           <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
           <span class="ws-section-title">${esc(w.name)}</span>
           <div class="rag-summary">${pills}</div>
+          ${expandAllToggleHtml(displayItems)}
         </div>
         ${rows}${externalSectionHtml}
       </div>`;
@@ -3343,6 +3345,45 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
 function toggleItemExpanded(id) {
   if (expandedItemIds.has(id)) expandedItemIds.delete(id); else expandedItemIds.add(id);
   render();
+}
+// "Expand all"/"Collapse all" for a whole section at once — an explicit
+// user request: once a section holds more than a handful of multi-
+// milestone items, expanding each one individually via its own chevron
+// gets tedious. Unlike toggleItemExpanded() above, this is only ever
+// reachable from Planning's own status board (renderStatusView()/
+// unassignedSectionHtml() — see expandAllToggleHtml() below), never from
+// Review, so it safely calls the narrower renderMain() instead of the
+// general render(). Takes an explicit list of ids — the section's own
+// *currently displayed* expandable items, i.e. already filtered by
+// search/status/external — rather than re-deriving them from workstreamId
+// here, so it only ever acts on what's actually visible on screen right
+// now, never a hidden item a filter is currently narrowing out.
+function toggleExpandAllForItems(ids) {
+  if (!ids.length) return;
+  const allExpanded = ids.every(id => expandedItemIds.has(id));
+  ids.forEach(id => { if (allExpanded) expandedItemIds.delete(id); else expandedItemIds.add(id); });
+  renderMain();
+}
+// Shared by renderStatusView()'s per-workstream sections and
+// unassignedSectionHtml() — both render one .ws-section per group of
+// items, and both want the identical "Expand all"/"Collapse all" control
+// in their own header, once the group has at least one item worth
+// expanding (i.e. it actually has milestones — a zero-milestone item's
+// chevron is inert, see itemRowHtml()'s own expandable check). Returns ''
+// (omitted, not just disabled) when there's nothing to expand at all, the
+// same "hide, don't clutter with a dead control" treatment this app's
+// other optional section controls already get (e.g. the Unassigned
+// section's own "+ Add item" row). The label reflects the group's own
+// aggregate state — "Expand all" whenever at least one of its items isn't
+// currently expanded, "Collapse all" only once every one of them already
+// is — the same aggregate-state-driven toggle shape "Show more"/"Show
+// less" already uses elsewhere in this app (see historyShowAllWs).
+function expandAllToggleHtml(sectionItems) {
+  const expandableIds = sectionItems.filter(it => it.milestones.length > 0).map(it => it.id);
+  if (!expandableIds.length) return '';
+  const allExpanded = expandableIds.every(id => expandedItemIds.has(id));
+  const idsLiteral = expandableIds.map(id => `'${id}'`).join(',');
+  return `<button class="btn btn-sm" onclick="toggleExpandAllForItems([${idsLiteral}])">${allExpanded ? 'Collapse all' : 'Expand all'}</button>`;
 }
 
 function revealActualDate(milestoneId) {

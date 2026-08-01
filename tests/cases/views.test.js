@@ -388,6 +388,74 @@ test('an item with no milestones shows no count badge and no chevron toggle', fu
   assertNotIncludes(html, 'milestones</span>');
 });
 
+// ---------- "Expand all"/"Collapse all" for a whole section ----------
+// An explicit user request: once a section holds more than a handful of
+// multi-milestone items, expanding each one individually via its own
+// chevron gets tedious.
+
+test('a workstream section with no expandable items shows no "Expand all" button', function () {
+  addItem({ name: 'No milestones here', milestones: [] });
+  renderMain();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Expand all');
+});
+
+test('toggleExpandAllForItems expands every item in the list, and the button flips to "Collapse all"', function () {
+  const a = addItem({ name: 'Item A', milestones: [{ id: 'm1', name: 'M1', dueDate: todayStr(), status: 'not-started' }] });
+  const b = addItem({ name: 'Item B', milestones: [{ id: 'm2', name: 'M2', dueDate: todayStr(), status: 'not-started' }] });
+  renderMain();
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Expand all');
+  assertNotIncludes(html, 'M1');
+  assertNotIncludes(html, 'M2');
+
+  toggleExpandAllForItems([a.id, b.id]);
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'M1');
+  assertIncludes(html, 'M2');
+  assertIncludes(html, 'Collapse all');
+  assertNotIncludes(html, 'Expand all');
+});
+
+test('toggleExpandAllForItems collapses every item back once all are already expanded', function () {
+  const a = addItem({ name: 'Item A', milestones: [{ id: 'm1', name: 'M1', dueDate: todayStr(), status: 'not-started' }] });
+  const b = addItem({ name: 'Item B', milestones: [{ id: 'm2', name: 'M2', dueDate: todayStr(), status: 'not-started' }] });
+  toggleExpandAllForItems([a.id, b.id]);
+  toggleExpandAllForItems([a.id, b.id]); // click "Collapse all"
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'M1');
+  assertNotIncludes(html, 'M2');
+  assertIncludes(html, 'Expand all');
+});
+
+test('the button reads "Expand all" (not "Collapse all") as soon as any one item in the group is still collapsed', function () {
+  const a = addItem({ name: 'Item A', milestones: [{ id: 'm1', name: 'M1', dueDate: todayStr(), status: 'not-started' }] });
+  addItem({ name: 'Item B', milestones: [{ id: 'm2', name: 'M2', dueDate: todayStr(), status: 'not-started' }] });
+  toggleItemExpanded(a.id); // expand only one of the two
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Expand all', 'not every item in the group is expanded yet');
+  assertNotIncludes(html, 'Collapse all');
+});
+
+test('a zero-milestone item is excluded from the "Expand all" group entirely', function () {
+  const a = addItem({ name: 'Has milestones', milestones: [{ id: 'm1', name: 'M1', dueDate: todayStr(), status: 'not-started' }] });
+  addItem({ name: 'No milestones', milestones: [] });
+  renderMain();
+  assertIncludes(document.getElementById('main').innerHTML, 'Expand all');
+  toggleExpandAllForItems([a.id]); // simulates clicking the button — only the real, multi-milestone item's id is ever passed in
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Collapse all', 'the one expandable item is now expanded, so the whole group reads as fully expanded');
+});
+
+test('the Unassigned section gets its own independent "Expand all" toggle', function () {
+  const it = addItem({ name: 'Unassigned with milestones', workstreamId: null, milestones: [{ id: 'm1', name: 'M1', dueDate: todayStr(), status: 'not-started' }] });
+  renderMain();
+  assertIncludes(document.getElementById('main').innerHTML, 'Expand all');
+  toggleExpandAllForItems([it.id]);
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'M1');
+  assertIncludes(html, 'Collapse all');
+});
+
 test('renderMain shows an empty state with no workstreams', function () {
   workstreams = [];
   items = [];
