@@ -616,17 +616,6 @@
      below it" the same way a workstream's own section header does. */
   .item-row-journey-header { background: var(--panel-2); padding-top: 12px; padding-bottom: 12px; }
   .item-row-journey-header .item-name { font-weight: 700; font-size: 14.5px; }
-  /* Third tier of the same "three visibly distinct voices" typography
-     step-down (Journey heaviest, Sub Journey the plain/default middle
-     tier, a connected scope item lightest) — an explicit user request.
-     item-row-indent-2 landing on a plain .item-row (rather than a
-     .milestone-header/.milestone-sub-row) only ever happens for a Sub
-     Journey's own connected scope item (see itemRowHtml()'s indentClass,
-     and viewOnly's own comment above) — the leaf level of this hierarchy —
-     so this is safely scoped to that case alone and never touches an
-     ordinary scope item row on Planning's own status board, which reuses
-     .item-name at its plain default weight/size below. */
-  .item-row-indent-2 .item-name { font-weight: 500; font-size: 13px; }
   .item-chevron { text-align: center; color: var(--text-faint); cursor: pointer; }
   .item-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* The Journeys list reuses --item-grid-cols wholesale (same .item-row/
