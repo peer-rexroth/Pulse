@@ -1779,10 +1779,10 @@ const THEME_SCHEMES = [
 // an explicit request to replace the prior single made-up "Development"
 // template with this real one.
 const DEFAULT_CATEGORIES = [
-  { name: 'Development', milestones: ['Requirements Defined', 'Requirements Approved', 'Design Defined', 'Development Completed', 'Ready for SIT', 'Ready for E2E', 'Deployment Completed'] },
+  { name: 'Development', milestones: ['Requirements Defined', 'Requirements Approved', 'Design Defined', 'Development Completed', 'Ready for Testing', 'Deployment Completed'] },
   { name: 'Artefact', milestones: ['Draft Completed', 'Ready for Review', 'Artefact Approved', 'Artefact Published'] },
-  { name: 'Integration', milestones: ['Interface Specification Agreed', 'Design Defined', 'Development Completed', 'Ready for SIT', 'Ready for E2E', 'Deployment Completed'] },
-  { name: 'Activity', milestones: ['Activity Planned', 'Activity Prepared', 'Ready for Execution', 'Activity Started', 'Activity Completed'] }
+  { name: 'Activity', milestones: ['Activity Planned', 'Activity Prepared', 'Ready for Execution', 'Activity Started', 'Activity Completed'] },
+  { name: 'Dependency', milestones: ['Requirements Defined', 'Delivery Commitment Confirmed', 'Dependency Delivered', 'Ready for Testing', 'Deployment Completed'] }
 ];
 // Kept as an alias, not a second source of truth — several call sites and
 // tests only ever cared about "the first/default category's own milestone
