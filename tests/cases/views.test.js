@@ -134,20 +134,27 @@ test('an externally-delivered item is pulled out of the main list into its own "
   assertTrue(subHeaderIdx < externalIdx, 'the external item should render after the sub-section header, not in the main list');
 });
 
-test('the External Delivery sub-section shows that item\'s own SPOC', function () {
+// The row-level SPOC display above was later removed by an explicit user
+// request ("remove the External Delivery SPOC from the list view") — the
+// field itself is untouched (still stored, still editable in the item
+// modal), only the row's own rendering of it is gone.
+
+test('the External Delivery sub-section no longer shows that item\'s own SPOC on the row', function () {
   addItem({ name: 'Vendor-delivered item', externalDelivery: true, externalDeliverySpoc: 'Jane Doe (Acme Corp)' });
   renderMain();
-  assertIncludes(document.getElementById('main').innerHTML, 'Jane Doe (Acme Corp)');
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Jane Doe (Acme Corp)');
 });
 
-test('a normal (non-external) item\'s row never shows the item-external-spoc span', function () {
+test('an external item\'s row never shows the item-external-spoc span, with or without a SPOC entered', function () {
+  const withSpoc = addItem({ name: 'External, with SPOC', externalDelivery: true, externalDeliverySpoc: 'Jane Doe' });
+  const withoutSpoc = addItem({ name: 'External, no SPOC yet', externalDelivery: true, externalDeliverySpoc: null });
+  assertNotIncludes(itemRowHtml(withSpoc), 'item-external-spoc');
+  assertNotIncludes(itemRowHtml(withoutSpoc), 'item-external-spoc');
+});
+
+test('a normal (non-external) item\'s row never shows the item-external-spoc span either', function () {
   const it = addItem({ name: 'Normal item' });
   assertNotIncludes(itemRowHtml(it), 'item-external-spoc');
-});
-
-test('an external item with no SPOC entered yet still renders the span (with a placeholder dash), so the grid column never collapses', function () {
-  const it = addItem({ name: 'External, no SPOC yet', externalDelivery: true, externalDeliverySpoc: null });
-  assertIncludes(itemRowHtml(it), '<span class="item-external-spoc" title="External SPOC">—</span>');
 });
 
 test('RAG counts in the workstream header still include externally-delivered items, even though they render in the separate sub-section', function () {
@@ -176,29 +183,34 @@ test('a workstream with no externally-delivered items shows no "External Deliver
   assertNotIncludes(document.getElementById('main').innerHTML, 'External Delivery');
 });
 
-// ---------- External Delivery's own sidebar nav entry + cross-workstream view ----------
+// ---------- External Deliveries' own sidebar nav entry + cross-workstream view ----------
 // An explicit user request ("add External Delivery to the left navigation
 // pane, under 'All Workstreams'") — a new mode, own sidebar row (mirroring
 // Journeys' own entry point), listing every externally-delivered item across
-// every workstream regardless of the current sidebar filter.
+// every workstream regardless of the current sidebar filter. The row/mode's
+// own label was later renamed to the plural "External Deliveries" (a
+// follow-up user request) to match Journeys/Workstreams' own plural-noun
+// convention — the item modal's own "External Delivery" checkbox and
+// Planning's own per-workstream sub-section header are unaffected, still
+// singular.
 
-test('renderSidebar renders the External Delivery nav row last in the top nav group, after Journeys, with a live count', function () {
+test('renderSidebar renders the External Deliveries nav row last in the top nav group, after Journeys, with a live count', function () {
   addItem({ name: 'Ext 1', externalDelivery: true, externalDeliverySpoc: 'Jane' });
   addItem({ name: 'Ext 2', externalDelivery: true, externalDeliverySpoc: 'Bob' });
   addItem({ name: 'Not external' });
   renderSidebar();
   const html = document.getElementById('topNavList').innerHTML;
-  assertIncludes(html, 'External Delivery');
+  assertIncludes(html, 'External Deliveries');
   const allIdx = html.indexOf('All Workstreams');
   const journeysIdx = html.indexOf('Journeys');
-  const extIdx = html.indexOf('External Delivery');
+  const extIdx = html.indexOf('External Deliveries');
   assertTrue(allIdx < journeysIdx, 'Journeys must sit after "All Workstreams"');
-  assertTrue(journeysIdx < extIdx, 'External Delivery must sit after Journeys, last in the top group');
-  assertNotIncludes(document.getElementById('wsList').innerHTML, 'External Delivery', 'the real workstream list (#wsList) no longer holds this row at all');
+  assertTrue(journeysIdx < extIdx, 'External Deliveries must sit after Journeys, last in the top group');
+  assertNotIncludes(document.getElementById('wsList').innerHTML, 'External Deliveries', 'the real workstream list (#wsList) no longer holds this row at all');
   assertIncludes(html, '<span class="ws-row-count">2</span>', 'the row shows a live count of externally-delivered items across every workstream');
 });
 
-test('the External Delivery nav row is active only while mode is \'external\', and no workstream row reads as active alongside it', function () {
+test('the External Deliveries nav row is active only while mode is \'external\', and no workstream row reads as active alongside it', function () {
   filterWorkstreamId = workstreams[0].id;
   setMode('planning');
   renderSidebar();
@@ -207,10 +219,10 @@ test('the External Delivery nav row is active only while mode is \'external\', a
   setMode('external');
   renderSidebar();
   const html = document.getElementById('topNavList').innerHTML;
-  assertIncludes(html, `ws-row active" onclick="setMode('external')"`, 'active once External Delivery mode is showing');
-  assertNotIncludes(html, 'ws-row-all active', '"All Workstreams" must not read as active while External Delivery is showing');
+  assertIncludes(html, `ws-row active" onclick="setMode('external')"`, 'active once External Deliveries mode is showing');
+  assertNotIncludes(html, 'ws-row-all active', '"All Workstreams" must not read as active while External Deliveries is showing');
   assertNotIncludes(document.getElementById('wsList').innerHTML, 'ws-row active', 'no real workstream row reads as active either');
-  assertEqual(filterWorkstreamId, workstreams[0].id, 'the selection itself survives the switch, unaffected — External Delivery ignores it entirely');
+  assertEqual(filterWorkstreamId, workstreams[0].id, 'the selection itself survives the switch, unaffected — External Deliveries ignores it entirely');
 });
 
 test('setMode(\'external\') dispatches to renderExternalDelivery() without touching filterWorkstreamId', function () {

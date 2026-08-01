@@ -471,16 +471,16 @@
   /* "All Workstreams" is a pseudo-row, not a real workstream — its icon
      stays a plain, neutral one (not a colored .ws-dot the way a real
      workstream row gets), the same shared 8px column every row in the top
-     nav group (Journeys/External Delivery) uses too, so their labels all
+     nav group (Journeys/External Deliveries) uses too, so their labels all
      line up with the real workstream rows below them. */
   .ws-row-all-icon { width: 8px; flex: 0 0 auto; text-align: center; font-size: 11px; color: var(--text-faint); }
   .ws-row-all.active .ws-row-all-icon { color: var(--accent); }
   /* A dedicated, full-width divider between the top nav group (All
-     Workstreams / Journeys / External Delivery, in that order — see
+     Workstreams / Journeys / External Deliveries, in that order — see
      renderSidebar()) and the real workstream list below it — a
      user-reported fix: this used to be a border-bottom on whichever row
      rendered last in the group (.ws-row-all, then later whichever row
-     ended up last as Journeys/External Delivery joined it), but a
+     ended up last as Journeys/External Deliveries joined it), but a
      .ws-row's own border-radius rounded that border's corners and inset it
      to the row's own padding, so it read as the bottom edge of one button
      rather than a real section break — easy to miss entirely. A separate,
@@ -533,11 +533,6 @@
      this never sits at the very top of the .ws-section card it lives in. */
   .ws-subsection-header { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--panel-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 700; color: var(--text-dim); }
   .ws-subsection-header i { font-size: 11px; }
-  /* An externally-delivered item's own SPOC, shown right on its row — see
-     itemRowHtml()'s own comment on reusing this column's existing
-     always-blank slot rather than adding a new grid column for it. */
-  .item-external-spoc { color: var(--text-dim); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
   /* Item rows and their nested milestone rows share --item-grid-cols so
      every cell lines up vertically regardless of which optional content
      (owner, milestones) a given row has. */
@@ -1130,7 +1125,7 @@
      before, just now sitting alongside the sidebar rather than without one. -->
 <div class="body-row" id="scopedBody">
   <div class="sidebar">
-    <!-- All Workstreams / Journeys / External Delivery — one ordered top
+    <!-- All Workstreams / Journeys / External Deliveries — one ordered top
          group, a separator, then the real workstream list below (see
          renderSidebar()'s own comment). -->
     <div id="topNavList"></div>
@@ -2325,7 +2320,7 @@ function setMode(m) {
 function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
   // Neither "All Workstreams" nor any real workstream row shows as active
-  // while Journeys or External Delivery mode is showing — a user-reported
+  // while Journeys or External Deliveries mode is showing — a user-reported
   // bug (for Journeys originally): filterWorkstreamId stays whatever it
   // last was (both of these ignore it entirely, see
   // renderJourneys()/renderExternalDelivery()), so the workstream row
@@ -2336,13 +2331,18 @@ function renderSidebar() {
   // (and restored, visually) on switching back to Planning/Review/
   // Dashboard, not lost the moment either of these modes is opened.
   const inWorkstreamScope = mode !== 'journeys' && mode !== 'external';
-  // The top nav group — All Workstreams, Journeys, External Delivery, in
+  // The top nav group — All Workstreams, Journeys, External Deliveries, in
   // that order — an explicit user request for a single ordered block above
   // a separator, ahead of the real workstream list below it. This replaces
   // two earlier, separate designs: Journeys used to get its own labeled
   // section (its own #journeysNav container, under a "Journeys" heading)
   // and External Delivery used to sit as the 2nd row inside #wsList itself
-  // (directly under "All Workstreams", ahead of the real workstream rows).
+  // (directly under "All Workstreams", ahead of the real workstream rows) —
+  // labeled "External Delivery" (singular) at the time, later pluralized to
+  // "External Deliveries" to match Journeys/Workstreams' own plural-noun
+  // convention for a row that names a whole list of things, not a
+  // yes/no field the way the item modal's own "External Delivery" checkbox
+  // still reads.
   // Both are now built together into #topNavList instead, with #wsList left
   // holding only the real, per-workstream rows. The actual separator line
   // is a dedicated static element, `.sidebar-divider` (see the static HTML
@@ -2360,9 +2360,9 @@ function renderSidebar() {
       <span class="ws-row-name">Journeys</span>
       <span class="ws-row-count">${allJourneys().length}</span>
     </div>
-    <div class="ws-row ${mode === 'external' ? 'active' : ''}" onclick="setMode('external')" title="External Delivery">
+    <div class="ws-row ${mode === 'external' ? 'active' : ''}" onclick="setMode('external')" title="External Deliveries">
       <i class="fa-solid fa-globe ws-row-all-icon" style="color:${mode === 'external' ? 'var(--accent)' : 'var(--text-dim)'}"></i>
-      <span class="ws-row-name">External Delivery</span>
+      <span class="ws-row-name">External Deliveries</span>
       <span class="ws-row-count">${allExternalDeliveryItems().length}</span>
     </div>`;
   const el = document.getElementById('wsList');
@@ -2605,13 +2605,20 @@ function renderJourneys() {
     </div>`;
 }
 
-// ---------- External Delivery (sidebar nav entry) ----------
+// ---------- External Deliveries (sidebar nav entry) ----------
 // An explicit user request ("add External Delivery to the left navigation
 // pane, under 'All Workstreams'") for a cross-workstream view of every
 // externally-delivered scope item, mirroring how Journeys got its own
-// sidebar entry + flat list. Unlike a Journey, an externally-delivered item
-// always belongs to a real workstream (see "External Delivery" in
-// CLAUDE.md) — losing that context here would make the same row read
+// sidebar entry + flat list. The nav row/mode itself was later renamed to
+// the plural "External Deliveries" (see renderSidebar()'s own comment) to
+// match Journeys/Workstreams' own plural-noun convention — this section's
+// own function/variable names (allExternalDeliveryItems(),
+// renderExternalDelivery()) keep the original singular form, unchanged, the
+// same way `mode === 'external'` and every other internal identifier in
+// this file stay stable across a purely user-facing label rename. Unlike a
+// Journey, an externally-delivered item always belongs to a real workstream
+// (see "External Delivery" in CLAUDE.md) — losing that context here would
+// make the same row read
 // differently than it does in its own workstream's Planning section — so
 // this groups by workstream (one .ws-section per workstream that actually
 // has an externally-delivered item), rather than Journeys' single flat
@@ -2751,23 +2758,22 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // modal), just never shown/edited inline on the row — this used to get a
   // dedicated (always-blank) grid column reserved for it, removed outright
   // per an explicit user request (see --item-grid-cols' own comment above).
-  // External Delivery's own SPOC surfaces on the row itself here — an
-  // explicit user request ("show also the External SPOC in the view"),
+  // External Delivery's own SPOC used to surface on the row itself here —
+  // an explicit user request ("show also the External SPOC in the view"),
   // reusing this column's own existing always-blank slot on an item's own
   // row (column 7, "Milestone-Due" in --item-grid-cols' own comment — that
   // one only ever holds a milestone's own Due date on a milestone SUB-row,
-  // never anything on the item's own row) rather than adding a whole new
-  // grid column just for this. Since items flagged externalDelivery are the
-  // only ones this ever renders for, and renderStatusView() now pulls every
-  // externally-delivered item into its own "External Delivery" sub-section
-  // (see there) rather than the workstream's main list, this only ever
-  // actually shows up in practice inside that sub-section — plus, as a
-  // harmless side effect, anywhere else this same row markup gets reused
-  // for an external item (Review's own checklist, a Journey's connected
-  // items) where the useful context is equally welcome, not filtered out.
-  const externalSpocHtml = it.externalDelivery
-    ? `<span class="item-external-spoc" title="External SPOC">${esc(it.externalDeliverySpoc || '—')}</span>`
-    : `<span></span>`;
+  // never anything on the item's own row). Removed again by a later,
+  // explicit user request ("remove the External Delivery SPOC from the
+  // list view") — the field itself is untouched (still stored, still
+  // editable in the item modal), this just stops rendering it on the row.
+  // A plain empty placeholder keeps the column itself alive rather than
+  // omitting the element outright, the same "every cell must be a real
+  // element" discipline every other column in this grid follows (see
+  // "Column layout is a real CSS grid" in CLAUDE.md) — an omitted element
+  // would collapse the column and shift everything after it out of
+  // alignment with rows that still have content there.
+  const externalSpocHtml = `<span></span>`;
   // IT/Business/Budget — item-level-only RAG tags, cycled by clicking. See
   // ITEM_TAG_FIELDS/RAG3/cycleItemAttr() above. Icon-only (no text label) —
   // title attr carries the full name for a hover tooltip. Rendered in column
