@@ -30,47 +30,54 @@
     --shadow: 0 1px 2px rgba(20,20,30,.04), 0 4px 16px rgba(20,20,30,.06);
     /* Shared column layout for the status board: header row, item rows, and
        nested milestone rows all use this so cells line up across all three —
-       see "Status board" in CLAUDE.md. Columns: 1 Chevron, 2-5 Name/
-       (formerly Owner, now blank)/Milestones/Plan-dates (on a milestone row
-       these 4 are merged into one wide Name cell instead — see
-       milestoneRowsHtml()) — on the item's own row, Name itself spans
-       columns 2-3 (grid-column:2/4, set inline on itemRowHtml()'s .item-name)
-       rather than sitting in column 2 alone, absorbing the always-blank
-       former-Owner column right next to it for extra room, per an explicit
-       user request; the Milestones-count badge sits in column 4 alone (moved
-       there from column 3, another explicit user request — "move X/Y
-       milestones count to 4"), which is why columns 3/4's widths were
-       swapped from their original 90px/160px to 160px/90px — the badge only
-       needs 90px, and the extra 160px is better spent widening Name instead
-       — 6 blank (always empty on both row types, thin spacer; this used to
-       be Notes, removed along with the item.notes field entirely), 7
-       Milestone Due (blank on the item's own row), 8 Tags (IT/Business/
-       Budget) on the item row / Milestone Actual on a milestone row, 9
-       Status, 10 Actions. Columns 7-8 are placed right next to Status so a
-       milestone's own dates sit beside its own status badge. This used to
-       be 11 columns — a dedicated "Actual" placeholder sat between Plan-
-       dates and this spacer, reserved for the item's own actualDate field
-       even though nothing was ever rendered there (that field is only ever
-       edited in the item modal, never inline on the row — see
-       itemRowHtml()'s old actualDateHtml) — removed outright per an explicit
-       user request ("remove column 6"), since an empty column reserved for a
-       field the row never actually shows wasn't earning its width the way
-       the remaining spacer (which exists purely to pad the row's total width
-       under typical viewport widths) still is. Column 6 (the remaining
-       spacer) is kept deliberately narrow (not 0) for that same reason —
-       every row this wide needs the overall total to stay under typical
-       viewport widths so .main's overflow:auto never has to
-       kick in for a normal window size; see the "Status board" section in
-       CLAUDE.md for the incident where wide unused columns, combined with
-       the Due/Actual columns added for milestones, pushed Status/Actions
-       off-screen. */
-    /* Status (9th track) is 116px, not the original 90px — widened once
+       see "Status board" in CLAUDE.md. Columns: 1 Chevron, 2-4 Name/
+       (formerly Owner, now blank)/Milestones (on a milestone row these 3 —
+       now 4, once the spacer at 5 below is included — are merged into one
+       wide Name cell instead — see milestoneRowsHtml()) — on the item's own
+       row, Name itself spans columns 2-3 (grid-column:2/4, set inline on
+       itemRowHtml()'s .item-name) rather than sitting in column 2 alone,
+       absorbing the always-blank former-Owner column right next to it for
+       extra room, per an explicit user request; the Milestones-count badge
+       sits in column 4 alone (moved there from column 3, another explicit
+       user request — "move X/Y milestones count to 4"), which is why
+       columns 3/4's widths were swapped from their original 90px/160px to
+       160px/90px — the badge only needs 90px, and the extra 160px is better
+       spent widening Name instead — 5 a second blank spacer (20px, an
+       explicit user request — "add a 20px spacer column between 4 and 5" —
+       inserted between the Milestones badge and Plan-dates; every column
+       from here on shifted up by one to make room for it), 6 Plan-dates, 7
+       blank (always empty on both row types, thin spacer; this used to be
+       Notes, removed along with the item.notes field entirely), 8 Milestone
+       Due (blank on the item's own row), 9 Tags (IT/Business/Budget) on the
+       item row / Milestone Actual on a milestone row, 10 Status, 11 Actions.
+       Columns 8-9 are placed right next to Status so a milestone's own
+       dates sit beside its own status badge. This used to be 12 columns — a
+       dedicated "Actual" placeholder sat between Plan-dates and the column-7
+       spacer, reserved for the item's own actualDate field even though
+       nothing was ever rendered there (that field is only ever edited in
+       the item modal, never inline on the row — see itemRowHtml()'s old
+       actualDateHtml) — removed outright per an explicit user request
+       ("remove column 6"), since an empty column reserved for a field the
+       row never actually shows wasn't earning its width the way the column-7
+       spacer (which exists purely to pad the row's total width under
+       typical viewport widths) still is. Column 7 (that spacer) is kept
+       deliberately narrow (not 0) for that same reason — every row this
+       wide needs the overall total to stay under typical viewport widths so
+       .main's overflow:auto never has to kick in for a normal window size;
+       see the "Status board" section in CLAUDE.md for the incident where
+       wide unused columns, combined with the Due/Actual columns added for
+       milestones, pushed Status/Actions off-screen. Column 5 (the newer
+       spacer added between the Milestones badge and Plan-dates) is purely
+       decorative breathing room, not tied to any removed field the way
+       column 7 is — kept at a plain 20px, matching column 7's own width,
+       rather than needing its own separate justification. */
+    /* Status (10th track) is 116px, not the original 90px — widened once
        "Completed Late" (see isCompletedLate() in the inline script below)
        became the longest label a status badge can render; 90px was tuned
        for "Off Track"/"Not Started" and wasn't enough for the new one
        without wrapping. See .milestone-status-cell's own comment for the
        matching widening of its internal first column. */
-    --item-grid-cols: 20px minmax(140px,1.3fr) 160px 90px 190px 20px 115px 100px 116px 56px;
+    --item-grid-cols: 20px minmax(140px,1.3fr) 160px 90px 20px 190px 20px 115px 100px 116px 56px;
 
     --ws-blue: #3b6fe0;   --ws-blue-bg: #eaf0fd;
     --ws-teal: #12968c;   --ws-teal-bg: #e3f6f4;
@@ -610,18 +617,20 @@
      row ever has) rendered past the card's own right edge, since
      .item-actions is a plain flex row with no width cap of its own and
      .ws-section has no overflow:hidden (see "Status board" in CLAUDE.md) to
-     hide the spillover. Two of the shared grid's own tracks (the old Owner
-     column, one blank spacer) are *always* empty on any row here — neither
-     a Journey nor a plain scope item shows anything in them — so shrinking
-     those two buys back most of the room the wider Actions column needs;
-     the rest (Milestone/Due/Actual/Status) keep their original widths since
-     connected items can still expand their own real milestone checklists
-     underneath. (A third always-empty track, the Actual-date placeholder,
-     used to be shrunk here too — removed outright from the shared grid
-     instead, see --item-grid-cols' own comment above.) Status (9th track)
-     was later widened to 116px in step with the shared default's own
-     widening, for "Completed Late" — see --item-grid-cols' own comment. */
-  .journeys-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 190px 10px 115px 100px 116px 120px; }
+     hide the spillover. Three of the shared grid's own tracks (the old Owner
+     column, and both blank spacers — the original one, plus the newer one
+     inserted between the Milestones badge and Plan-dates) are *always*
+     empty on any row here — neither a Journey nor a plain scope item shows
+     anything in them — so shrinking those three buys back most of the room
+     the wider Actions column needs; the rest (Milestone/Due/Actual/Status)
+     keep their original widths since connected items can still expand
+     their own real milestone checklists underneath. (A fourth always-empty
+     track, the Actual-date placeholder, used to be shrunk here too —
+     removed outright from the shared grid instead, see --item-grid-cols'
+     own comment above.) Status (10th track) was later widened to 116px in
+     step with the shared default's own widening, for "Completed Late" —
+     see --item-grid-cols' own comment. */
+  .journeys-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 10px 190px 10px 115px 100px 116px 120px; }
   .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-dates { color: var(--text-dim); font-size: 12.5px; width: 150px; flex: 0 0 auto; }
   .milestone-count-badge { font-size: 11px; color: var(--text-faint); font-weight: 700; white-space: nowrap; }
@@ -706,7 +715,7 @@
 
   /* Shown only above an expanded item's own milestone rows (see
      milestoneHeaderHtml()) — scoped to that one item, not a page-wide
-     header, since only 4 of the 10 shared columns mean anything for a
+     header, since only 4 of the 11 shared columns mean anything for a
      milestone. */
   .milestone-header {
     display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px;
@@ -2975,7 +2984,7 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
       ).join('')}
     </span>`;
   // Review-only trailing cell — an implicit 12th grid column (explicit
-  // grid-column:11), deliberately outside --item-grid-cols so Planning's own
+  // grid-column:12), deliberately outside --item-grid-cols so Planning's own
   // layout is completely untouched; it only ever exists when reviewCycle is
   // passed. An item with milestones can only ever be confirmed by confirming
   // every one of them (isItemConfirmedInCycle()), so its button confirms/
@@ -2997,7 +3006,7 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
     // — clicking it when everything's already auto-confirmed is a harmless
     // no-op, not worth a second inert-rendering branch here.
     if (!total && it.status === 'complete') {
-      reviewCellHtml = `<span class="review-confirm-toggle item-level confirmed" style="grid-column:11" title="Complete — no review needed"><i class="fa-solid fa-circle-check"></i></span>`;
+      reviewCellHtml = `<span class="review-confirm-toggle item-level confirmed" style="grid-column:12" title="Complete — no review needed"><i class="fa-solid fa-circle-check"></i></span>`;
     } else {
       const onClickAttr = total
         ? `toggleConfirmAllMilestones('${reviewCycle.id}','${it.id}')`
@@ -3009,10 +3018,10 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
       // not toggle it — so this renders as an inert span, not an omitted cell,
       // when the role is below Reviewer (see toggleReviewConfirm()'s own guard).
       reviewCellHtml = hasRole('reviewer')
-        ? `<button class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:11" onclick="${onClickAttr}" title="${titleAttr}">
+        ? `<button class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:12" onclick="${onClickAttr}" title="${titleAttr}">
           <i class="fa-${confirmedForReview ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
         </button>`
-        : `<span class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:11" title="${titleAttr}">
+        : `<span class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:12" title="${titleAttr}">
           <i class="fa-${confirmedForReview ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
         </span>`;
     }
@@ -3077,6 +3086,7 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
       ${chevron}
       <span class="item-name" style="grid-column: 2 / 4">${journeyBadgeHtml}${esc(it.name)}</span>
       ${milestoneBadge}
+      <span></span>
       ${planDatesHtml}
       <span></span>
       ${externalSpocHtml}
@@ -3096,8 +3106,8 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
 
 // A small column-label row shown only for an *expanded* item's own milestone
 // list — right above its milestone rows, not a page-wide header — since
-// milestones only ever use 4 of the 10 shared columns (Milestone/Due/Actual/
-// Status); labeling all 10 globally implied columns like Owner/Tags applied
+// milestones only ever use 4 of the 11 shared columns (Milestone/Due/Actual/
+// Status); labeling all 11 globally implied columns like Owner/Tags applied
 // to milestones too, which they don't. Due/Actual sit in the two dedicated
 // columns right before Status (see --item-grid-cols), not under the item's
 // own Owner/Plan-dates columns — so a milestone's own dates read right next
@@ -3106,39 +3116,44 @@ function milestoneHeaderHtml(reviewCycle, viewOnly) {
   // Deliberately an invisible icon placeholder, not a visible "Confirm" text
   // label — this row (like every row here) is its own independent CSS Grid
   // instance, and column 2 is the only flexible track (minmax(140px,1.3fr));
-  // a multi-character text label in the implicit column 11 is *wider* than
+  // a multi-character text label in the implicit column 12 is *wider* than
   // the plain icon every data row below actually renders there, so it ate
   // into a different amount of this row's own width than the data rows did
   // — visibly shifting Due/Actual/Status out of alignment with the rows
   // below (reported via screenshot). Matching the row's real icon+class,
   // hidden, is the same fix already applied to the Action Log's own header
   // for the identical reason — see actionLogHtml() in CLAUDE.md.
-  const reviewLabel = reviewCycle ? `<span class="review-confirm-toggle" style="grid-column:11;visibility:hidden"><i class="fa-solid fa-circle-check"></i></span>` : '';
-  // "Status" then "N/A" share one flex cell spanning columns 9/11 (both
-  // trailing tracks, 90px + 56px) — matching milestoneRowsHtml()'s own
+  const reviewLabel = reviewCycle ? `<span class="review-confirm-toggle" style="grid-column:12;visibility:hidden"><i class="fa-solid fa-circle-check"></i></span>` : '';
+  // "Status" then "N/A" share one flex cell spanning columns 10/12 (both
+  // trailing tracks, 116px + 56px) — matching milestoneRowsHtml()'s own
   // .milestone-status-cell exactly, rather than each claiming a whole
-  // track, so the toggle doesn't inherit a full 90px track sized for a
+  // track, so the toggle doesn't inherit a full 116px track sized for a
   // text label (see that class's own comment). This header must keep
   // matching whatever the data rows actually use, the same alignment
   // invariant every other column here already depends on. The "MS Req."
   // label itself is dropped in viewOnly mode, matching milestoneRowsHtml()'s
   // own naHtml — there's no toggle to label when nothing here is editable.
+  // One blank <span> per otherwise-unlabeled column (1, 3-7) keeps this
+  // row's own auto-placement in step with the data rows below — see
+  // --item-grid-cols' own comment for the column-5 spacer this now also
+  // has to account for, which is why there are 5 blanks between "Milestone"
+  // and "Due", not 4.
   return `<div class="milestone-header">
-      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span class="milestone-status-cell" style="grid-column:9/11"><span>Status</span><span>${viewOnly ? '' : 'MS Req.'}</span></span>${reviewLabel}
+      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span class="milestone-status-cell" style="grid-column:10/12"><span>Status</span><span>${viewOnly ? '' : 'MS Req.'}</span></span>${reviewLabel}
     </div>`;
 }
-// Emits the same 10 grid cells itemRowHtml() does (chevron|name|blank|
-// milestones|dates|blank|milestone-due|milestone-actual(item:tags)|status|
-// actions), so a milestone row's Due/Actual/Status line up directly under
-// its parent item's columns — cells that don't apply to a milestone (the
-// blank-placeholder, milestones-count badge, dates, tags) are still real
-// (empty) elements, not omitted, for the same column-collapse reason
+// Emits the same 11 grid cells itemRowHtml() does (chevron|name|blank|
+// milestones|blank|dates|blank|milestone-due|milestone-actual(item:tags)|
+// status|actions), so a milestone row's Due/Actual/Status line up directly
+// under its parent item's columns — cells that don't apply to a milestone
+// (the blank-placeholders, milestones-count badge, dates, tags) are still
+// real (empty) elements, not omitted, for the same column-collapse reason
 // documented on itemRowHtml()'s milestoneBadge. The one exception:
-// milestone-sub-name explicitly spans columns 2-5 (name + blank +
-// milestones-badge + dates, none of which apply to a milestone) instead of
-// rendering 3 separate blank cells there, since a milestone's name has
-// nothing else competing for that space and was truncating too eagerly at a
-// single column's width.
+// milestone-sub-name explicitly spans columns 2-6 (name + blank +
+// milestones-badge + the column-5 spacer + dates, none of which apply to a
+// milestone) instead of rendering 4 separate blank cells there, since a
+// milestone's name has nothing else competing for that space and was
+// truncating too eagerly at a single column's width.
 //
 // Rendered in plain array order, not re-sorted by due date — array order is
 // the checklist's actual sequence (seeded from the category template, and
@@ -3163,7 +3178,7 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
       // (still a real element, for the usual column-collapse reason) rather
       // than a circle that would misleadingly suggest it's still pending.
       if (m.notApplicable) {
-        reviewCellHtml = `<span class="review-confirm-toggle" style="grid-column:11" title="Not applicable — excluded from this review"><i class="fa-solid fa-ban" style="opacity:.4"></i></span>`;
+        reviewCellHtml = `<span class="review-confirm-toggle" style="grid-column:12" title="Not applicable — excluded from this review"><i class="fa-solid fa-ban" style="opacity:.4"></i></span>`;
       } else if (m.status === 'complete') {
         // A Complete milestone auto-confirms — an explicit user request
         // ("mark completed task as reviewed, no need to review them
@@ -3173,16 +3188,16 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
         // already gets, not the "click to unconfirm" affordance a
         // manually-confirmed still-open milestone shows.
         mConfirmed = true;
-        reviewCellHtml = `<span class="review-confirm-toggle confirmed" style="grid-column:11" title="Complete — no review needed"><i class="fa-solid fa-circle-check"></i></span>`;
+        reviewCellHtml = `<span class="review-confirm-toggle confirmed" style="grid-column:12" title="Complete — no review needed"><i class="fa-solid fa-circle-check"></i></span>`;
       } else {
         mConfirmed = isMilestoneConfirmedInCycle(reviewCycle, m);
         // See itemRowHtml()'s own reviewCellHtml comment: below Reviewer, this
         // renders as an inert span (visible, not togglable), not an omitted cell.
         reviewCellHtml = hasRole('reviewer')
-          ? `<button class="review-confirm-toggle ${mConfirmed ? 'confirmed' : ''}" style="grid-column:11" onclick="toggleMilestoneConfirm('${reviewCycle.id}','${m.id}')" title="${mConfirmed ? 'Confirmed — click to unconfirm' : 'Confirm this milestone'}">
+          ? `<button class="review-confirm-toggle ${mConfirmed ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleMilestoneConfirm('${reviewCycle.id}','${m.id}')" title="${mConfirmed ? 'Confirmed — click to unconfirm' : 'Confirm this milestone'}">
             <i class="fa-${mConfirmed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
           </button>`
-          : `<span class="review-confirm-toggle ${mConfirmed ? 'confirmed' : ''}" style="grid-column:11" title="${mConfirmed ? 'Confirmed' : 'Not confirmed'}">
+          : `<span class="review-confirm-toggle ${mConfirmed ? 'confirmed' : ''}" style="grid-column:12" title="${mConfirmed ? 'Confirmed' : 'Not confirmed'}">
             <i class="fa-${mConfirmed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
           </span>`;
       }
@@ -3283,8 +3298,8 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // The Not Applicable toggle sits immediately after the Status badge —
     // back to the original Status-then-N/A order (flipped, then flipped
     // back again per user request) — inside one shared .milestone-status-
-    // cell spanning columns 9/11 (both trailing tracks, 90px + 56px — see
-    // that class's own CSS comment for why: a whole 90px track sized for
+    // cell spanning columns 10/12 (both trailing tracks, 116px + 56px — see
+    // that class's own CSS comment for why: a whole 116px track sized for
     // Status's text label would leave the icon-only toggle stretched/
     // floating no matter how it's aligned within it, a user-reported "too
     // broad" bug). Always shows an icon (outline when off, filled when on)
@@ -3320,13 +3335,13 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     return `
     <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''}">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
-      <span class="milestone-sub-name" style="grid-column: 2 / 6; ${m.notApplicable ? 'opacity:.55' : ''}">${esc(m.name)}</span>
+      <span class="milestone-sub-name" style="grid-column: 2 / 7; ${m.notApplicable ? 'opacity:.55' : ''}">${esc(m.name)}</span>
       <span></span>
       ${dueHtml}
       <span class="milestone-sub-actual-inline" title="Actual completion date">
         ${actualHtml}
       </span>
-      <span class="milestone-status-cell" style="grid-column:9/11">
+      <span class="milestone-status-cell" style="grid-column:10/12">
         ${statusHtml}
         ${naHtml}
       </span>
