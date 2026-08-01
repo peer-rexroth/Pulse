@@ -67,7 +67,7 @@ test('the External Delivery split still applies within the filtered results', fu
   addItem({ name: 'Internal billing task' });
   setPlanningSearch('billing');
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'External Delivery');
+  assertIncludes(html, 'External Deliveries');
   assertIncludes(html, 'Vendor billing task');
   assertIncludes(html, 'Internal billing task');
 });
@@ -121,13 +121,13 @@ test('renderStatusView groups items under the correct workstream and shows RAG c
 // scope items ... under the scope items list. Show also the External SPOC
 // in the view."
 
-test('an externally-delivered item is pulled out of the main list into its own "External Delivery" sub-section, still inside the same workstream', function () {
+test('an externally-delivered item is pulled out of the main list into its own "External Deliveries" sub-section, still inside the same workstream', function () {
   addItem({ name: 'Normal item' });
   addItem({ name: 'Vendor-delivered item', externalDelivery: true, externalDeliverySpoc: 'Jane Doe' });
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'External Delivery');
-  const subHeaderIdx = html.indexOf('External Delivery');
+  assertIncludes(html, 'External Deliveries');
+  const subHeaderIdx = html.indexOf('External Deliveries');
   const normalIdx = html.indexOf('Normal item');
   const externalIdx = html.indexOf('Vendor-delivered item');
   assertTrue(normalIdx < subHeaderIdx, 'the normal item should render before the sub-section header');
@@ -139,7 +139,7 @@ test('an externally-delivered item is pulled out of the main list into its own "
 // field itself is untouched (still stored, still editable in the item
 // modal), only the row's own rendering of it is gone.
 
-test('the External Delivery sub-section no longer shows that item\'s own SPOC on the row', function () {
+test('the External Deliveries sub-section no longer shows that item\'s own SPOC on the row', function () {
   addItem({ name: 'Vendor-delivered item', externalDelivery: true, externalDeliverySpoc: 'Jane Doe (Acme Corp)' });
   renderMain();
   assertNotIncludes(document.getElementById('main').innerHTML, 'Jane Doe (Acme Corp)');
@@ -177,10 +177,10 @@ test('a workstream with genuinely zero items still shows the "No items yet." pla
   assertIncludes(document.getElementById('main').innerHTML, 'No items yet.');
 });
 
-test('a workstream with no externally-delivered items shows no "External Delivery" sub-section at all', function () {
+test('a workstream with no externally-delivered items shows no "External Deliveries" sub-section at all', function () {
   addItem({ name: 'Normal item' });
   renderMain();
-  assertNotIncludes(document.getElementById('main').innerHTML, 'External Delivery');
+  assertNotIncludes(document.getElementById('main').innerHTML, 'External Deliveries');
 });
 
 // ---------- External Deliveries' own sidebar nav entry + cross-workstream view ----------
