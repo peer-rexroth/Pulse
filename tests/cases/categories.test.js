@@ -364,6 +364,28 @@ test('renderAdmin lists every category with its milestone template and item coun
   assertIncludes(html, '1 item');
 });
 
+// The milestone template preview used to be one long "A → B → C" string
+// (ellipsis-truncated for a longer template) — an explicit user request
+// ("rendering it as small ordered chips would scan faster") replaced it
+// with one numbered chip per milestone.
+test('renderAdmin renders the milestone template as one numbered chip per milestone, not a →-joined string', function () {
+  renderAdmin();
+  const html = document.getElementById('adminBody').innerHTML;
+  const devMilestones = categories[0].milestones;
+  assertTrue(devMilestones.length > 1, 'fixture assumption: Development has more than one milestone');
+  devMilestones.forEach((name, i) => {
+    assertIncludes(html, `<span class="milestone-chip-num">${i + 1}</span>${name}`);
+  });
+  assertNotIncludes(html, devMilestones.join(' → '), 'should not render the old arrow-joined string anywhere');
+});
+
+test('renderAdmin shows plain "No milestones in template" text for a category with an empty template', function () {
+  categories.push({ id: genId(), name: 'Empty template', milestones: [], order: categories.length });
+  renderAdmin();
+  const html = document.getElementById('adminBody').innerHTML;
+  assertIncludes(html, '<span class="category-milestones-chips category-milestones-empty">No milestones in template</span>');
+});
+
 // ---------- Category template changes sync to items using that category ----------
 
 function addItemWithCategory(categoryId, milestoneNames) {

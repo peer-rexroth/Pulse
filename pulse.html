@@ -1166,7 +1166,24 @@
   .category-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
   .category-row:last-child { border-bottom: none; }
   .category-name { font-weight: 700; width: 160px; flex: 0 0 auto; }
-  .category-milestones-preview { flex: 1; color: var(--text-faint); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Replaces a single long "Requirements Defined → Requirements Approved →
+     ..." string (ellipsis-truncated, so a longer template just read as
+     "..." past the fold) with one small chip per milestone — a plain
+     numbered list scans faster than a run-on arrow-joined sentence, and
+     every step stays visible instead of being cut off. Wraps onto more than
+     one line for a longer template rather than truncating or scrolling. */
+  .category-milestones-chips { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .category-milestones-chips.category-milestones-empty { color: var(--text-faint); font-size: 12.5px; }
+  .milestone-chip {
+    display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 6px;
+    border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2);
+    color: var(--text-dim); font-size: 11.5px; white-space: nowrap;
+  }
+  .milestone-chip-num {
+    display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+    width: 15px; height: 15px; border-radius: 50%; background: var(--accent-bg);
+    color: var(--accent); font-size: 9.5px; font-weight: 700;
+  }
 </style>
 </head>
 <body>
@@ -6770,10 +6787,13 @@ function renderAdmin() {
       ${categories.map(c => {
         const count = items.filter(it => it.categoryId === c.id).length;
         const pendingBadge = c.pending ? `<span class="review-ws-badge" style="background:var(--panel-2);color:var(--text-dim)" title="Reserved for the quick-add flow — can't be deleted">Reserved</span>` : '';
+        const milestonesHtml = c.milestones.length
+          ? `<span class="category-milestones-chips">${c.milestones.map((m, i) => `<span class="milestone-chip"><span class="milestone-chip-num">${i + 1}</span>${esc(m)}</span>`).join('')}</span>`
+          : `<span class="category-milestones-chips category-milestones-empty">No milestones in template</span>`;
         return `<div class="category-row">
             <span class="category-name">${esc(c.name)}</span>
             ${pendingBadge}
-            <span class="category-milestones-preview">${c.milestones.length ? esc(c.milestones.join(' → ')) : 'No milestones in template'}</span>
+            ${milestonesHtml}
             <span class="milestone-count-badge">${count} item${count === 1 ? '' : 's'}</span>
             <span class="item-actions" style="display:flex">
               ${hasRole('editor') ? `<button class="row-icon-btn" onclick="openCategoryModal('${c.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>` : ''}
