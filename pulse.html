@@ -1067,6 +1067,25 @@
   .attention-tag.overdue { background: var(--stat-red-bg); color: var(--stat-red); }
   .attention-tag.upcoming { background: var(--stat-amber-bg); color: var(--stat-amber); }
 
+  /* Dashboard's own toolbar (Export Exec Summary) — a right-aligned single
+     row, unlike Planning's search box / Review's sub-tabs, both of which
+     the shared .planning-toolbar class otherwise leaves at its default
+     block layout. */
+  #dashboardToolbar { display: flex; justify-content: flex-end; }
+
+  /* Export Dashboard as Exec Summary (PDF/PNG) — see exportExecSummaryPdf()/
+     exportExecSummaryPng() in the inline script below. #execSummarySheet
+     stays out of normal flow (and out of the PNG path's own offscreen probe
+     rendering — see exportExecSummaryPng()'s own comment) at all other
+     times; the print rules below are what make it (and only it) visible for
+     the brief window window.print() is actually open. */
+  #execSummarySheet { display: none; }
+  @media print {
+    body.printing-exec-summary > *:not(#execSummarySheet) { display: none !important; }
+    body.printing-exec-summary #execSummarySheet { display: block !important; }
+    @page { margin: 12mm; }
+  }
+
   /* Admin mode */
   .admin-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
   .admin-header h2 { font-size: 18px; margin: 0; flex: 1; }
@@ -1166,11 +1185,38 @@
         <button class="view-tab" id="tabReviewScope" onclick="setReviewTab('scope')"><i class="fa-solid fa-clipboard-check"></i> Review Status</button>
       </div>
     </div>
+    <!-- Dashboard's own toolbar — currently just the Exec Summary export
+         (see exportExecSummaryPdf()/exportExecSummaryPng() below). Same
+         static-toolbar-outside-#main placement as the other two above, so
+         a future control added here (like this one) never gets torn down
+         by renderDashboard()'s own re-renders. -->
+    <div class="planning-toolbar" id="dashboardToolbar" style="display:none">
+      <div class="data-dropdown" id="execExportDropdown">
+        <button class="btn btn-sm" onclick="event.stopPropagation();toggleExecExportMenu()"><i class="fa-solid fa-file-arrow-down"></i> Export Exec Summary <i class="fa-solid fa-chevron-down" style="font-size:9px"></i></button>
+        <div class="dropdown-menu" id="execExportMenu">
+          <div class="dropdown-item" onclick="exportExecSummaryPdf();closeExecExportMenu()">
+            <i class="fa-solid fa-file-pdf dropdown-item-icon"></i>
+            <div><div class="dropdown-item-label">Download as PDF</div><div class="dropdown-item-desc">One-page summary via your browser's print dialog</div></div>
+          </div>
+          <div class="dropdown-item" onclick="exportExecSummaryPng();closeExecExportMenu()">
+            <i class="fa-solid fa-file-image dropdown-item-icon"></i>
+            <div><div class="dropdown-item-label">Download as PNG</div><div class="dropdown-item-desc">A single image, ready to paste into a slide or email</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="main" id="main"></div>
   </div>
 </div>
 
 <div class="main" id="adminBody" style="display:none"></div>
+
+<!-- Hidden except while printing (see .printing-exec-summary in the <style>
+     block above and exportExecSummaryPdf()) — populated fresh from
+     buildExecSummaryHtml() right before window.print() is called, not kept
+     in sync live, since it's only ever shown for the few seconds the print
+     dialog is open. -->
+<div id="execSummarySheet"></div>
 
 <!-- Workstream modal -->
 <div class="modal-bg" id="wsModalBg">
@@ -2290,6 +2336,7 @@ function render() {
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
   document.getElementById('planningSearchToolbar').style.display = mode === 'planning' ? '' : 'none';
   document.getElementById('reviewToolbar').style.display = mode === 'review' ? '' : 'none';
+  document.getElementById('dashboardToolbar').style.display = mode === 'dashboard' ? '' : 'none';
   document.getElementById('dataMenuImportItem').style.display = hasRole('admin') ? '' : 'none';
   document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
   renderSidebar();
@@ -6048,12 +6095,12 @@ function allMilestonesFlat(itemList) {
 // specific workstream narrows the whole rollup to it; "All Workstreams"
 // (filterWorkstreamId === null) shows the full programme, same as before
 // this mode became workstream-scoped.
-function renderDashboard() {
-  const el = document.getElementById('main');
-  if (workstreams.length === 0) {
-    el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-gauge-high"></i><div>No workstreams yet — add one in Planning first.</div></div>`;
-    return;
-  }
+//
+// Every number here is also what buildExecSummaryHtml() (see "Export
+// Dashboard as Exec Summary" below) reports — factored into its own
+// function specifically so the live Dashboard and the exported one-pager
+// can never silently drift apart by duplicating this computation twice.
+function computeDashboardData() {
   const wss = visibleWorkstreams();
   const wsIds = new Set(wss.map(w => w.id));
   const scopedItems = items.filter(it => wsIds.has(it.workstreamId));
@@ -6080,23 +6127,35 @@ function renderDashboard() {
     .concat(milestones.filter(m => m.status !== 'complete' && m.dueDate >= today && m.dueDate <= soon).map(x => toEntry(x, true)))
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  const wsStats = wss.map(w => {
+    const wItems = scopedItems.filter(it => it.workstreamId === w.id);
+    const wMs = milestones.filter(m => m.workstreamId === w.id);
+    const wMsDone = wMs.filter(m => m.status === 'complete').length;
+    return { w, itemCount: wItems.length, msTotal: wMs.length, msDone: wMsDone, msPct: wMs.length ? Math.round(wMsDone / wMs.length * 100) : 0 };
+  });
+
+  return { wss, scopedItems, milestones, itemCounts, totalItems, msDone, msPct, overdueReviewWs, overdue, upcoming, wsStats };
+}
+function renderDashboard() {
+  const el = document.getElementById('main');
+  if (workstreams.length === 0) {
+    el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-gauge-high"></i><div>No workstreams yet — add one in Planning first.</div></div>`;
+    return;
+  }
+  const { wss, itemCounts, totalItems, msDone, msPct, milestones, overdueReviewWs, overdue, upcoming, wsStats } = computeDashboardData();
+
   const bar = STATUSES.map(s => {
     const pct = totalItems ? (itemCounts[s.id] / totalItems * 100) : 0;
     return pct > 0 ? `<div class="dash-bar-seg" style="width:${pct}%;background:var(--stat-${s.id})"></div>` : '';
   }).join('');
   const legend = STATUSES.map(s => `<div class="dash-legend-item"><span class="dash-legend-dot" style="background:var(--stat-${s.id})"></span>${itemCounts[s.id]} ${esc(s.label)}</div>`).join('');
 
-  const wsRows = wss.map(w => {
-    const wItems = scopedItems.filter(it => it.workstreamId === w.id);
-    const wMs = milestones.filter(m => m.workstreamId === w.id);
-    const wMsDone = wMs.filter(m => m.status === 'complete').length;
-    return `<div class="dash-ws-row">
-        <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
-        <span class="dash-ws-name">${esc(w.name)}</span>
-        <span class="dash-sub-stat">${wItems.length} item${wItems.length === 1 ? '' : 's'}</span>
-        <span class="dash-sub-stat">${wMs.length ? Math.round(wMsDone / wMs.length * 100) : 0}% milestones done</span>
-      </div>`;
-  }).join('');
+  const wsRows = wsStats.map(r => `<div class="dash-ws-row">
+        <span class="ws-dot" style="background:var(--ws-${r.w.color})"></span>
+        <span class="dash-ws-name">${esc(r.w.name)}</span>
+        <span class="dash-sub-stat">${r.itemCount} item${r.itemCount === 1 ? '' : 's'}</span>
+        <span class="dash-sub-stat">${r.msPct}% milestones done</span>
+      </div>`).join('');
 
   const attentionHtml = (entries, kind) => entries.length
     ? entries.map(e => `<div class="attention-row">
@@ -6649,10 +6708,322 @@ async function exportToExcelReport() {
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const safeName = (programme.name || 'Pulse').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'Pulse';
-  a.href = url; a.download = `${safeName}-${todayStr()}.xlsx`;
+  a.href = url; a.download = `${programmeFileSlug()}-${todayStr()}.xlsx`;
   a.click(); URL.revokeObjectURL(url);
 }
+// Shared by the Excel export's own filename above and the Exec Summary
+// export just below — factored out once both needed the identical
+// slugify-the-programme-name-or-fall-back-to-"Pulse" logic.
+function programmeFileSlug() {
+  return (programme.name || 'Pulse').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'Pulse';
+}
+
+// ---------- Export Dashboard as an Executive Summary (PDF/PNG) — an
+// explicit user request, distinct from both the plain-data Export and the
+// full Excel report above: this is a single, glance-able one-pager built
+// from the exact numbers the live Dashboard itself shows
+// (computeDashboardData(), the same function renderDashboard() calls — see
+// its own comment), meant to be printed, emailed, or dropped into a status
+// deck, not read as raw data. ----------
+// Always rendered with a fixed, literal light palette — never the live
+// page's current --stat-*/--ws-*/dark-mode CSS custom properties — the same
+// "looks the same regardless of the active color scheme" convention Excel
+// export already established above, and load-bearing here for a second
+// reason too: the PNG path below rasterizes this exact markup inside a
+// standalone SVG image, which has no access to the parent document's
+// stylesheet or CSS custom properties at all, so every color has to be a
+// literal value regardless of the print path's own needs. argbToHex() reuses
+// EXCEL_RAG_COLORS' own ARGB hex strings (stripping the leading alpha byte)
+// rather than hardcoding the same RGB values a third time; WS_COLOR_HEX is
+// this file's first literal-hex table for workstream colors (Excel export
+// never needed one, since it doesn't color workstreams) — both mirror the
+// Standard scheme's own :root values exactly.
+function argbToHex(argb) { return '#' + argb.slice(2); }
+const WS_COLOR_HEX = {
+  blue: '#3b6fe0', teal: '#12968c', purple: '#8354d1', amber: '#b5790a',
+  pink: '#c23b7a', green: '#268a5e', red: '#c33a3a', grey: '#5b6472'
+};
+// A cap on the Overdue/Upcoming lists here — unlike the live Dashboard's own
+// feed, which always shows every entry, this is meant to fit on one printed
+// page (and stay a reasonably sized image) regardless of programme size, so
+// each list is capped at EXEC_SUMMARY_FEED_CAP and shows a "+N more" line
+// once truncated rather than growing unbounded.
+const EXEC_SUMMARY_FEED_CAP = 8;
+function execSummaryFeedRows(entries) {
+  const shown = entries.slice(0, EXEC_SUMMARY_FEED_CAP);
+  const rows = shown.map(e => `<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid #eceef1;font-size:11px;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(e.label)}</span><span style="color:#5b6472;flex:0 0 auto;">${esc(fmtDate(e.date))}</span></div>`).join('');
+  const more = entries.length > EXEC_SUMMARY_FEED_CAP ? `<div style="font-size:10px;color:#9aa3b0;padding-top:4px;">+${entries.length - EXEC_SUMMARY_FEED_CAP} more</div>` : '';
+  return (rows || `<div style="font-size:11px;color:#9aa3b0;padding:6px 0;">Nothing here.</div>`) + more;
+}
+function execSummaryScopeLabel() {
+  if (!filterWorkstreamId) return 'All Workstreams';
+  const w = wsById(filterWorkstreamId);
+  return w ? w.name : 'All Workstreams';
+}
+// Feeds the PDF path only (see exportExecSummaryPdf() below) — injected
+// straight into the DOM and parsed as ordinary HTML. The PNG path does NOT
+// reuse this markup — see drawExecSummaryCanvas()'s own comment below for
+// why it's a completely separate, hand-drawn renderer instead of the more
+// obvious "rasterize this same HTML" approach.
+function buildExecSummaryHtml() {
+  const { wss, itemCounts, totalItems, msDone, msPct, milestones, overdueReviewWs, overdue, upcoming, wsStats } = computeDashboardData();
+  const statColor = id => argbToHex((EXCEL_RAG_COLORS[id] || EXCEL_RAG_COLORS['not-started']).fg);
+  const bar = STATUSES.map(s => {
+    const pct = totalItems ? (itemCounts[s.id] / totalItems * 100) : 0;
+    return pct > 0 ? `<div style="width:${pct}%;background:${statColor(s.id)};height:100%;"></div>` : '';
+  }).join('');
+  const legend = STATUSES.map(s => `<div style="display:flex;align-items:center;gap:4px;"><span style="width:7px;height:7px;border-radius:50%;background:${statColor(s.id)};display:inline-block;"></span>${itemCounts[s.id]} ${esc(s.label)}</div>`).join('');
+  const wsRows = wsStats.length ? wsStats.map((r, i) => `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;${i > 0 ? 'border-top:1px solid #e2e5ea;' : ''}font-size:11.5px;"><span style="width:8px;height:8px;border-radius:50%;background:${WS_COLOR_HEX[r.w.color] || WS_COLOR_HEX.grey};flex:0 0 auto;display:inline-block;"></span><span style="flex:1;font-weight:600;">${esc(r.w.name)}</span><span style="color:#5b6472;">${r.itemCount} item${r.itemCount === 1 ? '' : 's'}</span><span style="color:#5b6472;width:120px;text-align:right;">${r.msPct}% milestones</span></div>`).join('')
+    : `<div style="padding:10px 12px;font-size:11px;color:#9aa3b0;">No workstreams in scope.</div>`;
+  const cardTitle = t => `<div style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9aa3b0;margin-bottom:8px;">${esc(t)}</div>`;
+  const sectionLabel = t => `<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9aa3b0;margin-bottom:8px;">${esc(t)}</div>`;
+  return `<div xmlns="http://www.w3.org/1999/xhtml" style="width:760px;background:#ffffff;color:#1c2128;font-family:-apple-system,'Segoe UI',Arial,sans-serif;padding:32px;box-sizing:border-box;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1c2128;padding-bottom:14px;margin-bottom:20px;">
+      <div>
+        <div style="font-size:20px;font-weight:700;">${esc(programme.name || 'Pulse')}</div>
+        <div style="font-size:12px;color:#5b6472;margin-top:2px;">Executive Summary — ${esc(execSummaryScopeLabel())}</div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:#9aa3b0;">Generated ${esc(fmtDateY(todayStr()))}</div>
+    </div>
+    <div style="display:flex;gap:14px;margin-bottom:20px;">
+      <div style="flex:1;border:1px solid #e2e5ea;border-radius:8px;padding:14px;">
+        ${cardTitle('Item Status')}
+        <div style="font-size:24px;font-weight:700;">${totalItems}</div>
+        <div style="font-size:11px;color:#9aa3b0;margin-top:2px;">total scope item${totalItems === 1 ? '' : 's'}</div>
+        <div style="display:flex;width:100%;height:8px;border-radius:999px;overflow:hidden;background:#eceef1;margin-top:10px;">${bar}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:8px;font-size:10px;color:#5b6472;">${legend}</div>
+      </div>
+      <div style="flex:1;border:1px solid #e2e5ea;border-radius:8px;padding:14px;">
+        ${cardTitle('Milestone Completion')}
+        <div style="font-size:24px;font-weight:700;">${msPct}%</div>
+        <div style="font-size:11px;color:#9aa3b0;margin-top:2px;">${msDone} of ${milestones.length} milestone${milestones.length === 1 ? '' : 's'} complete</div>
+      </div>
+      <div style="flex:1;border:1px solid #e2e5ea;border-radius:8px;padding:14px;">
+        ${cardTitle('Overdue for Review')}
+        <div style="font-size:24px;font-weight:700;">${overdueReviewWs.length}</div>
+        <div style="font-size:11px;color:#9aa3b0;margin-top:2px;">${overdueReviewWs.length ? esc(overdueReviewWs.map(w => w.name).join(', ')) : `of ${wss.length} workstream${wss.length === 1 ? '' : 's'}`}</div>
+      </div>
+    </div>
+    ${sectionLabel('Per-Workstream Summary')}
+    <div style="border:1px solid #e2e5ea;border-radius:8px;overflow:hidden;margin-bottom:20px;">${wsRows}</div>
+    <div style="display:flex;gap:20px;">
+      <div style="flex:1;">
+        ${sectionLabel('Overdue')}
+        ${execSummaryFeedRows(overdue)}
+      </div>
+      <div style="flex:1;">
+        ${sectionLabel('Upcoming (Next 7 Days)')}
+        ${execSummaryFeedRows(upcoming)}
+      </div>
+    </div>
+  </div>`;
+}
+// PDF: the browser's own native "print to PDF" via window.print(), scoped
+// to just the hidden #execSummarySheet element via the .printing-exec-
+// summary CSS in the <style> block above — no library, matching this app's
+// zero-dependency stance and the Excel export's own "use what the platform
+// already gives you" precedent (there it was ExcelJS as the one deliberate
+// exception; here the platform itself already does the whole job). Setting
+// document.title beforehand is what gives the OS "Save as PDF" dialog a
+// sensible suggested filename, since window.print() has no direct
+// equivalent of a Blob's own <a download> filename.
+function exportExecSummaryPdf() {
+  if (typeof window.print !== 'function') { showToast('PDF export needs a browser environment', true); return; }
+  document.getElementById('execSummarySheet').innerHTML = buildExecSummaryHtml();
+  const prevTitle = document.title;
+  document.title = `${programmeFileSlug()}-exec-summary-${todayStr()}`;
+  document.body.classList.add('printing-exec-summary');
+  const cleanup = () => {
+    document.body.classList.remove('printing-exec-summary');
+    document.title = prevTitle;
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  window.print();
+  // afterprint doesn't fire in every browser/context — this timeout is a
+  // backstop so a title/class change is never left stuck if it doesn't.
+  setTimeout(cleanup, 5000);
+}
+// PNG: a hand-drawn Canvas 2D renderer, NOT "rasterize buildExecSummaryHtml()
+// via an SVG <foreignObject> and read the canvas back out" — that more
+// obvious approach was tried first and abandoned after direct testing in
+// real Chrome: Chrome unconditionally taints any canvas that ever drew an
+// SVG image containing a <foreignObject>, regardless of fonts, CORS, or
+// same-origin blob: URLs — canvas.toBlob()/toDataURL() then throws
+// "Tainted canvases may not be exported" every single time, with no
+// workaround (this is a deliberate Chrome security policy, not a bug to
+// route around). Firefox allows the foreignObject-to-canvas technique;
+// Chrome/Edge — the only browsers this app targets at all, per the File
+// System Access sync feature elsewhere in this file — do not. Drawing
+// directly with fillText/fillRect/arc/stroke instead never loads anything
+// as an image, so there's nothing for Chrome to taint the canvas over.
+// execSummaryCanvasHeight() is deliberately pure (no ctx, no DOM) — since
+// nothing here is measured from real rendered layout the way the HTML path
+// is, every row height is a fixed constant tuned to this exact font/size
+// combination, so the total height can be — and must be — computed before
+// the canvas is ever created (a canvas's width/height can't be "auto").
+function execSummaryFeedRowCount(entries) {
+  if (!entries.length) return 1; // "Nothing here."
+  return Math.min(entries.length, EXEC_SUMMARY_FEED_CAP) + (entries.length > EXEC_SUMMARY_FEED_CAP ? 1 : 0);
+}
+const EXEC_SUMMARY_PNG_WIDTH = 760;
+const EXEC_SUMMARY_PNG_PAD = 32;
+function execSummaryCanvasHeight(d) {
+  const wsRowCount = d.wsStats.length || 1;
+  const feedRowCount = Math.max(execSummaryFeedRowCount(d.overdue), execSummaryFeedRowCount(d.upcoming));
+  return EXEC_SUMMARY_PNG_PAD          // top padding
+    + 70                               // header block (title/subtitle/date + rule)
+    + 104 + 24                         // stat cards row + gap below
+    + 20 + wsRowCount * 28 + 24        // "Per-Workstream Summary" label + rows + gap below
+    + 20 + feedRowCount * 20           // "Overdue"/"Upcoming" label + rows (the taller of the two columns)
+    + EXEC_SUMMARY_PNG_PAD;            // bottom padding
+}
+// Binary-searches for the longest prefix of text (plus an ellipsis) that
+// still fits maxWidth, mirroring the HTML path's own CSS text-overflow:
+// ellipsis — canvas text has no such built-in, so a long item/workstream
+// name needs this instead of silently overflowing its column.
+function fitCanvasText(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let lo = 0, hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ctx.measureText(text.slice(0, mid) + '…').width <= maxWidth) lo = mid; else hi = mid - 1;
+  }
+  return text.slice(0, lo) + '…';
+}
+const EXEC_SUMMARY_FONT = '-apple-system,"Segoe UI",Arial,sans-serif';
+function drawExecSummaryCanvas(ctx, d) {
+  const PAD = EXEC_SUMMARY_PNG_PAD, W = EXEC_SUMMARY_PNG_WIDTH, contentW = W - PAD * 2;
+  const statColor = id => argbToHex((EXCEL_RAG_COLORS[id] || EXCEL_RAG_COLORS['not-started']).fg);
+  const wsColor = c => WS_COLOR_HEX[c] || WS_COLOR_HEX.grey;
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, execSummaryCanvasHeight(d));
+
+  let y = PAD;
+  ctx.fillStyle = '#1c2128';
+  ctx.font = `700 20px ${EXEC_SUMMARY_FONT}`;
+  ctx.fillText(fitCanvasText(ctx, programme.name || 'Pulse', contentW - 140), PAD, y);
+  ctx.fillStyle = '#5b6472';
+  ctx.font = `400 12px ${EXEC_SUMMARY_FONT}`;
+  ctx.fillText('Executive Summary — ' + execSummaryScopeLabel(), PAD, y + 24);
+  ctx.fillStyle = '#9aa3b0';
+  ctx.font = `400 11px ${EXEC_SUMMARY_FONT}`;
+  ctx.textAlign = 'right';
+  ctx.fillText('Generated ' + fmtDateY(todayStr()), W - PAD, y);
+  ctx.textAlign = 'left';
+  ctx.strokeStyle = '#1c2128'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(PAD, y + 50); ctx.lineTo(W - PAD, y + 50); ctx.stroke();
+  y += 70;
+
+  const cardGap = 14, cardW = (contentW - cardGap * 2) / 3, cardH = 104;
+  const cards = [
+    { title: 'Item Status', big: String(d.totalItems), sub: `total scope item${d.totalItems === 1 ? '' : 's'}` },
+    { title: 'Milestone Completion', big: d.msPct + '%', sub: `${d.msDone} of ${d.milestones.length} milestone${d.milestones.length === 1 ? '' : 's'} complete` },
+    { title: 'Overdue for Review', big: String(d.overdueReviewWs.length), sub: d.overdueReviewWs.length ? d.overdueReviewWs.map(w => w.name).join(', ') : `of ${d.wss.length} workstream${d.wss.length === 1 ? '' : 's'}` }
+  ];
+  cards.forEach((c, i) => {
+    const x = PAD + i * (cardW + cardGap);
+    ctx.strokeStyle = '#e2e5ea'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(x, y, cardW, cardH, 8); ctx.stroke();
+    ctx.fillStyle = '#9aa3b0';
+    ctx.font = `700 10px ${EXEC_SUMMARY_FONT}`;
+    ctx.fillText(c.title.toUpperCase(), x + 14, y + 14);
+    ctx.fillStyle = '#1c2128';
+    ctx.font = `700 22px ${EXEC_SUMMARY_FONT}`;
+    ctx.fillText(c.big, x + 14, y + 32);
+    ctx.fillStyle = '#9aa3b0';
+    ctx.font = `400 11px ${EXEC_SUMMARY_FONT}`;
+    ctx.fillText(fitCanvasText(ctx, c.sub, cardW - 28), x + 14, y + 60);
+    if (i === 0) {
+      const barY = y + 80, barW = cardW - 28, barH = 7;
+      ctx.fillStyle = '#eceef1';
+      ctx.beginPath(); ctx.roundRect(x + 14, barY, barW, barH, 4); ctx.fill();
+      let bx = x + 14;
+      STATUSES.forEach(s => {
+        const segW = d.totalItems ? (d.itemCounts[s.id] / d.totalItems * barW) : 0;
+        if (segW > 0) { ctx.fillStyle = statColor(s.id); ctx.fillRect(bx, barY, segW, barH); bx += segW; }
+      });
+    }
+  });
+  y += cardH + 24;
+
+  ctx.fillStyle = '#9aa3b0';
+  ctx.font = `700 11px ${EXEC_SUMMARY_FONT}`;
+  ctx.fillText('PER-WORKSTREAM SUMMARY', PAD, y);
+  y += 20;
+  const rowH = 28, tableRows = d.wsStats.length, tableH = (tableRows || 1) * rowH;
+  ctx.strokeStyle = '#e2e5ea'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(PAD, y, contentW, tableH, 8); ctx.stroke();
+  if (!tableRows) {
+    ctx.fillStyle = '#9aa3b0';
+    ctx.font = `400 11px ${EXEC_SUMMARY_FONT}`;
+    ctx.fillText('No workstreams in scope.', PAD + 12, y + 9);
+  } else {
+    d.wsStats.forEach((r, i) => {
+      const ry = y + i * rowH;
+      if (i > 0) { ctx.strokeStyle = '#e2e5ea'; ctx.beginPath(); ctx.moveTo(PAD, ry); ctx.lineTo(PAD + contentW, ry); ctx.stroke(); }
+      ctx.fillStyle = wsColor(r.w.color);
+      ctx.beginPath(); ctx.arc(PAD + 16, ry + rowH / 2, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1c2128'; ctx.font = `600 11.5px ${EXEC_SUMMARY_FONT}`;
+      ctx.fillText(fitCanvasText(ctx, r.w.name, contentW - 260), PAD + 28, ry + 9);
+      ctx.fillStyle = '#5b6472'; ctx.font = `400 11px ${EXEC_SUMMARY_FONT}`;
+      ctx.textAlign = 'right';
+      ctx.fillText(`${r.itemCount} item${r.itemCount === 1 ? '' : 's'}`, PAD + contentW - 140, ry + 9);
+      ctx.fillText(`${r.msPct}% milestones`, PAD + contentW - 12, ry + 9);
+      ctx.textAlign = 'left';
+    });
+  }
+  y += tableH + 24;
+
+  const colGap = 20, colW = (contentW - colGap) / 2;
+  const drawFeed = (x, label, entries) => {
+    ctx.fillStyle = '#9aa3b0'; ctx.font = `700 11px ${EXEC_SUMMARY_FONT}`;
+    ctx.fillText(label.toUpperCase(), x, y);
+    let ry = y + 20;
+    if (!entries.length) {
+      ctx.fillStyle = '#9aa3b0'; ctx.font = `400 11px ${EXEC_SUMMARY_FONT}`;
+      ctx.fillText('Nothing here.', x, ry);
+      return;
+    }
+    entries.slice(0, EXEC_SUMMARY_FEED_CAP).forEach(e => {
+      ctx.strokeStyle = '#eceef1'; ctx.beginPath(); ctx.moveTo(x, ry + 18); ctx.lineTo(x + colW, ry + 18); ctx.stroke();
+      ctx.fillStyle = '#1c2128'; ctx.font = `400 11px ${EXEC_SUMMARY_FONT}`;
+      ctx.fillText(fitCanvasText(ctx, e.label, colW - 70), x, ry);
+      ctx.fillStyle = '#5b6472'; ctx.textAlign = 'right';
+      ctx.fillText(fmtDate(e.date), x + colW, ry);
+      ctx.textAlign = 'left';
+      ry += 20;
+    });
+    if (entries.length > EXEC_SUMMARY_FEED_CAP) {
+      ctx.fillStyle = '#9aa3b0'; ctx.font = `400 10px ${EXEC_SUMMARY_FONT}`;
+      ctx.fillText(`+${entries.length - EXEC_SUMMARY_FEED_CAP} more`, x, ry);
+    }
+  };
+  drawFeed(PAD, 'Overdue', d.overdue);
+  drawFeed(PAD + colW + colGap, 'Upcoming (Next 7 Days)', d.upcoming);
+}
+async function exportExecSummaryPng() {
+  const probeCanvas = document.createElement('canvas');
+  if (typeof probeCanvas.getContext !== 'function') { showToast('PNG export needs a browser environment', true); return; }
+  const d = computeDashboardData();
+  const scale = 2; // a plain 1x canvas reads noticeably soft/blurry once dropped into a deck or printed
+  const height = execSummaryCanvasHeight(d);
+  const canvas = document.createElement('canvas');
+  canvas.width = EXEC_SUMMARY_PNG_WIDTH * scale;
+  canvas.height = height * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  drawExecSummaryCanvas(ctx, d);
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) { showToast('PNG export failed — try Export as PDF instead', true); return; }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${programmeFileSlug()}-exec-summary-${todayStr()}.png`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function triggerImport() { if (!requireRole('admin')) return; document.getElementById('fileInput').click(); }
 function handleFileImport(event) {
   const file = event.target.files[0]; if (!file) return;
@@ -7485,8 +7856,15 @@ function closeBackupFolderModal() { document.getElementById('backupFolderModalBg
 // ---------- Data dropdown menu ----------
 function toggleDataMenu() { document.getElementById('dataMenu')?.classList.toggle('open'); }
 function closeDataMenu() { document.getElementById('dataMenu')?.classList.remove('open'); }
+// Dashboard's own "Export Exec Summary" dropdown (see exportExecSummaryPdf()/
+// exportExecSummaryPng() above) — same open/close/click-outside pattern as
+// the Data dropdown, reusing its .data-dropdown/.dropdown-menu/.dropdown-item
+// CSS classes rather than inventing a second copy of them.
+function toggleExecExportMenu() { document.getElementById('execExportMenu')?.classList.toggle('open'); }
+function closeExecExportMenu() { document.getElementById('execExportMenu')?.classList.remove('open'); }
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#dataDropdown')) closeDataMenu();
+  if (!e.target.closest('#execExportDropdown')) closeExecExportMenu();
 });
 
 // ---------- Modal backdrop click-to-close ----------

@@ -169,3 +169,106 @@ test('selecting a specific workstream narrows the per-workstream summary and ove
   html = document.getElementById('main').innerHTML;
   assertIncludes(html, '>1<'); // scoped to the still-overdue workstream only
 });
+
+// ---------- Export Dashboard as Exec Summary (PDF/PNG) ----------
+// exportExecSummaryPdf()/exportExecSummaryPng() themselves touch
+// window.print()/Image/canvas — none of which this JXA harness mocks (same
+// gap documented for the file-sync functions elsewhere) — so only their own
+// early feature-detection guard is exercised here. buildExecSummaryHtml()
+// and its small helpers are plain string-building with no such dependency,
+// so they're tested directly.
+
+test('buildExecSummaryHtml renders the programme name, "All Workstreams" scope, RAG counts, and a per-workstream row', function () {
+  programme.name = 'Acme Programme';
+  addDashItem({ name: 'Red one', status: 'red' });
+  addDashItem({ name: 'Green one', status: 'green' });
+  filterWorkstreamId = null;
+  const html = buildExecSummaryHtml();
+  assertIncludes(html, 'Acme Programme');
+  assertIncludes(html, 'All Workstreams');
+  assertIncludes(html, '1 Off Track');
+  assertIncludes(html, '1 On Track');
+  assertIncludes(html, 'Workstream 1'); // the per-workstream summary row
+});
+
+test('buildExecSummaryHtml scopes to the selected workstream instead of "All Workstreams"', function () {
+  document.getElementById('wsNameInput').value = 'Second';
+  wsColorChoice = 'teal';
+  saveWorkstream();
+  const secondWsId = workstreams[1].id;
+  setFilterWorkstream(secondWsId);
+  const html = buildExecSummaryHtml();
+  assertIncludes(html, 'Second');
+  assertNotIncludes(html, 'All Workstreams');
+});
+
+test('buildExecSummaryHtml caps the Overdue feed and shows a "+N more" line once the cap is exceeded', function () {
+  for (let i = 0; i < EXEC_SUMMARY_FEED_CAP + 3; i++) {
+    addDashItem({ name: 'Overdue ' + i, status: 'red', dueDate: isoDaysFromNow(-1) });
+  }
+  const html = buildExecSummaryHtml();
+  assertIncludes(html, '+3 more');
+});
+
+test('buildExecSummaryHtml shows "Nothing here." for an empty Overdue/Upcoming feed', function () {
+  const html = buildExecSummaryHtml();
+  assertIncludes(html, 'Nothing here.');
+});
+
+test('buildExecSummaryHtml output is well-formed — every opened div/span is closed', function () {
+  addDashItem({ name: 'Item', status: 'amber', dueDate: isoDaysFromNow(-1) });
+  const html = buildExecSummaryHtml();
+  assertEqual((html.match(/<div\b/g) || []).length, (html.match(/<\/div>/g) || []).length, 'every <div> needs a matching </div>');
+  assertEqual((html.match(/<span\b/g) || []).length, (html.match(/<\/span>/g) || []).length, 'every <span> needs a matching </span>');
+});
+
+test('execSummaryScopeLabel falls back to "All Workstreams" for a stale/missing filterWorkstreamId', function () {
+  filterWorkstreamId = 'does-not-exist';
+  assertEqual(execSummaryScopeLabel(), 'All Workstreams');
+  filterWorkstreamId = workstreams[0].id;
+  assertEqual(execSummaryScopeLabel(), workstreams[0].name);
+});
+
+test('programmeFileSlug slugifies the programme name and falls back to "Pulse" when nothing alphanumeric remains', function () {
+  programme.name = 'Acme  Programme! 2026';
+  assertEqual(programmeFileSlug(), 'Acme-Programme-2026');
+  programme.name = '!!!';
+  assertEqual(programmeFileSlug(), 'Pulse');
+  programme.name = '';
+  assertEqual(programmeFileSlug(), 'Pulse');
+});
+
+test('argbToHex strips the leading alpha byte off an EXCEL_RAG_COLORS-style ARGB hex string', function () {
+  assertEqual(argbToHex('FF1F9D55'), '#1F9D55');
+});
+
+test('exportExecSummaryPdf shows a toast instead of crashing when window.print is unavailable', function () {
+  exportExecSummaryPdf();
+  assertIncludes(document.getElementById('toastMsg').textContent, 'PDF export needs a browser environment');
+});
+
+test('exportExecSummaryPng shows a toast instead of crashing when canvas 2D isn\'t available', async function () {
+  await exportExecSummaryPng();
+  assertIncludes(document.getElementById('toastMsg').textContent, 'PNG export needs a browser environment');
+});
+
+test('execSummaryCanvasHeight grows with more workstreams and more (capped) overdue/upcoming entries', function () {
+  const base = execSummaryCanvasHeight(computeDashboardData());
+  document.getElementById('wsNameInput').value = 'Second';
+  wsColorChoice = 'teal';
+  saveWorkstream();
+  const withExtraWs = execSummaryCanvasHeight(computeDashboardData());
+  assertTrue(withExtraWs > base, 'an extra workstream row should add height');
+  for (let i = 0; i < EXEC_SUMMARY_FEED_CAP + 3; i++) {
+    addDashItem({ name: 'Overdue ' + i, status: 'red', dueDate: isoDaysFromNow(-1) });
+  }
+  const withOverdue = execSummaryCanvasHeight(computeDashboardData());
+  assertTrue(withOverdue > withExtraWs, 'a longer (even if capped) overdue feed should add height');
+});
+
+test('execSummaryFeedRowCount caps at EXEC_SUMMARY_FEED_CAP + 1 (the "+N more" line), and is 1 for an empty feed', function () {
+  assertEqual(execSummaryFeedRowCount([]), 1);
+  assertEqual(execSummaryFeedRowCount([{ label: 'a', date: '2026-01-01' }]), 1);
+  const many = Array.from({ length: EXEC_SUMMARY_FEED_CAP + 5 }, (_, i) => ({ label: 'e' + i, date: '2026-01-01' }));
+  assertEqual(execSummaryFeedRowCount(many), EXEC_SUMMARY_FEED_CAP + 1);
+});
