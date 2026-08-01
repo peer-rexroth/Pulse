@@ -532,6 +532,23 @@
   }
   .search-box .search-clear-btn:hover { color: var(--text); background: var(--panel); }
 
+  /* Quick-filter status chips (renderPlanningStatusChips()/
+     setPlanningStatusFilter()) — a lighter alternative to a full saved-
+     filter-presets feature: one toggle chip per STATUSES entry, single-
+     select (clicking the active one again clears it), composing with the
+     search box above via a plain AND. Each chip's own RAG color is passed
+     in as inline custom properties (--chip-color/--chip-bg) rather than a
+     per-status CSS class, since the status set itself lives in STATUSES
+     (JS), not in this stylesheet. */
+  .status-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .status-filter-chip {
+    font-size: 11.5px; font-weight: 700; padding: 4px 11px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text-dim);
+    cursor: pointer;
+  }
+  .status-filter-chip:hover { border-color: var(--chip-color); color: var(--chip-color); }
+  .status-filter-chip.active { background: var(--chip-bg); color: var(--chip-color); border-color: var(--chip-color); }
+
   .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-faint); gap: 10px; text-align: center; }
   .empty-state i { font-size: 34px; opacity: .5; }
 
@@ -1185,17 +1202,22 @@
     <div id="wsList"></div>
   </div>
   <div class="planning-main">
-    <!-- Planning's own toolbar — currently just the scope-item search box.
-         Only shown for mode==='planning' (see render()); the search itself
-         lives in this static toolbar, not inside #main, so a keystroke's
-         own re-render of #main (renderMain()) never steals focus from the
-         input mid-type. -->
+    <!-- Planning's own toolbar — the scope-item search box, plus the
+         quick-filter status chips just below it (see
+         renderPlanningStatusChips()/setPlanningStatusFilter()). Only shown
+         for mode==='planning' (see render()); both live in this static
+         toolbar, not inside #main, so a keystroke's own re-render of #main
+         (renderMain()) never steals focus from the search input mid-type —
+         the chips don't strictly need that (they're buttons, not a text
+         field), but sit here anyway since this is the one static home for
+         "narrows Planning's board without navigating away from it" controls. -->
     <div class="planning-toolbar" id="planningSearchToolbar" style="display:none">
       <div class="search-box">
         <i class="fa-solid fa-magnifying-glass"></i>
         <input type="text" id="planningSearchInput" placeholder="Search scope items by name..." oninput="setPlanningSearch(this.value)">
         <button type="button" class="search-clear-btn" id="planningSearchClearBtn" onclick="clearPlanningSearch()" title="Clear search" style="display:none"><i class="fa-solid fa-xmark"></i></button>
       </div>
+      <div class="status-filter-chips" id="planningStatusFilterChips"></div>
     </div>
     <div class="planning-toolbar" id="reviewToolbar" style="display:none">
       <div class="view-tabs">
@@ -1820,6 +1842,11 @@ let expandedItemIds = new Set();
 // on every render, so matching stays a plain case-insensitive substring
 // check wherever it's used.
 let planningSearchQuery = '';
+// The quick-filter status chips' own selection (see renderPlanningStatusChips()/
+// setPlanningStatusFilter() below) — null | a STATUSES id. UI-only, not
+// persisted, reset on reload — same treatment as planningSearchQuery, and
+// composes with it the same way (both independently narrow the board).
+let planningStatusFilter = null;
 // Which review-history entries currently show their change log — UI-only, not persisted.
 let expandedHistoryIds = new Set();
 // Which workstreams currently show their full review history instead of just
@@ -2394,6 +2421,7 @@ function render() {
   document.getElementById('dashboardToolbar').style.display = mode === 'dashboard' ? '' : 'none';
   document.getElementById('dataMenuImportItem').style.display = hasRole('admin') ? '' : 'none';
   document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
+  renderPlanningStatusChips();
   renderSidebar();
   if (mode === 'planning') {
     renderMain();
@@ -2554,6 +2582,33 @@ function clearPlanningSearch() {
   document.getElementById('planningSearchClearBtn').style.display = 'none';
   renderMain();
 }
+// matchesPlanningSearch()'s counterpart for the quick-filter status chips —
+// an item's own status, matched against whichever single chip (if any) is
+// currently selected. Composes with the search box as a plain AND at both
+// call sites (renderStatusView()/unassignedSectionHtml()), not folded into
+// matchesPlanningSearch() itself, so each predicate stays independently
+// readable/testable.
+function matchesPlanningStatusFilter(it) {
+  return !planningStatusFilter || it.status === planningStatusFilter;
+}
+// Rebuilds the chip row from STATUSES + the current selection — cheap
+// enough (6 small buttons) to call on every render() regardless of mode,
+// same as renderSidebar() already does, rather than threading a
+// mode==='planning' check through here too.
+function renderPlanningStatusChips() {
+  const el = document.getElementById('planningStatusFilterChips');
+  if (!el) return;
+  el.innerHTML = STATUSES.map(s => `<button class="status-filter-chip ${planningStatusFilter === s.id ? 'active' : ''}" style="--chip-color:var(--stat-${s.id});--chip-bg:var(--stat-${s.id}-bg)" onclick="setPlanningStatusFilter('${s.id}')">${esc(s.label)}</button>`).join('');
+}
+// Single-select toggle: clicking the already-active chip clears the filter
+// back to "everything", same "click again to clear" shape clearPlanningSearch()'s
+// own clear button gives the search box, just without a separate dedicated
+// button for it.
+function setPlanningStatusFilter(statusId) {
+  planningStatusFilter = planningStatusFilter === statusId ? null : statusId;
+  renderPlanningStatusChips();
+  renderMain();
+}
 
 // The one place a brand-new scope item can be quick-added — see "Quick-add
 // scope items & the Pending category" in CLAUDE.md. Pinned above every real
@@ -2574,19 +2629,20 @@ function unassignedItemsSorted() {
   return items.filter(it => it.workstreamId == null && it.itemType !== 'journey').sort((a, b) => a.order - b.order);
 }
 function unassignedSectionHtml() {
-  // Filtered by Planning's own search box (see matchesPlanningSearch()) —
-  // the base, unfiltered "what's genuinely unassigned" list stays in
+  // Filtered by Planning's own search box and quick-filter status chips
+  // (see matchesPlanningSearch()/matchesPlanningStatusFilter()) — the base,
+  // unfiltered "what's genuinely unassigned" list stays in
   // unassignedItemsSorted() itself, since that's what everything else
   // (normalizeData()'s own reasoning, other call sites) means by the term;
   // this is purely a display-layer narrowing.
-  const uItems = unassignedItemsSorted().filter(matchesPlanningSearch);
+  const uItems = unassignedItemsSorted().filter(it => matchesPlanningSearch(it) && matchesPlanningStatusFilter(it));
   const editable = hasRole('editor');
-  // While actively searching, an Unassigned section with no matches is
-  // omitted entirely regardless of role — the "+ Add item" quick-add prompt
-  // that would otherwise keep it visible for an Editor isn't a useful thing
-  // to show while someone's trying to find an existing item, not add a new
-  // one.
-  if (!uItems.length && (!editable || planningSearchQuery)) return '';
+  // While actively searching/filtering, an Unassigned section with no
+  // matches is omitted entirely regardless of role — the "+ Add item"
+  // quick-add prompt that would otherwise keep it visible for an Editor
+  // isn't a useful thing to show while someone's trying to find or narrow
+  // down existing items, not add a new one.
+  if (!uItems.length && (!editable || planningSearchQuery || planningStatusFilter)) return '';
   const rows = uItems.length ? uItems.map(it => itemRowHtml(it)).join('') :
     `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No unassigned items.</div>`;
   const addRow = editable
@@ -2618,15 +2674,16 @@ function renderStatusView(main) {
     const pills = STATUSES.filter(s => counts[s.id] > 0).map(s =>
       `<span class="rag-pill" style="background:var(--stat-${s.id}-bg);color:var(--stat-${s.id})">${counts[s.id]} ${esc(s.label)}</span>`
     ).join('');
-    // Planning's own search box (see matchesPlanningSearch()) narrows the
+    // Planning's own search box and quick-filter status chips (see
+    // matchesPlanningSearch()/matchesPlanningStatusFilter()) narrow the
     // list — but never the RAG pill counts above, which are always computed
     // from the workstream's real, unfiltered wItems, same as the External
-    // Delivery split below leaves them alone. While actively searching, a
-    // workstream with zero matches is skipped entirely (no header, no empty
-    // list) rather than cluttering search results with a section that has
-    // nothing relevant in it.
-    const displayItems = wItems.filter(matchesPlanningSearch);
-    if (planningSearchQuery && !displayItems.length) return '';
+    // Delivery split below leaves them alone. While actively searching or
+    // filtering, a workstream with zero matches is skipped entirely (no
+    // header, no empty list) rather than cluttering the results with a
+    // section that has nothing relevant in it.
+    const displayItems = wItems.filter(it => matchesPlanningSearch(it) && matchesPlanningStatusFilter(it));
+    if ((planningSearchQuery || planningStatusFilter) && !displayItems.length) return '';
     // Items flagged External Delivery are pulled out of the main list into
     // their own sub-section right underneath it, within the same
     // .ws-section card — an explicit user request ("show scope items which

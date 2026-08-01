@@ -93,6 +93,90 @@ test('planningSearchQuery does not affect Review/Dashboard/Journeys — only Pla
   assertIncludes(document.getElementById('main').innerHTML, 'Migrate billing database');
 });
 
+// ---------- Quick-filter status chips ----------
+// A lighter alternative to a full saved-filter-presets feature: one toggle
+// chip per STATUSES entry, sitting in the same static toolbar as the search
+// box, single-select (click the active one again to clear), composing with
+// the search box as a plain AND.
+
+test('renderPlanningStatusChips renders one chip per STATUSES entry, none active by default', function () {
+  render();
+  const html = document.getElementById('planningStatusFilterChips').innerHTML;
+  STATUSES.forEach(s => assertIncludes(html, `>${esc(s.label)}<`));
+  assertNotIncludes(html, 'active');
+});
+
+test('setPlanningStatusFilter narrows the board to items with that status, and marks the chip active', function () {
+  addItem({ name: 'Red item', status: 'red' });
+  addItem({ name: 'Green item', status: 'green' });
+  setPlanningStatusFilter('red');
+  const mainHtml = document.getElementById('main').innerHTML;
+  assertIncludes(mainHtml, 'Red item');
+  assertNotIncludes(mainHtml, 'Green item');
+  assertIncludes(document.getElementById('planningStatusFilterChips').innerHTML, 'status-filter-chip active');
+});
+
+test('setPlanningStatusFilter on the already-active chip clears the filter back to everything', function () {
+  addItem({ name: 'Red item', status: 'red' });
+  addItem({ name: 'Green item', status: 'green' });
+  setPlanningStatusFilter('red');
+  setPlanningStatusFilter('red'); // click the same chip again
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Red item');
+  assertIncludes(html, 'Green item');
+  assertNotIncludes(document.getElementById('planningStatusFilterChips').innerHTML, 'active');
+});
+
+test('the status filter composes with the search box (both must match)', function () {
+  addItem({ name: 'Migrate billing database', status: 'red' });
+  addItem({ name: 'Migrate onboarding flow', status: 'green' });
+  addItem({ name: 'Update something else', status: 'red' });
+  setPlanningSearch('migrate');
+  setPlanningStatusFilter('red');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Migrate billing database');
+  assertNotIncludes(html, 'Migrate onboarding flow', 'wrong status');
+  assertNotIncludes(html, 'Update something else', 'wrong name');
+});
+
+test('a workstream with zero matches is omitted entirely while status-filtering, same as while searching', function () {
+  addItem({ name: 'Green item', status: 'green' });
+  setPlanningStatusFilter('red');
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, workstreams[0].name);
+  assertNotIncludes(html, 'No items yet.');
+});
+
+test('RAG pill counts stay computed from the full, unfiltered item list while status-filtering', function () {
+  addItem({ name: 'Red item', status: 'red' });
+  addItem({ name: 'Green item', status: 'green' });
+  setPlanningStatusFilter('red');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, '1 Off Track');
+  assertIncludes(html, '1 On Track');
+});
+
+test('the Unassigned section is filtered by status too, and omitted entirely when the filter finds nothing there', function () {
+  addItem({ name: 'Orphaned red item', workstreamId: null, status: 'red' });
+  addItem({ name: 'Normal green item', status: 'green' }); // has a real workstream
+  setPlanningStatusFilter('red');
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Orphaned red item');
+  setPlanningStatusFilter('red'); // clear
+  setPlanningStatusFilter('amber'); // nothing is amber
+  html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'Unassigned');
+});
+
+test('planningStatusFilter does not affect Review/Dashboard/Journeys — only Planning\'s own status board', function () {
+  addItem({ name: 'Migrate billing database', status: 'red' });
+  planningStatusFilter = 'amber'; // nothing matches this
+  mode = 'review'; filterWorkstreamId = workstreams[0].id; reviewTab = 'scope';
+  startReviewCycle(workstreams[0].id);
+  render();
+  assertIncludes(document.getElementById('main').innerHTML, 'Migrate billing database');
+});
+
 test('setFilterWorkstream narrows visibleWorkstreams to one', function () {
   document.getElementById('wsNameInput').value = 'Second';
   wsColorChoice = 'teal';
