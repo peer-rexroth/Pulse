@@ -1610,6 +1610,25 @@ test('normalizeData backfills a missing/malformed workstream.actionLog to an emp
   assertTrue(typeof a.addedAt === 'number');
 });
 
+// The Review Status/Review tab's own label still flexes with the shared
+// workstream selector, but — per a later, explicit user request ("move
+// Review Status... all to the left, before Action Log") — its position no
+// longer does: it always sorts leftmost now, ahead of Action Log/Decision
+// Log/Change Log, regardless of which label is currently showing.
+test('#tabReviewScope always sorts leftmost (order -1), whether it reads "Review" or "Review Status"', function () {
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  let tab = document.getElementById('tabReviewScope');
+  assertIncludes(tab.innerHTML, 'Review');
+  assertNotIncludes(tab.innerHTML, 'Review Status');
+  assertEqual(tab.style.order, '-1');
+
+  setFilterWorkstream(null); // "All Workstreams"
+  tab = document.getElementById('tabReviewScope');
+  assertIncludes(tab.innerHTML, 'Review Status');
+  assertEqual(tab.style.order, '-1', 'position must stay leftmost even once the label switches to "Review Status"');
+});
+
 test('setReviewTab switches renderReview between the Scope Item Review checklist and the Action Log', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);

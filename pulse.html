@@ -2448,19 +2448,23 @@ function render() {
   } else if (mode === 'review') {
     const scopeTab = document.getElementById('tabReviewScope');
     scopeTab.classList.toggle('active', reviewTab === 'scope');
-    // This tab's label and position both flex with the shared workstream
-    // selector — an explicit user request. With one workstream selected, its
-    // own review checklist is the natural first thing to reach for, so it
-    // reads as the short "Review" and sorts (via CSS order, not a DOM move)
-    // ahead of Action Log/Decision Log/Change Log. With "All Workstreams"
-    // selected it shows the staleness-ranking overview instead (see
-    // reviewDatesOverviewHtml()) — a different, less central kind of view —
-    // so it reads as "Review Status" and sorts after Change Log, matching
-    // where it already sat before this became dynamic.
+    // This tab's label flexes with the shared workstream selector — an
+    // explicit user request. With one workstream selected, its own review
+    // checklist is the natural first thing to reach for, so it reads as the
+    // short "Review"; with "All Workstreams" selected it shows the
+    // staleness-ranking overview instead (see reviewDatesOverviewHtml()) —
+    // a different, less central kind of view — so it reads as "Review
+    // Status". Position used to flex along with the label too (sorting
+    // after Change Log for the "Review Status" case) — a later, separate
+    // explicit user request ("move Review Status... all to the left, before
+    // Action Log") made the position unconditional instead: this tab now
+    // always sorts (via CSS order, not a DOM move) ahead of Action Log/
+    // Decision Log/Change Log, regardless of which label it's currently
+    // showing.
     scopeTab.innerHTML = filterWorkstreamId
       ? '<i class="fa-solid fa-clipboard-check"></i> Review'
       : '<i class="fa-solid fa-clipboard-check"></i> Review Status';
-    scopeTab.style.order = filterWorkstreamId ? '-1' : '1';
+    scopeTab.style.order = '-1';
     document.getElementById('tabReviewActionLog').classList.toggle('active', reviewTab === 'actionLog');
     document.getElementById('tabReviewDecisionLog').classList.toggle('active', reviewTab === 'decisionLog');
     document.getElementById('tabReviewChangeLog').classList.toggle('active', reviewTab === 'changeLog');
