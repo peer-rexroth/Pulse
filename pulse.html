@@ -2598,13 +2598,28 @@ function clearPlanningSearch() {
   renderMain();
 }
 // matchesPlanningSearch()'s counterpart for the quick-filter status chips —
-// an item's own status, matched against whichever single chip (if any) is
-// currently selected. Composes with the search box as a plain AND at both
-// call sites (renderStatusView()/unassignedSectionHtml()), not folded into
+// matched against whichever single chip (if any) is currently selected.
+// Composes with the search box as a plain AND at both call sites
+// (renderStatusView()/unassignedSectionHtml()), not folded into
 // matchesPlanningSearch() itself, so each predicate stays independently
 // readable/testable.
+// Checks the item's own status first (covers every zero-milestone item, and
+// any item whose rolled-up status happens to already match), then falls
+// back to checking its individual milestones — an explicit user request
+// ("the search filter should also filter Milestones with the respective
+// status"). This matters because an item's own status is the *weakest*
+// link across its milestones (see computedStatusFromMilestones() and "Item
+// status roll-up" in CLAUDE.md) — filtering to, say, "Completed" would
+// otherwise only ever surface an item once *every* one of its milestones
+// is complete, which is rare; checking milestones directly instead surfaces
+// any item with at least one milestone in that state, even while the
+// item's own rolled-up status still reads worse. A notApplicable milestone
+// is excluded from this check, the same "never counts toward or against
+// anything" treatment it already gets everywhere else in this app.
 function matchesPlanningStatusFilter(it) {
-  return !planningStatusFilter || it.status === planningStatusFilter;
+  if (!planningStatusFilter) return true;
+  if (it.status === planningStatusFilter) return true;
+  return (it.milestones || []).some(m => !m.notApplicable && m.status === planningStatusFilter);
 }
 // The External Deliveries chip's own predicate — a plain boolean gate
 // rather than a value match, since externalDelivery is itself a boolean

@@ -116,6 +116,39 @@ test('setPlanningStatusFilter narrows the board to items with that status, and m
   assertIncludes(document.getElementById('planningStatusFilterChips').innerHTML, 'status-filter-chip active');
 });
 
+// An explicit user request ("the search filter should also filter
+// Milestones with the respective status"): an item whose own rolled-up
+// status doesn't match the selected chip should still show if any of its
+// individual milestones does — the item's own status is only ever the
+// weakest link across its milestones, so a plain item-status check alone
+// would rarely surface anything for a chip like "Completed".
+
+test('setPlanningStatusFilter also matches an item via one of its milestones, even when the item\'s own rolled-up status differs', function () {
+  const it = addItem({
+    name: 'Item with a completed milestone', status: 'red',
+    milestones: [
+      { id: 'm1', name: 'Done step', dueDate: todayStr(), status: 'complete', actualDate: null },
+      { id: 'm2', name: 'Open step', dueDate: todayStr(), status: 'red', actualDate: null }
+    ]
+  });
+  addItem({ name: 'Unrelated item', status: 'green' });
+  setPlanningStatusFilter('complete');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, it.name, 'the item has a completed milestone, even though its own rolled-up status is red');
+  assertNotIncludes(html, 'Unrelated item');
+});
+
+test('setPlanningStatusFilter ignores a notApplicable milestone\'s status when matching', function () {
+  addItem({
+    name: 'Item with an N/A milestone',
+    status: 'green',
+    milestones: [{ id: 'm1', name: 'Skipped step', dueDate: todayStr(), status: 'red', actualDate: null, notApplicable: true }]
+  });
+  setPlanningStatusFilter('red');
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'Item with an N/A milestone', 'a notApplicable milestone\'s status must never count toward a match');
+});
+
 test('setPlanningStatusFilter on the already-active chip clears the filter back to everything', function () {
   addItem({ name: 'Red item', status: 'red' });
   addItem({ name: 'Green item', status: 'green' });
