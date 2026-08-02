@@ -6958,11 +6958,24 @@ function computeDashboardData() {
   const today = todayStr();
   const soon = dateStrFromTs(Date.now() + 7 * DAY_MS);
   const toEntry = (x, isMilestone) => ({ label: isMilestone ? `${x.itemName} — ${x.name}` : x.name, date: x.dueDate });
-  const overdue = scopedItems.filter(it => it.status !== 'complete' && it.dueDate < today).map(x => toEntry(x, false))
-    .concat(milestones.filter(m => m.status !== 'complete' && m.dueDate < today).map(x => toEntry(x, true)))
+  // An item/milestone that already has an actualDate set is excluded from
+  // both feeds regardless of what its status field currently says — an
+  // explicit user request ("also consider the actual date to determine if
+  // a milestone is overdue and upcoming"). actualDate is deliberately
+  // manual and independent of status (see "Data model" in CLAUDE.md — it's
+  // never auto-set when status becomes 'complete', and vice versa), so it's
+  // entirely possible for something to have genuinely already finished
+  // (actualDate recorded) while its status field lags behind and still
+  // reads e.g. 'red'/'not-started' — without this check that would still
+  // nag as Overdue/Upcoming despite already being done in practice. This
+  // mirrors the same "actualDate is the ground-truth signal of completion
+  // timing, status can't be fully trusted alone" reasoning isCompletedLate()
+  // already applies elsewhere in this app.
+  const overdue = scopedItems.filter(it => it.status !== 'complete' && !it.actualDate && it.dueDate < today).map(x => toEntry(x, false))
+    .concat(milestones.filter(m => m.status !== 'complete' && !m.actualDate && m.dueDate < today).map(x => toEntry(x, true)))
     .sort((a, b) => a.date.localeCompare(b.date));
-  const upcoming = scopedItems.filter(it => it.status !== 'complete' && it.dueDate >= today && it.dueDate <= soon).map(x => toEntry(x, false))
-    .concat(milestones.filter(m => m.status !== 'complete' && m.dueDate >= today && m.dueDate <= soon).map(x => toEntry(x, true)))
+  const upcoming = scopedItems.filter(it => it.status !== 'complete' && !it.actualDate && it.dueDate >= today && it.dueDate <= soon).map(x => toEntry(x, false))
+    .concat(milestones.filter(m => m.status !== 'complete' && !m.actualDate && m.dueDate >= today && m.dueDate <= soon).map(x => toEntry(x, true)))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const wsStats = wss.map(w => {

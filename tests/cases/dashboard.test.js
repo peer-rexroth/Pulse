@@ -97,6 +97,45 @@ test('an overdue milestone shows as "item name — milestone name"', function ()
   assertIncludes(document.getElementById('main').innerHTML, 'Parent item — Late milestone');
 });
 
+// ---------- actualDate also excludes something from Overdue/Upcoming ----------
+// An explicit user request ("also consider the actual date to determine if
+// a milestone is overdue and upcoming") — actualDate is deliberately manual
+// and independent of status (see "Data model" in CLAUDE.md), so something
+// can genuinely already be finished (actualDate recorded) while its status
+// field still lags behind at e.g. 'red'/'not-started'. Without this, such
+// an item/milestone would still nag as Overdue/Upcoming despite already
+// being done in practice.
+
+test('a past-due milestone with an actualDate already recorded does not appear in the Overdue feed, even though its status isn\'t complete', function () {
+  addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Actually finished', dueDate: isoDaysFromNow(-3), actualDate: isoDaysFromNow(-1), status: 'not-started' }] });
+  renderDashboard();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Actually finished');
+});
+
+test('a milestone due soon with an actualDate already recorded does not appear in the Upcoming feed, even though its status isn\'t complete', function () {
+  addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Already done', dueDate: isoDaysFromNow(3), actualDate: isoDaysFromNow(-1), status: 'amber' }] });
+  renderDashboard();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Already done');
+});
+
+test('a past-due item with an actualDate already recorded does not appear in the Overdue feed, even though its status isn\'t complete', function () {
+  addDashItem({ name: 'Already wrapped up', status: 'red', dueDate: isoDaysFromNow(-3), actualDate: isoDaysFromNow(-1) });
+  renderDashboard();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Already wrapped up');
+});
+
+test('an item due soon with an actualDate already recorded does not appear in the Upcoming feed, even though its status isn\'t complete', function () {
+  addDashItem({ name: 'Finished early', status: 'amber', dueDate: isoDaysFromNow(3), actualDate: isoDaysFromNow(-1) });
+  renderDashboard();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Finished early');
+});
+
+test('a past-due milestone with no actualDate yet still appears in the Overdue feed as before', function () {
+  addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Still open', dueDate: isoDaysFromNow(-3), actualDate: null, status: 'not-started' }] });
+  renderDashboard();
+  assertIncludes(document.getElementById('main').innerHTML, 'Still open');
+});
+
 test('a workstream overdue for review is counted and named in the Overdue for Review card', function () {
   addDashItem({});
   renderDashboard();
