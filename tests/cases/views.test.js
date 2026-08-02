@@ -740,14 +740,14 @@ test('an item with no milestones — its inline Due input snaps back to the stor
   const it = addItem({ name: 'No milestones', milestones: [], dueDate: '2026-08-01' });
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onblur="if(this.value) updateItemDateField('${it.id}','dueDate',this.value); else this.value='2026-08-01'"`);
+  assertIncludes(html, `onblur="cancelDateChangeDebounce('${it.id}-due'); if(this.value) updateItemDateField('${it.id}','dueDate',this.value); else this.value='2026-08-01'"`);
 });
 
 test('an item with no milestones — its inline Start input snaps back to the stored date on an incomplete edit', function () {
   const it = addItem({ name: 'No milestones', milestones: [], startDate: '2026-07-01' });
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onblur="if(this.value) updateItemDateField('${it.id}','startDate',this.value); else this.value='2026-07-01'"`);
+  assertIncludes(html, `onblur="cancelDateChangeDebounce('${it.id}-start'); if(this.value) updateItemDateField('${it.id}','startDate',this.value); else this.value='2026-07-01'"`);
 });
 
 test('a milestone sub-row\'s Due input snaps back to the stored date on an incomplete edit', function () {
@@ -758,7 +758,7 @@ test('a milestone sub-row\'s Due input snaps back to the stored date on an incom
   toggleItemExpanded(it.id);
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onblur="if(this.value) updateMilestoneDateField('${it.id}','m1','dueDate',this.value); else this.value='2026-08-15'"`);
+  assertIncludes(html, `onblur="cancelDateChangeDebounce('m1-due'); if(this.value) updateMilestoneDateField('${it.id}','m1','dueDate',this.value); else this.value='2026-08-15'"`);
 });
 
 // ---------- Date inputs also commit on 'change', not just blur ----------
@@ -770,20 +770,22 @@ test('a milestone sub-row\'s Due input snaps back to the stored date on an incom
 // unrelated render (switching modes) rebuilt the row from the real,
 // never-updated stored date. `onchange` fires the moment the popup commits
 // a value, regardless of that focus/blur quirk, so every date input now
-// wires it up alongside onblur.
+// wires it up alongside onblur — as of a later fix (see
+// "debounceDateChange()" below), routed through a debounce rather than
+// calling the update function directly.
 
 test('an item with no milestones — its inline Due input also commits on change, not just blur', function () {
   const it = addItem({ name: 'No milestones', milestones: [] });
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onchange="if(this.value) updateItemDateField('${it.id}','dueDate',this.value)"`);
+  assertIncludes(html, `onchange="debounceDateChange('${it.id}-due', () => { if(this.value) updateItemDateField('${it.id}','dueDate',this.value); })"`);
 });
 
 test('an item with no milestones — its inline Start input also commits on change', function () {
   const it = addItem({ name: 'No milestones', milestones: [] });
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onchange="if(this.value) updateItemDateField('${it.id}','startDate',this.value)"`);
+  assertIncludes(html, `onchange="debounceDateChange('${it.id}-start', () => { if(this.value) updateItemDateField('${it.id}','startDate',this.value); })"`);
 });
 
 test('a milestone sub-row\'s Due input also commits on change', function () {
@@ -794,7 +796,7 @@ test('a milestone sub-row\'s Due input also commits on change', function () {
   toggleItemExpanded(it.id);
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onchange="if(this.value) updateMilestoneDateField('${it.id}','m1','dueDate',this.value)"`);
+  assertIncludes(html, `onchange="debounceDateChange('m1-due', () => { if(this.value) updateMilestoneDateField('${it.id}','m1','dueDate',this.value); })"`);
 });
 
 test('a milestone sub-row\'s Actual input also commits on change', function () {
@@ -805,7 +807,65 @@ test('a milestone sub-row\'s Actual input also commits on change', function () {
   toggleItemExpanded(it.id);
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onchange="if(this.value) updateMilestoneDateField('${it.id}','m1','actualDate',this.value)"`);
+  assertIncludes(html, `onchange="debounceDateChange('m1-actual', () => { if(this.value) updateMilestoneDateField('${it.id}','m1','actualDate',this.value); })"`);
+});
+
+// ---------- debounceDateChange()/cancelDateChangeDebounce() ----------
+// A later, user-reported bug ("commits after i hit one char"): for an
+// ALREADY-populated date field, completing just the first segment a user
+// touches (e.g. one digit of a new month, with day/year still the old,
+// untouched values) already reads as a complete, valid date to Chrome — so
+// the plain `if(this.value) update...(...)` onchange handler above used to
+// commit that wrong, premature composite value immediately, which called
+// render(), which rebuilt the row and destroyed the still-focused, still-
+// mid-edit input — silently swallowing every further keystroke. Wrapping
+// the commit in `debounceDateChange(key, applyFn)` (used by every onchange
+// handler above) coalesces a burst of same-field `change` events into a
+// single deferred commit, so a still-typing user's intermediate keystrokes
+// never trigger a re-render mid-edit — only the last event in a settled
+// burst actually runs. `cancelDateChangeDebounce(key)`, called from each
+// field's own onblur, both commits immediately on a real "user is done"
+// signal and prevents a stale timer from redundantly firing afterward.
+//
+// The JXA test harness stubs setTimeout as a no-op (see tests/harness.js) —
+// a scheduled debounce callback is never actually invoked under it, so the
+// timer *firing* isn't directly testable here; what's tested is the
+// observable, synchronous surface: that scheduling/cancelling correctly
+// manages dateChangeTimers, and (above) that every editable date input's
+// own onchange is actually wired through it rather than calling the update
+// function directly.
+
+test('debounceDateChange schedules a timer under the given key', function () {
+  delete dateChangeTimers['test-key'];
+  debounceDateChange('test-key', function () {});
+  assertTrue('test-key' in dateChangeTimers);
+});
+
+test('debounceDateChange replaces any pending timer for the same key rather than stacking a second one', function () {
+  delete dateChangeTimers['test-key'];
+  debounceDateChange('test-key', function () {});
+  const firstTimerId = dateChangeTimers['test-key'];
+  debounceDateChange('test-key', function () {});
+  // both calls scheduled under the identical key, so the second call must
+  // have cleared the first timer before scheduling its own — there's only
+  // ever one live entry for a given key, never two independently pending
+  assertTrue('test-key' in dateChangeTimers);
+  cancelDateChangeDebounce('test-key');
+  assertFalse('test-key' in dateChangeTimers);
+});
+
+test('cancelDateChangeDebounce removes the pending timer for that key, leaving others untouched', function () {
+  debounceDateChange('key-a', function () {});
+  debounceDateChange('key-b', function () {});
+  cancelDateChangeDebounce('key-a');
+  assertFalse('key-a' in dateChangeTimers);
+  assertTrue('key-b' in dateChangeTimers);
+  cancelDateChangeDebounce('key-b');
+});
+
+test('cancelDateChangeDebounce is a no-op (does not throw) when there is nothing pending for that key', function () {
+  cancelDateChangeDebounce('never-scheduled-key');
+  assertFalse('never-scheduled-key' in dateChangeTimers);
 });
 
 test('an item row shows IT/Business/Budget tag badges colored by their current value', function () {
