@@ -80,6 +80,71 @@ test('onItemCategoryChange does nothing while editing an existing item (never re
   assertEqual(editingMilestones.length, 1, 'editing an existing item should not reseed its milestones on category change');
 });
 
+// ---------- Picking the Dependency category auto-flags the item ----------
+// An explicit user request ("if a scope item gets the category Dependency
+// assigned, set the Dependency flag with it"). Matched by name
+// (isDependencyCategory()), since there's no reserved boolean on a category
+// the way Pending has `pending: true` — the out-of-the-box "Dependency"
+// category is an ordinary, user-editable one like any other.
+
+test('isDependencyCategory matches the out-of-the-box "Dependency" category by name, case/whitespace-insensitively', function () {
+  const dep = categories.find(c => c.name === 'Dependency');
+  assertTrue(isDependencyCategory(dep.id));
+  assertFalse(isDependencyCategory(categories[0].id));
+  const custom = categories[categories.length - 1];
+  const originalName = custom.name;
+  custom.name = '  dependency  ';
+  assertTrue(isDependencyCategory(custom.id));
+  custom.name = originalName;
+});
+
+test('onItemCategoryChange checks the Dependency checkbox when the Dependency category is picked, while creating a new item', function () {
+  const dep = categories.find(c => c.name === 'Dependency');
+  openItemModal(null);
+  assertFalse(document.getElementById('itemDependencyInput').checked);
+  document.getElementById('itemCategorySelect').value = dep.id;
+  onItemCategoryChange();
+  assertTrue(document.getElementById('itemDependencyInput').checked);
+  assertEqual(document.getElementById('itemDependencySpocField').style.display, '', 'the SPOC field reveals along with the checkbox, via the same onItemDependencyChange() the checkbox\'s own onchange calls');
+});
+
+test('onItemCategoryChange also checks the Dependency checkbox while editing an existing item — unlike the milestone reseed, checking a box is non-destructive', function () {
+  const dep = categories.find(c => c.name === 'Dependency');
+  openItemModal(null);
+  document.getElementById('itemNameInput').value = 'Existing item';
+  document.getElementById('itemWorkstreamSelect').value = workstreams[0].id;
+  saveItem();
+  const id = items[0].id;
+  openItemModal(id);
+  assertFalse(document.getElementById('itemDependencyInput').checked);
+  document.getElementById('itemCategorySelect').value = dep.id;
+  onItemCategoryChange();
+  assertTrue(document.getElementById('itemDependencyInput').checked);
+});
+
+test('onItemCategoryChange never unchecks the Dependency flag when switching away from the Dependency category — one-directional, like Pending-status auto-advance', function () {
+  const dep = categories.find(c => c.name === 'Dependency');
+  openItemModal(null);
+  document.getElementById('itemDependencyInput').checked = true; // hand-checked, unrelated to category
+  document.getElementById('itemCategorySelect').value = dep.id;
+  onItemCategoryChange();
+  document.getElementById('itemCategorySelect').value = categories[0].id;
+  onItemCategoryChange();
+  assertTrue(document.getElementById('itemDependencyInput').checked, 'switching to a different category must never turn the flag back off');
+});
+
+test('applyScopeCategory sets the dependency flag when the assigned category is Dependency, and leaves it off otherwise', function () {
+  const dep = categories.find(c => c.name === 'Dependency');
+  const pendingCat = pendingCategory();
+  const it = addItem({ workstreamId: null, categoryId: pendingCat.id, dependency: false });
+  applyScopeCategory(it.id, workstreams[0].id, dep.id);
+  assertTrue(it.dependency);
+
+  const it2 = addItem({ workstreamId: null, categoryId: pendingCat.id, dependency: false });
+  applyScopeCategory(it2.id, workstreams[0].id, categories[0].id);
+  assertFalse(it2.dependency);
+});
+
 // ---------- Switching an existing item's category (destructive milestone swap) ----------
 // An explicit user request: "if I change the category of a scope item which
 // had already a category with its respective milestones... deleting

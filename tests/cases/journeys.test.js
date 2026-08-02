@@ -1472,7 +1472,70 @@ test('renderJourneys shows a filter-specific empty state when the status chips f
   setPlanningTab('journeys');
   setJourneysStatusFilter('red');
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'No Journeys match the selected status filter(s).');
+  assertIncludes(html, 'No Journeys match the selected filters.');
+});
+
+// ---------- Journeys' own Dependencies quick-filter chip ----------
+// planningDependencyFilter's own counterpart, an explicit user request ("add
+// dependencies as search pill for journeys, like in workstreams"). A
+// Journey/Sub Journey has no dependency flag of its own — this reaches
+// through to each Sub Journey's own connected scope items, the same way
+// journeysAfterWorkstreamFilter() already reaches through for its own
+// workstream check.
+
+test('renderJourneysStatusChips also renders a Dependencies toggle chip, mirroring Planning\'s own chip row', function () {
+  setPlanningTab('journeys');
+  render();
+  const html = document.getElementById('journeysStatusFilterChips').innerHTML;
+  assertIncludes(html, 'Dependencies');
+  assertIncludes(html, 'setJourneysDependencyFilter()');
+  assertIncludes(html, 'chip-divider');
+});
+
+test('matchesJourneysDependencyFilter matches a Journey with any connected scope item flagged dependency, reached through its Sub Journeys', function () {
+  const j1 = addJourney('Has a dependency');
+  const sub1 = addSubJourney(j1.id);
+  addItem({ name: 'A', journeyId: sub1.id, dependency: true });
+  const j2 = addJourney('No dependency');
+  const sub2 = addSubJourney(j2.id);
+  addItem({ name: 'B', journeyId: sub2.id, dependency: false });
+  assertTrue(matchesJourneysDependencyFilter(j1), 'filter is off by default, so everything matches');
+  assertTrue(matchesJourneysDependencyFilter(j2));
+  journeysDependencyFilter = true;
+  assertTrue(matchesJourneysDependencyFilter(j1));
+  assertFalse(matchesJourneysDependencyFilter(j2));
+});
+
+test('setJourneysDependencyFilter is a plain on/off toggle that composes with the status chips as a plain AND', function () {
+  const j1 = addJourney('Vendor, red, dependency');
+  const sub1 = addSubJourney(j1.id);
+  addItem({ name: 'A', journeyId: sub1.id, status: 'red', dependency: true });
+  const j2 = addJourney('Red, not a dependency');
+  const sub2 = addSubJourney(j2.id);
+  addItem({ name: 'B', journeyId: sub2.id, status: 'red', dependency: false });
+
+  setPlanningTab('journeys');
+  setJourneysStatusFilter('red');
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Vendor, red, dependency');
+  assertIncludes(html, 'Red, not a dependency');
+
+  setJourneysDependencyFilter();
+  assertTrue(journeysDependencyFilter);
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Vendor, red, dependency');
+  assertNotIncludes(html, 'Red, not a dependency', 'the dependency toggle must further narrow the status-filtered set, not replace it');
+
+  setJourneysDependencyFilter();
+  assertFalse(journeysDependencyFilter);
+});
+
+test('renderJourneys shows the same generic filter-empty message when only the Dependencies toggle finds nothing', function () {
+  addJourney('No dependencies anywhere');
+  setPlanningTab('journeys');
+  setJourneysDependencyFilter();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'No Journeys match the selected filters.');
 });
 
 // ---------- Journeys' own "Expand all"/"Collapse all" ----------

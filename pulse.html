@@ -2066,6 +2066,15 @@ let decisionLogSearchQuery = '';
 // status (computeJourneyStatus(), falling back to 'not-started' the same
 // way every other caller of that function does).
 let journeysStatusFilters = new Set();
+// planningDependencyFilter's own counterpart for the Journeys sub-tab — a
+// later, explicit user request ("add dependencies as search pill for
+// journeys, like in workstreams"). A Journey/Sub Journey has no dependency
+// flag of its own (that field is scope-item-only — see "Dependencies" in
+// CLAUDE.md), so this is checked one level down, the same way
+// journeysAfterWorkstreamFilter() already reaches through Sub Journeys to
+// each one's own connected scope items rather than checking anything on the
+// Journey/Sub Journey objects themselves.
+let journeysDependencyFilter = false;
 // Action Log's own quick-filter chips — two independent groups, not one:
 // an "Open"/"Completed" multi-select pair (planningStatusFilters' own
 // shape, just over the action item's own completed boolean instead of a
@@ -2668,6 +2677,14 @@ function categoryById(id) { return categories.find(c => c.id === id); }
 // offered as a choice in the scope-assign modal (openScopeAssignModal()).
 function pendingCategory() { return categories.find(c => c.pending); }
 function isPendingCategory(categoryId) { const c = categoryById(categoryId); return !!(c && c.pending); }
+// Matched by name (there's no reserved `dependency: true` flag on a category
+// the way Pending has `pending: true` — the out-of-the-box "Dependency"
+// category from DEFAULT_CATEGORIES is just an ordinary, user-editable
+// category like any other) — case/whitespace-insensitive, the same
+// tolerance mergeData()'s own name-dedup already uses. Picking this category
+// is what auto-checks the item's own Dependency flag — see
+// onItemCategoryChange()/applyScopeCategory().
+function isDependencyCategory(categoryId) { const c = categoryById(categoryId); return !!(c && c.name.trim().toLowerCase() === 'dependency'); }
 // Every scope item currently linked to the given Sub Journey (item.journeyId
 // — set/cleared by toggleJourneyConnection(), see "Journeys" below), in
 // itemRowHtml()/renderStatusView()'s own manual-order sort. Despite the
@@ -3037,16 +3054,34 @@ function matchesJourneysStatusFilter(j) {
 }
 // renderPlanningStatusChips()'s own counterpart — the same 6 STATUSES
 // chips, multi-select from the start (see journeysStatusFilters' own
-// declaration comment), with no Dependencies-style standalone chip
-// alongside them since Journeys have no such concept.
+// declaration comment), plus the same divider-then-Dependencies-toggle
+// shape Planning's own chip row ends with (see journeysDependencyFilter's
+// own declaration comment for why this was added later).
 function renderJourneysStatusChips() {
   const el = document.getElementById('journeysStatusFilterChips');
   if (!el) return;
-  el.innerHTML = STATUSES.map(s => `<button class="status-filter-chip ${journeysStatusFilters.has(s.id) ? 'active' : ''}" style="--chip-color:var(--stat-${s.id});--chip-bg:var(--stat-${s.id}-bg)" onclick="setJourneysStatusFilter('${s.id}')">${esc(s.label)}</button>`).join('');
+  const statusChips = STATUSES.map(s => `<button class="status-filter-chip ${journeysStatusFilters.has(s.id) ? 'active' : ''}" style="--chip-color:var(--stat-${s.id});--chip-bg:var(--stat-${s.id}-bg)" onclick="setJourneysStatusFilter('${s.id}')">${esc(s.label)}</button>`).join('');
+  const dependencyChip = `<button class="status-filter-chip ${journeysDependencyFilter ? 'active' : ''}" style="--chip-color:var(--accent);--chip-bg:var(--accent-bg)" onclick="setJourneysDependencyFilter()"><i class="fa-solid fa-globe"></i> Dependencies</button>`;
+  el.innerHTML = statusChips + '<span class="chip-divider"></span>' + dependencyChip;
 }
 function setJourneysStatusFilter(statusId) {
   if (journeysStatusFilters.has(statusId)) journeysStatusFilters.delete(statusId);
   else journeysStatusFilters.add(statusId);
+  renderJourneysStatusChips();
+  renderMain();
+}
+// matchesPlanningDependencyFilter()'s own counterpart, reaching one level
+// down through the hierarchy the same way journeysAfterWorkstreamFilter()
+// already does: a Journey qualifies if any of its Sub Journeys has any
+// connected scope item flagged as a dependency — there's no dependency
+// field on the Journey/Sub Journey objects themselves to check directly.
+function matchesJourneysDependencyFilter(j) {
+  if (!journeysDependencyFilter) return true;
+  return connectedSubJourneys(j.id).some(sj => connectedScopeItems(sj.id).some(it => it.dependency));
+}
+// setPlanningDependencyFilter()'s own counterpart — a plain on/off flip.
+function setJourneysDependencyFilter() {
+  journeysDependencyFilter = !journeysDependencyFilter;
   renderJourneysStatusChips();
   renderMain();
 }
@@ -3312,15 +3347,16 @@ function matchesJourneysSearch(j) {
   return connectedSubJourneys(j.id).some(sj => sj.name.toLowerCase().includes(journeysSearchQuery));
 }
 // The Journeys sub-tab's own full narrowing — workstream filter (see
-// journeysAfterWorkstreamFilter()'s own comment), search, then the status
-// chips, composed the same way Planning's own search box/status chips/
-// dependency chip all compose with each other (a plain AND). Used by
-// journeysExpandAllIds() so Expand-all only ever acts on what's actually
-// visible under every filter at once.
+// journeysAfterWorkstreamFilter()'s own comment), search, the status chips,
+// then the Dependencies toggle, composed the same way Planning's own search
+// box/status chips/dependency chip all compose with each other (a plain
+// AND). Used by journeysExpandAllIds() so Expand-all only ever acts on
+// what's actually visible under every filter at once.
 function journeysForCurrentFilter() {
   let journeys = journeysAfterWorkstreamFilter();
   if (journeysSearchQuery) journeys = journeys.filter(matchesJourneysSearch);
   if (journeysStatusFilters.size) journeys = journeys.filter(matchesJourneysStatusFilter);
+  if (journeysDependencyFilter) journeys = journeys.filter(matchesJourneysDependencyFilter);
   return journeys;
 }
 function renderJourneys() {
@@ -3336,7 +3372,7 @@ function renderJourneys() {
   const journeys = journeysForCurrentFilter();
   const emptyMsg = !wsFiltered.length
     ? (scopedWs ? `No Journeys with scope items in "${esc(scopedWs.name)}" yet.` : 'No journeys yet.')
-    : (journeysSearchQuery ? `No Journeys match "${esc(journeysSearchQuery)}".` : 'No Journeys match the selected status filter(s).');
+    : (journeysSearchQuery ? `No Journeys match "${esc(journeysSearchQuery)}".` : 'No Journeys match the selected filters.');
   const rows = journeys.length ? journeys.map(it => itemRowHtml(it)).join('') :
     `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">${emptyMsg}</div>`;
   // A name-only inline capture, matching the Unassigned section's own "+
@@ -4835,8 +4871,22 @@ function milestonesForCategory(categoryId, dueDate) {
   return (cat ? cat.milestones : []).map(name => ({ id: genId(), name, dueDate: null, status: 'pending', actualDate: null, notApplicable: false }));
 }
 function onItemCategoryChange() {
-  if (editingItemId) return; // editing an existing item never re-seeds its already-customized checklist
   const categoryId = document.getElementById('itemCategorySelect').value;
+  // Picking the Dependency category flags the item as a dependency too — an
+  // explicit user request. Deliberately ahead of the editingItemId early
+  // return below: unlike re-seeding the milestone checklist (destructive to
+  // in-progress customization, so restricted to a brand-new item only —
+  // see that guard's own comment), checking a box loses nothing, so this
+  // applies whether creating or editing. One-directional: it only ever
+  // turns the flag ON, never off — switching away from Dependency to a
+  // different category leaves the flag exactly as the user last set it,
+  // the same "advance, never un-advance" convention Pending-status
+  // auto-advance already uses elsewhere in this file.
+  if (isDependencyCategory(categoryId) && !document.getElementById('itemDependencyInput').checked) {
+    document.getElementById('itemDependencyInput').checked = true;
+    onItemDependencyChange();
+  }
+  if (editingItemId) return; // editing an existing item never re-seeds its already-customized checklist
   editingMilestones = milestonesForCategory(categoryId, document.getElementById('itemDueInput').value);
   renderMilestonesEditor();
 }
@@ -5484,6 +5534,14 @@ function applyScopeCategory(itemId, workstreamId, categoryId) {
   if (!it) return;
   it.workstreamId = workstreamId;
   it.categoryId = categoryId;
+  // Same auto-flag onItemCategoryChange() applies in the ordinary item
+  // modal — this is the other place a real (non-Pending) category ever gets
+  // assigned to an item, so it needs the identical, one-directional "picking
+  // Dependency turns the flag on, never off" treatment. A still-Pending item
+  // always starts with dependency:false (the field is hidden for one — see
+  // "Quick-add scope items..." in CLAUDE.md), so there's no existing true
+  // value this could ever clobber back to false.
+  if (isDependencyCategory(categoryId)) it.dependency = true;
   it.milestones.forEach(m => tombstone(deletedMilestoneIds, m.id));
   it.milestones = milestonesForCategory(categoryId, it.dueDate);
   it.status = computedStatusFromMilestones(it.milestones);

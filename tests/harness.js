@@ -200,7 +200,7 @@ async function run(argv) {
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set(); revealedDueIds = new Set();
   unassignedQuickAddOpen = false; journeyQuickAddOpen = false; subJourneyQuickAddOpenFor = null; planningSearchQuery = ''; planningStatusFilters = new Set(); planningDependencyFilter = false;
   journeysSearchQuery = ''; actionLogSearchQuery = ''; decisionLogSearchQuery = '';
-  journeysStatusFilters = new Set(); actionLogStatusFilters = new Set(); actionLogFlaggedFilter = false; decisionLogFlaggedFilter = false;
+  journeysStatusFilters = new Set(); journeysDependencyFilter = false; actionLogStatusFilters = new Set(); actionLogFlaggedFilter = false; decisionLogFlaggedFilter = false;
   editingCategoryId = null; editingCategoryMilestones = [];
   minutesModalCycleId = null; editingMinutesActionItems = []; reviewTab = 'scope'; planningTab = 'scope';
   renamingProgramme = false;
