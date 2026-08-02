@@ -15,11 +15,12 @@ test('renderDashboard shows an empty state with no workstreams', function () {
   assertIncludes(document.getElementById('main').innerHTML, 'No workstreams yet');
 });
 
-test('allMilestonesFlat flattens every item\'s milestones with their parent item name attached', function () {
-  addDashItem({ milestones: [{ id: 'm1', name: 'M1', dueDate: todayStr(), status: 'not-started' }] });
+test('allMilestonesFlat flattens every item\'s milestones with their parent item name and id attached', function () {
+  const it = addDashItem({ milestones: [{ id: 'm1', name: 'M1', dueDate: todayStr(), status: 'not-started' }] });
   const flat = allMilestonesFlat();
   assertEqual(flat.length, 1);
   assertEqual(flat[0].itemName, 'Item');
+  assertEqual(flat[0].itemId, it.id, 'the parent item\'s id must travel with a flattened milestone, so a Dashboard feed row can link back to it');
 });
 
 test('renderDashboard reports the RAG breakdown across items', function () {
@@ -95,6 +96,25 @@ test('an overdue milestone shows as "item name — milestone name"', function ()
   addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Late milestone', dueDate: isoDaysFromNow(-1), status: 'not-started' }] });
   renderDashboard();
   assertIncludes(document.getElementById('main').innerHTML, 'Parent item — Late milestone');
+});
+
+// ---------- Overdue/Upcoming rows are clickable ----------
+// A user-reported gap: acting on a row here used to mean leaving Dashboard,
+// finding the right workstream in Planning, and hunting for the item by
+// eye. Each row now opens the item modal directly.
+
+test('an Overdue row for a zero-milestone item opens that item\'s own modal', function () {
+  const it = addDashItem({ name: 'Late task', status: 'red', dueDate: isoDaysFromNow(-3) });
+  renderDashboard();
+  assertIncludes(document.getElementById('main').innerHTML, `onclick="openItemModal('${it.id}')"`);
+});
+
+test('an Upcoming row for a milestone opens its *parent item\'s* modal, not something keyed by the milestone\'s own id', function () {
+  const it = addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Soon', dueDate: isoDaysFromNow(3), status: 'not-started' }] });
+  renderDashboard();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `onclick="openItemModal('${it.id}')"`);
+  assertNotIncludes(html, `onclick="openItemModal('m1')"`);
 });
 
 // ---------- actualDate also excludes something from Overdue/Upcoming ----------

@@ -703,7 +703,14 @@
   /* The Actual ghost's own disabled state (no due date yet — see
      milestoneRowsHtml()'s actualGhostOpenable) — higher specificity than
      the plain :hover rule above (one extra pseudo-class), so hovering a
-     disabled ghost doesn't still lighten it up the way a real one does. */
+     disabled ghost doesn't still lighten it up the way a real one does.
+     Opacity alone used to be the only signal a first-time user had for
+     telling a disabled Actual ghost apart from an enabled Due ghost sitting
+     in the very next column — a user-reported readability gap, since both
+     start out looking similarly muted at a glance. milestoneRowsHtml() now
+     also swaps the disabled ghost's icon from the plain "+" every other
+     ghost uses to a lock (fa-lock) — a shape difference survives even where
+     the opacity difference alone doesn't register. */
   .actual-date-ghost:disabled { cursor: default; opacity: .3; }
   .actual-date-ghost:disabled:hover { background: transparent; opacity: .3; color: var(--text-faint); }
   .status-badge { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; cursor: pointer; border: none; justify-self: start; }
@@ -1197,6 +1204,10 @@
   .dash-ws-name { flex: 1; font-weight: 600; font-size: 13px; }
   .attention-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
   .attention-row:last-child { border-bottom: none; }
+  /* Overdue/Upcoming rows are clickable — see renderDashboard()'s own
+     attentionHtml() comment. */
+  .attention-row-link { cursor: pointer; }
+  .attention-row-link:hover { background: var(--panel-2); }
   .attention-row .item-name { font-size: 12.5px; }
   .attention-empty { padding: 14px; color: var(--text-faint); font-size: 12.5px; text-align: center; }
   .attention-tag { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; flex: 0 0 auto; }
@@ -4057,7 +4068,7 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
       ? (actualEditable
           ? (actualGhostOpenable
               ? `<button class="actual-date-ghost" title="Set an actual date — only needed if this milestone finished on a different date than planned" onclick="revealActualDate('${m.id}')"><i class="fa-solid fa-plus"></i></button>`
-              : `<button class="actual-date-ghost" disabled title="Set a due date first"><i class="fa-solid fa-plus"></i></button>`)
+              : `<button class="actual-date-ghost" disabled title="Set a due date first"><i class="fa-solid fa-lock"></i></button>`)
           : '')
       : dateInputHtml(m.actualDate, `id="actual-input-${m.id}" ${actualLate ? 'title="Finished after its Due date"' : ''} ${actualEditable ? `onblur="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)" ${isRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealActualDate('${m.id}')"` : ''}` : 'disabled'}`, actualLate ? 'pill-overdue' : '', actualEditable ? `v => updateMilestoneDateField('${it.id}','${m.id}','actualDate',v || null)` : null);
     // The status badge freezes to a plain "N/A" while notApplicable — never
@@ -4109,9 +4120,18 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // stays full-strength colored regardless — it's a real, meaningful
     // status (this milestone actually is Not Applicable) that must stay
     // legible below the gating role, not just a disabled control.
+    // fa-toggle-on/fa-toggle-off, not fa-ban — an explicit user request,
+    // picked from several rendered candidates (see "Not Applicable
+    // milestones" in CLAUDE.md). This is the one icon in this app whose
+    // on/off states use two genuinely different glyphs rather than the
+    // usual fa-regular/fa-solid style-variant-of-the-same-icon pattern
+    // every other toggle here uses (the priority flag, the review confirm
+    // toggle) — deliberately, since a real toggle-switch shape changing
+    // shape (not just fill) reads as "on/off" more immediately than a
+    // subtler filled-vs-outline distinction alone.
     const naHtml = viewOnly ? '' : (naEditable
-      ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></button>`
-      : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-${m.notApplicable ? 'solid' : 'regular'} fa-ban"></i></span>`);
+      ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${m.notApplicable ? 'solid fa-toggle-on' : 'regular fa-toggle-off'}"></i></button>`
+      : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-${m.notApplicable ? 'solid fa-toggle-on' : 'regular fa-toggle-off'}"></i></span>`);
     return `
     <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''} ${viewOnly ? 'item-row-indent-2' : ''}">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
@@ -5205,9 +5225,13 @@ function renderMilestonesEditor() {
     // fully "on" even while genuinely disabled. The *on* state stays
     // full-strength colored regardless, same reasoning as
     // milestoneRowsHtml()'s own naHtml.
+    // fa-toggle-on/fa-toggle-off, matching milestoneRowsHtml()'s own naHtml
+    // — see that function's own comment for why this one toggle uses two
+    // distinct glyphs rather than every other toggle's shared fa-regular/
+    // fa-solid style-variant pattern.
     const naToggleHtml = (editable && !isPendingItem)
-      ? `<button class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : ''}" onclick="toggleEditingMilestoneNotApplicable(${idx})" title="${na ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${na ? 'solid' : 'regular'} fa-ban"></i></button>`
-      : `<span class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${na ? 'Not applicable' : ''}"><i class="fa-${na ? 'solid' : 'regular'} fa-ban"></i></span>`;
+      ? `<button class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : ''}" onclick="toggleEditingMilestoneNotApplicable(${idx})" title="${na ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${na ? 'solid fa-toggle-on' : 'regular fa-toggle-off'}"></i></button>`
+      : `<span class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${na ? 'Not applicable' : ''}"><i class="fa-${na ? 'solid fa-toggle-on' : 'regular fa-toggle-off'}"></i></span>`;
     return `
     <div class="milestone-row">
       <input type="text" value="${esc(m.name)}" title="Milestone name" ${dis} oninput="editingMilestones[${idx}].name = this.value">
@@ -7635,7 +7659,7 @@ function renderReview() {
 // ---------- Dashboard mode ----------
 function allMilestonesFlat(itemList) {
   const out = [];
-  (itemList || items).forEach(it => it.milestones.forEach(m => out.push(Object.assign({}, m, { itemName: it.name, workstreamId: it.workstreamId }))));
+  (itemList || items).forEach(it => it.milestones.forEach(m => out.push(Object.assign({}, m, { itemName: it.name, itemId: it.id, workstreamId: it.workstreamId }))));
   return out;
 }
 // Dashboard scopes everything to visibleWorkstreams() — the same shared
@@ -7667,7 +7691,7 @@ function computeDashboardData() {
 
   const today = todayStr();
   const soon = dateStrFromTs(Date.now() + 7 * DAY_MS);
-  const toEntry = (x, isMilestone) => ({ label: isMilestone ? `${x.itemName} — ${x.name}` : x.name, date: x.dueDate });
+  const toEntry = (x, isMilestone) => ({ label: isMilestone ? `${x.itemName} — ${x.name}` : x.name, date: x.dueDate, itemId: isMilestone ? x.itemId : x.id });
   // An item/milestone that already has an actualDate set is excluded from
   // both feeds regardless of what its status field currently says — an
   // explicit user request ("also consider the actual date to determine if
@@ -7718,8 +7742,17 @@ function renderDashboard() {
         <span class="dash-sub-stat">${r.msPct}% milestones done</span>
       </div>`).join('');
 
+  // Clickable — a user-reported gap: an Overdue/Upcoming row used to be
+  // plain text, so acting on one meant leaving Dashboard, finding the right
+  // workstream in Planning, and hunting for the item by eye. Reuses
+  // openItemModal() directly (never role-gated — see "UI gating by role" in
+  // CLAUDE.md, viewing an item's detail is always allowed regardless of
+  // role) rather than also jumping to Planning first, since the modal
+  // itself is reachable from anywhere and closing it leaves Dashboard
+  // exactly as it was. `.attention-row-link` mirrors `.review-date-row`'s
+  // own "reuse .attention-row's layout, just clickable" treatment.
   const attentionHtml = (entries, kind) => entries.length
-    ? entries.map(e => `<div class="attention-row">
+    ? entries.map(e => `<div class="attention-row attention-row-link" onclick="openItemModal('${e.itemId}')" title="Open this item">
           <span class="attention-tag ${kind}">${kind === 'overdue' ? 'Overdue' : 'Upcoming'}</span>
           <span class="item-name">${esc(e.label)}</span>
           <span class="item-dates">${fmtDate(e.date)}</span>

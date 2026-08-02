@@ -552,6 +552,33 @@ test('the Actual ghost renders disabled (not clickable) when the milestone has n
   assertNotIncludes(html, `revealActualDate('${it.milestones[0].id}')`, 'no click handler should be wired up while disabled');
 });
 
+// A user-reported readability gap: opacity alone didn't reliably register
+// as "this one's disabled" against an enabled Due ghost sitting right next
+// to it, both starting out similarly muted — the disabled ghost now also
+// swaps its icon from the plain "+" to a lock, a shape difference that
+// survives where the opacity difference alone doesn't.
+test('the disabled Actual ghost shows a lock icon, not the plain "+" every enabled ghost uses', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Undated milestone', dueDate: null, status: 'pending', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'fa-lock', 'a disabled Actual ghost should render a lock icon');
+});
+
+test('an enabled Actual ghost (a due date already exists) still shows the plain "+" icon, not a lock', function () {
+  const it = addItem({
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Dated milestone', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  toggleItemExpanded(it.id);
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'fa-lock', 'an openable ghost must never show the disabled lock icon');
+});
+
 test('revealActualDate is not reachable while the Actual ghost is disabled — a due date must be set first', function () {
   const it = addItem({
     name: 'Parent',
@@ -1027,7 +1054,7 @@ test('a milestone sub-row reuses the item-chevron column slot (in place of the c
 
 // ---------- Not Applicable milestone toggle (status board) ----------
 
-test('milestoneRowsHtml renders the Not Applicable toggle wired to toggleMilestoneNotApplicable, outline when off and filled when on', function () {
+test('milestoneRowsHtml renders the Not Applicable toggle wired to toggleMilestoneNotApplicable, toggle-off when off and toggle-on when on', function () {
   const it = addItem({
     name: 'Parent',
     milestones: [
@@ -1040,8 +1067,8 @@ test('milestoneRowsHtml renders the Not Applicable toggle wired to toggleMilesto
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, `toggleMilestoneNotApplicable('${it.id}','m1')`);
   assertIncludes(html, `toggleMilestoneNotApplicable('${it.id}','m2')`);
-  assertIncludes(html, 'fa-regular fa-ban', 'the not-yet-marked milestone should show the outline icon');
-  assertIncludes(html, 'fa-solid fa-ban', 'the marked milestone should show the filled icon');
+  assertIncludes(html, 'fa-regular fa-toggle-off', 'the not-yet-marked milestone should show the toggle-off icon');
+  assertIncludes(html, 'fa-solid fa-toggle-on', 'the marked milestone should show the toggle-on icon');
 });
 
 // ---------- Delayed-milestone color coding (Due/Actual pills) ----------
@@ -1313,7 +1340,7 @@ test('the Not Applicable toggle renders as an inert (non-clickable) icon below E
   renderMain();
   const html = document.getElementById('main').innerHTML;
   assertNotIncludes(html, `onclick="toggleMilestoneNotApplicable`, 'below Editor, the toggle must not be clickable');
-  assertIncludes(html, 'fa-solid fa-ban', 'the on state should still be visibly shown, just inert');
+  assertIncludes(html, 'fa-solid fa-toggle-on', 'the on state should still be visibly shown, just inert');
 });
 
 test('the "X/Y milestones" badge excludes notApplicable milestones from both sides of the fraction', function () {
