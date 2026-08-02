@@ -1360,7 +1360,7 @@ test('milestoneRowsHtml shows an inert placeholder, not a real confirm toggle, f
 // on which icon means "not applicable," or a reviewer sees two different
 // glyphs for the same concept side by side and reads it as a broken/stale
 // icon rather than two cells in agreement.
-test('a notApplicable milestone\'s inert Confirm-column placeholder uses the same icon as the MS Req. toggle\'s own on state, not fa-ban', function () {
+test('a notApplicable milestone\'s inert Confirm-column placeholder uses the same icon as the MS Req. toggle\'s own notApplicable-state icon, not fa-ban', function () {
   const it = addReviewItemWithMilestones(['A']);
   it.milestones[0].notApplicable = true;
   setFilterWorkstream(workstreams[0].id);
@@ -1369,7 +1369,7 @@ test('a notApplicable milestone\'s inert Confirm-column placeholder uses the sam
   toggleItemExpanded(it.id);
   renderReview();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'fa-solid fa-toggle-on', 'the confirm-column placeholder should match the MS Req. toggle\'s on-state icon');
+  assertIncludes(html, 'fa-solid fa-toggle-off', 'the confirm-column placeholder should match the MS Req. toggle\'s own Not Applicable-state icon');
   assertNotIncludes(html, 'fa-ban', 'no fa-ban should remain anywhere on this row');
 });
 

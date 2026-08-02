@@ -1054,7 +1054,11 @@ test('a milestone sub-row reuses the item-chevron column slot (in place of the c
 
 // ---------- Not Applicable milestone toggle (status board) ----------
 
-test('milestoneRowsHtml renders the Not Applicable toggle wired to toggleMilestoneNotApplicable, toggle-off when off and toggle-on when on', function () {
+// "MS Req." reads on when a milestone is required (applicable, the normal
+// case) and off once it's marked Not Applicable — an explicit user request
+// inverting an earlier, opposite mapping (notApplicable -> toggle-on) to
+// match the column's own "MS Req." label more literally.
+test('milestoneRowsHtml renders the Not Applicable toggle wired to toggleMilestoneNotApplicable, toggle-on when applicable and toggle-off when marked Not Applicable', function () {
   const it = addItem({
     name: 'Parent',
     milestones: [
@@ -1067,8 +1071,8 @@ test('milestoneRowsHtml renders the Not Applicable toggle wired to toggleMilesto
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, `toggleMilestoneNotApplicable('${it.id}','m1')`);
   assertIncludes(html, `toggleMilestoneNotApplicable('${it.id}','m2')`);
-  assertIncludes(html, 'fa-solid fa-toggle-off', 'the not-yet-marked milestone should show the toggle-off icon');
-  assertIncludes(html, 'fa-solid fa-toggle-on', 'the marked milestone should show the toggle-on icon');
+  assertIncludes(html, 'fa-solid fa-toggle-on', 'an applicable (required) milestone should show the toggle-on icon');
+  assertIncludes(html, 'fa-solid fa-toggle-off', 'a Not Applicable milestone should show the toggle-off icon');
   assertNotIncludes(html, 'fa-regular fa-toggle', 'Font Awesome\'s free tier has no regular style for either toggle icon — using it renders a missing-glyph box, a real user-reported bug');
 });
 
@@ -1341,7 +1345,7 @@ test('the Not Applicable toggle renders as an inert (non-clickable) icon below E
   renderMain();
   const html = document.getElementById('main').innerHTML;
   assertNotIncludes(html, `onclick="toggleMilestoneNotApplicable`, 'below Editor, the toggle must not be clickable');
-  assertIncludes(html, 'fa-solid fa-toggle-on', 'the on state should still be visibly shown, just inert');
+  assertIncludes(html, 'fa-solid fa-toggle-off', 'a Not Applicable milestone\'s toggle-off state should still be visibly shown, just inert');
 });
 
 test('the "X/Y milestones" badge excludes notApplicable milestones from both sides of the fraction', function () {

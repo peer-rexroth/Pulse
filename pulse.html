@@ -3968,14 +3968,16 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
       // confirm toggle renders for one at all, just an inert placeholder
       // (still a real element, for the usual column-collapse reason) rather
       // than a circle that would misleadingly suggest it's still pending.
-      // fa-toggle-on, matching the MS Req. toggle's own on-state icon in the
-      // column right next to this one — a user-reported inconsistency: this
-      // used to stay fa-ban even after that toggle switched icons, so a
-      // notApplicable milestone in Review showed two different "not
-      // applicable" glyphs side by side on the same row, which read as a
-      // stale/broken icon rather than two cells agreeing with each other.
+      // Matches the MS Req. toggle's own notApplicable-state icon in the
+      // column right next to this one (fa-toggle-off — see
+      // milestoneRowsHtml()'s own naHtml comment for the current mapping)
+      // — a user-reported inconsistency: this used to stay fa-ban even
+      // after that toggle switched icons, so a notApplicable milestone in
+      // Review showed two different "not applicable" glyphs side by side
+      // on the same row, which read as a stale/broken icon rather than two
+      // cells agreeing with each other.
       if (m.notApplicable) {
-        reviewCellHtml = `<span class="review-confirm-toggle" style="grid-column:12" title="Not applicable — excluded from this review"><i class="fa-solid fa-toggle-on" style="opacity:.4"></i></span>`;
+        reviewCellHtml = `<span class="review-confirm-toggle" style="grid-column:12" title="Not applicable — excluded from this review"><i class="fa-solid fa-toggle-off" style="opacity:.4"></i></span>`;
       } else if (m.status === 'complete') {
         // A Complete milestone auto-confirms — an explicit user request
         // ("mark completed task as reviewed, no need to review them
@@ -4140,9 +4142,18 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // free tier shipping no "regular" style for either toggle icon at all,
     // solid-only; off-vs-on is instead carried entirely by the icon *name*
     // (toggle-off vs toggle-on) plus the existing opacity/color styling.
+    // A still-later, explicit user request inverted which state maps to
+    // which glyph: notApplicable now renders fa-toggle-off (reading as "MS
+    // Req." switched off — this milestone isn't required), and the
+    // ordinary applicable case renders fa-toggle-on ("MS Req." is on) —
+    // matching the column's own "MS Req." header more literally than the
+    // original mapping (notApplicable → toggle-on) did. The color/opacity
+    // styling is untouched either way — it stays tied to the semantic
+    // "is this genuinely Not Applicable" state, not to which icon shape
+    // happens to represent it.
     const naHtml = viewOnly ? '' : (naEditable
-      ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-solid ${m.notApplicable ? 'fa-toggle-on' : 'fa-toggle-off'}"></i></button>`
-      : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-solid ${m.notApplicable ? 'fa-toggle-on' : 'fa-toggle-off'}"></i></span>`);
+      ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-solid ${m.notApplicable ? 'fa-toggle-off' : 'fa-toggle-on'}"></i></button>`
+      : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-solid ${m.notApplicable ? 'fa-toggle-off' : 'fa-toggle-on'}"></i></span>`);
     return `
     <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''} ${viewOnly ? 'item-row-indent-2' : ''}">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
@@ -5239,11 +5250,12 @@ function renderMilestonesEditor() {
     // fa-toggle-on/fa-toggle-off, matching milestoneRowsHtml()'s own naHtml
     // — see that function's own comment for why this one toggle uses two
     // distinct glyphs rather than every other toggle's shared fa-regular/
-    // fa-solid style-variant pattern, and why both states render fa-solid
-    // (Font Awesome's free tier has no fa-regular for either toggle icon).
+    // fa-solid style-variant pattern, why both states render fa-solid
+    // (Font Awesome's free tier has no fa-regular for either toggle icon),
+    // and why notApplicable maps to fa-toggle-off (not -on).
     const naToggleHtml = (editable && !isPendingItem)
-      ? `<button class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : ''}" onclick="toggleEditingMilestoneNotApplicable(${idx})" title="${na ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-solid ${na ? 'fa-toggle-on' : 'fa-toggle-off'}"></i></button>`
-      : `<span class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${na ? 'Not applicable' : ''}"><i class="fa-solid ${na ? 'fa-toggle-on' : 'fa-toggle-off'}"></i></span>`;
+      ? `<button class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : ''}" onclick="toggleEditingMilestoneNotApplicable(${idx})" title="${na ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-solid ${na ? 'fa-toggle-off' : 'fa-toggle-on'}"></i></button>`
+      : `<span class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${na ? 'Not applicable' : ''}"><i class="fa-solid ${na ? 'fa-toggle-off' : 'fa-toggle-on'}"></i></span>`;
     return `
     <div class="milestone-row">
       <input type="text" value="${esc(m.name)}" title="Milestone name" ${dis} oninput="editingMilestones[${idx}].name = this.value">
