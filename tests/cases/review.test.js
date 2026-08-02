@@ -1596,6 +1596,36 @@ test('actionLogRowHtml renders the priority flag as a clickable button at Review
   assertIncludes(html, 'fa-solid fa-flag', 'still shows the real flagged state below Reviewer');
 });
 
+// A user-reported alignment bug: the header's flag icon (a plain <span>,
+// no button, no padding) didn't line up with either row state's own icon —
+// the clickable Reviewer+ button gets its padding from .row-icon-btn, the
+// read-only row span had none at all, and the header span matched neither.
+// .priority-flag-btn now declares that same padding directly (see its own
+// CSS comment), and every one of the three renders — header span, clickable
+// row button, read-only row span — carries the class, so all three share
+// one box model.
+test('the priority flag header cell shares .priority-flag-btn with both row states, so their icons align', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  saveMinutes();
+  const w = workstreams[0];
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('actionLog');
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'class="priority-flag-btn" style="grid-column:1" title="Priority flag"', 'the header cell itself carries priority-flag-btn');
+  assertIncludes(html, 'row-icon-btn priority-flag-btn', 'the clickable row button also carries it (via row-icon-btn)');
+
+  userRole = 'visitor';
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  // below Reviewer the row renders a plain <span class="priority-flag-btn">
+  // (no row-icon-btn) — still the same class the header itself carries
+  assertIncludes(html, '<span class="priority-flag-btn ');
+});
+
 test('deleteActionLogItem removes the entry only after confirmation', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
@@ -2259,6 +2289,13 @@ test('decisionLogHtml shows an empty state when the workstream has no decisions 
   assertIncludes(html, '>Decision<');
   assertIncludes(html, '>Source<');
   assertIncludes(html, '>Logged<');
+  // A user-reported inconsistency: Action Log's own trailing action column(s)
+  // get a header label ("Actions"), but Decision Log's lone Delete column
+  // used to render a genuinely empty header cell. Now labeled "Delete" —
+  // matching Action Log's own "always label the actions column" convention,
+  // just naming this one action directly rather than reusing "Actions" for
+  // a column that only ever has the one.
+  assertIncludes(html, '>Delete<');
   assertNotIncludes(html, '>Owner<', 'a decision has no owner column, unlike an action item');
 });
 

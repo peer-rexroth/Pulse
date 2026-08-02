@@ -1082,8 +1082,14 @@
   /* Rounds its own top corners (rather than relying on the parent's
      overflow:hidden, now removed above) so the header's --panel-2
      background doesn't square off past .action-log-list's rounded card —
-     same pattern .ws-section-header already uses for the same reason. */
-  .action-log-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); border-radius: var(--radius) var(--radius) 0 0; }
+     same pattern .ws-section-header already uses for the same reason.
+     Decision Log's own header (.decision-log-header) shares this rule too —
+     a user-reported gap: this rule used to target .action-log-header alone,
+     so Decision Log's header column labels rendered as plain, unstyled,
+     title-case text with no background at all, visually unrelated to
+     Action Log's own uppercase/bold/tinted header immediately next to it in
+     the same sub-tab row. */
+  .action-log-header, .decision-log-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); border-radius: var(--radius) var(--radius) 0 0; }
   .action-log-text { white-space: pre-wrap; }
   .action-log-source { color: var(--text-faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* A full explicit grid-template-columns (not implicit/auto tracks) — every
@@ -1127,10 +1133,20 @@
     grid-template-columns: 28px minmax(220px,1fr) 130px 90px 90px 40px;
   }
   /* The priority flag toggle itself — plain icon, no background, colored
-     only while on. Shares .row-icon-btn's hover treatment (add the class
-     directly rather than duplicating it) so it looks/feels like every other
-     small icon control in this app; the .flagged modifier is the only
-     bespoke rule this needs. */
+     only while on. The clickable (Reviewer+) row variant additionally gets
+     .row-icon-btn for its hover treatment, but .priority-flag-btn's own
+     padding is declared directly here rather than relied on from
+     .row-icon-btn alone — priorityFlagHtml() also renders a plain,
+     non-interactive <span class="priority-flag-btn"> for the read-only row
+     state and for the header cell's own icon (see actionLogHtml()/
+     decisionLogHtml()), neither of which carries .row-icon-btn — a
+     user-reported alignment bug: without its own padding, that span's icon
+     sat flush against the column's left edge while the button's own
+     (row-icon-btn-supplied) padding shifted its icon a few pixels in,
+     so the header's flag never lined up with either row state's own icon
+     underneath it. Same padding value as .row-icon-btn on the button
+     variant, which is what makes them agree exactly now. */
+  .priority-flag-btn { display: inline-flex; align-items: center; justify-content: center; padding: 4px 6px; }
   .priority-flag-btn.flagged, .priority-flag-btn.flagged:hover { color: var(--stat-red); }
   .section-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin: 20px 0 8px; }
   .section-label:first-child { margin-top: 0; }
@@ -6560,7 +6576,7 @@ function actionLogHtml(w) {
   // header label here is left-aligned, an explicit user request.
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header">
-        <span style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
+        <span class="priority-flag-btn" style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
         <span style="grid-column:2">Action Item</span>
         <span style="grid-column:3">Owner</span>
         <span style="grid-column:4">Due Date</span>
@@ -6589,7 +6605,7 @@ function allWorkstreamsActionLogHtml() {
   }
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header with-ws">
-        <span style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
+        <span class="priority-flag-btn" style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
         <span style="grid-column:2">Action Item</span>
         <span style="grid-column:3">Workstream</span>
         <span style="grid-column:4">Owner</span>
@@ -6749,11 +6765,11 @@ function decisionLogHtml(w) {
   }
   return `<div class="action-log-list">
       <div class="item-row decision-log-row decision-log-header">
-        <span style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
+        <span class="priority-flag-btn" style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
         <span style="grid-column:2">Decision</span>
         <span style="grid-column:3">Source</span>
         <span style="grid-column:4">Logged</span>
-        <span style="grid-column:5"></span>
+        <span style="grid-column:5">Delete</span>
       </div>
       ${sortedDecisionLog(list).map(d => decisionLogRowHtml(w, d)).join('')}
     </div>`;
@@ -6771,12 +6787,12 @@ function allWorkstreamsDecisionLogHtml() {
   }
   return `<div class="action-log-list">
       <div class="item-row decision-log-row decision-log-header with-ws">
-        <span style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
+        <span class="priority-flag-btn" style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
         <span style="grid-column:2">Decision</span>
         <span style="grid-column:3">Workstream</span>
         <span style="grid-column:4">Source</span>
         <span style="grid-column:5">Logged</span>
-        <span style="grid-column:6"></span>
+        <span style="grid-column:6">Delete</span>
       </div>
       ${sortedDecisionLog(entries, x => x.d).map(({ w, d }) => decisionLogRowHtml(w, d, true)).join('')}
     </div>`;
