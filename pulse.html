@@ -1095,8 +1095,13 @@
      row to row — not just a header-vs-body mismatch, every row potentially
      disagreeing with every other one (the same class of bug documented for
      the Minutes Action Items table's own Due Date column — see CLAUDE.md). */
+  /* Column 1 is the priority flag toggle (see .priority-flag-btn below) — a
+     later, explicit user request ("for action and decision items add a
+     priority flag"), added as a new leading column rather than folded into
+     the trailing Actions cluster, so it reads at a glance the same way an
+     email client's own flag column does. */
   .action-log-row, .action-log-header {
-    grid-template-columns: minmax(220px,1fr) 100px 90px 80px 90px 90px 40px 40px;
+    grid-template-columns: 28px minmax(220px,1fr) 100px 90px 80px 90px 90px 40px 40px;
   }
   /* The "All Workstreams" Action Log (see allWorkstreamsActionLogHtml())
      inserts one extra Workstream column right after Action Item — every
@@ -1105,7 +1110,7 @@
      flexible width to make room, same tradeoff --item-grid-cols itself
      makes for its own name column. */
   .action-log-row.with-ws, .action-log-header.with-ws {
-    grid-template-columns: minmax(160px,1fr) 130px 100px 90px 80px 90px 90px 40px 40px;
+    grid-template-columns: 28px minmax(160px,1fr) 130px 100px 90px 80px 90px 90px 40px 40px;
   }
   .action-log-ws { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Decision Log (Review's third tab) — Action Log's counterpart for the
@@ -1116,11 +1121,17 @@
      of its own, so there's no Owner/Due Date/Closed/confirm-toggle column
      here — just Decision / Source / Logged / Delete. */
   .decision-log-row, .decision-log-header {
-    grid-template-columns: minmax(260px,1fr) 90px 90px 40px;
+    grid-template-columns: 28px minmax(260px,1fr) 90px 90px 40px;
   }
   .decision-log-row.with-ws, .decision-log-header.with-ws {
-    grid-template-columns: minmax(220px,1fr) 130px 90px 90px 40px;
+    grid-template-columns: 28px minmax(220px,1fr) 130px 90px 90px 40px;
   }
+  /* The priority flag toggle itself — plain icon, no background, colored
+     only while on. Shares .row-icon-btn's hover treatment (add the class
+     directly rather than duplicating it) so it looks/feels like every other
+     small icon control in this app; the .flagged modifier is the only
+     bespoke rule this needs. */
+  .priority-flag-btn.flagged, .priority-flag-btn.flagged:hover { color: var(--stat-red); }
   .section-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin: 20px 0 8px; }
   .section-label:first-child { margin-top: 0; }
 
@@ -2170,6 +2181,7 @@ function normalizeData() {
       if (typeof a.completed !== 'boolean') a.completed = false;
       if (typeof a.completedAt !== 'number') a.completedAt = null;
       if (typeof a.addedAt !== 'number') a.addedAt = Date.now();
+      if (typeof a.flagged !== 'boolean') a.flagged = false;
     });
     // decisionLog is actionLog's counterpart for the Decisions section of
     // meeting minutes (see syncDecisionLogFromMinutes()) — same "workstream-
@@ -2180,6 +2192,7 @@ function normalizeData() {
       if (!isSafeId(d.id)) d.id = genId();
       if (typeof d.text !== 'string') d.text = '';
       if (typeof d.addedAt !== 'number') d.addedAt = Date.now();
+      if (typeof d.flagged !== 'boolean') d.flagged = false;
     });
   });
   workstreams.sort((a, b) => a.order - b.order);
@@ -6437,6 +6450,24 @@ function allWorkstreamsChangeLogHtml() {
   return `<div class="review-list">${entries.map(({ w, e }) => changeLogRowHtml(w, e, true)).join('')}</div>`;
 }
 
+// Shared by actionLogRowHtml()/decisionLogRowHtml() — a plain on/off
+// priority flag (an explicit user request, "for action and decision items
+// add a priority flag (shown as a small flag in list view)"), the same
+// icon-only, always-a-real-element convention every other toggle in this
+// grid-based app already uses (the Not Applicable toggle, the review
+// confirm toggle) rather than omitting the control when off. `fa-regular
+// fa-flag` (outline) when unflagged, `fa-solid fa-flag` (filled, colored
+// via .priority-flag-btn.flagged) when on. Read-only below Reviewer, same
+// as every other action here — still shows the real state, just not
+// clickable.
+function priorityFlagHtml(flagged, canManage, onclickCall, gridColumn) {
+  const icon = `<i class="fa-${flagged ? 'solid' : 'regular'} fa-flag"></i>`;
+  const title = flagged ? 'Flagged as priority — click to unflag' : 'Flag as priority';
+  return canManage
+    ? `<button class="row-icon-btn priority-flag-btn ${flagged ? 'flagged' : ''}" style="grid-column:${gridColumn}" onclick="${onclickCall}" title="${title}">${icon}</button>`
+    : `<span class="priority-flag-btn ${flagged ? 'flagged' : ''}" style="grid-column:${gridColumn}" title="${flagged ? 'Flagged as priority' : 'Not flagged'}">${icon}</span>`;
+}
+
 // Sorts an action log for display: open items first (each group sorted by
 // due date, undated last), completed items sunk to the bottom (most
 // recently completed first) rather than disappearing — this is a running
@@ -6453,11 +6484,12 @@ function sortedActionLog(list, keyFn) {
   return open.concat(done);
 }
 // This table's own bespoke columns (see .action-log-row's CSS comment for
-// why it's no longer derived from --item-grid-cols at all): Action Item at
-// 1, Owner/Due Date at 2/3, Source at 4, then Created/Closed at 5/6 —
-// reading left to right as "when this was logged, then when it was closed"
-// right next to where it came from — and Delete/the confirm toggle at 7/8,
-// kept last since they're actions, not data. showWs (used only by
+// why it's no longer derived from --item-grid-cols at all): the priority
+// flag toggle at 1 (see priorityFlagHtml()/toggleActionLogFlag()), Action
+// Item at 2, Owner/Due Date at 3/4, Source at 5, then Created/Closed at
+// 6/7 — reading left to right as "when this was logged, then when it was
+// closed" right next to where it came from — and Delete/the confirm toggle
+// at 8/9, kept last since they're actions, not data. showWs (used only by
 // allWorkstreamsActionLogHtml()) inserts one extra Workstream column right
 // after Action Item and shifts everything else one slot right accordingly
 // — see .action-log-row.with-ws's own CSS comment.
@@ -6473,24 +6505,25 @@ function actionLogRowHtml(w, a, showWs) {
   const canManage = hasRole('reviewer');
   const off = showWs ? 1 : 0;
   const wsCellHtml = showWs
-    ? `<span class="action-log-ws" style="grid-column:2" title="${esc(w.name)}"><span class="ws-dot" style="background:var(--ws-${w.color})"></span>${esc(w.name)}</span>`
+    ? `<span class="action-log-ws" style="grid-column:3" title="${esc(w.name)}"><span class="ws-dot" style="background:var(--ws-${w.color})"></span>${esc(w.name)}</span>`
     : '';
   return `<div class="item-row action-log-row ${showWs ? 'with-ws' : ''} ${a.completed ? 'review-confirmed' : ''}">
-      <span class="action-log-text" style="grid-column:1">${esc(a.text)}</span>
+      ${priorityFlagHtml(a.flagged, canManage, `toggleActionLogFlag('${w.id}','${a.id}')`, 1)}
+      <span class="action-log-text" style="grid-column:2">${esc(a.text)}</span>
       ${wsCellHtml}
-      <span class="item-owner" style="grid-column:${2 + off}">${esc(a.owner)}</span>
-      <span class="item-dates-computed" style="grid-column:${3 + off}">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>
-      <span class="action-log-source" style="grid-column:${4 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
-      <span class="item-dates-computed" style="grid-column:${5 + off}">${fmtDate(dateStrFromTs(a.addedAt))}</span>
-      <span class="item-dates-computed" style="grid-column:${6 + off}">${a.completedAt ? fmtDate(dateStrFromTs(a.completedAt)) : ''}</span>
+      <span class="item-owner" style="grid-column:${3 + off}">${esc(a.owner)}</span>
+      <span class="item-dates-computed" style="grid-column:${4 + off}">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>
+      <span class="action-log-source" style="grid-column:${5 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
+      <span class="item-dates-computed" style="grid-column:${6 + off}">${fmtDate(dateStrFromTs(a.addedAt))}</span>
+      <span class="item-dates-computed" style="grid-column:${7 + off}">${a.completedAt ? fmtDate(dateStrFromTs(a.completedAt)) : ''}</span>
       ${canManage
-        ? `<button class="row-icon-btn" style="grid-column:${7 + off}" onclick="deleteActionLogItem('${w.id}','${a.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>`
-        : `<span style="grid-column:${7 + off}"></span>`}
+        ? `<button class="row-icon-btn" style="grid-column:${8 + off}" onclick="deleteActionLogItem('${w.id}','${a.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>`
+        : `<span style="grid-column:${8 + off}"></span>`}
       ${canManage
-        ? `<button class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:${8 + off}" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
+        ? `<button class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:${9 + off}" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
         <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
       </button>`
-        : `<span class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:${8 + off}" title="${a.completed ? 'Completed' : 'Not completed'}">
+        : `<span class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:${9 + off}" title="${a.completed ? 'Completed' : 'Not completed'}">
         <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
       </span>`}
     </div>`;
@@ -6518,20 +6551,23 @@ function actionLogHtml(w) {
     return `<div class="attention-empty">No action items yet — they're added automatically when meeting minutes with action items are attached to a review cycle.</div>`;
   }
   // .action-log-row/.action-log-header both override grid-template-columns
-  // outright with a fully explicit 8-column list (see that CSS rule's own
+  // outright with a fully explicit 9-column list (see that CSS rule's own
   // comment), so every column here has a pinned width regardless of whether
-  // a given row (or this header) puts anything in it. Delete/the confirm
-  // toggle (7/8) share one "Actions" label spanning both columns — every
+  // a given row (or this header) puts anything in it. The leading flag
+  // column (1) gets no header text — a small flag icon stands in for it
+  // instead, mirroring the row's own icon-only control. Delete/the confirm
+  // toggle (8/9) share one "Actions" label spanning both columns — every
   // header label here is left-aligned, an explicit user request.
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header">
-        <span style="grid-column:1">Action Item</span>
-        <span style="grid-column:2">Owner</span>
-        <span style="grid-column:3">Due Date</span>
-        <span style="grid-column:4">Source</span>
-        <span style="grid-column:5">Created</span>
-        <span style="grid-column:6">Closed</span>
-        <span style="grid-column:7/9">Actions</span>
+        <span style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
+        <span style="grid-column:2">Action Item</span>
+        <span style="grid-column:3">Owner</span>
+        <span style="grid-column:4">Due Date</span>
+        <span style="grid-column:5">Source</span>
+        <span style="grid-column:6">Created</span>
+        <span style="grid-column:7">Closed</span>
+        <span style="grid-column:8/10">Actions</span>
       </div>
       ${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}
     </div>`;
@@ -6553,14 +6589,15 @@ function allWorkstreamsActionLogHtml() {
   }
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header with-ws">
-        <span style="grid-column:1">Action Item</span>
-        <span style="grid-column:2">Workstream</span>
-        <span style="grid-column:3">Owner</span>
-        <span style="grid-column:4">Due Date</span>
-        <span style="grid-column:5">Source</span>
-        <span style="grid-column:6">Created</span>
-        <span style="grid-column:7">Closed</span>
-        <span style="grid-column:8/10">Actions</span>
+        <span style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
+        <span style="grid-column:2">Action Item</span>
+        <span style="grid-column:3">Workstream</span>
+        <span style="grid-column:4">Owner</span>
+        <span style="grid-column:5">Due Date</span>
+        <span style="grid-column:6">Source</span>
+        <span style="grid-column:7">Created</span>
+        <span style="grid-column:8">Closed</span>
+        <span style="grid-column:9/11">Actions</span>
       </div>
       ${sortedActionLog(entries, x => x.a).map(({ w, a }) => actionLogRowHtml(w, a, true)).join('')}
     </div>`;
@@ -6573,6 +6610,19 @@ function toggleActionLogItem(wsId, itemId) {
   if (!a) return;
   a.completed = !a.completed;
   a.completedAt = a.completed ? Date.now() : null;
+  save(); render();
+}
+// The priority flag toggle — a plain boolean, independent of completed/
+// completedAt (an action item can be flagged and still open, flagged and
+// already done, or neither), same tier-gating (Reviewer+) as every other
+// Action Log mutation.
+function toggleActionLogFlag(wsId, itemId) {
+  if (!requireRole('reviewer')) return;
+  const w = wsById(wsId);
+  if (!w) return;
+  const a = w.actionLog.find(x => x.id === itemId);
+  if (!a) return;
+  a.flagged = !a.flagged;
   save(); render();
 }
 // Deleting a log entry only removes it from the workstream's actionLog —
@@ -6627,7 +6677,7 @@ function syncActionLogFromMinutes(cycle, actionItems) {
     if (existing) {
       existing.text = a.text; existing.owner = a.owner; existing.dueDate = a.dueDate;
     } else {
-      w.actionLog.push({ id: a.id, text: a.text, owner: a.owner, dueDate: a.dueDate, completed: false, completedAt: null, cycleId: cycle.id, addedAt: Date.now() });
+      w.actionLog.push({ id: a.id, text: a.text, owner: a.owner, dueDate: a.dueDate, completed: false, completedAt: null, cycleId: cycle.id, addedAt: Date.now(), flagged: false });
     }
   });
 }
@@ -6669,16 +6719,17 @@ function decisionLogRowHtml(w, d, showWs) {
   const canManage = hasRole('reviewer');
   const off = showWs ? 1 : 0;
   const wsCellHtml = showWs
-    ? `<span class="action-log-ws" style="grid-column:2" title="${esc(w.name)}"><span class="ws-dot" style="background:var(--ws-${w.color})"></span>${esc(w.name)}</span>`
+    ? `<span class="action-log-ws" style="grid-column:3" title="${esc(w.name)}"><span class="ws-dot" style="background:var(--ws-${w.color})"></span>${esc(w.name)}</span>`
     : '';
   return `<div class="item-row decision-log-row ${showWs ? 'with-ws' : ''}">
-      <span class="action-log-text" style="grid-column:1">${esc(d.text)}</span>
+      ${priorityFlagHtml(d.flagged, canManage, `toggleDecisionLogFlag('${w.id}','${d.id}')`, 1)}
+      <span class="action-log-text" style="grid-column:2">${esc(d.text)}</span>
       ${wsCellHtml}
-      <span class="action-log-source" style="grid-column:${2 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
-      <span class="item-dates-computed" style="grid-column:${3 + off}">${fmtDate(dateStrFromTs(d.addedAt))}</span>
+      <span class="action-log-source" style="grid-column:${3 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
+      <span class="item-dates-computed" style="grid-column:${4 + off}">${fmtDate(dateStrFromTs(d.addedAt))}</span>
       ${canManage
-        ? `<button class="row-icon-btn" style="grid-column:${4 + off}" onclick="deleteDecisionLogItem('${w.id}','${d.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>`
-        : `<span style="grid-column:${4 + off}"></span>`}
+        ? `<button class="row-icon-btn" style="grid-column:${5 + off}" onclick="deleteDecisionLogItem('${w.id}','${d.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>`
+        : `<span style="grid-column:${5 + off}"></span>`}
     </div>`;
 }
 // Decision Log's counterpart to actionLogCountHtml() — a plain count, since
@@ -6698,10 +6749,11 @@ function decisionLogHtml(w) {
   }
   return `<div class="action-log-list">
       <div class="item-row decision-log-row decision-log-header">
-        <span style="grid-column:1">Decision</span>
-        <span style="grid-column:2">Source</span>
-        <span style="grid-column:3">Logged</span>
-        <span style="grid-column:4"></span>
+        <span style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
+        <span style="grid-column:2">Decision</span>
+        <span style="grid-column:3">Source</span>
+        <span style="grid-column:4">Logged</span>
+        <span style="grid-column:5"></span>
       </div>
       ${sortedDecisionLog(list).map(d => decisionLogRowHtml(w, d)).join('')}
     </div>`;
@@ -6719,11 +6771,12 @@ function allWorkstreamsDecisionLogHtml() {
   }
   return `<div class="action-log-list">
       <div class="item-row decision-log-row decision-log-header with-ws">
-        <span style="grid-column:1">Decision</span>
-        <span style="grid-column:2">Workstream</span>
-        <span style="grid-column:3">Source</span>
-        <span style="grid-column:4">Logged</span>
-        <span style="grid-column:5"></span>
+        <span style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
+        <span style="grid-column:2">Decision</span>
+        <span style="grid-column:3">Workstream</span>
+        <span style="grid-column:4">Source</span>
+        <span style="grid-column:5">Logged</span>
+        <span style="grid-column:6"></span>
       </div>
       ${sortedDecisionLog(entries, x => x.d).map(({ w, d }) => decisionLogRowHtml(w, d, true)).join('')}
     </div>`;
@@ -6757,6 +6810,16 @@ function deleteDecisionLogItem(wsId, itemId) {
     }
   });
 }
+// toggleActionLogFlag()'s own counterpart for Decision Log.
+function toggleDecisionLogFlag(wsId, itemId) {
+  if (!requireRole('reviewer')) return;
+  const w = wsById(wsId);
+  if (!w) return;
+  const d = w.decisionLog.find(x => x.id === itemId);
+  if (!d) return;
+  d.flagged = !d.flagged;
+  save(); render();
+}
 // syncActionLogFromMinutes()'s counterpart for Decisions, called at the same
 // point in saveMinutes(). Action items match existing log rows by their own
 // stable id (each row keeps the same id across edits within the minutes
@@ -6777,7 +6840,7 @@ function syncDecisionLogFromMinutes(cycle, decisionsText) {
   const kept = linesToDecisions(decisionsText).map(text => {
     const match = existingForCycle.find(d => d.text === text && !used.has(d.id));
     if (match) { used.add(match.id); return match; }
-    return { id: genId(), text, cycleId: cycle.id, addedAt: Date.now() };
+    return { id: genId(), text, cycleId: cycle.id, addedAt: Date.now(), flagged: false };
   });
   w.decisionLog = w.decisionLog.filter(d => d.cycleId !== cycle.id).concat(kept);
 }

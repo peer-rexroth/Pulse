@@ -1529,6 +1529,73 @@ test('toggleActionLogItem flips completed and stamps/clears completedAt', functi
   assertEqual(workstreams[0].actionLog[0].completedAt, null);
 });
 
+// ---------- The priority flag (Action Log + Decision Log) ----------
+// An explicit user request ("for action and decision items add a priority
+// flag (shown as a small flag in list view)") — a plain on/off toggle,
+// independent of completed/completedAt (an item can be flagged and still
+// open, flagged and already done, or neither), same Reviewer+ gating as
+// every other Action/Decision Log mutation.
+
+test('toggleActionLogFlag flips flagged, independent of completed', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  saveMinutes();
+  const id = workstreams[0].actionLog[0].id;
+  assertEqual(workstreams[0].actionLog[0].flagged, false, 'a freshly-synced action item starts unflagged');
+
+  toggleActionLogFlag(workstreams[0].id, id);
+  assertEqual(workstreams[0].actionLog[0].flagged, true);
+  assertEqual(workstreams[0].actionLog[0].completed, false, 'flagging must not touch completed');
+
+  toggleActionLogItem(workstreams[0].id, id);
+  assertEqual(workstreams[0].actionLog[0].flagged, true, 'completing must not touch flagged');
+
+  toggleActionLogFlag(workstreams[0].id, id);
+  assertEqual(workstreams[0].actionLog[0].flagged, false);
+});
+
+test('toggleActionLogFlag is blocked below Reviewer', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  saveMinutes();
+  const id = workstreams[0].actionLog[0].id;
+  userRole = 'visitor';
+  toggleActionLogFlag(workstreams[0].id, id);
+  assertEqual(workstreams[0].actionLog[0].flagged, false);
+});
+
+test('actionLogRowHtml renders the priority flag as a clickable button at Reviewer+, an inert span below it', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  saveMinutes();
+  const w = workstreams[0];
+  const id = w.actionLog[0].id;
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('actionLog');
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `onclick="toggleActionLogFlag('${w.id}','${id}')"`);
+  assertIncludes(html, 'fa-regular fa-flag', 'unflagged renders the outline icon');
+
+  toggleActionLogFlag(w.id, id);
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'fa-solid fa-flag', 'flagged renders the filled icon');
+  assertIncludes(html, 'priority-flag-btn flagged');
+
+  userRole = 'visitor';
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, `onclick="toggleActionLogFlag('${w.id}','${id}')"`, 'not clickable below Reviewer');
+  assertIncludes(html, 'fa-solid fa-flag', 'still shows the real flagged state below Reviewer');
+});
+
 test('deleteActionLogItem removes the entry only after confirmation', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
@@ -1608,6 +1675,7 @@ test('normalizeData backfills a missing/malformed workstream.actionLog to an emp
   assertEqual(a.completed, false);
   assertEqual(a.completedAt, null);
   assertTrue(typeof a.addedAt === 'number');
+  assertEqual(a.flagged, false, 'a hand-built row missing flagged backfills to false');
 });
 
 // The Review Status/Review tab's own label still flexes with the shared
@@ -1706,10 +1774,10 @@ test('actionLogHtml shows a header row (Action Item / Owner / Due Date / Source 
   assertIncludes(html, 'Created');
   assertIncludes(html, 'Closed');
   // Delete/the confirm toggle share one "Actions" label spanning both
-  // columns (7/9) — a user-reported gap, since it used to be left
+  // columns (8/10) — a user-reported gap, since it used to be left
   // unlabeled while every other column here had its own header text.
   const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 600);
-  assertIncludes(headerRow, 'grid-column:7/9', 'the Actions label must span both the Delete and Confirm columns');
+  assertIncludes(headerRow, 'grid-column:8/10', 'the Actions label must span both the Delete and Confirm columns');
   assertIncludes(headerRow, '>Actions<');
 });
 
@@ -1747,15 +1815,15 @@ test('actionLogRowHtml shows a Created date (from addedAt) and a Closed date onl
   assertIncludes(html, fmtDate(dateStrFromTs(workstreams[0].actionLog[0].completedAt)), 'Closed should show the completedAt date once completed');
 });
 
-// Regression guard for Action Log's own bespoke 8-column grid (Action Item /
-// Owner / Due Date / Source / Created / Closed / Delete / Confirm — see
-// CLAUDE.md for why this is no longer derived from --item-grid-cols at
-// all): both the header row and every data row must agree on the exact
-// column numbers, since .action-log-row/.action-log-header's CSS pins each
-// column's width via a fully explicit grid-template-columns override that
-// only stays aligned if header and data rows place their content at the
-// same column numbers.
-test('actionLogHtml\'s header and data rows agree on where Owner/Due Date/Source/Created/Closed/Delete/Confirm sit (columns 2-8)', function () {
+// Regression guard for Action Log's own bespoke 9-column grid (priority
+// flag / Action Item / Owner / Due Date / Source / Created / Closed /
+// Delete / Confirm — see CLAUDE.md for why this is no longer derived from
+// --item-grid-cols at all): both the header row and every data row must
+// agree on the exact column numbers, since .action-log-row/.action-log-
+// header's CSS pins each column's width via a fully explicit
+// grid-template-columns override that only stays aligned if header and
+// data rows place their content at the same column numbers.
+test('actionLogHtml\'s header and data rows agree on where the flag/Action Item/Owner/Due Date/Source/Created/Closed/Delete/Confirm sit (columns 1-9)', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
   addMinutesActionItemRow();
@@ -1765,20 +1833,20 @@ test('actionLogHtml\'s header and data rows agree on where Owner/Due Date/Source
   setMode('review');
   setReviewTab('actionLog');
   const html = document.getElementById('main').innerHTML;
-  const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 500);
-  assertIncludes(headerRow, 'grid-column:1">Action Item');
-  assertIncludes(headerRow, 'grid-column:2">Owner');
-  assertIncludes(headerRow, 'grid-column:3">Due Date');
-  assertIncludes(headerRow, 'grid-column:4">Source');
-  assertIncludes(headerRow, 'grid-column:5">Created');
-  assertIncludes(headerRow, 'grid-column:6">Closed');
+  const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 600);
+  assertIncludes(headerRow, 'grid-column:1" title="Priority flag"');
+  assertIncludes(headerRow, 'grid-column:2">Action Item');
+  assertIncludes(headerRow, 'grid-column:3">Owner');
+  assertIncludes(headerRow, 'grid-column:4">Due Date');
+  assertIncludes(headerRow, 'grid-column:5">Source');
+  assertIncludes(headerRow, 'grid-column:6">Created');
+  assertIncludes(headerRow, 'grid-column:7">Closed');
 
   const id = workstreams[0].actionLog[0].id;
-  const dataRow = html.slice(html.indexOf('action-log-text')); // first data row onward — the only one in this test
-  assertIncludes(dataRow, 'grid-column:1"', 'Action Item must sit at column 1 on the data row too');
-  assertIncludes(dataRow, 'grid-column:4"', 'Source must sit at column 4 on the data row too');
-  assertIncludes(dataRow, `grid-column:7" onclick="deleteActionLogItem('${workstreams[0].id}','${id}')"`, 'Delete must sit at column 7, after Created/Closed');
-  assertIncludes(dataRow, `grid-column:8" onclick="toggleActionLogItem('${workstreams[0].id}','${id}')"`, 'the confirm toggle must sit at column 8, last');
+  assertIncludes(html, `grid-column:1" onclick="toggleActionLogFlag('${workstreams[0].id}','${id}')"`, 'the priority flag must sit at column 1, before Action Item');
+  assertIncludes(html, `<span class="action-log-text" style="grid-column:2">`, 'Action Item must sit at column 2 on the data row too');
+  assertIncludes(html, `grid-column:8" onclick="deleteActionLogItem('${workstreams[0].id}','${id}')"`, 'Delete must sit at column 8, after Created/Closed');
+  assertIncludes(html, `grid-column:9" onclick="toggleActionLogItem('${workstreams[0].id}','${id}')"`, 'the confirm toggle must sit at column 9, last');
 });
 
 // Regression test: the same shape of bug as actionLogHtml()'s header above,
@@ -1871,24 +1939,25 @@ test('allWorkstreamsActionLogHtml merges every workstream\'s own action log into
   assertIncludes(html, 'action-log-row with-ws', 'each data row must carry the with-ws modifier so its CSS grid gets the extra Workstream column');
 });
 
-test('allWorkstreamsActionLogHtml\'s header includes a Workstream column and shifts every later column one slot right (columns 2-9)', function () {
+test('allWorkstreamsActionLogHtml\'s header includes a Workstream column and shifts every later column one slot right (columns 3-10)', function () {
   addCompletedReviewCycle();
   const w = workstreams[0];
-  w.actionLog = [{ id: 'a1', text: 'X', owner: 'Alice', dueDate: null, completed: false, completedAt: null, cycleId: null, addedAt: Date.now() }];
+  w.actionLog = [{ id: 'a1', text: 'X', owner: 'Alice', dueDate: null, completed: false, completedAt: null, cycleId: null, addedAt: Date.now(), flagged: false }];
   const html = allWorkstreamsActionLogHtml();
   const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 600);
-  assertIncludes(headerRow, 'grid-column:1">Action Item');
-  assertIncludes(headerRow, 'grid-column:2">Workstream');
-  assertIncludes(headerRow, 'grid-column:3">Owner');
-  assertIncludes(headerRow, 'grid-column:4">Due Date');
-  assertIncludes(headerRow, 'grid-column:5">Source');
-  assertIncludes(headerRow, 'grid-column:6">Created');
-  assertIncludes(headerRow, 'grid-column:7">Closed');
+  assertIncludes(headerRow, 'grid-column:1" title="Priority flag"');
+  assertIncludes(headerRow, 'grid-column:2">Action Item');
+  assertIncludes(headerRow, 'grid-column:3">Workstream');
+  assertIncludes(headerRow, 'grid-column:4">Owner');
+  assertIncludes(headerRow, 'grid-column:5">Due Date');
+  assertIncludes(headerRow, 'grid-column:6">Source');
+  assertIncludes(headerRow, 'grid-column:7">Created');
+  assertIncludes(headerRow, 'grid-column:8">Closed');
 
-  const dataRow = html.slice(html.indexOf('action-log-text'));
-  assertIncludes(dataRow, 'grid-column:2"', 'the Workstream cell must sit at column 2 on the data row too');
-  assertIncludes(dataRow, `grid-column:8" onclick="deleteActionLogItem('${w.id}','a1')"`, 'Delete shifts to column 8 (one slot right of the plain 8-column layout) to make room for Workstream');
-  assertIncludes(dataRow, `grid-column:9" onclick="toggleActionLogItem('${w.id}','a1')"`, 'the confirm toggle shifts to column 9, still last');
+  assertIncludes(html, `grid-column:1" onclick="toggleActionLogFlag('${w.id}','a1')"`, 'the priority flag stays at column 1 in this view too');
+  assertIncludes(html, `<span class="action-log-ws" style="grid-column:3"`, 'the Workstream cell must sit at column 3 on the data row too');
+  assertIncludes(html, `grid-column:9" onclick="deleteActionLogItem('${w.id}','a1')"`, 'Delete shifts to column 9 to make room for the flag and Workstream columns');
+  assertIncludes(html, `grid-column:10" onclick="toggleActionLogItem('${w.id}','a1')"`, 'the confirm toggle shifts to column 10, still last');
 });
 
 test('allWorkstreamsActionLogHtml shows the same empty state as the per-workstream table when no workstream has any action items', function () {
@@ -2042,6 +2111,77 @@ test('removeMinutes only deletes decisions from its own cycle, leaving other cyc
   assertEqual(workstreams[0].decisionLog[0].text, 'From cycle 2');
 });
 
+test('toggleDecisionLogFlag flips flagged', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.';
+  saveMinutes();
+  const id = workstreams[0].decisionLog[0].id;
+  assertEqual(workstreams[0].decisionLog[0].flagged, false, 'a freshly-synced decision starts unflagged');
+
+  toggleDecisionLogFlag(workstreams[0].id, id);
+  assertEqual(workstreams[0].decisionLog[0].flagged, true);
+  toggleDecisionLogFlag(workstreams[0].id, id);
+  assertEqual(workstreams[0].decisionLog[0].flagged, false);
+});
+
+test('toggleDecisionLogFlag is blocked below Reviewer', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.';
+  saveMinutes();
+  const id = workstreams[0].decisionLog[0].id;
+  userRole = 'visitor';
+  toggleDecisionLogFlag(workstreams[0].id, id);
+  assertEqual(workstreams[0].decisionLog[0].flagged, false);
+});
+
+test('decisionLogRowHtml renders the priority flag as a clickable button at Reviewer+, an inert span below it', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.';
+  saveMinutes();
+  const w = workstreams[0];
+  const id = w.decisionLog[0].id;
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('decisionLog');
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `onclick="toggleDecisionLogFlag('${w.id}','${id}')"`);
+  assertIncludes(html, 'fa-regular fa-flag');
+
+  toggleDecisionLogFlag(w.id, id);
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'fa-solid fa-flag');
+  assertIncludes(html, 'priority-flag-btn flagged');
+
+  userRole = 'visitor';
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, `onclick="toggleDecisionLogFlag('${w.id}','${id}')"`);
+  assertIncludes(html, 'fa-solid fa-flag', 'still shows the real flagged state below Reviewer');
+});
+
+// syncDecisionLogFromMinutes() matches an existing row by text and reuses
+// the same object — flagged must survive a re-save of the source minutes
+// unrelated to this decision, the same "don't reset completed on re-sync"
+// invariant syncActionLogFromMinutes() already guards.
+test('flagged survives re-saving the source cycle\'s minutes unchanged', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.';
+  saveMinutes();
+  const id = workstreams[0].decisionLog[0].id;
+  toggleDecisionLogFlag(workstreams[0].id, id);
+  assertEqual(workstreams[0].decisionLog[0].flagged, true);
+
+  openMinutesModal(cycle.id);
+  saveMinutes(); // unrelated re-save, same decision text
+  assertEqual(workstreams[0].decisionLog.length, 1);
+  assertEqual(workstreams[0].decisionLog[0].flagged, true, 'flagged must survive a re-sync that matches the same decision text');
+});
+
 test('deleteDecisionLogItem is undoable, restoring the entry at its original position', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
@@ -2083,6 +2223,7 @@ test('normalizeData backfills a missing/malformed workstream.decisionLog to an e
   assertTrue(isSafeId(d.id));
   assertEqual(d.text, 'X');
   assertTrue(typeof d.addedAt === 'number');
+  assertEqual(d.flagged, false, 'a hand-built row missing flagged backfills to false');
 });
 
 test('setReviewTab switches renderReview to the Decision Log, alongside Scope Item Review and Action Log', function () {
@@ -2185,17 +2326,18 @@ test('allWorkstreamsDecisionLogHtml merges every workstream\'s own decision log 
 test('allWorkstreamsDecisionLogHtml\'s header includes a Workstream column and shifts Source/Logged/Delete one slot right', function () {
   addCompletedReviewCycle();
   const w = workstreams[0];
-  w.decisionLog = [{ id: 'd1', text: 'X', cycleId: null, addedAt: Date.now() }];
+  w.decisionLog = [{ id: 'd1', text: 'X', cycleId: null, addedAt: Date.now(), flagged: false }];
   const html = allWorkstreamsDecisionLogHtml();
   const headerRow = html.slice(html.indexOf('decision-log-header'), html.indexOf('decision-log-header') + 400);
-  assertIncludes(headerRow, 'grid-column:1">Decision');
-  assertIncludes(headerRow, 'grid-column:2">Workstream');
-  assertIncludes(headerRow, 'grid-column:3">Source');
-  assertIncludes(headerRow, 'grid-column:4">Logged');
+  assertIncludes(headerRow, 'grid-column:1" title="Priority flag"');
+  assertIncludes(headerRow, 'grid-column:2">Decision');
+  assertIncludes(headerRow, 'grid-column:3">Workstream');
+  assertIncludes(headerRow, 'grid-column:4">Source');
+  assertIncludes(headerRow, 'grid-column:5">Logged');
 
-  const dataRow = html.slice(html.indexOf('action-log-text'));
-  assertIncludes(dataRow, 'grid-column:2"', 'the Workstream cell must sit at column 2 on the data row too');
-  assertIncludes(dataRow, `grid-column:5" onclick="deleteDecisionLogItem('${w.id}','d1')"`, 'Delete shifts to column 5 (one slot right of the plain 4-column layout) to make room for Workstream');
+  assertIncludes(html, `grid-column:1" onclick="toggleDecisionLogFlag('${w.id}','d1')"`, 'the priority flag stays at column 1 in this view too');
+  assertIncludes(html, `<span class="action-log-ws" style="grid-column:3"`, 'the Workstream cell must sit at column 3 on the data row too');
+  assertIncludes(html, `grid-column:6" onclick="deleteDecisionLogItem('${w.id}','d1')"`, 'Delete shifts to column 6 to make room for the flag and Workstream columns');
 });
 
 test('allWorkstreamsDecisionLogHtml shows the same empty state as the per-workstream table when no workstream has any decisions', function () {
