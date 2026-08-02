@@ -1330,6 +1330,7 @@
         <input type="text" id="journeysSearchInput" placeholder="Search Journeys by name..." oninput="setJourneysSearch(this.value)">
         <button type="button" class="search-clear-btn" id="journeysSearchClearBtn" onclick="clearJourneysSearch()" title="Clear search" style="display:none"><i class="fa-solid fa-xmark"></i></button>
       </div>
+      <div class="status-filter-chips" id="journeysStatusFilterChips"></div>
     </div>
     <div class="planning-toolbar" id="reviewToolbar" style="display:none">
       <div class="view-tabs">
@@ -1354,6 +1355,7 @@
         <input type="text" id="reviewLogSearchInput" placeholder="Search..." oninput="setReviewLogSearch(this.value)">
         <button type="button" class="search-clear-btn" id="reviewLogSearchClearBtn" onclick="clearReviewLogSearch()" title="Clear search" style="display:none"><i class="fa-solid fa-xmark"></i></button>
       </div>
+      <div class="status-filter-chips" id="reviewLogFilterChips"></div>
     </div>
     <!-- Dashboard's own toolbar — currently just the Exec Summary export
          (see exportExecSummaryPdf()/exportExecSummaryPng() below). Same
@@ -2018,16 +2020,22 @@ let expandedItemIds = new Set();
 // check wherever it's used.
 let planningSearchQuery = '';
 // The quick-filter status chips' own selection (see renderPlanningStatusChips()/
-// setPlanningStatusFilter() below) — null | a STATUSES id. UI-only, not
-// persisted, reset on reload — same treatment as planningSearchQuery, and
-// composes with it the same way (both independently narrow the board).
-let planningStatusFilter = null;
+// setPlanningStatusFilter() below) — a Set of STATUSES ids, empty = no
+// filter. UI-only, not persisted, reset on reload — same treatment as
+// planningSearchQuery, and composes with it the same way (both
+// independently narrow the board). Originally a single nullable value
+// (click a chip to select it, click again to clear, only one active at a
+// time) — a later, explicit user request ("make search pills multi
+// select") turned this into a genuine multi-select: any number of chips can
+// be active at once, an item matching *any* of them passes (see
+// matchesPlanningStatusFilter()'s own OR-across-the-set logic).
+let planningStatusFilters = new Set();
 // The "Dependencies" quick-filter chip's own on/off state (this field, the
 // item flag it reads, and every function/id built on it were originally
 // named "External Delivery"/"externalDelivery" — renamed to "Dependency"/
 // "dependency" to match the newer Dependency category, an explicit user
 // request) — a plain boolean toggle, not a STATUSES id, sitting in the same
-// chip row as planningStatusFilter but visually set apart from it by a
+// chip row as planningStatusFilters but visually set apart from it by a
 // small divider (see renderPlanningStatusChips()). UI-only, not persisted,
 // composes with both the search box and the status filter the same way
 // they compose with each other. This started as its own separate
@@ -2049,6 +2057,29 @@ let journeysSearchQuery = '';
 // tab's own remembered query, not silently clear or mix the other's.
 let actionLogSearchQuery = '';
 let decisionLogSearchQuery = '';
+// Journeys' own quick-filter status chips — planningStatusFilters' own
+// counterpart, an explicit user request ("add search pills to the newly
+// added searches"). A Set of STATUSES ids, empty = no filter, multi-select
+// from the start (unlike planningStatusFilters, which was originally
+// single-select before becoming multi-select itself — this one never went
+// through that phase). Matched against a top-level Journey's own computed
+// status (computeJourneyStatus(), falling back to 'not-started' the same
+// way every other caller of that function does).
+let journeysStatusFilters = new Set();
+// Action Log's own quick-filter chips — two independent groups, not one:
+// an "Open"/"Completed" multi-select pair (planningStatusFilters' own
+// shape, just over the action item's own completed boolean instead of a
+// STATUSES value — there's no RAG status field to reuse here) plus a
+// separate "Flagged" boolean toggle, the same "one multi-select group, plus
+// a standalone boolean chip after a divider" shape planningDependencyFilter
+// already established alongside planningStatusFilters.
+let actionLogStatusFilters = new Set();
+let actionLogFlaggedFilter = false;
+// Decision Log has no completed/open state of its own (see "Data model" in
+// CLAUDE.md — a decision is just text and when it was logged), so its own
+// quick-filter row is just the one standalone "Flagged" toggle, with no
+// multi-select group alongside it.
+let decisionLogFlaggedFilter = false;
 // Which review-history entries currently show their change log — UI-only, not persisted.
 let expandedHistoryIds = new Set();
 // Which workstreams currently show their full review history instead of just
@@ -2759,6 +2790,8 @@ function render() {
   document.getElementById('dataMenuImportItem').style.display = hasRole('admin') ? '' : 'none';
   document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
   renderPlanningStatusChips();
+  renderJourneysStatusChips();
+  renderReviewLogFilterChips();
   renderSidebar();
   if (mode === 'planning') {
     document.getElementById('tabPlanningScope').classList.toggle('active', planningTab === 'scope');
@@ -2934,12 +2967,39 @@ function clearJourneysSearch() {
   document.getElementById('journeysSearchClearBtn').style.display = 'none';
   renderMain();
 }
+// matchesPlanningStatusFilter()'s own counterpart for the Journeys sub-tab
+// — matched against a top-level Journey's own computed status
+// (computeJourneyStatus(), which itself rolls up from every connected Sub
+// Journey — see "Journeys" in CLAUDE.md), not a Sub Journey's or connected
+// scope item's own status; the chips filter which *Journeys* show, the same
+// level journeysForCurrentFilter()'s other two narrowing steps operate at.
+function matchesJourneysStatusFilter(j) {
+  if (!journeysStatusFilters.size) return true;
+  return journeysStatusFilters.has(computeJourneyStatus(j.id) || 'not-started');
+}
+// renderPlanningStatusChips()'s own counterpart — the same 6 STATUSES
+// chips, multi-select from the start (see journeysStatusFilters' own
+// declaration comment), with no Dependencies-style standalone chip
+// alongside them since Journeys have no such concept.
+function renderJourneysStatusChips() {
+  const el = document.getElementById('journeysStatusFilterChips');
+  if (!el) return;
+  el.innerHTML = STATUSES.map(s => `<button class="status-filter-chip ${journeysStatusFilters.has(s.id) ? 'active' : ''}" style="--chip-color:var(--stat-${s.id});--chip-bg:var(--stat-${s.id}-bg)" onclick="setJourneysStatusFilter('${s.id}')">${esc(s.label)}</button>`).join('');
+}
+function setJourneysStatusFilter(statusId) {
+  if (journeysStatusFilters.has(statusId)) journeysStatusFilters.delete(statusId);
+  else journeysStatusFilters.add(statusId);
+  renderJourneysStatusChips();
+  renderMain();
+}
 // matchesPlanningSearch()'s counterpart for the quick-filter status chips —
-// matched against whichever single chip (if any) is currently selected.
-// Composes with the search box as a plain AND at both call sites
-// (renderStatusView()/unassignedSectionHtml()), not folded into
-// matchesPlanningSearch() itself, so each predicate stays independently
-// readable/testable.
+// matched against whichever chips (if any) are currently selected; an item
+// passes if it matches *any* selected chip (a genuine multi-select, an
+// explicit user request — see planningStatusFilters' own declaration
+// comment for why this used to be a single-select). Composes with the
+// search box as a plain AND at both call sites (renderStatusView()/
+// unassignedSectionHtml()), not folded into matchesPlanningSearch() itself,
+// so each predicate stays independently readable/testable.
 // Checks the item's own status first (covers every zero-milestone item, and
 // any item whose rolled-up status happens to already match), then falls
 // back to checking its individual milestones — an explicit user request
@@ -2954,9 +3014,9 @@ function clearJourneysSearch() {
 // is excluded from this check, the same "never counts toward or against
 // anything" treatment it already gets everywhere else in this app.
 function matchesPlanningStatusFilter(it) {
-  if (!planningStatusFilter) return true;
-  if (it.status === planningStatusFilter) return true;
-  return (it.milestones || []).some(m => !m.notApplicable && m.status === planningStatusFilter);
+  if (!planningStatusFilters.size) return true;
+  if (planningStatusFilters.has(it.status)) return true;
+  return (it.milestones || []).some(m => !m.notApplicable && planningStatusFilters.has(m.status));
 }
 // The Dependencies chip's own predicate — a plain boolean gate
 // rather than a value match, since dependency is itself a boolean
@@ -2976,16 +3036,17 @@ function matchesPlanningDependencyFilter(it) {
 function renderPlanningStatusChips() {
   const el = document.getElementById('planningStatusFilterChips');
   if (!el) return;
-  const statusChips = STATUSES.map(s => `<button class="status-filter-chip ${planningStatusFilter === s.id ? 'active' : ''}" style="--chip-color:var(--stat-${s.id});--chip-bg:var(--stat-${s.id}-bg)" onclick="setPlanningStatusFilter('${s.id}')">${esc(s.label)}</button>`).join('');
+  const statusChips = STATUSES.map(s => `<button class="status-filter-chip ${planningStatusFilters.has(s.id) ? 'active' : ''}" style="--chip-color:var(--stat-${s.id});--chip-bg:var(--stat-${s.id}-bg)" onclick="setPlanningStatusFilter('${s.id}')">${esc(s.label)}</button>`).join('');
   const dependencyChip = `<button class="status-filter-chip ${planningDependencyFilter ? 'active' : ''}" style="--chip-color:var(--accent);--chip-bg:var(--accent-bg)" onclick="setPlanningDependencyFilter()"><i class="fa-solid fa-globe"></i> Dependencies</button>`;
   el.innerHTML = statusChips + '<span class="chip-divider"></span>' + dependencyChip;
 }
-// Single-select toggle for a status chip: clicking the already-active chip
-// clears the filter back to "everything", same "click again to clear"
-// shape clearPlanningSearch()'s own clear button gives the search box, just
-// without a separate dedicated button for it.
+// Multi-select toggle for a status chip: clicking a chip adds it to the set
+// if it wasn't already selected, or removes it if it was — any number of
+// chips can be active at the same time, unlike the single-select this used
+// to be (see planningStatusFilters' own declaration comment).
 function setPlanningStatusFilter(statusId) {
-  planningStatusFilter = planningStatusFilter === statusId ? null : statusId;
+  if (planningStatusFilters.has(statusId)) planningStatusFilters.delete(statusId);
+  else planningStatusFilters.add(statusId);
   renderPlanningStatusChips();
   renderMain();
 }
@@ -3032,7 +3093,7 @@ function unassignedSectionHtml() {
   // quick-add prompt that would otherwise keep it visible for an Editor
   // isn't a useful thing to show while someone's trying to find or narrow
   // down existing items, not add a new one.
-  if (!uItems.length && (!editable || planningSearchQuery || planningStatusFilter || planningDependencyFilter)) return '';
+  if (!uItems.length && (!editable || planningSearchQuery || planningStatusFilters.size || planningDependencyFilter)) return '';
   const rows = uItems.length ? uItems.map(it => itemRowHtml(it)).join('') :
     `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No unassigned items.</div>`;
   const addRow = editable
@@ -3075,7 +3136,7 @@ function renderStatusView(main) {
     // list) rather than cluttering the results with a section that has
     // nothing relevant in it.
     const displayItems = wItems.filter(it => matchesPlanningSearch(it) && matchesPlanningStatusFilter(it) && matchesPlanningDependencyFilter(it));
-    if ((planningSearchQuery || planningStatusFilter || planningDependencyFilter) && !displayItems.length) return '';
+    if ((planningSearchQuery || planningStatusFilters.size || planningDependencyFilter) && !displayItems.length) return '';
     // Items flagged as a Dependency are pulled out of the main list into
     // their own sub-section right underneath it, within the same
     // .ws-section card — an explicit user request ("show scope items which
@@ -3193,28 +3254,31 @@ function matchesJourneysSearch(j) {
   return connectedSubJourneys(j.id).some(sj => sj.name.toLowerCase().includes(journeysSearchQuery));
 }
 // The Journeys sub-tab's own full narrowing — workstream filter (see
-// journeysAfterWorkstreamFilter()'s own comment) then search, composed the
-// same way Planning's own search box/status chips/dependency chip all
-// compose with each other. Used by journeysExpandAllIds() so Expand-all
-// only ever acts on what's actually visible under both filters at once.
+// journeysAfterWorkstreamFilter()'s own comment), search, then the status
+// chips, composed the same way Planning's own search box/status chips/
+// dependency chip all compose with each other (a plain AND). Used by
+// journeysExpandAllIds() so Expand-all only ever acts on what's actually
+// visible under every filter at once.
 function journeysForCurrentFilter() {
-  const journeys = journeysAfterWorkstreamFilter();
-  return journeysSearchQuery ? journeys.filter(matchesJourneysSearch) : journeys;
+  let journeys = journeysAfterWorkstreamFilter();
+  if (journeysSearchQuery) journeys = journeys.filter(matchesJourneysSearch);
+  if (journeysStatusFilters.size) journeys = journeys.filter(matchesJourneysStatusFilter);
+  return journeys;
 }
 function renderJourneys() {
   const main = document.getElementById('main');
   const scopedWs = filterWorkstreamId ? wsById(filterWorkstreamId) : null;
-  // Computed as two separate steps (rather than just calling
+  // Computed as separate steps (rather than just calling
   // journeysForCurrentFilter() once) specifically so the empty-state
   // message below can tell "nothing here at all for this workstream" apart
-  // from "a search query found nothing among what IS here" — the same
+  // from "search/filters found nothing among what IS here" — the same
   // "narrows what's listed, never conflates why it's empty" precedent
   // Planning's own search box already established.
   const wsFiltered = journeysAfterWorkstreamFilter();
-  const journeys = journeysSearchQuery ? wsFiltered.filter(matchesJourneysSearch) : wsFiltered;
-  const emptyMsg = wsFiltered.length
-    ? `No Journeys match "${esc(journeysSearchQuery)}".`
-    : (scopedWs ? `No Journeys with scope items in "${esc(scopedWs.name)}" yet.` : 'No journeys yet.');
+  const journeys = journeysForCurrentFilter();
+  const emptyMsg = !wsFiltered.length
+    ? (scopedWs ? `No Journeys with scope items in "${esc(scopedWs.name)}" yet.` : 'No journeys yet.')
+    : (journeysSearchQuery ? `No Journeys match "${esc(journeysSearchQuery)}".` : 'No Journeys match the selected status filter(s).');
   const rows = journeys.length ? journeys.map(it => itemRowHtml(it)).join('') :
     `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">${emptyMsg}</div>`;
   // A name-only inline capture, matching the Unassigned section's own "+
@@ -4215,6 +4279,64 @@ function clearReviewLogSearch() {
   else if (reviewTab === 'decisionLog') decisionLogSearchQuery = '';
   document.getElementById('reviewLogSearchInput').value = '';
   document.getElementById('reviewLogSearchClearBtn').style.display = 'none';
+  renderReview();
+}
+// matchesPlanningStatusFilter()'s own counterpart for Action Log — matched
+// against whichever of "Open"/"Completed" are currently selected (a
+// multi-select pair, same shape as the status chips, just over the action
+// item's own completed boolean rather than a STATUSES value, since there's
+// no RAG status field on an action item to reuse here).
+function matchesActionLogStatusFilter(a) {
+  if (!actionLogStatusFilters.size) return true;
+  return actionLogStatusFilters.has(a.completed ? 'completed' : 'open');
+}
+// The standalone "Flagged" chip's own predicate — a plain boolean gate,
+// same shape as matchesPlanningDependencyFilter().
+function matchesActionLogFlaggedFilter(a) {
+  return !actionLogFlaggedFilter || a.flagged;
+}
+// Decision Log's own "Flagged" chip predicate — decisionLogFlaggedFilter's
+// own counterpart, matchesActionLogFlaggedFilter()'s twin.
+function matchesDecisionLogFlaggedFilter(d) {
+  return !decisionLogFlaggedFilter || d.flagged;
+}
+// Rebuilds the shared #reviewLogFilterChips row — a different chip set
+// depending on reviewTab, since Action Log and Decision Log have different
+// things worth filtering by (see each state variable's own declaration
+// comment). Action Log gets "Open"/"Completed" (multi-select) plus a
+// divider plus "Flagged"; Decision Log gets just "Flagged". Called
+// unconditionally alongside renderPlanningStatusChips()/
+// renderJourneysStatusChips() in render() — cheap enough not to need a
+// mode/reviewTab check threaded through the call site itself.
+function renderReviewLogFilterChips() {
+  const el = document.getElementById('reviewLogFilterChips');
+  if (!el) return;
+  const flaggedChip = (checked, onclickCall) =>
+    `<button class="status-filter-chip ${checked ? 'active' : ''}" style="--chip-color:var(--stat-red);--chip-bg:var(--stat-red-bg)" onclick="${onclickCall}"><i class="fa-solid fa-flag"></i> Flagged</button>`;
+  if (reviewTab === 'actionLog') {
+    const openChip = `<button class="status-filter-chip ${actionLogStatusFilters.has('open') ? 'active' : ''}" style="--chip-color:var(--stat-not-started);--chip-bg:var(--stat-not-started-bg)" onclick="setActionLogStatusFilter('open')">Open</button>`;
+    const completedChip = `<button class="status-filter-chip ${actionLogStatusFilters.has('completed') ? 'active' : ''}" style="--chip-color:var(--stat-complete);--chip-bg:var(--stat-complete-bg)" onclick="setActionLogStatusFilter('completed')">Completed</button>`;
+    el.innerHTML = openChip + completedChip + '<span class="chip-divider"></span>' + flaggedChip(actionLogFlaggedFilter, 'setActionLogFlaggedFilter()');
+  } else if (reviewTab === 'decisionLog') {
+    el.innerHTML = flaggedChip(decisionLogFlaggedFilter, 'setDecisionLogFlaggedFilter()');
+  } else {
+    el.innerHTML = '';
+  }
+}
+function setActionLogStatusFilter(value) {
+  if (actionLogStatusFilters.has(value)) actionLogStatusFilters.delete(value);
+  else actionLogStatusFilters.add(value);
+  renderReviewLogFilterChips();
+  renderReview();
+}
+function setActionLogFlaggedFilter() {
+  actionLogFlaggedFilter = !actionLogFlaggedFilter;
+  renderReviewLogFilterChips();
+  renderReview();
+}
+function setDecisionLogFlaggedFilter() {
+  decisionLogFlaggedFilter = !decisionLogFlaggedFilter;
+  renderReviewLogFilterChips();
   renderReview();
 }
 function setFilterWorkstream(id) {
@@ -6705,6 +6827,15 @@ function actionLogCountHtml(list) {
 function matchesActionLogSearch(a) {
   return !actionLogSearchQuery || a.text.toLowerCase().includes(actionLogSearchQuery);
 }
+// The Action Log tab's own full narrowing — search plus both quick-filter
+// chip groups, composed as a plain AND, the same way every other search-
+// plus-chips combination in this app already composes. Used by both render
+// functions below so the "search found nothing" vs "filters found nothing"
+// empty-state messages stay consistent between the single-workstream and
+// All Workstreams views.
+function matchesActionLogFilters(a) {
+  return matchesActionLogSearch(a) && matchesActionLogStatusFilter(a) && matchesActionLogFlaggedFilter(a);
+}
 // The workstream-wide action log — every action item ever imported from a
 // meeting minutes attachment across every review cycle for this workstream
 // (see syncActionLogFromMinutes()), completable independently of the review
@@ -6718,9 +6849,9 @@ function actionLogHtml(w) {
   // computed from the real, unfiltered list — see actionLogCountHtml()'s own
   // call site in renderReview()) — same "narrows what's listed, never the
   // counts" precedent Planning's own search box already established.
-  const filtered = list.filter(matchesActionLogSearch);
+  const filtered = list.filter(matchesActionLogFilters);
   if (!filtered.length) {
-    return `<div class="attention-empty">No action items match "${esc(actionLogSearchQuery)}".</div>`;
+    return `<div class="attention-empty">${actionLogSearchQuery ? `No action items match "${esc(actionLogSearchQuery)}".` : 'No action items match the selected filters.'}</div>`;
   }
   // .action-log-row/.action-log-header both override grid-template-columns
   // outright with a fully explicit 9-column list (see that CSS rule's own
@@ -6759,9 +6890,9 @@ function allWorkstreamsActionLogHtml() {
   if (!entries.length) {
     return `<div class="attention-empty">No action items yet — they're added automatically when meeting minutes with action items are attached to a review cycle.</div>`;
   }
-  const filtered = entries.filter(x => matchesActionLogSearch(x.a));
+  const filtered = entries.filter(x => matchesActionLogFilters(x.a));
   if (!filtered.length) {
-    return `<div class="attention-empty">No action items match "${esc(actionLogSearchQuery)}".</div>`;
+    return `<div class="attention-empty">${actionLogSearchQuery ? `No action items match "${esc(actionLogSearchQuery)}".` : 'No action items match the selected filters.'}</div>`;
   }
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header with-ws">
@@ -6918,6 +7049,12 @@ function decisionLogCountHtml(list) {
 function matchesDecisionLogSearch(d) {
   return !decisionLogSearchQuery || d.text.toLowerCase().includes(decisionLogSearchQuery);
 }
+// matchesActionLogFilters()'s own counterpart — search plus the one
+// "Flagged" chip, since Decision Log has no completed/open state to add a
+// second chip group for.
+function matchesDecisionLogFilters(d) {
+  return matchesDecisionLogSearch(d) && matchesDecisionLogFlaggedFilter(d);
+}
 // The workstream-wide decision log — every decision ever imported from a
 // meeting minutes attachment across every review cycle for this workstream
 // (see syncDecisionLogFromMinutes()). Rendered as Review's third tab (see
@@ -6927,9 +7064,9 @@ function decisionLogHtml(w) {
   if (!list.length) {
     return `<div class="attention-empty">No decisions yet — they're added automatically when meeting minutes with decisions are attached to a review cycle.</div>`;
   }
-  const filtered = list.filter(matchesDecisionLogSearch);
+  const filtered = list.filter(matchesDecisionLogFilters);
   if (!filtered.length) {
-    return `<div class="attention-empty">No decisions match "${esc(decisionLogSearchQuery)}".</div>`;
+    return `<div class="attention-empty">${decisionLogSearchQuery ? `No decisions match "${esc(decisionLogSearchQuery)}".` : 'No decisions match the selected filters.'}</div>`;
   }
   return `<div class="action-log-list">
       <div class="item-row decision-log-row decision-log-header">
@@ -6953,9 +7090,9 @@ function allWorkstreamsDecisionLogHtml() {
   if (!entries.length) {
     return `<div class="attention-empty">No decisions yet — they're added automatically when meeting minutes with decisions are attached to a review cycle.</div>`;
   }
-  const filtered = entries.filter(x => matchesDecisionLogSearch(x.d));
+  const filtered = entries.filter(x => matchesDecisionLogFilters(x.d));
   if (!filtered.length) {
-    return `<div class="attention-empty">No decisions match "${esc(decisionLogSearchQuery)}".</div>`;
+    return `<div class="attention-empty">${decisionLogSearchQuery ? `No decisions match "${esc(decisionLogSearchQuery)}".` : 'No decisions match the selected filters.'}</div>`;
   }
   return `<div class="action-log-list">
       <div class="item-row decision-log-row decision-log-header with-ws">

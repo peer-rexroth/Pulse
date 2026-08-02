@@ -1801,6 +1801,119 @@ test('allWorkstreamsDecisionLogHtml also narrows by search across every workstre
   assertNotIncludes(html, 'Unrelated decision.');
 });
 
+// ---------- Action Log/Decision Log's own quick-filter chips ----------
+// An explicit user request ("add search pills to the newly added
+// searches") — Action Log gets a multi-select "Open"/"Completed" pair
+// (there's no RAG status field on an action item, so this is over the
+// completed boolean instead) plus a standalone "Flagged" toggle; Decision
+// Log gets just "Flagged", since it has no completed/open state at all.
+
+test('renderReviewLogFilterChips renders Open/Completed plus Flagged for Action Log, and just Flagged for Decision Log', function () {
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('actionLog');
+  let html = document.getElementById('reviewLogFilterChips').innerHTML;
+  assertIncludes(html, '>Open<');
+  assertIncludes(html, '>Completed<');
+  assertIncludes(html, 'Flagged');
+
+  setReviewTab('decisionLog');
+  html = document.getElementById('reviewLogFilterChips').innerHTML;
+  assertNotIncludes(html, '>Open<');
+  assertNotIncludes(html, '>Completed<');
+  assertIncludes(html, 'Flagged');
+});
+
+test('matchesActionLogStatusFilter is a multi-select over the completed boolean', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Open item';
+  addMinutesActionItemRow();
+  editingMinutesActionItems[1].text = 'Done item';
+  saveMinutes();
+  const w = workstreams[0];
+  toggleActionLogItem(w.id, w.actionLog[1].id);
+
+  actionLogStatusFilters.add('open');
+  assertTrue(matchesActionLogStatusFilter(w.actionLog[0]));
+  assertFalse(matchesActionLogStatusFilter(w.actionLog[1]));
+  actionLogStatusFilters.add('completed');
+  assertTrue(matchesActionLogStatusFilter(w.actionLog[1]), 'both chips selected should match both states');
+});
+
+test('setActionLogFlaggedFilter narrows Action Log to only flagged items', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Flagged item';
+  addMinutesActionItemRow();
+  editingMinutesActionItems[1].text = 'Unflagged item';
+  saveMinutes();
+  const w = workstreams[0];
+  toggleActionLogFlag(w.id, w.actionLog[0].id);
+
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('actionLog');
+  setActionLogFlaggedFilter();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Flagged item');
+  assertNotIncludes(html, 'Unflagged item');
+});
+
+test('Action Log filter chips compose with each other and with search as a plain AND', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Vendor follow-up';
+  addMinutesActionItemRow();
+  editingMinutesActionItems[1].text = 'Vendor invoice';
+  saveMinutes();
+  const w = workstreams[0];
+  toggleActionLogFlag(w.id, w.actionLog[0].id); // only the first is flagged
+
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('actionLog');
+  setActionLogFlaggedFilter();
+  setReviewLogSearch('vendor');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Vendor follow-up');
+  assertNotIncludes(html, 'Vendor invoice', 'matches the search but not the Flagged filter');
+});
+
+test('actionLogHtml shows a filter-specific empty state when the chips find nothing, distinct from the search one', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Unflagged item';
+  saveMinutes();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('actionLog');
+  setActionLogFlaggedFilter();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'No action items match the selected filters.');
+});
+
+test('setDecisionLogFlaggedFilter narrows Decision Log to only flagged decisions', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Flagged decision.\nUnflagged decision.';
+  saveMinutes();
+  const w = workstreams[0];
+  toggleDecisionLogFlag(w.id, w.decisionLog[0].id);
+
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('decisionLog');
+  setDecisionLogFlaggedFilter();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Flagged decision.');
+  assertNotIncludes(html, 'Unflagged decision.');
+});
+
 test('deleteActionLogItem removes the entry only after confirmation', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);

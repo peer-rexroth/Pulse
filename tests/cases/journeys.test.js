@@ -1417,6 +1417,64 @@ test('setJourneysSearch lowercases/trims the query and toggles the clear button;
   assertEqual(document.getElementById('journeysSearchClearBtn').style.display, 'none');
 });
 
+// ---------- Journeys' own quick-filter status chips ----------
+// planningStatusFilters' own counterpart, an explicit user request ("add
+// search pills to the newly added searches") — matched against a
+// top-level Journey's own computed status, multi-select from the start.
+
+test('renderJourneysStatusChips renders one chip per STATUSES entry, none active by default', function () {
+  setPlanningTab('journeys');
+  render();
+  const html = document.getElementById('journeysStatusFilterChips').innerHTML;
+  STATUSES.forEach(s => assertIncludes(html, `>${esc(s.label)}<`));
+  assertNotIncludes(html, 'active');
+});
+
+test('matchesJourneysStatusFilter matches a Journey\'s own computed status, defaulting to not-started when nothing is connected', function () {
+  const j1 = addJourney('Has a red sub');
+  const sub = addSubJourney(j1.id);
+  addItem({ name: 'A', journeyId: sub.id, status: 'red' });
+  const j2 = addJourney('Empty journey');
+  journeysStatusFilters.add('red');
+  assertTrue(matchesJourneysStatusFilter(j1));
+  assertFalse(matchesJourneysStatusFilter(j2));
+  journeysStatusFilters = new Set(['not-started']);
+  assertTrue(matchesJourneysStatusFilter(j2));
+});
+
+test('setJourneysStatusFilter is a genuine multi-select, and composes with the workstream filter and search as a plain AND', function () {
+  const j1 = addJourney('Vendor A');
+  const sub1 = addSubJourney(j1.id);
+  addItem({ name: 'A', journeyId: sub1.id, status: 'red' });
+  const j2 = addJourney('Vendor B');
+  const sub2 = addSubJourney(j2.id);
+  addItem({ name: 'B', journeyId: sub2.id, status: 'amber' });
+  const j3 = addJourney('Something else');
+  const sub3 = addSubJourney(j3.id);
+  addItem({ name: 'C', journeyId: sub3.id, status: 'green' });
+
+  setPlanningTab('journeys');
+  setJourneysStatusFilter('red');
+  setJourneysStatusFilter('amber');
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Vendor A');
+  assertIncludes(html, 'Vendor B');
+  assertNotIncludes(html, 'Something else');
+
+  setJourneysSearch('vendor a');
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Vendor A');
+  assertNotIncludes(html, 'Vendor B', 'search must further narrow the status-filtered set, not replace it');
+});
+
+test('renderJourneys shows a filter-specific empty state when the status chips find nothing, distinct from the search one', function () {
+  addJourney('Any journey'); // computes to not-started
+  setPlanningTab('journeys');
+  setJourneysStatusFilter('red');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'No Journeys match the selected status filter(s).');
+});
+
 // ---------- Journeys' own "Expand all"/"Collapse all" ----------
 // An explicit user request to bring the same per-section control Planning's
 // status board already has (expandAllToggleHtml()) to the Journeys sub-tab

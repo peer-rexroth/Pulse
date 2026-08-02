@@ -96,8 +96,10 @@ test('planningSearchQuery does not affect Review/Dashboard/Journeys — only Pla
 // ---------- Quick-filter status chips ----------
 // A lighter alternative to a full saved-filter-presets feature: one toggle
 // chip per STATUSES entry, sitting in the same static toolbar as the search
-// box, single-select (click the active one again to clear), composing with
-// the search box as a plain AND.
+// box, multi-select (click a chip to toggle it on/off — any number can be
+// active at once, an item matching any of them passes; this was originally
+// single-select, changed by a later, explicit user request, "make search
+// pills multi select"), composing with the search box as a plain AND.
 
 test('renderPlanningStatusChips renders one chip per STATUSES entry, none active by default', function () {
   render();
@@ -201,13 +203,51 @@ test('the Unassigned section is filtered by status too, and omitted entirely whe
   assertNotIncludes(html, 'Unassigned');
 });
 
-test('planningStatusFilter does not affect Review/Dashboard/Journeys — only Planning\'s own status board', function () {
+test('planningStatusFilters does not affect Review/Dashboard/Journeys — only Planning\'s own status board', function () {
   addItem({ name: 'Migrate billing database', status: 'red' });
-  planningStatusFilter = 'amber'; // nothing matches this
+  planningStatusFilters.add('amber'); // nothing matches this
   mode = 'review'; filterWorkstreamId = workstreams[0].id; reviewTab = 'scope';
   startReviewCycle(workstreams[0].id);
   render();
   assertIncludes(document.getElementById('main').innerHTML, 'Migrate billing database');
+});
+
+// ---------- Multi-select behavior ----------
+// An explicit user request ("make search pills multi select") — any number
+// of chips can be active at once, and an item matching *any* selected one
+// passes, not just the single most-recently-clicked chip.
+
+test('selecting two status chips shows items matching either one', function () {
+  addItem({ name: 'Red item', status: 'red' });
+  addItem({ name: 'Amber item', status: 'amber' });
+  addItem({ name: 'Green item', status: 'green' });
+  setPlanningStatusFilter('red');
+  setPlanningStatusFilter('amber');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Red item');
+  assertIncludes(html, 'Amber item');
+  assertNotIncludes(html, 'Green item');
+});
+
+test('both chips render as active while both are selected', function () {
+  setPlanningStatusFilter('red');
+  setPlanningStatusFilter('amber');
+  const html = document.getElementById('planningStatusFilterChips').innerHTML;
+  const redChip = html.slice(html.indexOf(">Off Track<") - 200, html.indexOf(">Off Track<"));
+  const amberChip = html.slice(html.indexOf(">At Risk<") - 200, html.indexOf(">At Risk<"));
+  assertIncludes(redChip, 'active');
+  assertIncludes(amberChip, 'active');
+});
+
+test('clicking one of two active chips deselects only that one, leaving the other active', function () {
+  addItem({ name: 'Red item', status: 'red' });
+  addItem({ name: 'Amber item', status: 'amber' });
+  setPlanningStatusFilter('red');
+  setPlanningStatusFilter('amber');
+  setPlanningStatusFilter('red'); // toggle red back off
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'Red item');
+  assertIncludes(html, 'Amber item');
 });
 
 test('setFilterWorkstream narrows visibleWorkstreams to one', function () {

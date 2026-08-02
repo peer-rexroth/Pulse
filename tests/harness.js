@@ -198,8 +198,9 @@ async function run(argv) {
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
   editingItemType = 'scope'; journeyConnectItemId = null;
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set(); revealedDueIds = new Set();
-  unassignedQuickAddOpen = false; journeyQuickAddOpen = false; subJourneyQuickAddOpenFor = null; planningSearchQuery = ''; planningStatusFilter = null; planningDependencyFilter = false;
+  unassignedQuickAddOpen = false; journeyQuickAddOpen = false; subJourneyQuickAddOpenFor = null; planningSearchQuery = ''; planningStatusFilters = new Set(); planningDependencyFilter = false;
   journeysSearchQuery = ''; actionLogSearchQuery = ''; decisionLogSearchQuery = '';
+  journeysStatusFilters = new Set(); actionLogStatusFilters = new Set(); actionLogFlaggedFilter = false; decisionLogFlaggedFilter = false;
   editingCategoryId = null; editingCategoryMilestones = [];
   minutesModalCycleId = null; editingMinutesActionItems = []; reviewTab = 'scope'; planningTab = 'scope';
   renamingProgramme = false;
