@@ -2291,11 +2291,10 @@ test('decisionLogHtml shows an empty state when the workstream has no decisions 
   assertIncludes(html, '>Logged<');
   // A user-reported inconsistency: Action Log's own trailing action column(s)
   // get a header label ("Actions"), but Decision Log's lone Delete column
-  // used to render a genuinely empty header cell. Now labeled "Delete" —
-  // matching Action Log's own "always label the actions column" convention,
-  // just naming this one action directly rather than reusing "Actions" for
-  // a column that only ever has the one.
-  assertIncludes(html, '>Delete<');
+  // used to render a genuinely empty header cell. Now labeled "Actions" too,
+  // matching Action Log's own label exactly (an explicit user request,
+  // reversing an earlier "Delete" label that named the one action directly).
+  assertIncludes(html, '>Actions<');
   assertNotIncludes(html, '>Owner<', 'a decision has no owner column, unlike an action item');
 });
 

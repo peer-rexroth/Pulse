@@ -6769,7 +6769,7 @@ function decisionLogHtml(w) {
         <span style="grid-column:2">Decision</span>
         <span style="grid-column:3">Source</span>
         <span style="grid-column:4">Logged</span>
-        <span style="grid-column:5">Delete</span>
+        <span style="grid-column:5">Actions</span>
       </div>
       ${sortedDecisionLog(list).map(d => decisionLogRowHtml(w, d)).join('')}
     </div>`;
@@ -6792,7 +6792,7 @@ function allWorkstreamsDecisionLogHtml() {
         <span style="grid-column:3">Workstream</span>
         <span style="grid-column:4">Source</span>
         <span style="grid-column:5">Logged</span>
-        <span style="grid-column:6">Delete</span>
+        <span style="grid-column:6">Actions</span>
       </div>
       ${sortedDecisionLog(entries, x => x.d).map(({ w, d }) => decisionLogRowHtml(w, d, true)).join('')}
     </div>`;
