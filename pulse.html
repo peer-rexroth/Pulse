@@ -805,10 +805,22 @@
   .milestone-status-cell > :first-child { justify-self: start; white-space: nowrap; }
 
   /* Modal */
+  /* Fades in/out rather than snapping open — ported from mytasks (an
+     explicit user request, "do modals fade in like in the mytask app?"),
+     same mechanism: always display:flex, toggled via opacity+visibility+
+     pointer-events instead of display:none/flex, so the transition has
+     something to animate. Applies to every modal in the app at once, since
+     they all share this one class — not just the newer Help/About modals
+     below. visibility (not just opacity) is what keeps a closed modal out
+     of the tab order and un-clickable without needing pointer-events alone
+     to carry that weight during the transition's brief "still fading out,
+     technically opacity>0" window. */
   .modal-bg {
-    position: fixed; inset: 0; background: rgba(10,12,16,.4); display: none; align-items: center; justify-content: center; z-index: 50;
+    position: fixed; inset: 0; background: rgba(10,12,16,.4); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    display: flex; align-items: center; justify-content: center; z-index: 50;
+    opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .15s ease, visibility .15s ease;
   }
-  .modal-bg.open { display: flex; }
+  .modal-bg.open { opacity: 1; visibility: visible; pointer-events: auto; }
   /* The only modal ever deliberately opened on top of another one — the
      scope-assign modal's "no workstreams yet, create one" escape hatch (see
      openScopeAssignModal()/updateScopeAssignWorkstreamState() in the inline
@@ -853,6 +865,24 @@
   .theme-option-desc { font-size: 12px; color: var(--text-dim); margin-top: 1px; }
   .theme-option-check { color: var(--accent); font-size: 15px; opacity: 0; flex-shrink: 0; }
   .theme-option.selected .theme-option-check { opacity: 1; }
+
+  /* Help modal — ported from mytasks (an explicit user request, "add help
+     and info like in mytask app, same design"), adapted to Pulse's own CSS
+     variable names (mytasks' --bg/--bg-2/--text-2/--text-3 map to Pulse's
+     --panel/--panel-2/--text-dim/--text-faint) and content, the same
+     "wholesale port of the mechanism, adapted variable names and content"
+     treatment the color scheme system above already got. */
+  .help-modal { width: 560px; max-height: 80vh; overflow-y: auto; padding: 0; }
+  .help-modal-header { padding: 18px 22px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  .help-modal-header h3 { margin: 0; font-size: 16px; }
+  .help-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 20px; }
+  .help-section { display: flex; flex-direction: column; gap: 8px; }
+  .help-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
+  .help-row { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.6; color: var(--text-dim); }
+  .help-row i { font-size: 14px; color: var(--text-faint); flex-shrink: 0; margin-top: 2px; width: 16px; text-align: center; }
+  .help-divider { height: 1px; background: var(--border); }
+  .help-tip { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+  .help-tip strong { color: var(--text); font-weight: 700; }
 
   /* Meeting minutes modal — Input+Buttons/Meeting Summary on row 1, Action
      Items spanning both columns on row 2 (it needs the width for its three
@@ -1262,6 +1292,8 @@
   <button class="icon-btn" id="roleBtn" onclick="openRoleModal()" title="Switch role"><i class="fa-solid" id="roleBtnIcon"></i></button>
   <button class="icon-btn" onclick="openThemeModal()" title="Color scheme"><i class="fa-solid fa-palette"></i></button>
   <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-circle-half-stroke"></i></button>
+  <button class="icon-btn" onclick="openHelpModal()" title="Help"><i class="fa-regular fa-circle-question"></i></button>
+  <button class="icon-btn" onclick="openAboutModal()" title="About"><i class="fa-solid fa-circle-info"></i></button>
 </div>
 
 <!-- Shared shell for Planning/Review/Dashboard: one sidebar + one main
@@ -1712,6 +1744,94 @@
     <h3>Color scheme</h3>
     <div class="theme-options" id="themeOptions"></div>
     <div class="modal-actions" style="justify-content:flex-end"><button class="btn btn-primary" onclick="closeThemeModal()">Done</button></div>
+  </div>
+</div>
+
+<!-- Help modal — ported from mytasks, see the CSS block's own comment above -->
+<div class="modal-bg" id="helpModalBg">
+  <div class="modal help-modal">
+    <div class="help-modal-header">
+      <h3><i class="fa-regular fa-circle-question" style="margin-right:8px;color:var(--text-faint)"></i>How Pulse works</h3>
+      <button class="btn btn-sm" onclick="closeHelpModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="help-body">
+
+      <div class="help-section">
+        <div class="help-section-title">Overview</div>
+        <div class="help-row"><i class="fa-solid fa-wave-square"></i><span>Pulse is a local-first programme dashboard, organized into <strong style="color:var(--text)">Planning</strong>, <strong style="color:var(--text)">Review</strong>, <strong style="color:var(--text)">Dashboard</strong>, and <strong style="color:var(--text)">Settings</strong>. Everything runs in your browser — no account, no server.</span></div>
+      </div>
+
+      <div class="help-divider"></div>
+
+      <div class="help-section">
+        <div class="help-section-title">Planning</div>
+        <div class="help-row"><i class="fa-solid fa-diagram-project"></i><span>Organize work into <strong style="color:var(--text)">workstreams</strong>, each holding <strong style="color:var(--text)">scope items</strong> with a milestone checklist. Picking a <strong style="color:var(--text)">category</strong> seeds that checklist from a reusable template (Settings → Scope Item Categories).</span></div>
+        <div class="help-row"><i class="fa-solid fa-grip-lines"></i><span><strong style="color:var(--text)">Drag</strong> items (or whole workstreams, in the sidebar) to reorder them. A quick-added item lands in <strong style="color:var(--text)">Unassigned</strong> for later triage — mark its one milestone Complete to assign it a real workstream and category.</span></div>
+        <div class="help-row"><i class="fa-solid fa-magnifying-glass"></i><span>Use the <strong style="color:var(--text)">search box</strong> and the <strong style="color:var(--text)">status/Dependencies pills</strong> above the board to narrow a long list down to what you're looking for.</span></div>
+      </div>
+
+      <div class="help-divider"></div>
+
+      <div class="help-section">
+        <div class="help-section-title">Journeys</div>
+        <div class="help-row"><i class="fa-solid fa-route"></i><span>A second, overarching view under Planning's own tab — <strong style="color:var(--text)">Journeys</strong> group <strong style="color:var(--text)">Sub Journeys</strong>, which connect to existing scope items across any workstream. Neither level has its own milestones; status, dates, and tags all roll up automatically from whatever's connected.</span></div>
+      </div>
+
+      <div class="help-divider"></div>
+
+      <div class="help-section">
+        <div class="help-section-title">Review</div>
+        <div class="help-row"><i class="fa-solid fa-clipboard-check"></i><span>Start a <strong style="color:var(--text)">review cycle</strong> for one workstream at a time and confirm each item/milestone as you go — one already marked Complete confirms itself. A cycle can only close once everything in it is confirmed.</span></div>
+        <div class="help-row"><i class="fa-solid fa-file-lines"></i><span>Attach <strong style="color:var(--text)">meeting minutes</strong> to a completed cycle — paste or drop a document and it auto-fills Summary, Decisions, Next Steps, and a real Action Items table.</span></div>
+        <div class="help-row"><i class="fa-solid fa-list-check"></i><span>Action items and decisions feed an <strong style="color:var(--text)">Action Log</strong>/<strong style="color:var(--text)">Decision Log</strong> that spans every review cycle for a workstream, not just the one they came from. A <strong style="color:var(--text)">Change Log</strong> tab shows every edit logged across every workstream's reviews in one place.</span></div>
+      </div>
+
+      <div class="help-divider"></div>
+
+      <div class="help-section">
+        <div class="help-section-title">Dashboard</div>
+        <div class="help-row"><i class="fa-solid fa-gauge-high"></i><span>A read-only rollup — RAG status, milestone completion, and workstreams overdue for review — plus <strong style="color:var(--text)">Overdue</strong>/<strong style="color:var(--text)">Upcoming</strong> feeds of what needs attention next.</span></div>
+        <div class="help-row"><i class="fa-solid fa-file-export"></i><span>Download it as a one-page <strong style="color:var(--text)">Exec Summary</strong> (PDF or PNG) from the toolbar, ready to drop into a status deck.</span></div>
+      </div>
+
+      <div class="help-divider"></div>
+
+      <div class="help-section">
+        <div class="help-section-title">Roles</div>
+        <div class="help-row"><i class="fa-solid fa-user-shield"></i><span>A soft role ladder — <strong style="color:var(--text)">Visitor → Planner → Reviewer → Editor → Admin</strong> — meant to guide day-to-day workflow on a shared device, not real access control. Switch roles any time from the shield icon; an Admin can optionally require a password per role.</span></div>
+      </div>
+
+      <div class="help-divider"></div>
+
+      <div class="help-section">
+        <div class="help-section-title">Data &amp; sync</div>
+        <div class="help-row"><i class="fa-solid fa-hard-drive"></i><span><strong style="color:var(--text)">Your data is stored locally</strong> in this browser. It persists between sessions on this device but isn't synced anywhere by default.</span></div>
+        <div class="help-row"><i class="fa-solid fa-link"></i><span><strong style="color:var(--text)">Link file</strong> (Chrome/Edge) auto-saves every change to a real <code style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px">.json</code> file on disk — shareable via something like OneDrive/SharePoint — and merges in changes made elsewhere.</span></div>
+        <div class="help-row"><i class="fa-solid fa-download"></i><span><strong style="color:var(--text)">Export</strong> downloads a one-off backup; <strong style="color:var(--text)">Import</strong> loads one back in, merging or replacing your current data. <strong style="color:var(--text)">Export to Excel</strong> produces a formatted report instead.</span></div>
+        <div class="help-tip">Nothing here ever leaves your machine unless you link a file yourself — there's no server, no account, and no admin rights required to run this app. Automatic daily snapshots (last 7 days) are also available under <strong>Data → Backups</strong>.</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- About modal -->
+<div class="modal-bg" id="aboutModalBg">
+  <div class="modal" style="width:360px;display:flex;flex-direction:column;gap:18px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <i class="fa-solid fa-wave-square" style="font-size:22px;color:var(--accent)"></i>
+      <div>
+        <div style="font-size:16px;font-weight:600">Pulse</div>
+        <div style="font-size:12px;color:var(--text-faint);margin-top:1px">A local-first programme dashboard</div>
+      </div>
+    </div>
+    <div style="height:1px;background:var(--border)"></div>
+    <div style="font-size:13px;color:var(--text-dim);line-height:1.7">
+      <div>Created by <strong style="color:var(--text)">Peer Rexroth</strong></div>
+      <div style="margin-top:6px">Feedback &amp; suggestions welcome:</div>
+      <div style="margin-top:3px"><a href="mailto:peer.rexroth@gmail.com" style="color:var(--accent);text-decoration:none;font-weight:600">peer.rexroth@gmail.com</a></div>
+    </div>
+    <div class="modal-actions" style="justify-content:flex-end"><button class="btn btn-primary" onclick="closeAboutModal()">Close</button></div>
   </div>
 </div>
 
@@ -4530,6 +4650,13 @@ function openThemeModal() {
 function closeThemeModal() {
   document.getElementById('themeModalBg').classList.remove('open');
 }
+// Help/About modals — ported from mytasks (see their own HTML/CSS comments
+// above), neither role-gated nor mutating any state, so they're just a
+// plain open/close pair each, same shape as the Theme modal just above.
+function openHelpModal() { document.getElementById('helpModalBg').classList.add('open'); }
+function closeHelpModal() { document.getElementById('helpModalBg').classList.remove('open'); }
+function openAboutModal() { document.getElementById('aboutModalBg').classList.add('open'); }
+function closeAboutModal() { document.getElementById('aboutModalBg').classList.remove('open'); }
 function setColorScheme(scheme) {
   colorScheme = scheme;
   document.documentElement.setAttribute('data-scheme', scheme);
@@ -9480,9 +9607,11 @@ document.getElementById('fileSyncModalBg').addEventListener('click', (e) => { if
 document.getElementById('backupFolderModalBg').addEventListener('click', (e) => { if (e.target.id === 'backupFolderModalBg') closeBackupFolderModal(); });
 document.getElementById('themeModalBg').addEventListener('click', (e) => { if (e.target.id === 'themeModalBg') closeThemeModal(); });
 document.getElementById('roleModalBg').addEventListener('click', (e) => { if (e.target.id === 'roleModalBg') closeRoleModal(); });
+document.getElementById('helpModalBg').addEventListener('click', (e) => { if (e.target.id === 'helpModalBg') closeHelpModal(); });
+document.getElementById('aboutModalBg').addEventListener('click', (e) => { if (e.target.id === 'aboutModalBg') closeAboutModal(); });
 document.getElementById('rolePasswordsModalBg').addEventListener('click', (e) => { if (e.target.id === 'rolePasswordsModalBg') closeRolePasswordsModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeJourneyConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeBackupFolderModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeJourneyConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeBackupFolderModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
 });
 
 // A user-reported bug on some Chrome/Safari + macOS combinations: a modal's
