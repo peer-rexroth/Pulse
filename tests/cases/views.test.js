@@ -740,14 +740,14 @@ test('an item with no milestones — its inline Due input snaps back to the stor
   const it = addItem({ name: 'No milestones', milestones: [], dueDate: '2026-08-01' });
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onblur="cancelDateChangeDebounce('${it.id}-due'); if(this.value) updateItemDateField('${it.id}','dueDate',this.value); else this.value='2026-08-01'"`);
+  assertIncludes(html, `onblur="if(this.value) updateItemDateField('${it.id}','dueDate',this.value); else this.value='2026-08-01'"`);
 });
 
 test('an item with no milestones — its inline Start input snaps back to the stored date on an incomplete edit', function () {
   const it = addItem({ name: 'No milestones', milestones: [], startDate: '2026-07-01' });
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onblur="cancelDateChangeDebounce('${it.id}-start'); if(this.value) updateItemDateField('${it.id}','startDate',this.value); else this.value='2026-07-01'"`);
+  assertIncludes(html, `onblur="if(this.value) updateItemDateField('${it.id}','startDate',this.value); else this.value='2026-07-01'"`);
 });
 
 test('a milestone sub-row\'s Due input snaps back to the stored date on an incomplete edit', function () {
@@ -758,37 +758,41 @@ test('a milestone sub-row\'s Due input snaps back to the stored date on an incom
   toggleItemExpanded(it.id);
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onblur="cancelDateChangeDebounce('m1-due'); if(this.value) updateMilestoneDateField('${it.id}','m1','dueDate',this.value); else this.value='2026-08-15'"`);
+  assertIncludes(html, `onblur="if(this.value) updateMilestoneDateField('${it.id}','m1','dueDate',this.value); else this.value='2026-08-15'"`);
 });
 
-// ---------- Date inputs also commit on 'change', not just blur ----------
-// A screen recording of the reported bug showed that picking a date from
-// the native calendar popup (showPicker()) updates the input's displayed
-// value immediately, but doesn't reliably fire blur afterward — so onblur,
-// the only thing wired to actually write the value into `items`/`milestones`,
-// never ran. The edit looked saved (right value on screen) until some later,
-// unrelated render (switching modes) rebuilt the row from the real,
-// never-updated stored date. `onchange` fires the moment the popup commits
-// a value, regardless of that focus/blur quirk, so every date input now
-// wires it up alongside onblur — as of a later fix (see
-// "debounceDateChange()" below), routed through a debounce rather than
-// calling the update function directly.
+// ---------- The native calendar picker commits via armPickerCommit(), not onchange ----------
+// A screen recording of an earlier reported bug showed that picking a date
+// from the native calendar popup (showPicker()) updates the input's
+// displayed value immediately, but doesn't reliably fire blur afterward —
+// so onblur, the only thing that ever wrote the value into
+// `items`/`milestones`, never ran. That was first fixed by also wiring a
+// plain `onchange="if(this.value) update...(...)"` alongside onblur — since
+// superseded (see "armPickerCommit()" below) once that approach itself
+// turned out to have its own, worse bug: Chrome's date input fires `change`
+// on every keystroke, not just once editing is truly finished, and for an
+// already-populated field a single keystroke can already look "complete"
+// (confirmed directly against the YEAR segment specifically — see
+// armPickerCommit()'s own comment). The calendar icon's own onclick now
+// arms a one-time listener at the exact moment it opens the picker, so only
+// a genuine picker selection — never a keystroke — can ever trigger it.
 
-test('an item with no milestones — its inline Due input also commits on change, not just blur', function () {
+test('an item with no milestones — its calendar icon arms a picker commit for the Due input, not a plain onchange', function () {
   const it = addItem({ name: 'No milestones', milestones: [] });
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onchange="debounceDateChange('${it.id}-due', () => { if(this.value) updateItemDateField('${it.id}','dueDate',this.value); })"`);
+  assertIncludes(html, `armPickerCommit(inp, v => updateItemDateField('${it.id}','dueDate',v))`);
+  assertNotIncludes(html, `onchange="if(this.value) updateItemDateField('${it.id}','dueDate'`, 'must not auto-commit on a plain onchange any more');
 });
 
-test('an item with no milestones — its inline Start input also commits on change', function () {
+test('an item with no milestones — its calendar icon arms a picker commit for the Start input', function () {
   const it = addItem({ name: 'No milestones', milestones: [] });
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onchange="debounceDateChange('${it.id}-start', () => { if(this.value) updateItemDateField('${it.id}','startDate',this.value); })"`);
+  assertIncludes(html, `armPickerCommit(inp, v => updateItemDateField('${it.id}','startDate',v))`);
 });
 
-test('a milestone sub-row\'s Due input also commits on change', function () {
+test('a milestone sub-row\'s Due input arms a picker commit via its calendar icon', function () {
   const it = addItem({
     name: 'Parent',
     milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null }]
@@ -796,10 +800,10 @@ test('a milestone sub-row\'s Due input also commits on change', function () {
   toggleItemExpanded(it.id);
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onchange="debounceDateChange('m1-due', () => { if(this.value) updateMilestoneDateField('${it.id}','m1','dueDate',this.value); })"`);
+  assertIncludes(html, `armPickerCommit(inp, v => updateMilestoneDateField('${it.id}','m1','dueDate',v))`);
 });
 
-test('a milestone sub-row\'s Actual input also commits on change', function () {
+test('a milestone sub-row\'s Actual input arms a picker commit via its calendar icon, tolerating a cleared value', function () {
   const it = addItem({
     name: 'Parent',
     milestones: [{ id: 'm1', name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: '2026-06-01' }]
@@ -807,65 +811,81 @@ test('a milestone sub-row\'s Actual input also commits on change', function () {
   toggleItemExpanded(it.id);
   renderMain();
   const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `onchange="debounceDateChange('m1-actual', () => { if(this.value) updateMilestoneDateField('${it.id}','m1','actualDate',this.value); })"`);
+  assertIncludes(html, `armPickerCommit(inp, v => updateMilestoneDateField('${it.id}','m1','actualDate',v || null))`);
 });
 
-// ---------- debounceDateChange()/cancelDateChangeDebounce() ----------
-// A later, user-reported bug ("commits after i hit one char"): for an
-// ALREADY-populated date field, completing just the first segment a user
-// touches (e.g. one digit of a new month, with day/year still the old,
-// untouched values) already reads as a complete, valid date to Chrome — so
-// the plain `if(this.value) update...(...)` onchange handler above used to
-// commit that wrong, premature composite value immediately, which called
-// render(), which rebuilt the row and destroyed the still-focused, still-
-// mid-edit input — silently swallowing every further keystroke. Wrapping
-// the commit in `debounceDateChange(key, applyFn)` (used by every onchange
-// handler above) coalesces a burst of same-field `change` events into a
-// single deferred commit, so a still-typing user's intermediate keystrokes
-// never trigger a re-render mid-edit — only the last event in a settled
-// burst actually runs. `cancelDateChangeDebounce(key)`, called from each
-// field's own onblur, both commits immediately on a real "user is done"
-// signal and prevents a stale timer from redundantly firing afterward.
-//
-// The JXA test harness stubs setTimeout as a no-op (see tests/harness.js) —
-// a scheduled debounce callback is never actually invoked under it, so the
-// timer *firing* isn't directly testable here; what's tested is the
-// observable, synchronous surface: that scheduling/cancelling correctly
-// manages dateChangeTimers, and (above) that every editable date input's
-// own onchange is actually wired through it rather than calling the update
-// function directly.
-
-test('debounceDateChange schedules a timer under the given key', function () {
-  delete dateChangeTimers['test-key'];
-  debounceDateChange('test-key', function () {});
-  assertTrue('test-key' in dateChangeTimers);
+test('a disabled date input (below Editor) never arms a picker commit — nothing to commit, no picker to open', function () {
+  userRole = 'visitor';
+  const it = addItem({ name: 'No milestones', milestones: [] });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'armPickerCommit');
 });
 
-test('debounceDateChange replaces any pending timer for the same key rather than stacking a second one', function () {
-  delete dateChangeTimers['test-key'];
-  debounceDateChange('test-key', function () {});
-  const firstTimerId = dateChangeTimers['test-key'];
-  debounceDateChange('test-key', function () {});
-  // both calls scheduled under the identical key, so the second call must
-  // have cleared the first timer before scheduling its own — there's only
-  // ever one live entry for a given key, never two independently pending
-  assertTrue('test-key' in dateChangeTimers);
-  cancelDateChangeDebounce('test-key');
-  assertFalse('test-key' in dateChangeTimers);
+// ---------- armPickerCommit() ----------
+// A later, user-reported bug — first "commits after i hit one char", then a
+// follow-up "still has problems with 4 digit years... commits after 2
+// digits" once the first fix (a debounce) turned out not to fully close the
+// gap. Root cause, confirmed directly by typing digit-by-digit into an
+// already-dated field's YEAR segment specifically: unlike month/day (which
+// need both digits before Chrome's `.value` stops reading `''`), the year
+// segment reports a real, non-empty, zero-padded value after just the
+// FIRST digit typed. No debounce window is safe against that — any pause
+// between year digits at all, which is ordinary typing, not an edge case,
+// still let a wrong, truncated year auto-commit and re-render, destroying
+// the still-focused input. The fix removes onchange-driven auto-commit
+// entirely: a keyboard edit now commits *only* on blur (a real, one-time,
+// deterministic "done" signal immune to Chrome's per-segment quirks), and
+// the picker case (which doesn't reliably blur) is handled separately and
+// precisely — armPickerCommit() arms a one-time `change` listener at the
+// exact moment the calendar icon opens the picker, so it can only ever
+// catch the one `change` event a genuine picker selection produces, never
+// an ordinary keystroke (which never goes anywhere near this code path).
+
+// The JXA test harness's own fake DOM elements (document.createElement(),
+// document.getElementById()) stub addEventListener/removeEventListener as
+// plain no-ops (see tests/harness.js) — real event dispatch isn't something
+// this harness supports at all, the same documented gap file-sync's own
+// IndexedDB-touching functions have. A hand-rolled plain object standing in
+// for a real EventTarget — the same "substitute a minimal fake, not the
+// real DOM mock" technique writeBackupCopy()'s own tests already use for
+// backupDirHandle — sidesteps that entirely: it implements just enough of
+// addEventListener/removeEventListener's real contract (storing/clearing a
+// single handler reference) for armPickerCommit()'s own logic to run for
+// real against it.
+function fakeChangeTarget(initialValue) {
+  let handler = null;
+  return {
+    value: initialValue,
+    addEventListener(type, fn) { if (type === 'change') handler = fn; },
+    removeEventListener(type, fn) { if (type === 'change' && handler === fn) handler = null; },
+    fireChange() { if (handler) handler(); }
+  };
+}
+
+test('armPickerCommit calls applyFn with the input\'s value once change fires, and only once', function () {
+  const input = fakeChangeTarget('2026-09-01');
+  const calls = [];
+  armPickerCommit(input, function (v) { calls.push(v); });
+  input.fireChange();
+  input.value = '2026-09-02';
+  input.fireChange(); // the listener already removed itself the first time
+  assertDeepEqual(calls, ['2026-09-01']);
 });
 
-test('cancelDateChangeDebounce removes the pending timer for that key, leaving others untouched', function () {
-  debounceDateChange('key-a', function () {});
-  debounceDateChange('key-b', function () {});
-  cancelDateChangeDebounce('key-a');
-  assertFalse('key-a' in dateChangeTimers);
-  assertTrue('key-b' in dateChangeTimers);
-  cancelDateChangeDebounce('key-b');
+test('armPickerCommit never calls applyFn if change never fires (picker opened, then abandoned)', function () {
+  const input = fakeChangeTarget('2026-09-01');
+  let called = false;
+  armPickerCommit(input, function () { called = true; });
+  assertFalse(called);
 });
 
-test('cancelDateChangeDebounce is a no-op (does not throw) when there is nothing pending for that key', function () {
-  cancelDateChangeDebounce('never-scheduled-key');
-  assertFalse('never-scheduled-key' in dateChangeTimers);
+test('armPickerCommit does not call applyFn if the input\'s value is empty when change fires', function () {
+  const input = fakeChangeTarget('');
+  let called = false;
+  armPickerCommit(input, function () { called = true; });
+  input.fireChange();
+  assertFalse(called);
 });
 
 test('an item row shows IT/Business/Budget tag badges colored by their current value', function () {

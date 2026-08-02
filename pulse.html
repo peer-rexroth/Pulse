@@ -3232,9 +3232,9 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
     : (total || reviewCycle)
     ? `<span class="item-dates-computed" title="${total ? 'Computed from the earliest and latest milestone date (due or actual)' : 'Not editable during a review'}">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>`
     : `<span class="item-dates-inline">
-      ${dateInputHtml(it.startDate, `title="Start date" ${editable ? `onchange="debounceDateChange('${it.id}-start', () => { if(this.value) updateItemDateField('${it.id}','startDate',this.value); })" onblur="cancelDateChangeDebounce('${it.id}-start'); if(this.value) updateItemDateField('${it.id}','startDate',this.value); else this.value='${it.startDate}'"` : 'disabled'}`)}
+      ${dateInputHtml(it.startDate, `title="Start date" ${editable ? `onblur="if(this.value) updateItemDateField('${it.id}','startDate',this.value); else this.value='${it.startDate}'"` : 'disabled'}`, '', editable ? `v => updateItemDateField('${it.id}','startDate',v)` : null)}
       <span class="item-dates-arrow">→</span>
-      ${dateInputHtml(it.dueDate, `title="Due date" ${editable ? `onchange="debounceDateChange('${it.id}-due', () => { if(this.value) updateItemDateField('${it.id}','dueDate',this.value); })" onblur="cancelDateChangeDebounce('${it.id}-due'); if(this.value) updateItemDateField('${it.id}','dueDate',this.value); else this.value='${it.dueDate}'"` : 'disabled'}`)}
+      ${dateInputHtml(it.dueDate, `title="Due date" ${editable ? `onblur="if(this.value) updateItemDateField('${it.id}','dueDate',this.value); else this.value='${it.dueDate}'"` : 'disabled'}`, '', editable ? `v => updateItemDateField('${it.id}','dueDate',v)` : null)}
     </span>`;
   // The item's own actualDate is still a real field (editable in the item
   // modal), just never shown/edited inline on the row — this used to get a
@@ -3587,7 +3587,7 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
           : ((!m.dueDate && !revealedDueIds.has(m.id))
               ? (dueEditable ? `<button class="due-date-ghost" title="Set a due date — not planned yet" onclick="revealDueDate('${m.id}')"><i class="fa-solid fa-plus"></i></button>` : '')
               : `<span class="item-dates-inline">
-                ${dateInputHtml(m.dueDate, `id="due-input-${m.id}" title="${dueOverdue ? 'Overdue — ' : ''}Due date" ${dueEditable ? `onchange="debounceDateChange('${m.id}-due', () => { if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value); })" onblur="cancelDateChangeDebounce('${m.id}-due'); if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value); else this.value='${m.dueDate || ''}'" ${isDueRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealDueDate('${m.id}')"` : ''}` : 'disabled'}`, dueOverdue ? 'pill-overdue' : '')}
+                ${dateInputHtml(m.dueDate, `id="due-input-${m.id}" title="${dueOverdue ? 'Overdue — ' : ''}Due date" ${dueEditable ? `onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value); else this.value='${m.dueDate || ''}'" ${isDueRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealDueDate('${m.id}')"` : ''}` : 'disabled'}`, dueOverdue ? 'pill-overdue' : '', dueEditable ? `v => updateMilestoneDateField('${it.id}','${m.id}','dueDate',v)` : null)}
               </span>`));
     // An unset Actual date starts hidden behind a muted "+" — it only needs
     // a value when a milestone actually finishes on a different date than
@@ -3623,7 +3623,7 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
               ? `<button class="actual-date-ghost" title="Set an actual date — only needed if this milestone finished on a different date than planned" onclick="revealActualDate('${m.id}')"><i class="fa-solid fa-plus"></i></button>`
               : `<button class="actual-date-ghost" disabled title="Set a due date first"><i class="fa-solid fa-plus"></i></button>`)
           : '')
-      : dateInputHtml(m.actualDate, `id="actual-input-${m.id}" ${actualLate ? 'title="Finished after its Due date"' : ''} ${actualEditable ? `onchange="debounceDateChange('${m.id}-actual', () => { if(this.value) updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value); })" onblur="cancelDateChangeDebounce('${m.id}-actual'); updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)" ${isRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealActualDate('${m.id}')"` : ''}` : 'disabled'}`, actualLate ? 'pill-overdue' : '');
+      : dateInputHtml(m.actualDate, `id="actual-input-${m.id}" ${actualLate ? 'title="Finished after its Due date"' : ''} ${actualEditable ? `onblur="updateMilestoneDateField('${it.id}','${m.id}','actualDate',this.value || null)" ${isRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealActualDate('${m.id}')"` : ''}` : 'disabled'}`, actualLate ? 'pill-overdue' : '', actualEditable ? `v => updateMilestoneDateField('${it.id}','${m.id}','actualDate',v || null)` : null);
     // The status badge freezes to a plain "N/A" while notApplicable — never
     // cycleable, and deliberately not showing whatever RAG color m.status
     // still holds underneath (see toggleMilestoneNotApplicable()'s own
@@ -3963,52 +3963,53 @@ function fmtDate(iso) {
 
 // Chrome fires `change` on a date input for every keystroke that produces
 // SOME syntactically complete-looking value — not just once, at the end,
-// once every segment has actually been filled in by the user. For a
-// genuinely blank field this is harmless (`this.value` reads `''` until all
-// three segments are filled — see each call site's own `if(this.value)`
-// guard), but for an ALREADY-POPULATED field it isn't: completing just the
-// FIRST segment the user touches (e.g. typing a new month while day/year
-// are still whatever they were before) already reads as a complete, valid
-// date — just one built from the newly-typed segment plus the *stale,
-// not-yet-edited* sibling segments — and the guard above can't tell that
-// apart from a value the user actually finished typing. A user-reported bug
-// ("commits after i hit one char") traced this exact composite value being
-// committed by the direct `onchange="if(this.value) update...(...)"` call
-// this app used to have — which called `render()`, which rebuilt the row
-// and destroyed the still-mid-edit, still-focused input, silently
-// swallowing every keystroke still to come.
+// once every segment has actually been filled in by the user — and this
+// app briefly (see below) tried to key an auto-commit off that event
+// directly. The first thing that looked like it would fix that (debouncing
+// the commit — waiting for a short pause in `change` events before actually
+// running it) turned out not to be safe either, once actually tested
+// digit-by-digit against the YEAR segment specifically: unlike month/day
+// (which need both digits before `.value` stops reading `''`), Chrome
+// considers the year segment "complete" — and reports a real, non-empty,
+// zero-padded `.value` — after just the *first* digit typed (confirmed
+// directly: typing a single "2" into an already-dated field's year segment
+// produced a genuinely non-empty, valid-looking ISO value immediately,
+// using that one digit alone). A debounce only protects against *fast*
+// consecutive keystrokes; any pause longer than the window between two year
+// digits — completely ordinary typing pace, not an edge case — still let a
+// wrong, truncated year commit and re-render, destroying the still-focused
+// input exactly like the original "commits after i hit one char" bug did
+// (a user report, "still has problems with 4 digit years... commits after 2
+// digits", caught this in practice). No fixed debounce window closes that
+// race for good, since the browser gives no reliable signal for "the user
+// is genuinely done with every segment" short of the field losing focus.
 //
-// `debounceDateChange(key, applyFn)` fixes this by coalescing a burst of
-// same-field `change` events into a single deferred commit, the same "wait
-// for things to settle, then act once" instinct `queueFileSyncWrite()`
-// already uses for a different burst-of-rapid-events problem (see "File
-// System Access API sync" in CLAUDE.md) — each call replaces any pending
-// timer for the same `key` with a fresh one, so only the *last* event in a
-// rapid sequence ever actually runs `applyFn`. Deliberately doesn't need to
-// capture `this.value` at schedule time either: since no render happens
-// until the debounce settles, the input's own DOM node is never replaced
-// mid-edit, so `applyFn` (an arrow function closing over the same `this`
-// the inline handler was called with) reads the input's live `.value`
-// fresh, whenever it finally runs — always the truly-latest, fully-typed
-// value regardless of how many intermediate events fired along the way.
-// `cancelDateChangeDebounce(key)` is called from each field's own `onblur`
-// (a real, deterministic "the user is done here" signal) so leaving the
-// field commits immediately rather than waiting out the debounce window,
-// and so a stale timer can't also fire later against a since-blurred field.
-// This also still covers the *other* documented reason `onchange` exists
-// here at all — the native calendar picker doesn't reliably fire `blur`
-// after a selection (see the "second, separate bug" this app's history
-// already worked through) — a single `change` event with no keyboard
-// follow-up simply commits once the debounce window elapses on its own.
-const DATE_CHANGE_DEBOUNCE_MS = 600;
-let dateChangeTimers = {};
-function debounceDateChange(key, applyFn) {
-  clearTimeout(dateChangeTimers[key]);
-  dateChangeTimers[key] = setTimeout(() => { delete dateChangeTimers[key]; applyFn(); }, DATE_CHANGE_DEBOUNCE_MS);
-}
-function cancelDateChangeDebounce(key) {
-  clearTimeout(dateChangeTimers[key]);
-  delete dateChangeTimers[key];
+// So `onchange` is no longer wired to auto-commit anything here at all —
+// every keyboard edit commits *only* on `onblur`, a real, one-time,
+// deterministic "the user is done" signal that's completely immune to
+// Chrome's own per-segment completeness quirks, since it doesn't try to
+// infer "done" from the value's shape. That leaves the other documented
+// reason `onchange` existed in the first place unhandled on its own: the
+// native calendar picker doesn't reliably fire `blur` after a selection
+// (see the "second, separate bug" this app's history already worked
+// through). `armPickerCommit(inputEl, applyFn)` covers exactly that case,
+// precisely rather than by inference — the calendar icon's own `onclick`
+// (the *only* way this app's UI opens the picker at all; its native
+// indicator is hidden, see `dateInputHtml()` below) arms a one-time
+// `change` listener at the exact moment `showPicker()` is called, so the
+// only `change` event it can ever catch is the one the picker itself
+// produces on a genuine selection — never an ordinary keystroke, since
+// typing never goes anywhere near this code path. The listener removes
+// itself after firing once (`{once:true}`, `removeEventListener` inside its
+// own handler as a defensive belt-and-braces backup) so an abandoned picker
+// (opened, then dismissed with Escape, no selection made) leaves nothing
+// armed to misfire later against a subsequent keyboard edit.
+function armPickerCommit(inputEl, applyFn) {
+  const handler = () => {
+    inputEl.removeEventListener('change', handler);
+    if (inputEl.value) applyFn(inputEl.value);
+  };
+  inputEl.addEventListener('change', handler, { once: true });
 }
 
 // Every inline, directly-editable date field on the status board (item
@@ -4019,19 +4020,21 @@ function cancelDateChangeDebounce(key) {
 // both. The date TEXT itself is untouched by this — a native date input
 // always renders using the OS/browser locale's own format (DD.MM.YY here),
 // same as before; only the surrounding chrome changed. `attrs` is a raw
-// string of whatever additional attributes that call site needs (onchange/
-// onblur/title/disabled/…) — every editable call site wires both `onchange`
-// (debounced, see `debounceDateChange()` just above) and `onblur` (an
-// immediate commit once the user actually leaves the field, and the thing
-// that cancels the debounce so it doesn't also fire redundantly later).
-// Only the icon opens the calendar popup (`showPicker()`, guarded since
-// it's not universally supported and a disabled input has nothing to open)
-// — clicking anywhere else in the pill (its padding/gap, not just the
-// narrow input itself) focuses the input so typing works immediately,
-// without also popping the calendar.
-function dateInputHtml(value, attrs, pillClass) {
+// string of whatever additional attributes that call site needs (onblur/
+// title/disabled/…) — `onblur` is every editable call site's *only* commit
+// path for a keyboard edit (see `armPickerCommit()`'s own comment just
+// above for why `onchange` no longer drives anything here). `pickerArmFn`
+// is an optional raw JS expression string — an arrow function taking the
+// picker-selected value, e.g. `v => updateItemDateField('<id>','startDate',v)`
+// — wired into the calendar icon's own `onclick` via `armPickerCommit()`;
+// omitted for a disabled field, which has no picker to open in the first
+// place (`showPicker()` itself is already guarded on `!inp.disabled`).
+// Clicking anywhere else in the pill (its padding/gap, not just the narrow
+// input itself) focuses the input so typing works immediately, without also
+// popping the calendar.
+function dateInputHtml(value, attrs, pillClass, pickerArmFn) {
   return `<span class="date-pill${pillClass ? ' ' + pillClass : ''}" onclick="if(event.target.tagName!=='INPUT' && event.target.tagName!=='I'){ const inp=this.querySelector('input'); if(!inp.disabled) inp.focus(); }">
-      <i class="fa-solid fa-calendar" onclick="const inp=this.nextElementSibling; if(inp.showPicker && !inp.disabled) inp.showPicker();"></i>
+      <i class="fa-solid fa-calendar" onclick="const inp=this.nextElementSibling; if(inp.showPicker && !inp.disabled){ inp.showPicker();${pickerArmFn ? ` armPickerCommit(inp, ${pickerArmFn});` : ''} }"></i>
       <input type="date" class="inline-date-input" value="${value || ''}" ${attrs || ''}>
     </span>`;
 }
