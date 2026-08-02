@@ -2009,7 +2009,12 @@ const DEFAULT_CATEGORIES = [
   { name: 'Development', milestones: ['Requirements Defined', 'Requirements Approved', 'Design Defined', 'Development Completed', 'Ready for Testing', 'Deployment Completed'] },
   { name: 'Artefact', milestones: ['Draft Completed', 'Ready for Review', 'Artefact Approved', 'Artefact Published'] },
   { name: 'Activity', milestones: ['Activity Planned', 'Activity Prepared', 'Ready for Execution', 'Activity Started', 'Activity Completed'] },
-  { name: 'Dependency', milestones: ['Requirements Defined', 'Delivery Commitment Confirmed', 'Dependency Delivered', 'Ready for Testing', 'Deployment Completed'] }
+  // `dependency: true` is what isDependencyCategory() actually keys off —
+  // see that function's own comment. Unlike `pending` on the reserved
+  // Pending category below, this carries no restrictions of its own
+  // (still deletable, still an ordinary pick in every selector) — it only
+  // exists so the auto-flag survives this category being renamed.
+  { name: 'Dependency', milestones: ['Requirements Defined', 'Delivery Commitment Confirmed', 'Dependency Delivered', 'Ready for Testing', 'Deployment Completed'], dependency: true }
 ];
 // Kept as an alias, not a second source of truth — several call sites and
 // tests only ever cared about "the first/default category's own milestone
@@ -2343,7 +2348,7 @@ function seedDefaults() {
   // gets it alongside the real out-of-the-box categories (DEFAULT_CATEGORIES)
   // so a brand-new item always has somewhere to land before its real
   // category is chosen (see applyScopeCategory()).
-  categories = DEFAULT_CATEGORIES.map((c, i) => ({ id: genId(), name: c.name, milestones: c.milestones.slice(), order: i }));
+  categories = DEFAULT_CATEGORIES.map((c, i) => ({ id: genId(), name: c.name, milestones: c.milestones.slice(), order: i, dependency: !!c.dependency }));
   categories.push({ id: genId(), name: 'Pending', milestones: ['Scope Item Confirmed'], pending: true, order: categories.length });
   reviewCycles = [];
   deletedWorkstreamIds = [];
@@ -2455,13 +2460,20 @@ function normalizeData() {
     if (!Array.isArray(c.milestones)) c.milestones = [];
     if (typeof c.order !== 'number') c.order = i;
     if (typeof c.pending !== 'boolean') c.pending = false;
+    // A category already named "Dependency" from before this flag existed
+    // is treated as the real one on this first backfill — a one-time
+    // migration matching isDependencyCategory()'s own old, pre-flag name
+    // check, so an existing save's auto-flag behavior doesn't silently stop
+    // working the moment this ships. After this runs once, only the flag
+    // itself is ever read again — see isDependencyCategory().
+    if (typeof c.dependency !== 'boolean') c.dependency = c.name.trim().toLowerCase() === 'dependency';
   });
   categories.sort((a, b) => a.order - b.order);
   // A programme with no categories at all (pre-categories save, or every
   // category deleted somehow) always gets the out-of-the-box set seeded
   // back in — items must always have a category to pick from and fall back to.
   if (categories.length === 0) {
-    categories = DEFAULT_CATEGORIES.map((c, i) => ({ id: genId(), name: c.name, milestones: c.milestones.slice(), order: i, pending: false }));
+    categories = DEFAULT_CATEGORIES.map((c, i) => ({ id: genId(), name: c.name, milestones: c.milestones.slice(), order: i, pending: false, dependency: !!c.dependency }));
   }
   // Likewise, a programme saved before the Pending category existed (or one
   // that's somehow lost it) always gets it added back — the quick-add flow
@@ -2797,14 +2809,17 @@ function categoryById(id) { return categories.find(c => c.id === id); }
 // offered as a choice in the scope-assign modal (openScopeAssignModal()).
 function pendingCategory() { return categories.find(c => c.pending); }
 function isPendingCategory(categoryId) { const c = categoryById(categoryId); return !!(c && c.pending); }
-// Matched by name (there's no reserved `dependency: true` flag on a category
-// the way Pending has `pending: true` — the out-of-the-box "Dependency"
-// category from DEFAULT_CATEGORIES is just an ordinary, user-editable
-// category like any other) — case/whitespace-insensitive, the same
-// tolerance mergeData()'s own name-dedup already uses. Picking this category
-// is what auto-checks the item's own Dependency flag — see
-// onItemCategoryChange()/applyScopeCategory().
-function isDependencyCategory(categoryId) { const c = categoryById(categoryId); return !!(c && c.name.trim().toLowerCase() === 'dependency'); }
+// A real `dependency: true` flag on the category itself (see
+// DEFAULT_CATEGORIES/seedDefaults()/normalizeData()), not a name match —
+// this used to check `c.name.trim().toLowerCase() === 'dependency'`
+// directly, which silently broke the moment someone renamed the category
+// (an easy, easy-to-miss mistake, with no error to notice). Unlike Pending's
+// own `pending: true`, this flag carries none of Pending's restrictions —
+// the Dependency category stays fully deletable, renamable, and an ordinary
+// pick everywhere a category can be chosen; the flag exists purely so
+// picking it still auto-checks the item's own Dependency flag (see
+// onItemCategoryChange()/applyScopeCategory()) even after a rename.
+function isDependencyCategory(categoryId) { const c = categoryById(categoryId); return !!(c && c.dependency); }
 // Every scope item currently linked to the given Sub Journey (item.journeyId
 // — set/cleared by toggleJourneyConnection(), see "Journeys" below), in
 // itemRowHtml()/renderStatusView()'s own manual-order sort. Despite the

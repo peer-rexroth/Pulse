@@ -82,20 +82,59 @@ test('onItemCategoryChange does nothing while editing an existing item (never re
 
 // ---------- Picking the Dependency category auto-flags the item ----------
 // An explicit user request ("if a scope item gets the category Dependency
-// assigned, set the Dependency flag with it"). Matched by name
-// (isDependencyCategory()), since there's no reserved boolean on a category
-// the way Pending has `pending: true` — the out-of-the-box "Dependency"
-// category is an ordinary, user-editable one like any other.
+// assigned, set the Dependency flag with it"). isDependencyCategory() keys
+// off a real `dependency: true` flag on the category object — a later,
+// explicit follow-up ("should I make Dependency a reserved category?")
+// replacing an original name-match (`c.name === 'Dependency'`) that broke
+// silently the moment the category was renamed. Unlike Pending's own
+// `pending: true`, this flag carries none of Pending's restrictions — the
+// category stays freely deletable/renamable/selectable everywhere.
 
-test('isDependencyCategory matches the out-of-the-box "Dependency" category by name, case/whitespace-insensitively', function () {
+test('DEFAULT_CATEGORIES seeds the Dependency entry with dependency:true, and every other category with false', function () {
+  const dep = categories.find(c => c.name === 'Dependency');
+  assertTrue(dep.dependency);
+  categories.filter(c => c.name !== 'Dependency').forEach(c =>
+    assertFalse(!!c.dependency, `${c.name} should not carry the dependency flag`));
+});
+
+test('isDependencyCategory checks the dependency flag, not the name — renaming the category no longer breaks it', function () {
   const dep = categories.find(c => c.name === 'Dependency');
   assertTrue(isDependencyCategory(dep.id));
   assertFalse(isDependencyCategory(categories[0].id));
-  const custom = categories[categories.length - 1];
-  const originalName = custom.name;
-  custom.name = '  dependency  ';
-  assertTrue(isDependencyCategory(custom.id));
-  custom.name = originalName;
+  dep.name = 'External Dependency (renamed)';
+  assertTrue(isDependencyCategory(dep.id), 'the flag survives a rename, unlike the old name-match');
+  // Conversely, a category that merely happens to be named "Dependency"
+  // without the real flag must not match.
+  const impostor = categories[0];
+  const originalName = impostor.name;
+  impostor.name = 'Dependency';
+  assertFalse(isDependencyCategory(impostor.id));
+  impostor.name = originalName;
+});
+
+test('normalizeData migrates a pre-existing "Dependency"-named category with no flag yet to dependency:true, so an older save keeps working', function () {
+  categories = [
+    { id: genId(), name: 'Development', milestones: ['A'], order: 0 },
+    { id: genId(), name: '  Dependency  ', milestones: ['B'], order: 1 }
+  ];
+  normalizeData();
+  assertFalse(categories[0].dependency);
+  assertTrue(categories[1].dependency, 'a legacy category literally named Dependency should be treated as the real one on first backfill');
+});
+
+test('normalizeData backfills a missing dependency flag to false on an ordinary category', function () {
+  categories = [{ id: genId(), name: 'Development', milestones: ['A'], order: 0 }];
+  normalizeData();
+  assertEqual(categories[0].dependency, false);
+});
+
+test('saveCategory preserves the dependency flag across a rename — editing only ever touches name/milestones', function () {
+  const dep = categories.find(c => c.name === 'Dependency');
+  openCategoryModal(dep.id);
+  document.getElementById('categoryNameInput').value = 'Renamed Dependency Category';
+  saveCategory();
+  assertTrue(dep.dependency, 'saveCategory() must never clobber the flag while editing name/milestones');
+  assertEqual(dep.name, 'Renamed Dependency Category');
 });
 
 test('onItemCategoryChange checks the Dependency checkbox when the Dependency category is picked, while creating a new item', function () {
