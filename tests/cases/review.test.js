@@ -47,13 +47,20 @@ test('a review cycle cannot complete until every current item is confirmed', fun
 });
 
 test('toggleReviewConfirm toggles a single item confirmation on and off', function () {
+  // Confirmation records are now created once and only ever flipped (see
+  // isMilestoneConfirmedInCycle()'s own comment) — un-confirming leaves a
+  // {confirmed:false, updatedAt} record behind rather than removing it
+  // outright, which is what lets a concurrent edit on another device merge
+  // in correctly instead of looking indistinguishable from "never touched".
   const it = addReviewItem({});
   startReviewCycle(workstreams[0].id);
   const cycle = activeReviewCycle(workstreams[0].id);
   toggleReviewConfirm(cycle.id, it.id);
   assertEqual(reviewCycles[0].confirmations.length, 1);
+  assertTrue(reviewCycles[0].confirmations[0].confirmed);
   toggleReviewConfirm(cycle.id, it.id);
-  assertEqual(reviewCycles[0].confirmations.length, 0);
+  assertEqual(reviewCycles[0].confirmations.length, 1, 'the record stays, just flipped — not spliced out');
+  assertFalse(reviewCycles[0].confirmations[0].confirmed);
 });
 
 test('an item added mid-cycle is automatically an unconfirmed blocker, with no extra bookkeeping', function () {
@@ -1154,13 +1161,17 @@ test('an item with milestones is not confirmed until every one of its milestones
 });
 
 test('toggleMilestoneConfirm toggles a single milestone confirmation on and off', function () {
+  // Same "record stays, just flipped" shape as toggleReviewConfirm() — see
+  // that test's own comment.
   const it = addReviewItemWithMilestones(['A']);
   startReviewCycle(workstreams[0].id);
   const cycle = activeReviewCycle(workstreams[0].id);
   toggleMilestoneConfirm(cycle.id, it.milestones[0].id);
   assertEqual(reviewCycles[0].milestoneConfirmations.length, 1);
+  assertTrue(reviewCycles[0].milestoneConfirmations[0].confirmed);
   toggleMilestoneConfirm(cycle.id, it.milestones[0].id);
-  assertEqual(reviewCycles[0].milestoneConfirmations.length, 0);
+  assertEqual(reviewCycles[0].milestoneConfirmations.length, 1);
+  assertFalse(reviewCycles[0].milestoneConfirmations[0].confirmed);
 });
 
 test('toggleConfirmAllMilestones confirms every milestone on an item at once, and unconfirms all if already all confirmed', function () {
@@ -1170,9 +1181,11 @@ test('toggleConfirmAllMilestones confirms every milestone on an item at once, an
   toggleConfirmAllMilestones(cycle.id, it.id);
   assertTrue(isItemConfirmedInCycle(cycle, it));
   assertEqual(reviewCycles[0].milestoneConfirmations.length, 3);
+  assertTrue(reviewCycles[0].milestoneConfirmations.every(x => x.confirmed));
   toggleConfirmAllMilestones(cycle.id, it.id);
   assertFalse(isItemConfirmedInCycle(cycle, it));
-  assertEqual(reviewCycles[0].milestoneConfirmations.length, 0);
+  assertEqual(reviewCycles[0].milestoneConfirmations.length, 3, 'records stay, just flipped back to unconfirmed');
+  assertTrue(reviewCycles[0].milestoneConfirmations.every(x => !x.confirmed));
 });
 
 test('toggleConfirmAllMilestones only adds the still-unconfirmed milestones, leaving already-confirmed ones alone', function () {

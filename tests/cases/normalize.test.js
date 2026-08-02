@@ -21,8 +21,13 @@ test('normalizeData backfills missing fields on a hand-built milestone', functio
 });
 
 test('normalizeData backfills a missing/malformed reviewCycle.minutes to null', function () {
+  // Different (fake) workstreamIds — normalizeData()'s reconcileDuplicateActiveCycles()
+  // would otherwise fold these two together as "two active cycles for the
+  // same workstream", which is a different concern than the one this test
+  // covers (see review.test.js's own "two active cycles for the same
+  // workstream get folded together" test for that).
   reviewCycles.push({ id: 'rc1', workstreamId: workstreams[0].id });
-  reviewCycles.push({ id: 'rc2', workstreamId: workstreams[0].id, minutes: 'not an object' });
+  reviewCycles.push({ id: 'rc2', workstreamId: 'ws-other', minutes: 'not an object' });
   normalizeData();
   assertEqual(reviewCycles[0].minutes, null);
   assertEqual(reviewCycles[1].minutes, null, 'a malformed minutes value should be reset, not kept as-is');

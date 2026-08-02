@@ -2132,6 +2132,14 @@ let deletedItemIds = [];
 // because that milestone's id is merely absent from the local array (see
 // mergeData()'s milestone-level merge).
 let deletedMilestoneIds = [];
+// A workstream's actionLog/decisionLog entries are now merged field-by-field
+// like items/milestones (see mergeKeyedRecords()) rather than the whole
+// workstream being skipped once its id is known — so a genuine removal
+// (deleteActionLogItem()/deleteDecisionLogItem(), or the implicit drop in
+// syncDecisionLogFromMinutes()) needs its own tombstone, the same reason
+// deletedMilestoneIds exists, or a stale incoming copy could resurrect it.
+let deletedActionLogIds = [];
+let deletedDecisionLogIds = [];
 let pendingImportData = null;
 let modalTarget = null;
 
@@ -2157,6 +2165,8 @@ function load() {
     deletedWorkstreamIds = raw.deletedWorkstreamIds || [];
     deletedItemIds = raw.deletedItemIds || [];
     deletedMilestoneIds = raw.deletedMilestoneIds || [];
+    deletedActionLogIds = raw.deletedActionLogIds || [];
+    deletedDecisionLogIds = raw.deletedDecisionLogIds || [];
   } else {
     seedDefaults();
   }
@@ -2166,7 +2176,8 @@ function load() {
 function save() {
   const data = {
     programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
-    filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds
+    filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
+    deletedActionLogIds, deletedDecisionLogIds
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   queueFileSyncWrite();
@@ -2209,6 +2220,8 @@ function seedDefaults() {
   deletedWorkstreamIds = [];
   deletedItemIds = [];
   deletedMilestoneIds = [];
+  deletedActionLogIds = [];
+  deletedDecisionLogIds = [];
 }
 
 // Takes at most one rolling snapshot per calendar day, keeping the last
@@ -2251,14 +2264,26 @@ function normalizeData() {
   if (!Array.isArray(deletedWorkstreamIds)) deletedWorkstreamIds = [];
   if (!Array.isArray(deletedItemIds)) deletedItemIds = [];
   if (!Array.isArray(deletedMilestoneIds)) deletedMilestoneIds = [];
+  if (!Array.isArray(deletedActionLogIds)) deletedActionLogIds = [];
+  if (!Array.isArray(deletedDecisionLogIds)) deletedDecisionLogIds = [];
   deletedWorkstreamIds = deletedWorkstreamIds.filter(x => x && x.id);
   deletedItemIds = deletedItemIds.filter(x => x && x.id);
   deletedMilestoneIds = deletedMilestoneIds.filter(x => x && x.id);
+  deletedActionLogIds = deletedActionLogIds.filter(x => x && x.id);
+  deletedDecisionLogIds = deletedDecisionLogIds.filter(x => x && x.id);
 
   workstreams.forEach((w, i) => {
     if (!isSafeId(w.id)) w.id = genId();
     if (!w.color) w.color = WS_COLORS[i % WS_COLORS.length];
     if (typeof w.order !== 'number') w.order = i;
+    // updatedAt drives mergeWorkstreamFields()'s scalar merge (name/color) —
+    // legacy data predating this field backfills to 0 (genuinely unknown
+    // age), not Date.now(), so it never wins a merge against a real
+    // timestamp from elsewhere purely because this device loaded it first —
+    // the same reasoning a milestone's own updatedAt backfill already uses,
+    // just with no real per-workstream field to derive a closer approximation
+    // from.
+    if (typeof w.updatedAt !== 'number') w.updatedAt = 0;
     // actionLog is the workstream-wide, review-cycle-spanning list action
     // items land in once imported from a cycle's minutes (see
     // syncActionLogFromMinutes()) — independent of any one cycle's own
@@ -2273,6 +2298,10 @@ function normalizeData() {
       if (typeof a.completedAt !== 'number') a.completedAt = null;
       if (typeof a.addedAt !== 'number') a.addedAt = Date.now();
       if (typeof a.flagged !== 'boolean') a.flagged = false;
+      // Backfilled from addedAt, not Date.now() — same "closest honest
+      // approximation of when this was last known to be in this state"
+      // reasoning a milestone's own updatedAt backfill uses.
+      if (typeof a.updatedAt !== 'number') a.updatedAt = a.addedAt;
     });
     // decisionLog is actionLog's counterpart for the Decisions section of
     // meeting minutes (see syncDecisionLogFromMinutes()) — same "workstream-
@@ -2284,6 +2313,7 @@ function normalizeData() {
       if (typeof d.text !== 'string') d.text = '';
       if (typeof d.addedAt !== 'number') d.addedAt = Date.now();
       if (typeof d.flagged !== 'boolean') d.flagged = false;
+      if (typeof d.updatedAt !== 'number') d.updatedAt = d.addedAt;
     });
   });
   workstreams.sort((a, b) => a.order - b.order);
@@ -2321,7 +2351,22 @@ function normalizeData() {
     if (typeof c.cancelledAt !== 'number') c.cancelledAt = null;
     if (!Array.isArray(c.confirmations)) c.confirmations = [];
     if (!Array.isArray(c.milestoneConfirmations)) c.milestoneConfirmations = [];
+    // Migrate the old confirmation shape ({itemId|milestoneId, confirmedAt},
+    // presence in the array meaning confirmed) to the current one
+    // ({itemId|milestoneId, confirmed, updatedAt}, a record created once and
+    // only ever flipped — see isMilestoneConfirmedInCycle()'s own comment for
+    // why). Idempotent: a record already in the new shape (confirmed already
+    // a real boolean) is left alone.
+    [c.confirmations, c.milestoneConfirmations].forEach(list => {
+      list.forEach(x => {
+        if (typeof x.confirmed !== 'boolean') x.confirmed = true;
+        if (typeof x.updatedAt !== 'number') x.updatedAt = x.confirmedAt || 0;
+      });
+    });
     if (!Array.isArray(c.changeLog)) c.changeLog = [];
+    // A changeLog entry is otherwise identity-less — see logReviewChange()'s
+    // own comment for why id is needed (mergeReviewCycle()'s union-by-id).
+    c.changeLog.forEach(e => { if (!isSafeId(e.id)) e.id = genId(); });
     if (!c.minutes || typeof c.minutes !== 'object') {
       c.minutes = null;
     } else {
@@ -2329,6 +2374,10 @@ function normalizeData() {
       if (typeof c.minutes.decisions !== 'string') c.minutes.decisions = '';
       if (typeof c.minutes.nextSteps !== 'string') c.minutes.nextSteps = '';
       if (typeof c.minutes.importedAt !== 'number') c.minutes.importedAt = Date.now();
+      // Drives mergeReviewCycle()'s whole-object last-write-wins merge for
+      // minutes — backfills from importedAt, the closest honest
+      // approximation for legacy data predating this field.
+      if (typeof c.minutes.updatedAt !== 'number') c.minutes.updatedAt = c.minutes.importedAt;
       // actionItems used to be a single free-text field (pre-table design) —
       // fold a leftover string into one row rather than dropping it.
       if (typeof c.minutes.actionItems === 'string') {
@@ -2344,6 +2393,15 @@ function normalizeData() {
       });
     }
   });
+  // Two people clicking "Start review cycle" for the same workstream before
+  // either side had synced the other's write can leave two distinct cycles
+  // both marked active — activeReviewCycle() only ever finds the first
+  // match, so the second would otherwise sit invisibly in reviewCycles with
+  // its own confirmations/changeLog nobody ever sees again. Runs on every
+  // load/merge, not just right after a merge that could have caused it —
+  // cheap, and self-heals the same situation however it arose (including
+  // from data saved before this reconciliation existed at all).
+  reconcileDuplicateActiveCycles();
   // Migrate pre-nested-milestone data: a standalone item with type:'milestone'
   // used to be its own top-level row. Fold each one into its own single-milestone
   // scope item rather than silently dropping it.
@@ -4637,9 +4695,9 @@ function saveWorkstream() {
   let savedWs;
   if (editingWsId) {
     savedWs = wsById(editingWsId);
-    savedWs.name = name; savedWs.color = wsColorChoice;
+    savedWs.name = name; savedWs.color = wsColorChoice; savedWs.updatedAt = Date.now();
   } else {
-    savedWs = { id: genId(), name, color: wsColorChoice, order: workstreams.length };
+    savedWs = { id: genId(), name, color: wsColorChoice, order: workstreams.length, updatedAt: Date.now() };
     workstreams.push(savedWs);
   }
   save(); closeWorkstreamModal(); render();
@@ -5775,7 +5833,11 @@ function logReviewChange(workstreamId, itemName, milestoneName, changeText, extr
   const cycle = activeReviewCycle(workstreamId);
   if (!cycle) return;
   if (!Array.isArray(cycle.changeLog)) cycle.changeLog = [];
-  cycle.changeLog.push(Object.assign({ itemName, milestoneName: milestoneName || null, change: changeText, changedAt: Date.now() }, extra));
+  // id is what lets mergeReviewCycle() union two concurrently-edited copies
+  // of the same cycle's changeLog by entry rather than trusting array order
+  // — a changeLog entry is otherwise identity-less (unlike an item/milestone,
+  // which already has one).
+  cycle.changeLog.push(Object.assign({ id: genId(), itemName, milestoneName: milestoneName || null, change: changeText, changedAt: Date.now() }, extra));
 }
 function reviewCyclesForWs(wsId) {
   return reviewCycles.filter(c => c.workstreamId === wsId);
@@ -5808,8 +5870,20 @@ function startReviewCycle(wsId) {
 // regardless of whether this milestone was ever manually confirmed in a
 // past cycle — a milestone finished a year ago and never explicitly
 // clicked still reads as confirmed today.
+// cycle.confirmations/cycle.milestoneConfirmations hold one record per key
+// that's created once and only ever flipped — {itemId|milestoneId, confirmed,
+// updatedAt} — rather than the old "presence in the array = confirmed, splice
+// to un-confirm" shape (still what old saves have on disk; see
+// normalizeData()'s migration). This is deliberate: a plain presence/absence
+// array can't carry an updatedAt on removal (the record's just gone), which
+// is exactly what made these un-mergeable across two concurrently-edited
+// copies of the same cycle — see mergeReviewCycle()/mergeKeyedRecords(). A
+// record only ever exists once its key has been toggled at least once;
+// absence still means "never confirmed", same as before.
 function isMilestoneConfirmedInCycle(cycle, m) {
-  return m.status === 'complete' || cycle.milestoneConfirmations.some(x => x.milestoneId === m.id);
+  if (m.status === 'complete') return true;
+  const rec = cycle.milestoneConfirmations.find(x => x.milestoneId === m.id);
+  return !!rec && rec.confirmed;
 }
 // A milestone marked notApplicable is excluded from "every milestone must
 // be confirmed" — there's nothing to confirm, so it can never be the thing
@@ -5829,24 +5903,45 @@ function isItemConfirmedInCycle(cycle, it) {
   // A zero-milestone item's own status can be Complete too — same
   // auto-confirm treatment as a Complete milestone just above, for the
   // same reason.
-  return it.status === 'complete' || cycle.confirmations.some(c => c.itemId === it.id);
+  if (it.status === 'complete') return true;
+  const rec = cycle.confirmations.find(c => c.itemId === it.id);
+  return !!rec && rec.confirmed;
+}
+// Finds (or creates) the record for `key` in `list` and sets its `confirmed`
+// flag to exactly `confirmed`, stamping updatedAt only when that's an actual
+// change (a redundant set-to-what-it-already-was must not bump updatedAt —
+// see toggleConfirmAllMilestones()'s "already-Complete milestone" case, which
+// relies on this to stay a true no-op for merge purposes).
+function setConfirmRecord(list, keyField, keyValue, confirmed) {
+  const rec = list.find(x => x[keyField] === keyValue);
+  if (!rec) {
+    // Absence already means "not confirmed" — materializing a record just to
+    // set it to false would be a redundant entry (see
+    // toggleConfirmAllMilestones()'s "already-Complete milestone" case,
+    // which relies on this staying a true no-op).
+    if (!confirmed) return;
+    list.push({ [keyField]: keyValue, confirmed: true, updatedAt: Date.now() });
+    return;
+  }
+  if (rec.confirmed !== confirmed) { rec.confirmed = confirmed; rec.updatedAt = Date.now(); }
+}
+// The shared toggle mechanic behind toggleReviewConfirm()/toggleMilestoneConfirm().
+function toggleConfirmRecord(list, keyField, keyValue) {
+  const rec = list.find(x => x[keyField] === keyValue);
+  setConfirmRecord(list, keyField, keyValue, !(rec && rec.confirmed));
 }
 function toggleReviewConfirm(cycleId, itemId) {
   if (!requireRole('reviewer')) return;
   const cycle = reviewCycles.find(c => c.id === cycleId);
   if (!cycle) return;
-  const idx = cycle.confirmations.findIndex(x => x.itemId === itemId);
-  if (idx === -1) cycle.confirmations.push({ itemId, confirmedAt: Date.now() });
-  else cycle.confirmations.splice(idx, 1);
+  toggleConfirmRecord(cycle.confirmations, 'itemId', itemId);
   save(); render();
 }
 function toggleMilestoneConfirm(cycleId, milestoneId) {
   if (!requireRole('reviewer')) return;
   const cycle = reviewCycles.find(c => c.id === cycleId);
   if (!cycle) return;
-  const idx = cycle.milestoneConfirmations.findIndex(x => x.milestoneId === milestoneId);
-  if (idx === -1) cycle.milestoneConfirmations.push({ milestoneId, confirmedAt: Date.now() });
-  else cycle.milestoneConfirmations.splice(idx, 1);
+  toggleConfirmRecord(cycle.milestoneConfirmations, 'milestoneId', milestoneId);
   save(); render();
 }
 // Confirms every one of the item's not-yet-confirmed milestones in one
@@ -5870,17 +5965,18 @@ function toggleConfirmAllMilestones(cycleId, itemId) {
   if (!applicable.length) return;
   const allConfirmed = applicable.every(m => isMilestoneConfirmedInCycle(cycle, m));
   if (allConfirmed) {
-    cycle.milestoneConfirmations = cycle.milestoneConfirmations.filter(x => !applicable.some(m => m.id === x.milestoneId));
+    applicable.forEach(m => setConfirmRecord(cycle.milestoneConfirmations, 'milestoneId', m.id, false));
   } else {
     // A Complete milestone already reads as confirmed via
-    // isMilestoneConfirmedInCycle() regardless of a stored entry, so this
-    // naturally skips ever pushing a redundant one for it — same as it
-    // already skipped notApplicable ones being filtered out of `applicable`
+    // isMilestoneConfirmedInCycle()'s own status shortcut, with or without a
+    // stored record — checked explicitly here (not left to setConfirmRecord's
+    // own no-op check, which only compares against a record's existing
+    // `confirmed` value and has no way to know about that shortcut) so this
+    // naturally skips ever creating a redundant record for one, same as it
+    // already skips notApplicable ones being filtered out of `applicable`
     // above.
     applicable.forEach(m => {
-      if (!isMilestoneConfirmedInCycle(cycle, m)) {
-        cycle.milestoneConfirmations.push({ milestoneId: m.id, confirmedAt: Date.now() });
-      }
+      if (!isMilestoneConfirmedInCycle(cycle, m)) setConfirmRecord(cycle.milestoneConfirmations, 'milestoneId', m.id, true);
     });
   }
   save(); render();
@@ -6917,6 +7013,7 @@ function toggleActionLogItem(wsId, itemId) {
   if (!a) return;
   a.completed = !a.completed;
   a.completedAt = a.completed ? Date.now() : null;
+  a.updatedAt = Date.now();
   save(); render();
 }
 // The priority flag toggle — a plain boolean, independent of completed/
@@ -6930,6 +7027,7 @@ function toggleActionLogFlag(wsId, itemId) {
   const a = w.actionLog.find(x => x.id === itemId);
   if (!a) return;
   a.flagged = !a.flagged;
+  a.updatedAt = Date.now();
   save(); render();
 }
 // Deleting a log entry only removes it from the workstream's actionLog —
@@ -6942,11 +7040,12 @@ function toggleActionLogFlag(wsId, itemId) {
 // Undoable via the same toast-with-undo pattern deleteItem()/
 // deleteWorkstreamFromModal() already use, extended here to Action Log —
 // an explicit later user request ("build an undo... for delete
-// operations"). No tombstoning needed the way item/workstream deletes have
-// (deletedItemIds/deletedWorkstreamIds) — an action log entry has never
-// been part of that cross-device merge/tombstone system at all (see
-// "Merge and last-write-wins" in CLAUDE.md), so this is just a plain
-// splice-out/splice-back-in.
+// operations"). Now tombstoned too (deletedActionLogIds), the same as an
+// item/milestone delete — a workstream's actionLog is genuinely mergeable
+// now (see mergeWorkstreamFields()), so a plain splice-out is no longer
+// enough on its own: without a tombstone, a stale incoming copy of this
+// workstream's actionLog (another device, synced before this delete) could
+// silently resurrect the very entry just deleted.
 function deleteActionLogItem(wsId, itemId) {
   if (!requireRole('reviewer')) return;
   const w = wsById(wsId);
@@ -6960,8 +7059,10 @@ function deleteActionLogItem(wsId, itemId) {
       const idx = w.actionLog.findIndex(x => x.id === itemId);
       if (idx === -1) return;
       const [removed] = w.actionLog.splice(idx, 1);
+      tombstone(deletedActionLogIds, itemId);
       save(); render();
       showToast('Action item deleted', false, () => {
+        untombstone(deletedActionLogIds, itemId);
         w.actionLog.splice(idx, 0, removed);
         save(); render();
         showToast('Action item restored');
@@ -6974,7 +7075,12 @@ function deleteActionLogItem(wsId, itemId) {
 // cycle and is completable on its own, independent of the review's confirm
 // checkmarks. Re-saving minutes updates an existing log entry's text/owner/
 // due date in place (matched by action item id) without touching its
-// completed state; a brand new action item id is appended.
+// completed state; a brand new action item id is appended. updatedAt only
+// bumps when text/owner/dueDate actually changed — same "don't make an
+// untouched record look freshly edited" discipline stampChangedMilestones()
+// already applies to an item's own milestones, needed here for the same
+// reason: mergeKeyedRecords() uses updatedAt to decide which side of a
+// concurrent edit wins.
 function syncActionLogFromMinutes(cycle, actionItems) {
   const w = wsById(cycle.workstreamId);
   if (!w) return;
@@ -6982,18 +7088,22 @@ function syncActionLogFromMinutes(cycle, actionItems) {
   actionItems.forEach(a => {
     const existing = w.actionLog.find(x => x.id === a.id);
     if (existing) {
+      const changed = existing.text !== a.text || existing.owner !== a.owner || existing.dueDate !== a.dueDate;
       existing.text = a.text; existing.owner = a.owner; existing.dueDate = a.dueDate;
+      if (changed) existing.updatedAt = Date.now();
     } else {
-      w.actionLog.push({ id: a.id, text: a.text, owner: a.owner, dueDate: a.dueDate, completed: false, completedAt: null, cycleId: cycle.id, addedAt: Date.now(), flagged: false });
+      w.actionLog.push({ id: a.id, text: a.text, owner: a.owner, dueDate: a.dueDate, completed: false, completedAt: null, cycleId: cycle.id, addedAt: Date.now(), updatedAt: Date.now(), flagged: false });
     }
   });
 }
 // Counterpart to syncActionLogFromMinutes() — called from removeMinutes()
 // so a cycle's action items don't linger, orphaned, on the workstream's
-// Action Log once the minutes they came from are gone.
+// Action Log once the minutes they came from are gone. Tombstones what it
+// removes, same reason deleteActionLogItem() does.
 function removeActionLogForCycle(cycle) {
   const w = wsById(cycle.workstreamId);
   if (!w || !Array.isArray(w.actionLog)) return;
+  w.actionLog.forEach(a => { if (a.cycleId === cycle.id) tombstone(deletedActionLogIds, a.id); });
   w.actionLog = w.actionLog.filter(a => a.cycleId !== cycle.id);
 }
 // Splits a meeting's raw Decisions text into individual decisions — one per
@@ -7112,7 +7222,8 @@ function allWorkstreamsDecisionLogHtml() {
 // minutes unchanged would re-add it via syncDecisionLogFromMinutes()'s own
 // text match).
 // deleteActionLogItem()'s own counterpart, same plain splice-out/splice-
-// back-in undo (no tombstoning — see that function's own comment).
+// back-in undo, now tombstoned (deletedDecisionLogIds) for the identical
+// reason that function's own comment explains.
 function deleteDecisionLogItem(wsId, itemId) {
   if (!requireRole('reviewer')) return;
   const w = wsById(wsId);
@@ -7126,8 +7237,10 @@ function deleteDecisionLogItem(wsId, itemId) {
       const idx = w.decisionLog.findIndex(x => x.id === itemId);
       if (idx === -1) return;
       const [removed] = w.decisionLog.splice(idx, 1);
+      tombstone(deletedDecisionLogIds, itemId);
       save(); render();
       showToast('Decision deleted', false, () => {
+        untombstone(deletedDecisionLogIds, itemId);
         w.decisionLog.splice(idx, 0, removed);
         save(); render();
         showToast('Decision restored');
@@ -7143,6 +7256,7 @@ function toggleDecisionLogFlag(wsId, itemId) {
   const d = w.decisionLog.find(x => x.id === itemId);
   if (!d) return;
   d.flagged = !d.flagged;
+  d.updatedAt = Date.now();
   save(); render();
 }
 // syncActionLogFromMinutes()'s counterpart for Decisions, called at the same
@@ -7154,8 +7268,13 @@ function toggleDecisionLogFlag(wsId, itemId) {
 // the same text, or one that happens to read identically in another cycle,
 // is never confused with this one). An unchanged line keeps its original
 // row (and addedAt); a line that doesn't match anything still on this
-// cycle's rows is a new decision and gets a fresh id/addedAt; any of this
-// cycle's rows whose text no longer appears in the resaved text is dropped.
+// cycle's rows is a new decision and gets a fresh id/addedAt/updatedAt; any
+// of this cycle's rows whose text no longer appears in the resaved text is
+// dropped — and now tombstoned, not just dropped: without that, a later
+// merge with a stale incoming copy of this workstream's decisionLog (unaware
+// this row was intentionally removed here) could silently resurrect it —
+// the same risk deleteDecisionLogItem() guards against, just reached via an
+// implicit removal instead of an explicit one.
 function syncDecisionLogFromMinutes(cycle, decisionsText) {
   const w = wsById(cycle.workstreamId);
   if (!w) return;
@@ -7165,16 +7284,19 @@ function syncDecisionLogFromMinutes(cycle, decisionsText) {
   const kept = linesToDecisions(decisionsText).map(text => {
     const match = existingForCycle.find(d => d.text === text && !used.has(d.id));
     if (match) { used.add(match.id); return match; }
-    return { id: genId(), text, cycleId: cycle.id, addedAt: Date.now(), flagged: false };
+    return { id: genId(), text, cycleId: cycle.id, addedAt: Date.now(), updatedAt: Date.now(), flagged: false };
   });
+  existingForCycle.forEach(d => { if (!used.has(d.id)) tombstone(deletedDecisionLogIds, d.id); });
   w.decisionLog = w.decisionLog.filter(d => d.cycleId !== cycle.id).concat(kept);
 }
 // Counterpart to syncDecisionLogFromMinutes() — called from removeMinutes()
 // so a cycle's decisions don't linger, orphaned, on the workstream's
-// Decision Log once the minutes they came from are gone.
+// Decision Log once the minutes they came from are gone. Tombstones what it
+// removes, same reason deleteDecisionLogItem() does.
 function removeDecisionLogForCycle(cycle) {
   const w = wsById(cycle.workstreamId);
   if (!w || !Array.isArray(w.decisionLog)) return;
+  w.decisionLog.forEach(d => { if (d.cycleId === cycle.id) tombstone(deletedDecisionLogIds, d.id); });
   w.decisionLog = w.decisionLog.filter(d => d.cycleId !== cycle.id);
 }
 // "All Workstreams" landing view for Scope Item Review — an explicit user
@@ -8358,6 +8480,127 @@ function mergeMilestonesArray(existingList, incomingList, respectTombstones) {
   });
   return { merged, changed, conflictedNames };
 }
+// Merges a flat array of {[keyField]: id, updatedAt, ...} records by id —
+// the same "newer updatedAt wins, an id not yet seen locally gets appended"
+// idiom mergeMilestonesArray() already uses for an item's own milestones,
+// generalized here to any keyed record array: a review cycle's own
+// confirmations/milestoneConfirmations, or a workstream's actionLog/
+// decisionLog. `tombstones`/`respectTombstones`, when given, gate whether a
+// genuinely-deleted local record can be silently resurrected by a stale
+// incoming copy — omitted for the two confirmation arrays, which are never
+// actually removed (see setConfirmRecord()), only flipped, so there's
+// nothing to tombstone there.
+function mergeKeyedRecords(existingList, incomingList, keyField, tombstones, respectTombstones) {
+  let changed = false;
+  const merged = existingList.map(r => ({ ...r }));
+  incomingList.forEach(ir => {
+    const idx = merged.findIndex(r => r[keyField] === ir[keyField]);
+    if (idx !== -1) {
+      if ((ir.updatedAt || 0) > (merged[idx].updatedAt || 0)) { merged[idx] = { ...ir }; changed = true; }
+      return;
+    }
+    if (tombstones) {
+      const tomb = tombstones.find(x => x.id === ir[keyField]);
+      if (respectTombstones && tomb && tomb.deletedAt >= (ir.updatedAt || 0)) return; // stays deleted — the incoming copy is stale
+      if (tomb) untombstone(tombstones, ir[keyField]);
+    }
+    merged.push({ ...ir }); changed = true;
+  });
+  return { merged, changed };
+}
+// A review cycle used to merge as one opaque, whole unit — mergeData() would
+// simply skip an incoming cycle whose id was already known locally, so any
+// confirmation/changeLog/minutes edit made concurrently on two different
+// devices (three reviewers on the same workstream, say) would silently
+// discard whichever side's write reached the shared file last. This is the
+// per-field merge that replaces that: each piece of a cycle merges
+// independently, the same way an item's own milestones merge independently
+// of its scalar fields.
+function mergeReviewCycle(existing, incoming) {
+  let changed = false;
+  const conf = mergeKeyedRecords(existing.confirmations, incoming.confirmations || [], 'itemId');
+  if (conf.changed) { existing.confirmations = conf.merged; changed = true; }
+  const msConf = mergeKeyedRecords(existing.milestoneConfirmations, incoming.milestoneConfirmations || [], 'milestoneId');
+  if (msConf.changed) { existing.milestoneConfirmations = msConf.merged; changed = true; }
+  // changeLog is append-only and never mutated after creation, so this is a
+  // plain union by id (see logReviewChange()'s own id) rather than an
+  // updatedAt comparison — every entry either side has is kept, re-sorted by
+  // changedAt so a merged history still reads chronologically regardless of
+  // which side logged which entry.
+  const existingChangeIds = new Set((existing.changeLog || []).map(e => e.id));
+  const newEntries = (incoming.changeLog || []).filter(e => e.id && !existingChangeIds.has(e.id));
+  if (newEntries.length) {
+    existing.changeLog = existing.changeLog.concat(newEntries).sort((a, b) => a.changedAt - b.changedAt);
+    changed = true;
+  }
+  // minutes is a single nested object, not an array — merged as one whole
+  // unit, newer updatedAt wins (the same granularity an item's own scalar
+  // fields get, not milestones' finer per-field treatment — minutes are
+  // normally written by one person after a meeting, so the collision case
+  // this doesn't cover is low-probability, and a real per-field merge here
+  // would mean a second mergeMilestonesArray()-shaped function just for
+  // actionItems, for comparatively little real-world benefit).
+  if (incoming.minutes && (!existing.minutes || (incoming.minutes.updatedAt || 0) > (existing.minutes.updatedAt || 0))) {
+    existing.minutes = { ...incoming.minutes };
+    changed = true;
+  }
+  // completedAt/cancelledAt are set once, then frozen (see "Review mode" in
+  // CLAUDE.md) — nothing to compare, just prefer whichever side actually has
+  // it set. The count snapshots travel with completedAt, since they're only
+  // ever meaningful alongside it.
+  if (incoming.completedAt && !existing.completedAt) {
+    existing.completedAt = incoming.completedAt;
+    existing.itemCountAtClose = incoming.itemCountAtClose;
+    existing.confirmedCountAtClose = incoming.confirmedCountAtClose;
+    changed = true;
+  }
+  if (incoming.cancelledAt && !existing.cancelledAt) { existing.cancelledAt = incoming.cancelledAt; changed = true; }
+  return changed;
+}
+// mergeReviewCycle()'s duplicate-active-cycle counterpart — see
+// normalizeData()'s own call site for why this is needed at all. Folds every
+// later-started active cycle for a workstream into the earliest one (the
+// same per-field merge a genuine concurrent edit already goes through) and
+// drops the duplicate outright.
+function reconcileDuplicateActiveCycles() {
+  const byWs = {};
+  reviewCycles.forEach(c => {
+    if (c.completedAt || c.cancelledAt) return;
+    (byWs[c.workstreamId] = byWs[c.workstreamId] || []).push(c);
+  });
+  Object.values(byWs).forEach(list => {
+    if (list.length < 2) return;
+    list.sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
+    const primary = list[0];
+    list.slice(1).forEach(dup => {
+      mergeReviewCycle(primary, dup);
+      const idx = reviewCycles.indexOf(dup);
+      if (idx !== -1) reviewCycles.splice(idx, 1);
+    });
+  });
+}
+// A workstream used to merge the same opaque way a review cycle did — skip
+// entirely once its id is known locally — which meant actionLog/decisionLog
+// entries synced in from a parallel review's meeting minutes could stomp
+// each other exactly like unmerged review cycles could. Mirrors
+// mergeReviewCycle() one level up: actionLog/decisionLog merge per-entry
+// (tombstone-aware, since these can be genuinely deleted — see
+// deleteActionLogItem()), name/color merge as plain scalars, newer
+// updatedAt wins.
+function mergeWorkstreamFields(existing, incoming, respectTombstones) {
+  let changed = false;
+  const al = mergeKeyedRecords(existing.actionLog || [], incoming.actionLog || [], 'id', deletedActionLogIds, respectTombstones);
+  if (al.changed) { existing.actionLog = al.merged; changed = true; }
+  const dl = mergeKeyedRecords(existing.decisionLog || [], incoming.decisionLog || [], 'id', deletedDecisionLogIds, respectTombstones);
+  if (dl.changed) { existing.decisionLog = dl.merged; changed = true; }
+  if ((incoming.updatedAt || 0) > (existing.updatedAt || 0)) {
+    existing.name = incoming.name;
+    existing.color = incoming.color;
+    existing.updatedAt = incoming.updatedAt;
+    changed = true;
+  }
+  return changed;
+}
 // Additive merge used by every "read data from outside localStorage" path
 // (linkFile, reconnectFile, initFileSync, doFileSyncWrite's cross-tab merge,
 // pollFileSync, and applyImport's merge mode). Tombstones are what let this
@@ -8397,24 +8640,47 @@ function mergeData(data, opts) {
     if (!existing) deletedMilestoneIds.push({ id: dm.id, deletedAt: dm.deletedAt || Date.now() });
     else if ((dm.deletedAt || 0) > existing.deletedAt) existing.deletedAt = dm.deletedAt;
   });
+  (data.deletedActionLogIds || []).forEach(da => {
+    const existing = deletedActionLogIds.find(x => x.id === da.id);
+    if (!existing) deletedActionLogIds.push({ id: da.id, deletedAt: da.deletedAt || Date.now() });
+    else if ((da.deletedAt || 0) > existing.deletedAt) existing.deletedAt = da.deletedAt;
+  });
+  (data.deletedDecisionLogIds || []).forEach(dd => {
+    const existing = deletedDecisionLogIds.find(x => x.id === dd.id);
+    if (!existing) deletedDecisionLogIds.push({ id: dd.id, deletedAt: dd.deletedAt || Date.now() });
+    else if ((dd.deletedAt || 0) > existing.deletedAt) existing.deletedAt = dd.deletedAt;
+  });
+  let wsOrCategoriesChanged = false;
   (data.workstreams || []).forEach(iw => {
-    if (workstreams.find(w => w.id === iw.id || w.name.toLowerCase() === iw.name.toLowerCase())) return;
+    const existing = workstreams.find(w => w.id === iw.id);
+    if (existing) { if (mergeWorkstreamFields(existing, iw, respectTombstones)) wsOrCategoriesChanged = true; return; }
+    // Dedup-by-name only applies to a genuinely new id — an already-known
+    // workstream (matched by id, just above) always merges into itself
+    // regardless of what its current name happens to be.
+    if (workstreams.find(w => w.name.toLowerCase() === iw.name.toLowerCase())) return;
     if (respectTombstones && deletedWorkstreamIds.some(x => x.id === iw.id)) return;
     if (!respectTombstones) untombstone(deletedWorkstreamIds, iw.id);
-    workstreams.push(iw);
+    workstreams.push(iw); wsOrCategoriesChanged = true;
   });
-  // Categories and review cycles merge silently too (additive by id, categories
-  // also deduped by name) — same "not counted in {added, updated}" treatment as
-  // workstreams. Review cycles are an append-only history log, so an id that
-  // already exists locally is left as-is rather than overwritten.
+  // Categories merge silently too (additive by id, also deduped by name) —
+  // same "not counted in {added, updated}" treatment as workstreams.
   (data.categories || []).forEach(ic => {
     if (categories.find(c => c.id === ic.id || c.name.toLowerCase() === ic.name.toLowerCase())) return;
-    categories.push(ic);
+    categories.push(ic); wsOrCategoriesChanged = true;
   });
+  // Review cycles: an id already known locally now merges per-field
+  // (mergeReviewCycle()) rather than being skipped outright — see that
+  // function's own comment for why the old "skip if known" behavior lost
+  // data under concurrent review. reconcileDuplicateActiveCycles() cleans up
+  // the other half of that same problem: two people starting a review for
+  // the same workstream before either side had synced the other's write.
+  let cyclesChanged = false;
   (data.reviewCycles || []).forEach(rc => {
-    if (reviewCycles.find(c => c.id === rc.id)) return;
-    reviewCycles.push(rc);
+    const existing = reviewCycles.find(c => c.id === rc.id);
+    if (existing) { if (mergeReviewCycle(existing, rc)) cyclesChanged = true; return; }
+    reviewCycles.push(rc); cyclesChanged = true;
   });
+  if (cyclesChanged) reconcileDuplicateActiveCycles();
   let added = 0, updated = 0;
   (data.items || []).forEach(ii => {
     const existing = items.find(i => i.id === ii.id);
@@ -8448,7 +8714,14 @@ function mergeData(data, opts) {
     if (tomb) untombstone(deletedItemIds, ii.id); // incoming edit is newer than our deletion (or tombstones are being ignored) — let it back in
     items.push(ii); added++;
   });
-  return { added, updated, conflicts };
+  // `changed` is the umbrella signal doFileSyncWrite()/pollFileSync() gate
+  // their own save()/render() on — added/updated alone only ever counted
+  // items (see this function's own comment above), so a merge that only
+  // touched review-cycle confirmations or a workstream's actionLog/
+  // decisionLog would otherwise never reach localStorage or the screen
+  // until some unrelated later save happened to trigger one.
+  const changed = added > 0 || updated > 0 || wsOrCategoriesChanged || cyclesChanged;
+  return { added, updated, conflicts, changed };
 }
 function applyImport(mode) {
   if (!requireRole('admin')) return;
@@ -8650,7 +8923,8 @@ async function doFileSyncWrite() {
   if (!fileHandle) return;
   const data = {
     programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
-    filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds
+    filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
+    deletedActionLogIds, deletedDecisionLogIds
   };
   try {
     const perm = await fileHandle.requestPermission({ mode: 'readwrite' });
@@ -8662,13 +8936,21 @@ async function doFileSyncWrite() {
       if (currentText.trim() && currentText !== lastSyncedSnapshot) {
         let externalData; try { externalData = JSON.parse(currentText); } catch (_) { externalData = null; }
         if (externalData && externalData.workstreams && externalData.items) {
-          const { added, updated, conflicts } = mergeData(externalData);
-          if (added || updated) {
+          const { added, updated, conflicts, changed } = mergeData(externalData);
+          // Gated on `changed`, not just `added || updated` — items are the
+          // only thing added/updated actually counts (see mergeData()'s own
+          // comment), but a merge that only touched review-cycle
+          // confirmations or a workstream's actionLog/decisionLog is just as
+          // real and just as much needs to reach localStorage/the UI here,
+          // not sit unsaved in memory until some unrelated later save.
+          if (changed) {
             normalizeData();
-            payload = { ...data, workstreams, items, categories, reviewCycles, deletedMilestoneIds };
+            payload = { ...data, workstreams, items, categories, reviewCycles, deletedMilestoneIds, deletedActionLogIds, deletedDecisionLogIds };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
             render();
-            showToast(`Synced changes from another tab/device (${added} added, ${updated} updated)`);
+            showToast(added || updated
+              ? `Synced changes from another tab/device (${added} added, ${updated} updated)`
+              : 'Synced changes from another tab/device');
           }
           reportSyncConflicts(conflicts);
         }
@@ -8806,12 +9088,19 @@ async function pollFileSync() {
     if (!currentText.trim() || currentText === lastSyncedSnapshot) return; // nothing external changed
     let externalData; try { externalData = JSON.parse(currentText); } catch (_) { return; }
     if (!externalData || !externalData.workstreams || !externalData.items) return;
-    const { added, updated, conflicts } = mergeData(externalData);
+    const { added, updated, conflicts, changed } = mergeData(externalData);
     lastSyncedAt = Date.now();
-    if (added || updated) {
+    // `changed`, not just `added || updated` — see doFileSyncWrite()'s own
+    // identical comment: a review-cycle confirmation or a workstream's
+    // actionLog/decisionLog merging in is just as real a change as an item
+    // being added/updated, and must not be left sitting unsaved in memory
+    // (and invisible in the UI) until some unrelated later save.
+    if (changed) {
       normalizeData();
       save(); render();
-      showToast(`Synced changes from another tab/device (${added} added, ${updated} updated)`);
+      showToast(added || updated
+        ? `Synced changes from another tab/device (${added} added, ${updated} updated)`
+        : 'Synced changes from another tab/device');
     } else {
       // Nothing we track changed (e.g. only mode/theme/colorScheme differ) —
       // still remember this text so the next poll doesn't keep re-parsing it.

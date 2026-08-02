@@ -429,3 +429,239 @@ test('updateBackupSyncUI hides the topbar indicator when the browser has no show
   updateBackupSyncUI();
   assertEqual(document.getElementById('backupSyncIndicator').style.display, 'none');
 });
+
+// ---------- Review cycles now merge field-by-field, not as an opaque whole ----------
+// A review cycle used to merge as one unit — mergeData() skipped an incoming
+// cycle entirely once its id was known locally, so a concurrent edit on two
+// devices (e.g. two reviewers confirming different items in the same active
+// cycle) would silently discard whichever side's write reached the shared
+// file last. mergeReviewCycle() replaces that with the same per-field
+// merge items/milestones already get.
+
+function addCycleForMerge(overrides) {
+  const cycle = Object.assign({
+    id: 'cycle-1', workstreamId: workstreams[0].id, startedAt: 1000, completedAt: null, cancelledAt: null,
+    confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null
+  }, overrides || {});
+  reviewCycles.push(cycle);
+  return cycle;
+}
+
+test('mergeData merges two different item confirmations on the same cycle independently — both survive', function () {
+  const local = addCycleForMerge({ confirmations: [{ itemId: 'item-a', confirmed: true, updatedAt: 1000 }] });
+  const incoming = { id: 'cycle-1', workstreamId: workstreams[0].id, startedAt: 1000, completedAt: null, cancelledAt: null,
+    confirmations: [{ itemId: 'item-b', confirmed: true, updatedAt: 1500 }], milestoneConfirmations: [], changeLog: [], minutes: null };
+  const { changed } = mergeData({ workstreams: [], items: [], reviewCycles: [incoming] });
+  assertTrue(changed, 'a review-cycle-only merge should still report changed:true');
+  assertEqual(local.confirmations.length, 2);
+  assertTrue(local.confirmations.find(c => c.itemId === 'item-a').confirmed, 'the local confirmation should survive');
+  assertTrue(local.confirmations.find(c => c.itemId === 'item-b').confirmed, 'the incoming confirmation should also be adopted');
+});
+
+test('mergeData resolves a concurrently-toggled confirmation on the same item by newer updatedAt, not by whichever write lands last', function () {
+  const local = addCycleForMerge({ confirmations: [{ itemId: 'item-a', confirmed: true, updatedAt: 1000 }] });
+  // Incoming un-confirmed the same item, but at an OLDER timestamp than the
+  // local confirm — the local (newer) state must win.
+  let incoming = { id: 'cycle-1', workstreamId: workstreams[0].id, confirmations: [{ itemId: 'item-a', confirmed: false, updatedAt: 500 }], milestoneConfirmations: [], changeLog: [], minutes: null };
+  mergeData({ workstreams: [], items: [], reviewCycles: [incoming] });
+  assertTrue(local.confirmations.find(c => c.itemId === 'item-a').confirmed, 'the older incoming un-confirm should not overwrite the newer local confirm');
+  // A genuinely newer incoming edit should win.
+  incoming = { id: 'cycle-1', workstreamId: workstreams[0].id, confirmations: [{ itemId: 'item-a', confirmed: false, updatedAt: 2000 }], milestoneConfirmations: [], changeLog: [], minutes: null };
+  mergeData({ workstreams: [], items: [], reviewCycles: [incoming] });
+  assertFalse(local.confirmations.find(c => c.itemId === 'item-a').confirmed, 'a genuinely newer incoming edit should win');
+});
+
+test('mergeData merges milestoneConfirmations the same way, independently of confirmations', function () {
+  const local = addCycleForMerge({ milestoneConfirmations: [{ milestoneId: 'ms-a', confirmed: true, updatedAt: 1000 }] });
+  const incoming = { id: 'cycle-1', workstreamId: workstreams[0].id, confirmations: [], milestoneConfirmations: [{ milestoneId: 'ms-b', confirmed: true, updatedAt: 1200 }], changeLog: [], minutes: null };
+  mergeData({ workstreams: [], items: [], reviewCycles: [incoming] });
+  assertEqual(local.milestoneConfirmations.length, 2);
+});
+
+test('mergeData unions changeLog entries by id and re-sorts by changedAt, rather than keeping only one side', function () {
+  const local = addCycleForMerge({ changeLog: [{ id: 'e1', itemName: 'A', milestoneName: null, change: 'First', changedAt: 3000 }] });
+  const incoming = { id: 'cycle-1', workstreamId: workstreams[0].id, confirmations: [], milestoneConfirmations: [],
+    changeLog: [{ id: 'e1', itemName: 'A', milestoneName: null, change: 'First', changedAt: 3000 }, { id: 'e2', itemName: 'B', milestoneName: null, change: 'Second', changedAt: 1000 }],
+    minutes: null };
+  mergeData({ workstreams: [], items: [], reviewCycles: [incoming] });
+  assertEqual(local.changeLog.length, 2, 'the shared entry (same id) should not be duplicated');
+  assertEqual(local.changeLog[0].id, 'e2', 'merged changeLog should be re-sorted by changedAt, not left in append order');
+  assertEqual(local.changeLog[1].id, 'e1');
+});
+
+test('mergeData merges minutes as one whole unit, newer updatedAt wins', function () {
+  const local = addCycleForMerge({ minutes: { summary: 'Local summary', decisions: '', nextSteps: '', actionItems: [], importedAt: 1000, updatedAt: 1000 } });
+  let incoming = { id: 'cycle-1', workstreamId: workstreams[0].id, confirmations: [], milestoneConfirmations: [], changeLog: [],
+    minutes: { summary: 'Stale incoming', decisions: '', nextSteps: '', actionItems: [], importedAt: 500, updatedAt: 500 } };
+  mergeData({ workstreams: [], items: [], reviewCycles: [incoming] });
+  assertEqual(local.minutes.summary, 'Local summary', 'an older incoming minutes edit should not overwrite the newer local one');
+  incoming = { id: 'cycle-1', workstreamId: workstreams[0].id, confirmations: [], milestoneConfirmations: [], changeLog: [],
+    minutes: { summary: 'Fresh incoming', decisions: '', nextSteps: '', actionItems: [], importedAt: 2000, updatedAt: 2000 } };
+  mergeData({ workstreams: [], items: [], reviewCycles: [incoming] });
+  assertEqual(local.minutes.summary, 'Fresh incoming');
+});
+
+test('mergeData adopts an incoming completedAt when the local copy of the cycle is still active', function () {
+  const local = addCycleForMerge({});
+  const incoming = { id: 'cycle-1', workstreamId: workstreams[0].id, confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null,
+    completedAt: 5000, itemCountAtClose: 3, confirmedCountAtClose: 3 };
+  mergeData({ workstreams: [], items: [], reviewCycles: [incoming] });
+  assertEqual(local.completedAt, 5000);
+  assertEqual(local.itemCountAtClose, 3);
+  assertEqual(local.confirmedCountAtClose, 3);
+});
+
+test('mergeData reports changed:false when a merge genuinely brings in nothing new', function () {
+  addCycleForMerge({ confirmations: [{ itemId: 'item-a', confirmed: true, updatedAt: 1000 }] });
+  const { changed } = mergeData({ workstreams: [], items: [], reviewCycles: [{ id: 'cycle-1', workstreamId: workstreams[0].id, confirmations: [{ itemId: 'item-a', confirmed: true, updatedAt: 1000 }], milestoneConfirmations: [], changeLog: [], minutes: null }] });
+  assertFalse(changed, 'an identical incoming copy should not report a change');
+});
+
+// ---------- Duplicate active review cycles get reconciled, not silently orphaned ----------
+// Two people clicking "Start review cycle" for the same workstream before
+// either side had synced the other's write used to leave two distinct
+// "active" cycles — activeReviewCycle() only ever finds the first match, so
+// the second one's confirmations/changeLog would sit invisibly in
+// reviewCycles forever. reconcileDuplicateActiveCycles() (called from
+// normalizeData()) folds the newer one into the older and drops the
+// duplicate.
+
+test('reconcileDuplicateActiveCycles folds a later-started duplicate active cycle for the same workstream into the earlier one', function () {
+  const wsId = workstreams[0].id;
+  reviewCycles.push({ id: 'early', workstreamId: wsId, startedAt: 1000, completedAt: null, cancelledAt: null,
+    confirmations: [{ itemId: 'item-a', confirmed: true, updatedAt: 1000 }], milestoneConfirmations: [], changeLog: [], minutes: null });
+  reviewCycles.push({ id: 'late', workstreamId: wsId, startedAt: 2000, completedAt: null, cancelledAt: null,
+    confirmations: [{ itemId: 'item-b', confirmed: true, updatedAt: 2000 }], milestoneConfirmations: [], changeLog: [], minutes: null });
+  normalizeData();
+  assertEqual(reviewCycles.filter(c => c.workstreamId === wsId).length, 1, 'only one cycle should remain for this workstream');
+  assertEqual(reviewCycles[0].id, 'early', 'the earlier-started cycle should be the one kept');
+  assertEqual(reviewCycles[0].confirmations.length, 2, 'confirmations from both should be merged in, not lost');
+});
+
+test('reconcileDuplicateActiveCycles leaves a completed and an active cycle for the same workstream alone', function () {
+  const wsId = workstreams[0].id;
+  reviewCycles.push({ id: 'done', workstreamId: wsId, startedAt: 1000, completedAt: 1500, cancelledAt: null, confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null });
+  reviewCycles.push({ id: 'active', workstreamId: wsId, startedAt: 2000, completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null });
+  normalizeData();
+  assertEqual(reviewCycles.length, 2, 'a completed cycle is history, not a duplicate of the active one');
+});
+
+test('reconcileDuplicateActiveCycles never folds active cycles that belong to different workstreams', function () {
+  const w2 = { id: 'ws-2', name: 'Second', color: 'teal', order: 1 };
+  workstreams.push(w2);
+  reviewCycles.push({ id: 'c1', workstreamId: workstreams[0].id, startedAt: 1000, completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null });
+  reviewCycles.push({ id: 'c2', workstreamId: w2.id, startedAt: 1000, completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null });
+  normalizeData();
+  assertEqual(reviewCycles.length, 2);
+});
+
+// ---------- Workstreams now merge field-by-field too (actionLog/decisionLog/name/color) ----------
+// mergeWorkstreamFields() extends the identical fix one level up: a
+// workstream used to be skipped outright once its id was known locally,
+// which meant its actionLog/decisionLog (action items/decisions synced in
+// from a parallel review's meeting minutes) could stomp each other the same
+// way unmerged review cycles could.
+
+test('mergeData merges a workstream\'s actionLog by entry id when the workstream itself already exists locally', function () {
+  const w = workstreams[0];
+  w.actionLog = [{ id: 'a1', text: 'Local action', owner: '', dueDate: null, completed: false, completedAt: null, cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }];
+  const incoming = { id: w.id, name: w.name, color: w.color, order: 0, updatedAt: 0,
+    actionLog: [{ id: 'a2', text: 'Incoming action', owner: '', dueDate: null, completed: false, completedAt: null, cycleId: 'c1', addedAt: 1500, updatedAt: 1500, flagged: false }], decisionLog: [] };
+  const { changed } = mergeData({ workstreams: [incoming], items: [] });
+  assertTrue(changed, 'a workstream-only merge should still report changed:true');
+  assertEqual(w.actionLog.length, 2);
+  assertTrue(w.actionLog.some(a => a.id === 'a1'));
+  assertTrue(w.actionLog.some(a => a.id === 'a2'));
+});
+
+test('mergeData merges a workstream\'s decisionLog the same way, and merges name/color as plain scalars by updatedAt', function () {
+  const w = workstreams[0];
+  w.updatedAt = 1000;
+  w.decisionLog = [{ id: 'd1', text: 'Local decision', cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }];
+  const incoming = { id: w.id, name: 'Renamed Elsewhere', color: 'pink', order: 0, updatedAt: 2000,
+    actionLog: [], decisionLog: [{ id: 'd2', text: 'Incoming decision', cycleId: 'c1', addedAt: 1500, updatedAt: 1500, flagged: false }] };
+  mergeData({ workstreams: [incoming], items: [] });
+  assertEqual(w.decisionLog.length, 2);
+  assertEqual(w.name, 'Renamed Elsewhere', 'a newer incoming updatedAt should win the name/color scalar merge');
+  assertEqual(w.color, 'pink');
+});
+
+test('mergeData does not let a stale incoming workstream name/color overwrite a newer local edit', function () {
+  const w = workstreams[0];
+  w.name = 'Local Fresh Name'; w.updatedAt = 5000;
+  const incoming = { id: w.id, name: 'Stale Incoming Name', color: 'red', order: 0, updatedAt: 1000, actionLog: [], decisionLog: [] };
+  mergeData({ workstreams: [incoming], items: [] });
+  assertEqual(w.name, 'Local Fresh Name');
+});
+
+test('deleteActionLogItem tombstones the entry, and a later merge with a stale incoming copy does not resurrect it', function () {
+  const w = workstreams[0];
+  w.actionLog = [{ id: 'gone-a', text: 'To delete', owner: '', dueDate: null, completed: false, completedAt: null, cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }];
+  deleteActionLogItem(w.id, 'gone-a');
+  confirmModalAction();
+  assertEqual(w.actionLog.length, 0);
+  assertTrue(deletedActionLogIds.some(x => x.id === 'gone-a'));
+  const staleIncoming = { id: w.id, name: w.name, color: w.color, order: 0, updatedAt: 0,
+    actionLog: [{ id: 'gone-a', text: 'To delete', owner: '', dueDate: null, completed: false, completedAt: null, cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }], decisionLog: [] };
+  mergeData({ workstreams: [staleIncoming], items: [] });
+  assertEqual(w.actionLog.length, 0, 'a stale incoming copy must not resurrect a deleted action item');
+  triggerToastUndo();
+  assertEqual(w.actionLog.length, 1, 'undo should still restore it locally');
+  assertFalse(deletedActionLogIds.some(x => x.id === 'gone-a'), 'undo should clear the tombstone');
+});
+
+test('deleteDecisionLogItem tombstones the entry the same way', function () {
+  const w = workstreams[0];
+  w.decisionLog = [{ id: 'gone-d', text: 'To delete', cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }];
+  deleteDecisionLogItem(w.id, 'gone-d');
+  confirmModalAction();
+  assertTrue(deletedDecisionLogIds.some(x => x.id === 'gone-d'));
+  triggerToastUndo();
+  assertFalse(deletedDecisionLogIds.some(x => x.id === 'gone-d'));
+});
+
+test('syncDecisionLogFromMinutes tombstones a decision dropped by re-saving minutes, so a stale merge cannot resurrect it', function () {
+  const w = workstreams[0];
+  const cycle = { id: 'c1', workstreamId: w.id, startedAt: 1000, completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null };
+  reviewCycles.push(cycle);
+  syncDecisionLogFromMinutes(cycle, 'First decision.\nSecond decision.');
+  assertEqual(w.decisionLog.length, 2);
+  const firstId = w.decisionLog.find(d => d.text === 'First decision.').id;
+  // Re-saving with only the second decision drops the first — it must be
+  // tombstoned, not just filtered out, or a later merge could bring it back.
+  syncDecisionLogFromMinutes(cycle, 'Second decision.');
+  assertEqual(w.decisionLog.length, 1);
+  assertTrue(deletedDecisionLogIds.some(x => x.id === firstId));
+});
+
+test('removeActionLogForCycle/removeDecisionLogForCycle tombstone what they remove', function () {
+  const w = workstreams[0];
+  const cycle = { id: 'c1', workstreamId: w.id, startedAt: 1000, completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null };
+  reviewCycles.push(cycle);
+  w.actionLog = [{ id: 'a1', text: 'X', owner: '', dueDate: null, completed: false, completedAt: null, cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }];
+  w.decisionLog = [{ id: 'd1', text: 'Y', cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }];
+  removeActionLogForCycle(cycle);
+  removeDecisionLogForCycle(cycle);
+  assertEqual(w.actionLog.length, 0);
+  assertEqual(w.decisionLog.length, 0);
+  assertTrue(deletedActionLogIds.some(x => x.id === 'a1'));
+  assertTrue(deletedDecisionLogIds.some(x => x.id === 'd1'));
+});
+
+test('normalizeData migrates the old {itemId, confirmedAt} confirmation shape to {confirmed, updatedAt}', function () {
+  reviewCycles.push({ id: 'legacy', workstreamId: workstreams[0].id, startedAt: 1000, completedAt: null, cancelledAt: null,
+    confirmations: [{ itemId: 'item-a', confirmedAt: 1234 }], milestoneConfirmations: [{ milestoneId: 'ms-a', confirmedAt: 5678 }], changeLog: [], minutes: null });
+  normalizeData();
+  const c = reviewCycles.find(x => x.id === 'legacy');
+  assertTrue(c.confirmations[0].confirmed);
+  assertEqual(c.confirmations[0].updatedAt, 1234);
+  assertTrue(c.milestoneConfirmations[0].confirmed);
+  assertEqual(c.milestoneConfirmations[0].updatedAt, 5678);
+});
+
+test('normalizeData backfills a stable id onto a legacy changeLog entry with none', function () {
+  reviewCycles.push({ id: 'legacy2', workstreamId: workstreams[0].id, startedAt: 1000, completedAt: null, cancelledAt: null,
+    confirmations: [], milestoneConfirmations: [], changeLog: [{ itemName: 'A', milestoneName: null, change: 'Something', changedAt: 1000 }], minutes: null });
+  normalizeData();
+  assertTrue(isSafeId(reviewCycles.find(c => c.id === 'legacy2').changeLog[0].id));
+});
