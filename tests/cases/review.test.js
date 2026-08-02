@@ -1626,6 +1626,181 @@ test('the priority flag header cell shares .priority-flag-btn with both row stat
   assertIncludes(html, '<span class="priority-flag-btn ');
 });
 
+// ---------- Action Log's own search box ----------
+// An explicit user request ("build a search feature for journeys, action
+// logs and decision logs, similar like for planning") — matchesActionLogSearch()
+// mirrors matchesPlanningSearch(): a plain, case-insensitive substring match
+// against the action item's own text, text-only (not owner), same "quick
+// find" scope every other search box in this app keeps to.
+
+test('matchesActionLogSearch matches the action item\'s own text, case-insensitively', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Follow up with Vendor';
+  saveMinutes();
+  const a = workstreams[0].actionLog[0];
+  actionLogSearchQuery = 'vendor';
+  assertTrue(matchesActionLogSearch(a));
+  actionLogSearchQuery = 'nonexistent';
+  assertFalse(matchesActionLogSearch(a));
+});
+
+test('actionLogHtml narrows the rendered rows by search, without affecting the "open of N" count', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Follow up with vendor';
+  addMinutesActionItemRow();
+  editingMinutesActionItems[1].text = 'Update the runbook';
+  saveMinutes();
+  const w = workstreams[0];
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('actionLog');
+  setReviewLogSearch('vendor');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Follow up with vendor');
+  assertNotIncludes(html, 'Update the runbook');
+  assertIncludes(html, '2 open of 2 action item', 'the count badge must stay unfiltered');
+});
+
+test('actionLogHtml shows a search-specific empty state, distinct from the "nothing here at all" one', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Follow up with vendor';
+  saveMinutes();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('actionLog');
+  setReviewLogSearch('nonexistent');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'No action items match "nonexistent".');
+  assertNotIncludes(html, 'No action items yet');
+});
+
+test('allWorkstreamsActionLogHtml also narrows by search across every workstream', function () {
+  const ws2 = { id: genId(), name: 'Second', color: 'teal', order: 1 };
+  workstreams.push(ws2);
+  const cycle1 = addCompletedReviewCycle();
+  openMinutesModal(cycle1.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Follow up with vendor';
+  saveMinutes();
+
+  startReviewCycle(ws2.id);
+  const cycle2 = activeReviewCycle(ws2.id);
+  completeReviewCycle(cycle2.id);
+  openMinutesModal(cycle2.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Unrelated task';
+  saveMinutes();
+
+  setFilterWorkstream(null);
+  setMode('review');
+  setReviewTab('actionLog');
+  setReviewLogSearch('vendor');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Follow up with vendor');
+  assertNotIncludes(html, 'Unrelated task');
+});
+
+test('the Action Log/Decision Log search toolbar switches its remembered query, placeholder, and clear-button state when reviewTab changes', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Follow up with vendor';
+  document.getElementById('minutesDecisionsInput').value = 'Go with vendor A.';
+  saveMinutes();
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+
+  setReviewTab('actionLog');
+  setReviewLogSearch('vendor');
+  assertEqual(document.getElementById('reviewLogSearchInput').placeholder, 'Search action items...');
+  assertEqual(document.getElementById('reviewLogSearchClearBtn').style.display, '');
+
+  setReviewTab('decisionLog');
+  assertEqual(document.getElementById('reviewLogSearchInput').placeholder, 'Search decisions...');
+  assertEqual(document.getElementById('reviewLogSearchInput').value, '', 'Decision Log\'s own query is independent — switching tabs must not carry Action Log\'s query over');
+  assertEqual(document.getElementById('reviewLogSearchClearBtn').style.display, 'none');
+
+  setReviewTab('actionLog');
+  assertEqual(document.getElementById('reviewLogSearchInput').value, 'vendor', 'switching back restores Action Log\'s own remembered query');
+});
+
+test('the Action Log/Decision Log search toolbar is hidden for Review Status and Change Log, and for every other mode', function () {
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  setReviewTab('scope');
+  assertEqual(document.getElementById('reviewLogSearchToolbar').style.display, 'none');
+  setReviewTab('changeLog');
+  assertEqual(document.getElementById('reviewLogSearchToolbar').style.display, 'none');
+  setReviewTab('actionLog');
+  assertEqual(document.getElementById('reviewLogSearchToolbar').style.display, '');
+  setMode('dashboard');
+  assertEqual(document.getElementById('reviewLogSearchToolbar').style.display, 'none');
+});
+
+// ---------- Decision Log's own search box ----------
+
+test('matchesDecisionLogSearch matches the decision\'s own text, case-insensitively', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go with Vendor A.';
+  saveMinutes();
+  const d = workstreams[0].decisionLog[0];
+  decisionLogSearchQuery = 'vendor';
+  assertTrue(matchesDecisionLogSearch(d));
+  decisionLogSearchQuery = 'nonexistent';
+  assertFalse(matchesDecisionLogSearch(d));
+});
+
+test('decisionLogHtml narrows the rendered rows by search, and shows a search-specific empty state when nothing matches', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go with vendor A.\nShip on the 15th.';
+  saveMinutes();
+  const w = workstreams[0];
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('decisionLog');
+  setReviewLogSearch('vendor');
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Go with vendor A.');
+  assertNotIncludes(html, 'Ship on the 15th.');
+
+  setReviewLogSearch('nonexistent');
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'No decisions match "nonexistent".');
+  assertNotIncludes(html, 'No decisions yet');
+});
+
+test('allWorkstreamsDecisionLogHtml also narrows by search across every workstream', function () {
+  const ws2 = { id: genId(), name: 'Second', color: 'teal', order: 1 };
+  workstreams.push(ws2);
+  const cycle1 = addCompletedReviewCycle();
+  openMinutesModal(cycle1.id);
+  document.getElementById('minutesDecisionsInput').value = 'Go with vendor A.';
+  saveMinutes();
+
+  startReviewCycle(ws2.id);
+  const cycle2 = activeReviewCycle(ws2.id);
+  completeReviewCycle(cycle2.id);
+  openMinutesModal(cycle2.id);
+  document.getElementById('minutesDecisionsInput').value = 'Unrelated decision.';
+  saveMinutes();
+
+  setFilterWorkstream(null);
+  setMode('review');
+  setReviewTab('decisionLog');
+  setReviewLogSearch('vendor');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Go with vendor A.');
+  assertNotIncludes(html, 'Unrelated decision.');
+});
+
 test('deleteActionLogItem removes the entry only after confirmation', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);

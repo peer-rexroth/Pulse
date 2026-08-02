@@ -1328,6 +1328,95 @@ test('renderJourneys works even with zero workstreams (a Journey needs none to e
   assertIncludes(html, 'Standalone Journey');
 });
 
+// ---------- Journeys' own search box ----------
+// An explicit user request ("build a search feature for journeys... similar
+// like for planning") — matchesPlanningSearch()'s own counterpart, but
+// reaching one level deeper into the tree: a Journey qualifies if its own
+// name matches, OR any one of its Sub Journeys' names do.
+
+test('matchesJourneysSearch matches a Journey\'s own name', function () {
+  const j = addJourney('Onboarding Journey');
+  journeysSearchQuery = 'onboard';
+  assertTrue(matchesJourneysSearch(j));
+  journeysSearchQuery = 'offboard';
+  assertFalse(matchesJourneysSearch(j));
+});
+
+test('matchesJourneysSearch also matches any one of the Journey\'s own Sub Journeys\' names', function () {
+  const j = addJourney('Parent Journey');
+  addSubJourney(j.id, 'Intake Process');
+  journeysSearchQuery = 'intake';
+  assertTrue(matchesJourneysSearch(j), 'a Sub Journey name match should keep the parent Journey too');
+});
+
+test('matchesJourneysSearch matches everything when the query is empty', function () {
+  const j = addJourney('Anything');
+  journeysSearchQuery = '';
+  assertTrue(matchesJourneysSearch(j));
+});
+
+test('journeysForCurrentFilter composes the workstream filter and the search query as a plain AND', function () {
+  const ws2 = { id: genId(), name: 'Second', color: 'teal', order: 1 };
+  workstreams.push(ws2);
+  const journeyA = addJourney('Vendor Onboarding');
+  const subA = addSubJourney(journeyA.id);
+  addItem({ name: 'A', journeyId: subA.id, workstreamId: workstreams[0].id });
+  const journeyB = addJourney('Vendor Offboarding');
+  const subB = addSubJourney(journeyB.id);
+  addItem({ name: 'B', journeyId: subB.id, workstreamId: workstreams[0].id });
+
+  setFilterWorkstream(workstreams[0].id);
+  journeysSearchQuery = 'onboard';
+  assertDeepEqual(journeysForCurrentFilter().map(j => j.name), ['Vendor Onboarding']);
+
+  // scoped to a workstream neither journey reaches into — search alone
+  // must not resurrect a journey the workstream filter already excluded
+  setFilterWorkstream(ws2.id);
+  assertEqual(journeysForCurrentFilter().length, 0);
+});
+
+test('renderJourneys shows a search-specific empty state, distinct from the "nothing here at all" ones, when journeys exist but none match', function () {
+  addJourney('Vendor Onboarding');
+  addJourney('Vendor Offboarding');
+  setPlanningTab('journeys');
+  setJourneysSearch('nonexistent');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'No Journeys match "nonexistent".');
+  assertNotIncludes(html, 'No journeys yet.');
+});
+
+test('journeysExpandAllIds only collects Journeys/Sub Journeys that also pass the current search query', function () {
+  const j1 = addJourney('Vendor Onboarding');
+  const sub1 = addSubJourney(j1.id, 'Sub A');
+  const j2 = addJourney('Something else entirely');
+  const sub2 = addSubJourney(j2.id, 'Sub B');
+  journeysSearchQuery = 'vendor';
+  const ids = journeysExpandAllIds();
+  assertDeepEqual(ids.sort(), [j1.id, sub1.id].sort());
+  assertNotIncludes(ids, j2.id);
+  assertNotIncludes(ids, sub2.id);
+});
+
+test('the Journeys search toolbar is shown only for planningTab==="journeys", and hidden for every other mode/sub-tab', function () {
+  setMode('planning'); setPlanningTab('scope');
+  assertEqual(document.getElementById('journeysSearchToolbar').style.display, 'none');
+  setPlanningTab('journeys');
+  assertEqual(document.getElementById('journeysSearchToolbar').style.display, '');
+  setMode('dashboard');
+  assertEqual(document.getElementById('journeysSearchToolbar').style.display, 'none');
+});
+
+test('setJourneysSearch lowercases/trims the query and toggles the clear button; clearJourneysSearch resets both', function () {
+  setPlanningTab('journeys');
+  setJourneysSearch('  Vendor  ');
+  assertEqual(journeysSearchQuery, 'vendor');
+  assertEqual(document.getElementById('journeysSearchClearBtn').style.display, '');
+  clearJourneysSearch();
+  assertEqual(journeysSearchQuery, '');
+  assertEqual(document.getElementById('journeysSearchInput').value, '');
+  assertEqual(document.getElementById('journeysSearchClearBtn').style.display, 'none');
+});
+
 // ---------- Journeys' own "Expand all"/"Collapse all" ----------
 // An explicit user request to bring the same per-section control Planning's
 // status board already has (expandAllToggleHtml()) to the Journeys sub-tab

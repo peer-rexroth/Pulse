@@ -199,6 +199,7 @@ async function run(argv) {
   editingItemType = 'scope'; journeyConnectItemId = null;
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set(); revealedDueIds = new Set();
   unassignedQuickAddOpen = false; journeyQuickAddOpen = false; subJourneyQuickAddOpenFor = null; planningSearchQuery = ''; planningStatusFilter = null; planningDependencyFilter = false;
+  journeysSearchQuery = ''; actionLogSearchQuery = ''; decisionLogSearchQuery = '';
   editingCategoryId = null; editingCategoryMilestones = [];
   minutesModalCycleId = null; editingMinutesActionItems = []; reviewTab = 'scope'; planningTab = 'scope';
   renamingProgramme = false;

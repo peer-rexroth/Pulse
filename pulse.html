@@ -1317,12 +1317,42 @@
       </div>
       <div class="status-filter-chips" id="planningStatusFilterChips"></div>
     </div>
+    <!-- Journeys' own search box — an explicit user request ("build a search
+         feature for journeys... similar like for planning"), same
+         static-toolbar-outside-#main placement/pattern as
+         #planningSearchToolbar just above, only shown for mode==='planning'
+         AND planningTab==='journeys' (the two search toolbars are mutually
+         exclusive, matching their two mutually-exclusive sub-tabs). See
+         setJourneysSearch()/matchesJourneysSearch(). -->
+    <div class="planning-toolbar" id="journeysSearchToolbar" style="display:none">
+      <div class="search-box">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="journeysSearchInput" placeholder="Search Journeys by name..." oninput="setJourneysSearch(this.value)">
+        <button type="button" class="search-clear-btn" id="journeysSearchClearBtn" onclick="clearJourneysSearch()" title="Clear search" style="display:none"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
     <div class="planning-toolbar" id="reviewToolbar" style="display:none">
       <div class="view-tabs">
         <button class="view-tab" id="tabReviewActionLog" onclick="setReviewTab('actionLog')"><i class="fa-solid fa-list-check"></i> Action Log</button>
         <button class="view-tab" id="tabReviewDecisionLog" onclick="setReviewTab('decisionLog')"><i class="fa-solid fa-gavel"></i> Decision Log</button>
         <button class="view-tab" id="tabReviewChangeLog" onclick="setReviewTab('changeLog')"><i class="fa-solid fa-clock-rotate-left"></i> Change Log</button>
         <button class="view-tab" id="tabReviewScope" onclick="setReviewTab('scope')"><i class="fa-solid fa-clipboard-check"></i> Review Status</button>
+      </div>
+    </div>
+    <!-- Action Log/Decision Log's own shared search box — one toolbar, not
+         two, since the two sub-tabs are mutually exclusive and this avoids
+         a near-duplicate second search-box element; its placeholder and the
+         query it reads/writes both switch with reviewTab (see render()'s
+         own review branch, which keeps this input's displayed value/
+         placeholder in sync with whichever of actionLogSearchQuery/
+         decisionLogSearchQuery currently applies). Shown for
+         reviewTab==='actionLog'||'decisionLog' only — Review Status and
+         Change Log have no flat text list to search this way. -->
+    <div class="planning-toolbar" id="reviewLogSearchToolbar" style="display:none">
+      <div class="search-box">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="reviewLogSearchInput" placeholder="Search..." oninput="setReviewLogSearch(this.value)">
+        <button type="button" class="search-clear-btn" id="reviewLogSearchClearBtn" onclick="clearReviewLogSearch()" title="Clear search" style="display:none"><i class="fa-solid fa-xmark"></i></button>
       </div>
     </div>
     <!-- Dashboard's own toolbar — currently just the Exec Summary export
@@ -2005,6 +2035,20 @@ let planningStatusFilter = null;
 // renderExternalDelivery()) before an explicit user request folded it into
 // Planning's own quick-filter row instead, alongside the status chips.
 let planningDependencyFilter = false;
+// Journeys' own search box (#journeysSearchInput) — planningSearchQuery's
+// own counterpart for the Journeys sub-tab, an explicit user request
+// ("build a search feature for journeys... similar like for planning").
+// UI-only, not persisted, same lowercased/trimmed-once-on-input convention.
+let journeysSearchQuery = '';
+// Action Log/Decision Log's own search boxes — planningSearchQuery's
+// counterparts for Review's second/third sub-tabs, same explicit user
+// request as journeysSearchQuery above. Kept as two independent variables
+// (rather than one shared query) even though they're read/written through
+// one shared toolbar/input (see #reviewLogSearchToolbar's own comment) —
+// switching from Action Log to Decision Log and back should show each
+// tab's own remembered query, not silently clear or mix the other's.
+let actionLogSearchQuery = '';
+let decisionLogSearchQuery = '';
 // Which review-history entries currently show their change log — UI-only, not persisted.
 let expandedHistoryIds = new Set();
 // Which workstreams currently show their full review history instead of just
@@ -2702,7 +2746,15 @@ function render() {
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
   document.getElementById('planningModeToolbar').style.display = mode === 'planning' ? '' : 'none';
   document.getElementById('planningSearchToolbar').style.display = (mode === 'planning' && planningTab === 'scope') ? '' : 'none';
+  document.getElementById('journeysSearchToolbar').style.display = (mode === 'planning' && planningTab === 'journeys') ? '' : 'none';
   document.getElementById('reviewToolbar').style.display = mode === 'review' ? '' : 'none';
+  // Unconditional (not inside the mode==='review' branch below) for the same
+  // reason every other toolbar-visibility line up here is — a user-reported
+  // bug found that gating this one inside the review branch left it stuck
+  // visible after switching to a different mode entirely, since that branch
+  // (and the display='none' it would have set) never runs once mode is no
+  // longer 'review'.
+  document.getElementById('reviewLogSearchToolbar').style.display = (mode === 'review' && (reviewTab === 'actionLog' || reviewTab === 'decisionLog')) ? '' : 'none';
   document.getElementById('dashboardToolbar').style.display = mode === 'dashboard' ? '' : 'none';
   document.getElementById('dataMenuImportItem').style.display = hasRole('admin') ? '' : 'none';
   document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
@@ -2735,6 +2787,20 @@ function render() {
     document.getElementById('tabReviewActionLog').classList.toggle('active', reviewTab === 'actionLog');
     document.getElementById('tabReviewDecisionLog').classList.toggle('active', reviewTab === 'decisionLog');
     document.getElementById('tabReviewChangeLog').classList.toggle('active', reviewTab === 'changeLog');
+    // Action Log/Decision Log's shared search toolbar (see its own
+    // visibility toggle above, and #reviewLogSearchToolbar's own comment in
+    // the static HTML shell) — its placeholder and displayed value/clear-
+    // button are kept in sync with whichever query currently applies here,
+    // since the two sub-tabs share one input rather than each getting its
+    // own.
+    const showLogSearch = reviewTab === 'actionLog' || reviewTab === 'decisionLog';
+    if (showLogSearch) {
+      const logSearchInput = document.getElementById('reviewLogSearchInput');
+      const logQuery = reviewTab === 'actionLog' ? actionLogSearchQuery : decisionLogSearchQuery;
+      logSearchInput.placeholder = reviewTab === 'actionLog' ? 'Search action items...' : 'Search decisions...';
+      logSearchInput.value = logQuery;
+      document.getElementById('reviewLogSearchClearBtn').style.display = logQuery ? '' : 'none';
+    }
     renderReview();
   } else if (mode === 'dashboard') {
     renderDashboard();
@@ -2852,6 +2918,20 @@ function clearPlanningSearch() {
   planningSearchQuery = '';
   document.getElementById('planningSearchInput').value = '';
   document.getElementById('planningSearchClearBtn').style.display = 'none';
+  renderMain();
+}
+// setPlanningSearch()'s own counterpart for the Journeys sub-tab — same
+// "lives in a static toolbar outside #main, so a keystroke's own renderMain()
+// never steals focus" reasoning.
+function setJourneysSearch(value) {
+  journeysSearchQuery = (value || '').trim().toLowerCase();
+  document.getElementById('journeysSearchClearBtn').style.display = journeysSearchQuery ? '' : 'none';
+  renderMain();
+}
+function clearJourneysSearch() {
+  journeysSearchQuery = '';
+  document.getElementById('journeysSearchInput').value = '';
+  document.getElementById('journeysSearchClearBtn').style.display = 'none';
   renderMain();
 }
 // matchesPlanningSearch()'s counterpart for the quick-filter status chips —
@@ -3090,19 +3170,53 @@ function allJourneys() {
 // particular. A Journey with no Sub Journeys at all, or Sub Journeys with
 // nothing connected, is filtered out here the same as one with no matching
 // items — there's genuinely nothing tying it to this workstream to show.
-function journeysForCurrentFilter() {
+function journeysAfterWorkstreamFilter() {
   const journeys = allJourneys();
   if (!filterWorkstreamId) return journeys;
   return journeys.filter(j => connectedSubJourneys(j.id).some(sj =>
     connectedScopeItems(sj.id).some(it => it.workstreamId === filterWorkstreamId)
   ));
 }
+// A plain case-insensitive substring match against a Journey's own name, OR
+// any one of its Sub Journeys' own names — planningSearchQuery's own
+// counterpart, an explicit user request ("build a search feature for
+// journeys... similar like for planning"). Matches matchesPlanningSearch()'s
+// spirit (a quick "find one thing" tool, not a general query) but reaches
+// one level deeper, since Sub Journeys are a second, equally-named tier in
+// this tree that's just as reasonable to search for directly — deliberately
+// doesn't reach further, into connected scope items' own names, the same
+// "quick find, not exhaustive" scope matchesPlanningSearch() itself draws
+// short of milestone names.
+function matchesJourneysSearch(j) {
+  if (!journeysSearchQuery) return true;
+  if (j.name.toLowerCase().includes(journeysSearchQuery)) return true;
+  return connectedSubJourneys(j.id).some(sj => sj.name.toLowerCase().includes(journeysSearchQuery));
+}
+// The Journeys sub-tab's own full narrowing — workstream filter (see
+// journeysAfterWorkstreamFilter()'s own comment) then search, composed the
+// same way Planning's own search box/status chips/dependency chip all
+// compose with each other. Used by journeysExpandAllIds() so Expand-all
+// only ever acts on what's actually visible under both filters at once.
+function journeysForCurrentFilter() {
+  const journeys = journeysAfterWorkstreamFilter();
+  return journeysSearchQuery ? journeys.filter(matchesJourneysSearch) : journeys;
+}
 function renderJourneys() {
   const main = document.getElementById('main');
-  const journeys = journeysForCurrentFilter();
   const scopedWs = filterWorkstreamId ? wsById(filterWorkstreamId) : null;
+  // Computed as two separate steps (rather than just calling
+  // journeysForCurrentFilter() once) specifically so the empty-state
+  // message below can tell "nothing here at all for this workstream" apart
+  // from "a search query found nothing among what IS here" — the same
+  // "narrows what's listed, never conflates why it's empty" precedent
+  // Planning's own search box already established.
+  const wsFiltered = journeysAfterWorkstreamFilter();
+  const journeys = journeysSearchQuery ? wsFiltered.filter(matchesJourneysSearch) : wsFiltered;
+  const emptyMsg = wsFiltered.length
+    ? `No Journeys match "${esc(journeysSearchQuery)}".`
+    : (scopedWs ? `No Journeys with scope items in "${esc(scopedWs.name)}" yet.` : 'No journeys yet.');
   const rows = journeys.length ? journeys.map(it => itemRowHtml(it)).join('') :
-    `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">${scopedWs ? `No Journeys with scope items in "${esc(scopedWs.name)}" yet.` : 'No journeys yet.'}</div>`;
+    `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">${emptyMsg}</div>`;
   // A name-only inline capture, matching the Unassigned section's own "+
   // Add item" quick-add exactly (see openInlineQuickAdd()) — an explicit
   // user request to make the two consistent, replacing the full item modal
@@ -4078,6 +4192,31 @@ function fmtDateY(iso) {
 
 // ---------- View / filter / theme ----------
 function setReviewTab(t) { reviewTab = t; render(); }
+// Action Log/Decision Log's own shared search input (#reviewLogSearchInput)
+// — reads/writes whichever of actionLogSearchQuery/decisionLogSearchQuery
+// applies to the currently-active reviewTab, since the two sub-tabs share
+// one toolbar/input rather than each getting its own (see
+// #reviewLogSearchToolbar's own comment for why). Calls the narrower
+// renderReview() rather than the full render(), the same "never steal focus
+// from a static-toolbar input" reasoning setPlanningSearch() already
+// follows — render()'s own review branch is what keeps this input's
+// displayed value/placeholder in sync with reviewTab on every full render,
+// but a plain keystroke here never needs that (reviewTab itself isn't
+// changing).
+function setReviewLogSearch(value) {
+  const q = (value || '').trim().toLowerCase();
+  if (reviewTab === 'actionLog') actionLogSearchQuery = q;
+  else if (reviewTab === 'decisionLog') decisionLogSearchQuery = q;
+  document.getElementById('reviewLogSearchClearBtn').style.display = q ? '' : 'none';
+  renderReview();
+}
+function clearReviewLogSearch() {
+  if (reviewTab === 'actionLog') actionLogSearchQuery = '';
+  else if (reviewTab === 'decisionLog') decisionLogSearchQuery = '';
+  document.getElementById('reviewLogSearchInput').value = '';
+  document.getElementById('reviewLogSearchClearBtn').style.display = 'none';
+  renderReview();
+}
 function setFilterWorkstream(id) {
   filterWorkstreamId = id;
   save(); render();
@@ -6557,6 +6696,15 @@ function actionLogCountHtml(list) {
   const openCount = list.filter(a => !a.completed).length;
   return `<span class="review-progress" style="margin:0;flex:0 0 auto">${openCount} open of ${list.length} action item${list.length === 1 ? '' : 's'}</span>`;
 }
+// A plain case-insensitive substring match against the action item's own
+// text — matchesPlanningSearch()'s counterpart, an explicit user request
+// ("build a search feature for... action logs and decision logs, similar
+// like for planning"). Deliberately text-only, not owner too, the same
+// "quick find, not a general query" scope every other search box in this
+// app already keeps to.
+function matchesActionLogSearch(a) {
+  return !actionLogSearchQuery || a.text.toLowerCase().includes(actionLogSearchQuery);
+}
 // The workstream-wide action log — every action item ever imported from a
 // meeting minutes attachment across every review cycle for this workstream
 // (see syncActionLogFromMinutes()), completable independently of the review
@@ -6565,6 +6713,14 @@ function actionLogHtml(w) {
   const list = Array.isArray(w.actionLog) ? w.actionLog : [];
   if (!list.length) {
     return `<div class="attention-empty">No action items yet — they're added automatically when meeting minutes with action items are attached to a review cycle.</div>`;
+  }
+  // Narrows which rows render, never the "open of N" count above (that's
+  // computed from the real, unfiltered list — see actionLogCountHtml()'s own
+  // call site in renderReview()) — same "narrows what's listed, never the
+  // counts" precedent Planning's own search box already established.
+  const filtered = list.filter(matchesActionLogSearch);
+  if (!filtered.length) {
+    return `<div class="attention-empty">No action items match "${esc(actionLogSearchQuery)}".</div>`;
   }
   // .action-log-row/.action-log-header both override grid-template-columns
   // outright with a fully explicit 9-column list (see that CSS rule's own
@@ -6585,7 +6741,7 @@ function actionLogHtml(w) {
         <span style="grid-column:7">Closed</span>
         <span style="grid-column:8/10">Actions</span>
       </div>
-      ${sortedActionLog(list).map(a => actionLogRowHtml(w, a)).join('')}
+      ${sortedActionLog(filtered).map(a => actionLogRowHtml(w, a)).join('')}
     </div>`;
 }
 // The "All Workstreams" Action Log — every workstream's own actionLog
@@ -6603,6 +6759,10 @@ function allWorkstreamsActionLogHtml() {
   if (!entries.length) {
     return `<div class="attention-empty">No action items yet — they're added automatically when meeting minutes with action items are attached to a review cycle.</div>`;
   }
+  const filtered = entries.filter(x => matchesActionLogSearch(x.a));
+  if (!filtered.length) {
+    return `<div class="attention-empty">No action items match "${esc(actionLogSearchQuery)}".</div>`;
+  }
   return `<div class="action-log-list">
       <div class="item-row action-log-row action-log-header with-ws">
         <span class="priority-flag-btn" style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
@@ -6615,7 +6775,7 @@ function allWorkstreamsActionLogHtml() {
         <span style="grid-column:8">Closed</span>
         <span style="grid-column:9/11">Actions</span>
       </div>
-      ${sortedActionLog(entries, x => x.a).map(({ w, a }) => actionLogRowHtml(w, a, true)).join('')}
+      ${sortedActionLog(filtered, x => x.a).map(({ w, a }) => actionLogRowHtml(w, a, true)).join('')}
     </div>`;
 }
 function toggleActionLogItem(wsId, itemId) {
@@ -6754,6 +6914,10 @@ function decisionLogCountHtml(list) {
   if (!list.length) return '';
   return `<span class="review-progress" style="margin:0;flex:0 0 auto">${list.length} decision${list.length === 1 ? '' : 's'}</span>`;
 }
+// matchesActionLogSearch()'s own counterpart.
+function matchesDecisionLogSearch(d) {
+  return !decisionLogSearchQuery || d.text.toLowerCase().includes(decisionLogSearchQuery);
+}
 // The workstream-wide decision log — every decision ever imported from a
 // meeting minutes attachment across every review cycle for this workstream
 // (see syncDecisionLogFromMinutes()). Rendered as Review's third tab (see
@@ -6763,6 +6927,10 @@ function decisionLogHtml(w) {
   if (!list.length) {
     return `<div class="attention-empty">No decisions yet — they're added automatically when meeting minutes with decisions are attached to a review cycle.</div>`;
   }
+  const filtered = list.filter(matchesDecisionLogSearch);
+  if (!filtered.length) {
+    return `<div class="attention-empty">No decisions match "${esc(decisionLogSearchQuery)}".</div>`;
+  }
   return `<div class="action-log-list">
       <div class="item-row decision-log-row decision-log-header">
         <span class="priority-flag-btn" style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
@@ -6771,7 +6939,7 @@ function decisionLogHtml(w) {
         <span style="grid-column:4">Logged</span>
         <span style="grid-column:5">Actions</span>
       </div>
-      ${sortedDecisionLog(list).map(d => decisionLogRowHtml(w, d)).join('')}
+      ${sortedDecisionLog(filtered).map(d => decisionLogRowHtml(w, d)).join('')}
     </div>`;
 }
 // The "All Workstreams" Decision Log — allWorkstreamsActionLogHtml()'s
@@ -6785,6 +6953,10 @@ function allWorkstreamsDecisionLogHtml() {
   if (!entries.length) {
     return `<div class="attention-empty">No decisions yet — they're added automatically when meeting minutes with decisions are attached to a review cycle.</div>`;
   }
+  const filtered = entries.filter(x => matchesDecisionLogSearch(x.d));
+  if (!filtered.length) {
+    return `<div class="attention-empty">No decisions match "${esc(decisionLogSearchQuery)}".</div>`;
+  }
   return `<div class="action-log-list">
       <div class="item-row decision-log-row decision-log-header with-ws">
         <span class="priority-flag-btn" style="grid-column:1" title="Priority flag"><i class="fa-solid fa-flag"></i></span>
@@ -6794,7 +6966,7 @@ function allWorkstreamsDecisionLogHtml() {
         <span style="grid-column:5">Logged</span>
         <span style="grid-column:6">Actions</span>
       </div>
-      ${sortedDecisionLog(entries, x => x.d).map(({ w, d }) => decisionLogRowHtml(w, d, true)).join('')}
+      ${sortedDecisionLog(filtered, x => x.d).map(({ w, d }) => decisionLogRowHtml(w, d, true)).join('')}
     </div>`;
 }
 // Deleting a log entry only removes it from the workstream's decisionLog —
