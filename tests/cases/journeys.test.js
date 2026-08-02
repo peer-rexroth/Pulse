@@ -174,7 +174,7 @@ test('openJourneyQuickAdd is blocked for Reviewer', function () {
 
 test('renderJourneys shows the button by default, and swaps in the input once opened', function () {
   let html = document.getElementById('main').innerHTML;
-  setMode('journeys');
+  setPlanningTab('journeys');
   html = document.getElementById('main').innerHTML;
   assertIncludes(html, `onclick="openJourneyQuickAdd()"`);
   assertNotIncludes(html, 'id="journeyQuickAddInput"');
@@ -187,7 +187,7 @@ test('renderJourneys shows the button by default, and swaps in the input once op
 test('renderJourneys omits the Add-Journey button (and the quick-add input) for Reviewer', function () {
   addJourney('Existing Journey');
   userRole = 'reviewer';
-  setMode('journeys');
+  setPlanningTab('journeys');
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Existing Journey');
   assertNotIncludes(html, 'openJourneyQuickAdd');
@@ -1052,30 +1052,44 @@ test('unassignedItemsSorted never includes a Journey or a Sub Journey, even thou
   assertDeepEqual(names, ['Genuinely unassigned']);
 });
 
-// ---------- Journeys mode ----------
+// ---------- Journeys as a Planning sub-tab ----------
+// Journeys used to be its own top-level mode (mode:'journeys'), reached from
+// a dedicated sidebar row — an explicit user request ("move Journeys to All
+// Workstreams / Planning / Journeys") moved it inside Planning instead, as
+// its second sub-tab (planningTab, alongside the status board's own "Scope
+// Items"), the same reviewTab-style pattern Review's own sub-tabs already
+// use. mode itself now stays 'planning' the whole time; only planningTab
+// changes which content renderMain() writes into #main.
 
-test('setMode("journeys") is a valid mode, renders into the shared scopedBody/main shell (sidebar visible), and hides adminBody', function () {
-  setMode('journeys');
-  assertEqual(mode, 'journeys');
-  assertEqual(document.getElementById('scopedBody').style.display, '', 'Journeys now shares the sidebar shell — moved there so its own nav entry could live in the sidebar');
+test('setPlanningTab("journeys") keeps mode at "planning" and renders Journeys content into the shared #main, with adminBody still hidden', function () {
+  setPlanningTab('journeys');
+  assertEqual(mode, 'planning', 'Journeys is a Planning sub-tab now, not its own mode');
+  assertEqual(planningTab, 'journeys');
+  assertEqual(document.getElementById('scopedBody').style.display, '');
   assertEqual(document.getElementById('adminBody').style.display, 'none');
 });
 
-test('renderSidebar renders a Journeys nav row in the top nav group, before "All Workstreams", showing the current top-level Journey count and highlighted only in Journeys mode', function () {
-  addJourney('First Journey');
-  addJourney('Second Journey');
-  setMode('planning');
-  let html = document.getElementById('topNavList').innerHTML;
-  assertIncludes(html, 'Journeys');
-  assertIncludes(html, '>2<', 'the count badge should show allJourneys().length');
-  const journeysIdx = html.indexOf('Journeys');
-  const allIdx = html.indexOf('All Workstreams');
-  assertTrue(journeysIdx < allIdx, 'order must be Journeys -> All Workstreams');
-  assertNotIncludes(html, 'ws-row active', 'not active while on Planning');
+test('the Planning toolbar shows Scope Items/Journeys sub-tab buttons only in Planning mode, with the correct one active', function () {
+  setMode('dashboard');
+  assertEqual(document.getElementById('planningModeToolbar').style.display, 'none');
 
-  setMode('journeys');
-  html = document.getElementById('topNavList').innerHTML;
-  assertIncludes(html, `ws-row active" onclick="setMode('journeys')"`, 'active once Journeys mode is showing');
+  setMode('planning');
+  assertEqual(document.getElementById('planningModeToolbar').style.display, '');
+  assertTrue(document.getElementById('tabPlanningScope').classList.contains('active'));
+  assertFalse(document.getElementById('tabPlanningJourneys').classList.contains('active'));
+
+  setPlanningTab('journeys');
+  assertFalse(document.getElementById('tabPlanningScope').classList.contains('active'));
+  assertTrue(document.getElementById('tabPlanningJourneys').classList.contains('active'));
+});
+
+test('the search box/status-chip toolbar only shows on Planning\'s Scope Items sub-tab, not on Journeys', function () {
+  setMode('planning');
+  assertEqual(document.getElementById('planningSearchToolbar').style.display, '');
+  setPlanningTab('journeys');
+  assertEqual(document.getElementById('planningSearchToolbar').style.display, 'none');
+  setPlanningTab('scope');
+  assertEqual(document.getElementById('planningSearchToolbar').style.display, '');
 });
 
 test('allJourneys returns only itemType:"journey" items, sorted by order, excluding Sub Journeys and scope items', function () {
@@ -1091,7 +1105,7 @@ test('renderJourneys lists every top-level journey in one flat list with a singl
   addItem({ name: 'A plain scope item' });
   const journey = addJourney('The Journey');
   addSubJourney(journey.id, 'A Sub Journey');
-  setMode('journeys');
+  setPlanningTab('journeys');
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'The Journey');
   assertNotIncludes(html, 'A plain scope item');
@@ -1099,7 +1113,7 @@ test('renderJourneys lists every top-level journey in one flat list with a singl
 });
 
 test('renderJourneys shows "No journeys yet" when there are none', function () {
-  setMode('journeys');
+  setPlanningTab('journeys');
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'No journeys yet.');
 });
@@ -1110,7 +1124,7 @@ test('renderJourneys ignores the shared filterWorkstreamId selector entirely —
   addJourney('Journey A');
   addJourney('Journey B');
   setFilterWorkstream(secondWs.id);
-  setMode('journeys');
+  setPlanningTab('journeys');
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Journey A');
   assertIncludes(html, 'Journey B');
@@ -1119,15 +1133,15 @@ test('renderJourneys ignores the shared filterWorkstreamId selector entirely —
 test('renderJourneys works even with zero workstreams (a Journey needs none to exist)', function () {
   workstreams = []; items = [];
   addJourney('Standalone Journey');
-  setMode('journeys');
+  setPlanningTab('journeys');
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Standalone Journey');
 });
 
 // ---------- Journeys' own "Expand all"/"Collapse all" ----------
 // An explicit user request to bring the same per-section control Planning's
-// status board already has (expandAllToggleHtml()) to Journeys mode too.
-// journeysExpandAllIds()/journeysExpandAllToggleHtml() are its own
+// status board already has (expandAllToggleHtml()) to the Journeys sub-tab
+// too. journeysExpandAllIds()/journeysExpandAllToggleHtml() are its own
 // counterparts, since "expandable" means something different here (every
 // Journey/Sub Journey, not "has milestones") and there are two nested
 // levels to unfold, not one.
@@ -1148,13 +1162,13 @@ test('journeysExpandAllToggleHtml is omitted (empty string) when there are no jo
 
 test('renderJourneys shows the Expand-all/Collapse-all icon in its own page header once at least one journey exists', function () {
   addJourney('Journey A');
-  setMode('journeys');
+  setPlanningTab('journeys');
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'toggleExpandAllForItems');
   assertIncludes(html, 'Expand all');
 });
 
-test('clicking Expand-all in Journeys mode expands every Journey and every Sub Journey at once', function () {
+test('clicking Expand-all on the Journeys sub-tab expands every Journey and every Sub Journey at once', function () {
   const j1 = addJourney('Journey A');
   const sub1 = addSubJourney(j1.id, 'Sub A1');
   const j2 = addJourney('Journey B');
@@ -1179,7 +1193,7 @@ test('clicking Expand-all a second time (once everything is already expanded) co
 test('renderJourneys still renders correctly (and updates, not just Planning) after toggleExpandAllForItems, since it now calls the general render()', function () {
   const j1 = addJourney('Journey A');
   const sub1 = addSubJourney(j1.id, 'Sub A1');
-  setMode('journeys');
+  setPlanningTab('journeys');
   toggleExpandAllForItems(journeysExpandAllIds());
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Sub A1', 'expanding the Journey should reveal its Sub Journey in the live-rendered page, not just in expandedItemIds state');

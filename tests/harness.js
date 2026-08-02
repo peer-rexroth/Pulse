@@ -200,7 +200,7 @@ async function run(argv) {
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set(); revealedDueIds = new Set();
   unassignedQuickAddOpen = false; journeyQuickAddOpen = false; subJourneyQuickAddOpenFor = null; planningSearchQuery = ''; planningStatusFilter = null; planningDependencyFilter = false;
   editingCategoryId = null; editingCategoryMilestones = [];
-  minutesModalCycleId = null; editingMinutesActionItems = []; reviewTab = 'scope';
+  minutesModalCycleId = null; editingMinutesActionItems = []; reviewTab = 'scope'; planningTab = 'scope';
   renamingProgramme = false;
   pendingImportData = null; modalTarget = null; toastUndoAction = null;
   fileHandle = null; lastSyncedSnapshot = null; lastSyncedAt = 0; syncConflictLog = [];

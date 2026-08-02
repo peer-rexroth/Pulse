@@ -192,6 +192,12 @@ test('selectWorkstreamFromSidebar(null) ("All Workstreams") switches to Planning
   assertEqual(filterWorkstreamId, null);
 });
 
+test('selectWorkstreamFromSidebar also forces planningTab back to "scope" — picking a workstream while on the Journeys sub-tab must not leave that sub-tab showing, since Journeys ignores the selector entirely', function () {
+  setPlanningTab('journeys');
+  selectWorkstreamFromSidebar(workstreams[0].id);
+  assertEqual(planningTab, 'scope');
+});
+
 test('plain setFilterWorkstream (used by reviewDatesOverviewHtml and tests) never changes mode — only the sidebar\'s own rows do', function () {
   setMode('review');
   setFilterWorkstream(workstreams[0].id);
@@ -199,33 +205,33 @@ test('plain setFilterWorkstream (used by reviewDatesOverviewHtml and tests) neve
   assertEqual(filterWorkstreamId, workstreams[0].id);
 });
 
-test('switching to Journeys mode deselects the workstream row in the sidebar, without clearing filterWorkstreamId itself', function () {
+test('switching to Planning\'s Journeys sub-tab deselects the workstream row in the sidebar, without clearing filterWorkstreamId itself', function () {
   const w = workstreams[0];
   filterWorkstreamId = w.id;
-  setMode('planning');
+  setPlanningTab('scope');
   renderSidebar();
   let html = document.getElementById('wsList').innerHTML;
-  assertIncludes(html, `ws-row active" onclick="selectWorkstreamFromSidebar('${w.id}')"`, 'the workstream row is active while Planning is scoped to it');
+  assertIncludes(html, `ws-row active" onclick="selectWorkstreamFromSidebar('${w.id}')"`, 'the workstream row is active while Planning\'s Scope Items sub-tab is scoped to it');
 
-  setMode('journeys');
+  setPlanningTab('journeys');
   renderSidebar();
   html = document.getElementById('wsList').innerHTML;
-  assertNotIncludes(html, 'ws-row active', 'no workstream row (including "All Workstreams") should read as active while Journeys — which ignores the selector entirely — is showing');
+  assertNotIncludes(html, 'ws-row active', 'no workstream row (including "All Workstreams") should read as active while the Journeys sub-tab — which ignores the selector entirely — is showing');
   assertEqual(filterWorkstreamId, w.id, 'the selection itself must survive the switch, so it\'s still scoped correctly on switching back');
 
-  setMode('planning');
+  setPlanningTab('scope');
   renderSidebar();
   html = document.getElementById('wsList').innerHTML;
-  assertIncludes(html, `ws-row active" onclick="selectWorkstreamFromSidebar('${w.id}')"`, 'switching back to Planning restores the same row\'s active highlight');
+  assertIncludes(html, `ws-row active" onclick="selectWorkstreamFromSidebar('${w.id}')"`, 'switching back to Scope Items restores the same row\'s active highlight');
 });
 
-test('switching to Journeys mode also deselects "All Workstreams" itself, not just a specific workstream row', function () {
+test('switching to Planning\'s Journeys sub-tab also deselects "All Workstreams" itself, not just a specific workstream row', function () {
   filterWorkstreamId = null;
-  setMode('planning');
+  setPlanningTab('scope');
   renderSidebar();
-  assertIncludes(document.getElementById('topNavList').innerHTML, 'ws-row-all active', '"All Workstreams" is active while Planning is scoped to it');
+  assertIncludes(document.getElementById('topNavList').innerHTML, 'ws-row-all active', '"All Workstreams" is active while Planning\'s Scope Items sub-tab is scoped to it');
 
-  setMode('journeys');
+  setPlanningTab('journeys');
   renderSidebar();
-  assertNotIncludes(document.getElementById('topNavList').innerHTML, 'ws-row-all active', '"All Workstreams" must not read as active either, once Journeys is showing');
+  assertNotIncludes(document.getElementById('topNavList').innerHTML, 'ws-row-all active', '"All Workstreams" must not read as active either, once the Journeys sub-tab is showing');
 });
