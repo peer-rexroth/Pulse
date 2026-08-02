@@ -1067,8 +1067,9 @@ test('milestoneRowsHtml renders the Not Applicable toggle wired to toggleMilesto
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, `toggleMilestoneNotApplicable('${it.id}','m1')`);
   assertIncludes(html, `toggleMilestoneNotApplicable('${it.id}','m2')`);
-  assertIncludes(html, 'fa-regular fa-toggle-off', 'the not-yet-marked milestone should show the toggle-off icon');
+  assertIncludes(html, 'fa-solid fa-toggle-off', 'the not-yet-marked milestone should show the toggle-off icon');
   assertIncludes(html, 'fa-solid fa-toggle-on', 'the marked milestone should show the toggle-on icon');
+  assertNotIncludes(html, 'fa-regular fa-toggle', 'Font Awesome\'s free tier has no regular style for either toggle icon — using it renders a missing-glyph box, a real user-reported bug');
 });
 
 // ---------- Delayed-milestone color coding (Due/Actual pills) ----------

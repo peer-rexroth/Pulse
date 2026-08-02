@@ -4134,10 +4134,15 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // every other toggle here uses (the priority flag, the review confirm
     // toggle) — deliberately, since a real toggle-switch shape changing
     // shape (not just fill) reads as "on/off" more immediately than a
-    // subtler filled-vs-outline distinction alone.
+    // subtler filled-vs-outline distinction alone. Both states are
+    // fa-solid, not fa-regular/fa-solid — a user-reported bug (a broken
+    // missing-glyph box in place of the off icon) traced to Font Awesome's
+    // free tier shipping no "regular" style for either toggle icon at all,
+    // solid-only; off-vs-on is instead carried entirely by the icon *name*
+    // (toggle-off vs toggle-on) plus the existing opacity/color styling.
     const naHtml = viewOnly ? '' : (naEditable
-      ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${m.notApplicable ? 'solid fa-toggle-on' : 'regular fa-toggle-off'}"></i></button>`
-      : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-${m.notApplicable ? 'solid fa-toggle-on' : 'regular fa-toggle-off'}"></i></span>`);
+      ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-solid ${m.notApplicable ? 'fa-toggle-on' : 'fa-toggle-off'}"></i></button>`
+      : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-solid ${m.notApplicable ? 'fa-toggle-on' : 'fa-toggle-off'}"></i></span>`);
     return `
     <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''} ${viewOnly ? 'item-row-indent-2' : ''}">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
@@ -5234,10 +5239,11 @@ function renderMilestonesEditor() {
     // fa-toggle-on/fa-toggle-off, matching milestoneRowsHtml()'s own naHtml
     // — see that function's own comment for why this one toggle uses two
     // distinct glyphs rather than every other toggle's shared fa-regular/
-    // fa-solid style-variant pattern.
+    // fa-solid style-variant pattern, and why both states render fa-solid
+    // (Font Awesome's free tier has no fa-regular for either toggle icon).
     const naToggleHtml = (editable && !isPendingItem)
-      ? `<button class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : ''}" onclick="toggleEditingMilestoneNotApplicable(${idx})" title="${na ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-${na ? 'solid fa-toggle-on' : 'regular fa-toggle-off'}"></i></button>`
-      : `<span class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${na ? 'Not applicable' : ''}"><i class="fa-${na ? 'solid fa-toggle-on' : 'regular fa-toggle-off'}"></i></span>`;
+      ? `<button class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : ''}" onclick="toggleEditingMilestoneNotApplicable(${idx})" title="${na ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-solid ${na ? 'fa-toggle-on' : 'fa-toggle-off'}"></i></button>`
+      : `<span class="row-icon-btn" style="${na ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${na ? 'Not applicable' : ''}"><i class="fa-solid ${na ? 'fa-toggle-on' : 'fa-toggle-off'}"></i></span>`;
     return `
     <div class="milestone-row">
       <input type="text" value="${esc(m.name)}" title="Milestone name" ${dis} oninput="editingMilestones[${idx}].name = this.value">
