@@ -1204,16 +1204,120 @@ test('renderJourneys shows "No journeys yet" when there are none', function () {
   assertIncludes(html, 'No journeys yet.');
 });
 
-test('renderJourneys ignores the shared filterWorkstreamId selector entirely — it always shows every journey', function () {
-  const secondWs = { id: genId(), name: 'Second', color: 'teal', order: 1 };
-  workstreams.push(secondWs);
+test('renderJourneys shows every journey, unfiltered, while "All Workstreams" is selected', function () {
   addJourney('Journey A');
   addJourney('Journey B');
-  setFilterWorkstream(secondWs.id);
+  setFilterWorkstream(null);
   setPlanningTab('journeys');
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'Journey A');
   assertIncludes(html, 'Journey B');
+  assertNotIncludes(html, 'Journeys — ', 'the header title has no " — <workstream>" suffix while unfiltered');
+});
+
+// ---------- journeysForCurrentFilter() — narrowing the Journeys sub-tab to
+// one workstream ----------
+// An explicit user request ("In a workstream (not all workstream) show
+// under Journeys only the Journeys where respective scope items of that
+// workstream are included") — the Journeys sub-tab used to ignore
+// filterWorkstreamId completely; now, with one specific workstream
+// selected, it narrows to just the Journeys that actually reach into it.
+
+test('journeysForCurrentFilter returns every journey when filterWorkstreamId is null', function () {
+  addJourney('Journey A');
+  addJourney('Journey B');
+  setFilterWorkstream(null);
+  assertEqual(journeysForCurrentFilter().length, 2);
+});
+
+test('journeysForCurrentFilter, scoped to a workstream, only includes a Journey with a connected scope item in that workstream', function () {
+  const ws2 = { id: genId(), name: 'Second', color: 'teal', order: 1 };
+  workstreams.push(ws2);
+  const journeyInWs1 = addJourney('In WS1');
+  const sub1 = addSubJourney(journeyInWs1.id);
+  addItem({ name: 'A', journeyId: sub1.id, workstreamId: workstreams[0].id });
+  const journeyInWs2 = addJourney('In WS2');
+  const sub2 = addSubJourney(journeyInWs2.id);
+  addItem({ name: 'B', journeyId: sub2.id, workstreamId: ws2.id });
+
+  setFilterWorkstream(workstreams[0].id);
+  assertDeepEqual(journeysForCurrentFilter().map(j => j.name), ['In WS1']);
+
+  setFilterWorkstream(ws2.id);
+  assertDeepEqual(journeysForCurrentFilter().map(j => j.name), ['In WS2']);
+});
+
+test('journeysForCurrentFilter excludes a Journey with no Sub Journeys, or Sub Journeys with nothing connected, from any workstream-scoped view', function () {
+  addJourney('Empty journey');
+  const journeyWithEmptySub = addJourney('Journey with an empty sub');
+  addSubJourney(journeyWithEmptySub.id);
+  setFilterWorkstream(workstreams[0].id);
+  assertEqual(journeysForCurrentFilter().length, 0);
+});
+
+test('a Journey with Sub Journeys spanning multiple workstreams still shows under each of those workstreams individually', function () {
+  const ws2 = { id: genId(), name: 'Second', color: 'teal', order: 1 };
+  workstreams.push(ws2);
+  const journey = addJourney('Cross-workstream journey');
+  const subA = addSubJourney(journey.id, 'Sub A');
+  addItem({ name: 'A', journeyId: subA.id, workstreamId: workstreams[0].id });
+  const subB = addSubJourney(journey.id, 'Sub B');
+  addItem({ name: 'B', journeyId: subB.id, workstreamId: ws2.id });
+
+  setFilterWorkstream(workstreams[0].id);
+  assertEqual(journeysForCurrentFilter().length, 1);
+  setFilterWorkstream(ws2.id);
+  assertEqual(journeysForCurrentFilter().length, 1);
+});
+
+test('renderJourneys shows only the matching journey when scoped to a workstream, and appends " — <workstream name>" to the header title', function () {
+  const ws2 = { id: genId(), name: 'Second', color: 'teal', order: 1 };
+  workstreams.push(ws2);
+  const journeyInWs1 = addJourney('In WS1');
+  const sub1 = addSubJourney(journeyInWs1.id);
+  addItem({ name: 'A', journeyId: sub1.id, workstreamId: workstreams[0].id });
+  addJourney('In WS2 (unconnected here)'); // no connected items at all
+
+  setFilterWorkstream(workstreams[0].id);
+  setPlanningTab('journeys');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'In WS1');
+  assertNotIncludes(html, 'In WS2 (unconnected here)');
+  assertIncludes(html, `Journeys — ${workstreams[0].name}`);
+});
+
+test('renderJourneys shows a workstream-specific empty state, naming the workstream, when scoped and nothing matches', function () {
+  addJourney('Unrelated journey'); // never connected to anything
+  setFilterWorkstream(workstreams[0].id);
+  setPlanningTab('journeys');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `No Journeys with scope items in "${workstreams[0].name}" yet.`);
+  assertNotIncludes(html, 'Unrelated journey');
+});
+
+test('journeysExpandAllIds only collects Journeys/Sub Journeys that pass the current workstream filter', function () {
+  const ws2 = { id: genId(), name: 'Second', color: 'teal', order: 1 };
+  workstreams.push(ws2);
+  const journeyInWs1 = addJourney('In WS1');
+  const sub1 = addSubJourney(journeyInWs1.id, 'Sub in WS1');
+  addItem({ name: 'A', journeyId: sub1.id, workstreamId: workstreams[0].id });
+  const journeyInWs2 = addJourney('In WS2');
+  const sub2 = addSubJourney(journeyInWs2.id, 'Sub in WS2');
+  addItem({ name: 'B', journeyId: sub2.id, workstreamId: ws2.id });
+
+  setFilterWorkstream(workstreams[0].id);
+  const ids = journeysExpandAllIds();
+  assertDeepEqual(ids.sort(), [journeyInWs1.id, sub1.id].sort());
+});
+
+test('a workstream row in the sidebar filters the Journeys sub-tab the same way clicking through from Scope Items would — narrowing, not switching modes twice', function () {
+  const journey = addJourney('In WS1');
+  const sub = addSubJourney(journey.id);
+  addItem({ name: 'A', journeyId: sub.id, workstreamId: workstreams[0].id });
+  setPlanningTab('journeys');
+  setFilterWorkstream(workstreams[0].id); // mirrors what selectWorkstreamFromSidebar's filter half does
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'In WS1');
 });
 
 test('renderJourneys works even with zero workstreams (a Journey needs none to exist)', function () {

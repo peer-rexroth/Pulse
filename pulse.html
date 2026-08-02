@@ -2723,20 +2723,17 @@ function setPlanningTab(t) { planningTab = t; render(); }
 
 function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
-  // Neither "All Workstreams" nor any real workstream row shows as active
-  // while Planning's own Journeys sub-tab is showing — a user-reported bug
-  // from back when Journeys was its own mode (filterWorkstreamId stays
-  // whatever it last was, since the Journeys tree ignores it entirely — see
-  // renderJourneys()/planningJourneysSectionHtml() — so the workstream row
-  // someone had selected before switching stayed visually highlighted even
-  // though nothing on screen was actually scoped to it any more).
-  // inWorkstreamScope gates both active checks below rather than clearing
-  // filterWorkstreamId itself — the selection should still be remembered
-  // (and restored, visually) on switching back to the Scope Items sub-tab,
-  // not lost the moment Journeys is opened. Still keyed off "is Journeys
-  // currently showing", just phrased in terms of planningTab now that
-  // Journeys lives inside Planning rather than being its own mode.
-  const inWorkstreamScope = !(mode === 'planning' && planningTab === 'journeys');
+  // A workstream row's own "active" state used to be suppressed entirely
+  // while Planning's own Journeys sub-tab was showing (an `inWorkstreamScope`
+  // gate, back when the Journeys tree ignored filterWorkstreamId completely
+  // — a user-reported bug otherwise left the previously-selected row
+  // visually highlighted even though nothing on screen was actually scoped
+  // to it). That's no longer true: a later, explicit user request made the
+  // Journeys sub-tab itself workstream-aware (see journeysForCurrentFilter()
+  // in "Journeys" below) — with one workstream selected, it now narrows down
+  // to just the Journeys reaching into it — so the sidebar's own active
+  // highlight is correct again on both sub-tabs and no longer needs its own
+  // special-case gate; `filterWorkstreamId` alone drives both checks below.
   // Just "All Workstreams" now — Journeys used to sit right above this as
   // its own row here (a single ordered top group, above a separator, ahead
   // of the real workstream list below it), back when it was its own
@@ -2747,7 +2744,7 @@ function renderSidebar() {
   // HTML shell + that class's own CSS comment), kept as-is even with only
   // one row above it.
   document.getElementById('topNavList').innerHTML = `
-    <div class="ws-row ws-row-all ${inWorkstreamScope && filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
+    <div class="ws-row ws-row-all ${filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
       <i class="fa-solid fa-layer-group ws-row-all-icon"></i>
       <span class="ws-row-name">All Workstreams</span>
       <span class="ws-row-count">${items.length}</span>
@@ -2781,7 +2778,7 @@ function renderSidebar() {
     // drag buttons still show their own more specific titles when hovered
     // directly, since a title on the actual hovered element always wins
     // over an ancestor's.
-    return `<div class="ws-row ${inWorkstreamScope && filterWorkstreamId === w.id ? 'active' : ''}" onclick="selectWorkstreamFromSidebar('${w.id}')" title="${esc(w.name)}"${dragAttrs}>
+    return `<div class="ws-row ${filterWorkstreamId === w.id ? 'active' : ''}" onclick="selectWorkstreamFromSidebar('${w.id}')" title="${esc(w.name)}"${dragAttrs}>
         <span class="ws-dot" style="background:var(--ws-${w.color})"></span>
         <span class="ws-row-name">${esc(w.name)}</span>
         ${reviewBadge}
@@ -3035,28 +3032,48 @@ function renderStatusView(main) {
 // A Journey is never assigned to a workstream at all — an explicit user
 // correction to this feature's first draft ("Journey should not be assigned
 // to workstreams. They are overarching"). So unlike Planning's own status
-// board, this view is a single flat list, not one section per workstream —
-// and it deliberately ignores the shared filterWorkstreamId selector
-// entirely (ignoring it, not just defaulting to "All", since a per-
-// workstream filter has nothing to scope a workstream-less list by), even
-// though the sidebar carrying that selector stays visible while this view
-// is showing (see renderSidebar()'s own inWorkstreamScope comment for why
-// that's fine — no workstream row shows as "active" while it's up, so the
-// selector reads as inert rather than misleadingly scoping something it
-// doesn't). Journeys used to be its own top-level mode, reached from a
-// dedicated sidebar row, before its own sidebar-less page before that (see
-// "Journeys" in CLAUDE.md for that full history) — it's Planning's second
-// sub-tab now (planningTab, see renderMain()/setPlanningTab()), sitting
-// alongside Planning's own status board ("Scope Items") rather than beside
-// it as a separate mode.
+// board, this view is a single flat list, not one section per workstream.
+// It used to ignore the shared filterWorkstreamId selector completely — a
+// later, explicit user request changed that: with one specific workstream
+// selected (not "All Workstreams"), the list now narrows to just the
+// Journeys that actually reach into it, via journeysForCurrentFilter()
+// (below) — see that function's own comment for exactly what "reaching
+// into it" means. Journeys used to be its own top-level mode, reached from
+// a dedicated sidebar row, before its own sidebar-less page before that
+// (see "Journeys" in CLAUDE.md for that full history) — it's Planning's
+// second sub-tab now (planningTab, see renderMain()/setPlanningTab()),
+// sitting alongside Planning's own status board ("Scope Items") rather than
+// beside it as a separate mode.
 function allJourneys() {
   return items.filter(it => it.itemType === 'journey').sort((a, b) => a.order - b.order);
 }
+// The Journeys sub-tab is unfiltered — every Journey in the programme —
+// only while "All Workstreams" is selected. With one specific workstream
+// selected, an explicit user request narrows it down to just the Journeys
+// that actually reach into that workstream: a Journey qualifies if any one
+// of its own connected Sub Journeys has at least one connected scope item
+// whose own workstreamId matches. This is a display-only narrowing, the
+// same "narrows what's listed, never anything about the underlying data"
+// precedent Planning's own search box/status chips already established (see
+// "Status board" in CLAUDE.md) — a Journey/Sub Journey is still never
+// itself assigned to a workstream (see "Journeys" in CLAUDE.md); this just
+// decides which ones are worth showing while looking at one workstream in
+// particular. A Journey with no Sub Journeys at all, or Sub Journeys with
+// nothing connected, is filtered out here the same as one with no matching
+// items — there's genuinely nothing tying it to this workstream to show.
+function journeysForCurrentFilter() {
+  const journeys = allJourneys();
+  if (!filterWorkstreamId) return journeys;
+  return journeys.filter(j => connectedSubJourneys(j.id).some(sj =>
+    connectedScopeItems(sj.id).some(it => it.workstreamId === filterWorkstreamId)
+  ));
+}
 function renderJourneys() {
   const main = document.getElementById('main');
-  const journeys = allJourneys();
+  const journeys = journeysForCurrentFilter();
+  const scopedWs = filterWorkstreamId ? wsById(filterWorkstreamId) : null;
   const rows = journeys.length ? journeys.map(it => itemRowHtml(it)).join('') :
-    `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No journeys yet.</div>`;
+    `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">${scopedWs ? `No Journeys with scope items in "${esc(scopedWs.name)}" yet.` : 'No journeys yet.'}</div>`;
   // A name-only inline capture, matching the Unassigned section's own "+
   // Add item" quick-add exactly (see openInlineQuickAdd()) — an explicit
   // user request to make the two consistent, replacing the full item modal
@@ -3071,12 +3088,18 @@ function renderJourneys() {
     : '';
   // Same "no real workstream" visual treatment unassignedSectionHtml() uses
   // for its own header — a transparent dot in place of a workstream color,
-  // since there isn't one here either.
+  // since there isn't one here either. The header title itself grows a
+  // " — <workstream name>" suffix while scoped, so the narrower list reads
+  // as deliberate filtering rather than a programme that suddenly has fewer
+  // Journeys — the same "make the scoping visible, not just its effect"
+  // reasoning Planning's own per-workstream section headers already give
+  // for free (their own name/color), which this list has no other room for
+  // since it's a single flat list, not one section per workstream.
   main.innerHTML = `<div class="ws-section journeys-list">
       <div class="ws-section-header" style="background:var(--panel-2)">
         ${journeysExpandAllToggleHtml()}
         <i class="fa-solid fa-route" style="width:10px;text-align:center;font-size:12px;color:var(--accent)" title="Journeys"></i>
-        <span class="ws-section-title">Journeys</span>
+        <span class="ws-section-title">Journeys${scopedWs ? ` — ${esc(scopedWs.name)}` : ''}</span>
       </div>
       ${rows}
       ${addRow}
@@ -3741,9 +3764,13 @@ function expandAllToggleHtml(sectionItems) {
 // there deliberately, leaving a Sub Journey's own connected scope items'
 // milestone checklists collapsed, the same "one more click for genuinely
 // deep detail" boundary the rest of this app already draws.
+// Reads journeysForCurrentFilter() rather than allJourneys() directly so
+// this only ever acts on what's actually visible — the same "never touch
+// an item a filter is currently narrowing out" discipline
+// expandAllToggleHtml() itself already follows for Planning's own sections.
 function journeysExpandAllIds() {
   const ids = [];
-  allJourneys().forEach(j => {
+  journeysForCurrentFilter().forEach(j => {
     ids.push(j.id);
     connectedSubJourneys(j.id).forEach(sj => ids.push(sj.id));
   });
@@ -4040,9 +4067,12 @@ function setFilterWorkstream(id) {
 // Workstreams" case (unrelated — that one fires on leaving Admin mode, not
 // on picking a workstream, and still deliberately lands on Dashboard). Also
 // forces planningTab back to 'scope' — picking a workstream (or "All
-// Workstreams") is a request to see that selection's own scope items;
-// staying on the Journeys sub-tab (which ignores this selector entirely)
-// would make the click look like it did nothing.
+// Workstreams") from the sidebar is a request to see that selection's own
+// scope items, so it should land there regardless of which Planning sub-tab
+// was showing beforehand (even though, unlike when this was first written,
+// the Journeys sub-tab now also reacts to the selection — see
+// journeysForCurrentFilter() in "Journeys" below — landing on Scope Items
+// is still the more useful default for a plain workstream-row click).
 function selectWorkstreamFromSidebar(id) {
   filterWorkstreamId = id;
   mode = 'planning';
