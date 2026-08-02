@@ -2609,6 +2609,43 @@ function computeJourneyStatus(journeyId) {
     return STATUS_SEVERITY[s] < STATUS_SEVERITY[worst] ? s : worst;
   }, computeSubJourneyStatus(subJourneys[0].id) || 'not-started');
 }
+// A Journey/Sub Journey's own IT/Business/Budget tags are computed live too
+// — the same "no persisted state, always fresh at render time" treatment
+// Status and Plan dates already get, and for the same reason (avoid hooking
+// every place a connected item's own tag could change just to keep a cached
+// value in sync) — an explicit user request ("journeys should roll-up their
+// IT/Business/Budget from Sub-Journeys. Sub-journeys roll this up from
+// their linked scope items... this should not be editable on journey and
+// sub journey level"). computeSubJourneyTagStatus() is
+// computeSubJourneyStatus()'s own counterpart for a single RAG3 field — the
+// same weakest-link reduce (STATUS_SEVERITY's red/amber/green ordering
+// already covers RAG3 outright, so no separate severity table was needed),
+// over connectedScopeItems(subJourneyId)'s own tag value instead of
+// `status`. Returns null when nothing is connected yet, same convention as
+// every other compute* function here — callers fall back to 'green', the
+// same neutral default a brand-new item's own tag already starts at.
+function computeSubJourneyTagStatus(subJourneyId, field) {
+  const connected = connectedScopeItems(subJourneyId);
+  if (!connected.length) return null;
+  return connected.reduce((worst, it) =>
+    STATUS_SEVERITY[it[field]] < STATUS_SEVERITY[worst] ? it[field] : worst
+  , connected[0][field]);
+}
+// A top-level Journey's own tag is one level further removed — the same
+// weakest-link reduce over every connected Sub Journey's own (already-
+// computed) tag value, mirroring computeJourneyStatus()'s own relationship
+// to computeSubJourneyStatus(). A Sub Journey with nothing connected yet
+// contributes 'green' (its own neutral fallback) rather than being skipped,
+// the same "an empty Sub Journey can still legitimately drag the rollup"
+// reasoning computeJourneyStatus() already uses for 'not-started'.
+function computeJourneyTagStatus(journeyId, field) {
+  const subJourneys = connectedSubJourneys(journeyId);
+  if (!subJourneys.length) return null;
+  return subJourneys.reduce((worst, sj) => {
+    const s = computeSubJourneyTagStatus(sj.id, field) || 'green';
+    return STATUS_SEVERITY[s] < STATUS_SEVERITY[worst] ? s : worst;
+  }, computeSubJourneyTagStatus(subJourneys[0].id, field) || 'green');
+}
 
 // ---------- Rendering ----------
 // render() is the single top-level dispatcher: every mutation should call
@@ -3202,11 +3239,25 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // 8 — the same column a milestone row uses for its own Actual date input
   // (see --item-grid-cols) — since tags are item-only and that column is
   // otherwise blank on the item's own row.
+  // A Journey/Sub Journey's own tags are never hand-set/clickable, regardless
+  // of role — they're computed (computeJourneyTagStatus()/
+  // computeSubJourneyTagStatus(), see above), the same read-only treatment
+  // Status and Plan dates already get for these two types. `editable` isn't
+  // enough to gate this alone (it's true for a Planner/Editor on these rows,
+  // for the row's other actions), so isJourney/isSubJourney are checked
+  // explicitly to force the plain, non-clickable <span> either way.
   const tagsHtml = `<span class="item-tags">
-      ${ITEM_TAG_FIELDS.map(f => editable
-        ? `<button class="tag-badge" style="background:var(--stat-${it[f]}-bg);color:var(--stat-${it[f]})" onclick="cycleItemAttr('${it.id}','${f}')" title="${TAG_FIELD_LABELS[f]}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></button>`
-        : `<span class="tag-badge" style="background:var(--stat-${it[f]}-bg);color:var(--stat-${it[f]});cursor:default" title="${TAG_FIELD_LABELS[f]}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></span>`
-      ).join('')}
+      ${ITEM_TAG_FIELDS.map(f => {
+        const val = isJourney ? (computeJourneyTagStatus(it.id, f) || 'green')
+          : isSubJourney ? (computeSubJourneyTagStatus(it.id, f) || 'green')
+          : it[f];
+        const title = isJourney ? `${TAG_FIELD_LABELS[f]} (rolled up from connected Sub Journeys)`
+          : isSubJourney ? `${TAG_FIELD_LABELS[f]} (rolled up from connected scope items)`
+          : TAG_FIELD_LABELS[f];
+        return (editable && !isJourney && !isSubJourney)
+          ? `<button class="tag-badge" style="background:var(--stat-${val}-bg);color:var(--stat-${val})" onclick="cycleItemAttr('${it.id}','${f}')" title="${title}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></button>`
+          : `<span class="tag-badge" style="background:var(--stat-${val}-bg);color:var(--stat-${val});cursor:default" title="${title}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></span>`;
+      }).join('')}
     </span>`;
   // Review-only trailing cell — an implicit 12th grid column (explicit
   // grid-column:12), deliberately outside --item-grid-cols so Planning's own

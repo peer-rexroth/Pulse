@@ -775,6 +775,92 @@ test('saveItem never reads the hidden Status select for a Sub Journey either', f
   assertEqual(computeSubJourneyStatus(sub.id), 'red');
 });
 
+// ---------- computeSubJourneyTagStatus() / computeJourneyTagStatus() ----------
+// An explicit user request: "journeys should roll-up their IT/Business/
+// Budget from Sub-Journeys. Sub-journeys roll this up from their linked
+// scope items... this should not be editable on journey and sub journey
+// level" — the exact same two-tier weakest-link shape computeSubJourneyStatus()/
+// computeJourneyStatus() already established, just per RAG3 tag field
+// instead of the 6-value status.
+
+test('computeSubJourneyTagStatus returns null when nothing is connected', function () {
+  const journey = addJourney();
+  const sub = addSubJourney(journey.id);
+  assertEqual(computeSubJourneyTagStatus(sub.id, 'itStatus'), null);
+});
+
+test('computeSubJourneyTagStatus picks the weakest (worst) tag value across every connected scope item, per field independently', function () {
+  const journey = addJourney();
+  const sub = addSubJourney(journey.id);
+  const a = addItem({ name: 'A', journeyId: sub.id });
+  a.itStatus = 'green'; a.businessStatus = 'amber'; a.budgetStatus = 'green';
+  const b = addItem({ name: 'B', journeyId: sub.id });
+  b.itStatus = 'red'; b.businessStatus = 'green'; b.budgetStatus = 'amber';
+  assertEqual(computeSubJourneyTagStatus(sub.id, 'itStatus'), 'red');
+  assertEqual(computeSubJourneyTagStatus(sub.id, 'businessStatus'), 'amber');
+  assertEqual(computeSubJourneyTagStatus(sub.id, 'budgetStatus'), 'amber');
+});
+
+test('computeJourneyTagStatus returns null when nothing is connected', function () {
+  const journey = addJourney();
+  assertEqual(computeJourneyTagStatus(journey.id, 'itStatus'), null);
+});
+
+test('computeJourneyTagStatus picks the weakest (worst) tag value across every connected Sub Journey\'s own computed tag value', function () {
+  const journey = addJourney();
+  const subGreen = addSubJourney(journey.id, 'Green sub');
+  const a = addItem({ name: 'A', journeyId: subGreen.id });
+  a.itStatus = 'green';
+  const subRed = addSubJourney(journey.id, 'Red sub');
+  const b = addItem({ name: 'B', journeyId: subRed.id });
+  b.itStatus = 'red';
+  assertEqual(computeJourneyTagStatus(journey.id, 'itStatus'), 'red');
+});
+
+test('computeJourneyTagStatus treats an empty Sub Journey (contributes green) as not dragging down an active sibling worse than red/amber already would', function () {
+  const journey = addJourney();
+  addSubJourney(journey.id, 'Empty sub'); // contributes 'green'
+  const subAmber = addSubJourney(journey.id, 'Amber sub');
+  const a = addItem({ name: 'A', journeyId: subAmber.id });
+  a.itStatus = 'amber';
+  assertEqual(computeJourneyTagStatus(journey.id, 'itStatus'), 'amber');
+});
+
+test('itemRowHtml shows the rolled-up tag badges for a Sub Journey, falling back to green when nothing is connected, and never renders them clickable', function () {
+  const journey = addJourney();
+  const sub = addSubJourney(journey.id);
+  let html = itemRowHtml(sub);
+  assertIncludes(html, 'background:var(--stat-green-bg)');
+  assertNotIncludes(html, `cycleItemAttr('${sub.id}'`);
+  const it = addItem({ name: 'Connected', journeyId: sub.id });
+  it.itStatus = 'red';
+  html = itemRowHtml(sub);
+  assertIncludes(html, `style="background:var(--stat-red-bg);color:var(--stat-red);cursor:default" title="IT (rolled up from connected scope items)"`);
+  assertNotIncludes(html, `cycleItemAttr('${sub.id}'`, 'a Sub Journey\'s own tags must never be clickable, even at Editor+');
+});
+
+test('itemRowHtml shows the rolled-up tag badges for a Journey, sourced from its Sub Journeys, and never renders them clickable', function () {
+  const journey = addJourney();
+  const sub = addSubJourney(journey.id);
+  const it = addItem({ name: 'Connected', journeyId: sub.id });
+  it.budgetStatus = 'amber';
+  const html = itemRowHtml(journey);
+  assertIncludes(html, `style="background:var(--stat-amber-bg);color:var(--stat-amber);cursor:default" title="Budget (rolled up from connected Sub Journeys)"`);
+  assertNotIncludes(html, `cycleItemAttr('${journey.id}'`, 'a Journey\'s own tags must never be clickable, even at Editor+');
+});
+
+test('a Journey/Sub Journey\'s own tags stay non-clickable even for a Planner, who otherwise has full edit access on these rows', function () {
+  userRole = 'planner';
+  const journey = addJourney();
+  const sub = addSubJourney(journey.id);
+  assertNotIncludes(itemRowHtml(journey), `cycleItemAttr('${journey.id}'`);
+  assertNotIncludes(itemRowHtml(sub), `cycleItemAttr('${sub.id}'`);
+  // sanity check: the row's other edit actions ARE available to a Planner,
+  // proving this is a deliberate tags-only carve-out, not editable=false
+  // across the board for these rows
+  assertIncludes(itemRowHtml(journey), `openItemModal('${journey.id}')" title="Edit"`);
+});
+
 // ---------- The connect modal (now Sub Journey scoped) ----------
 
 test('openJourneyConnectModal sets the title and populates the list, grouped by workstream', function () {
