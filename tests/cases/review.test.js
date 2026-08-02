@@ -1354,6 +1354,25 @@ test('milestoneRowsHtml shows an inert placeholder, not a real confirm toggle, f
   assertIncludes(html, 'excluded from this review');
 });
 
+// A user-reported inconsistency: this inert placeholder and the MS Req.
+// toggle right next to it (milestoneRowsHtml()'s own naHtml) both render
+// for the same notApplicable milestone, on the same row — they must agree
+// on which icon means "not applicable," or a reviewer sees two different
+// glyphs for the same concept side by side and reads it as a broken/stale
+// icon rather than two cells in agreement.
+test('a notApplicable milestone\'s inert Confirm-column placeholder uses the same icon as the MS Req. toggle\'s own on state, not fa-ban', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  it.milestones[0].notApplicable = true;
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  toggleItemExpanded(it.id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'fa-solid fa-toggle-on', 'the confirm-column placeholder should match the MS Req. toggle\'s on-state icon');
+  assertNotIncludes(html, 'fa-ban', 'no fa-ban should remain anywhere on this row');
+});
+
 test('renderReview locks Plan dates as read-only, even for an item with zero milestones', function () {
   addReviewItem({ name: 'No milestones yet' });
   setFilterWorkstream(workstreams[0].id);

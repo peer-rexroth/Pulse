@@ -3968,8 +3968,14 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
       // confirm toggle renders for one at all, just an inert placeholder
       // (still a real element, for the usual column-collapse reason) rather
       // than a circle that would misleadingly suggest it's still pending.
+      // fa-toggle-on, matching the MS Req. toggle's own on-state icon in the
+      // column right next to this one — a user-reported inconsistency: this
+      // used to stay fa-ban even after that toggle switched icons, so a
+      // notApplicable milestone in Review showed two different "not
+      // applicable" glyphs side by side on the same row, which read as a
+      // stale/broken icon rather than two cells agreeing with each other.
       if (m.notApplicable) {
-        reviewCellHtml = `<span class="review-confirm-toggle" style="grid-column:12" title="Not applicable — excluded from this review"><i class="fa-solid fa-ban" style="opacity:.4"></i></span>`;
+        reviewCellHtml = `<span class="review-confirm-toggle" style="grid-column:12" title="Not applicable — excluded from this review"><i class="fa-solid fa-toggle-on" style="opacity:.4"></i></span>`;
       } else if (m.status === 'complete') {
         // A Complete milestone auto-confirms — an explicit user request
         // ("mark completed task as reviewed, no need to review them
