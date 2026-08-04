@@ -1538,6 +1538,31 @@ test('renderJourneys shows the same generic filter-empty message when only the D
   assertIncludes(html, 'No Journeys match the selected filters.');
 });
 
+// ---------- Admin can hide the Journeys feature entirely ----------
+// An explicit user request ("as an admin, allow me to hide the journey
+// feature") — see toggleHideJourneys()/featuresSectionHtml() in "Categories
+// (Admin mode)". renderMain()'s own !programme.hideJourneys check is a
+// defensive backstop for the one path that doesn't go through
+// toggleHideJourneys() at all: an already-hidden state arriving from a
+// synced file while this device happens to already be sitting on the
+// Journeys tab.
+
+test('renderMain falls back to the status view instead of Journeys when programme.hideJourneys is true, even if planningTab is still "journeys"', function () {
+  addJourney('Some journey');
+  mode = 'planning'; planningTab = 'journeys'; programme.hideJourneys = true;
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'Some journey', 'the hidden Journeys tree must not render');
+  assertIncludes(html, 'ws-section', 'the ordinary status view should render instead');
+});
+
+test('renderMain shows Journeys normally again once programme.hideJourneys is false', function () {
+  addJourney('Some journey');
+  mode = 'planning'; planningTab = 'journeys'; programme.hideJourneys = false;
+  renderMain();
+  assertIncludes(document.getElementById('main').innerHTML, 'Some journey');
+});
+
 // ---------- Journeys' own "Expand all"/"Collapse all" ----------
 // An explicit user request to bring the same per-section control Planning's
 // status board already has (expandAllToggleHtml()) to the Journeys sub-tab

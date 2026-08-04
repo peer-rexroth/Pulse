@@ -248,6 +248,16 @@ test('normalizeData backfills a missing/malformed programme.rolePasswords to {pl
   assertDeepEqual(programme.rolePasswords.admin, hash, 'a genuinely valid {salt,hash} must be left alone');
 });
 
+test('normalizeData backfills a missing programme.hideJourneys to false, and leaves an existing true alone', function () {
+  delete programme.hideJourneys;
+  normalizeData();
+  assertEqual(programme.hideJourneys, false);
+
+  programme.hideJourneys = true;
+  normalizeData();
+  assertEqual(programme.hideJourneys, true, 'an already-set true must not be reset back to false on a later load');
+});
+
 test('pickRole switches immediately, with no password step, for Visitor regardless of any passwords set', async function () {
   const hash = await hashRolePassword('x');
   programme.rolePasswords = { reviewer: hash, editor: hash, admin: hash };
@@ -374,6 +384,62 @@ test('rolePasswordsSectionHtml names which roles currently have a password set, 
   programme.rolePasswords = { reviewer: null, editor: null, admin: null };
   html = rolePasswordsSectionHtml();
   assertIncludes(html, 'No passwords set yet');
+});
+
+// ---------- Hide Journeys feature (Admin-only) ----------
+// An explicit user request ("as an admin, allow me to hide the journey
+// feature"). Lives on programme.hideJourneys (see normalizeData()'s own
+// backfill), synced to every device the way rolePasswords already is.
+
+test('featuresSectionHtml (rendered as part of renderAdmin) is admin-only — invisible to every other role', function () {
+  ['visitor', 'planner', 'reviewer', 'editor'].forEach(r => {
+    userRole = r;
+    assertEqual(featuresSectionHtml(), '', `${r} must not see the Features section`);
+  });
+  userRole = 'admin';
+  assertIncludes(featuresSectionHtml(), 'Hide Journeys feature');
+});
+
+test('featuresSectionHtml reflects programme.hideJourneys as the checkbox\'s checked state', function () {
+  userRole = 'admin';
+  programme.hideJourneys = false;
+  assertNotIncludes(featuresSectionHtml(), 'checked');
+  programme.hideJourneys = true;
+  assertIncludes(featuresSectionHtml(), 'checked');
+});
+
+test('toggleHideJourneys is blocked below Admin, and never touches programme.hideJourneys', function () {
+  userRole = 'editor';
+  programme.hideJourneys = false;
+  toggleHideJourneys();
+  assertEqual(programme.hideJourneys, false);
+});
+
+test('toggleHideJourneys flips the flag at Admin, and forces planningTab back to "scope" if it was showing Journeys', function () {
+  userRole = 'admin';
+  programme.hideJourneys = false;
+  mode = 'planning'; planningTab = 'journeys';
+  toggleHideJourneys();
+  assertEqual(programme.hideJourneys, true);
+  assertEqual(planningTab, 'scope', 'must not leave the user stranded on a sub-tab with no button left to reach it');
+});
+
+test('toggleHideJourneys does not touch planningTab when turning the feature back on, or when not currently on the Journeys tab', function () {
+  userRole = 'admin';
+  programme.hideJourneys = true;
+  mode = 'planning'; planningTab = 'scope';
+  toggleHideJourneys(); // turning back on
+  assertEqual(programme.hideJourneys, false);
+  assertEqual(planningTab, 'scope');
+});
+
+test('render hides planningModeToolbar entirely once Journeys is hidden, even while in Planning mode', function () {
+  mode = 'planning'; programme.hideJourneys = false;
+  render();
+  assertEqual(document.getElementById('planningModeToolbar').style.display, '');
+  programme.hideJourneys = true;
+  render();
+  assertEqual(document.getElementById('planningModeToolbar').style.display, 'none');
 });
 
 test('openRolePasswordsModal and saveRolePasswords are both blocked below Admin', async function () {

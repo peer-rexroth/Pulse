@@ -2445,6 +2445,12 @@ function normalizeData() {
     const valid = v === null || (v && typeof v === 'object' && typeof v.salt === 'string' && typeof v.hash === 'string');
     if (!valid) programme.rolePasswords[r] = null;
   });
+  // Admin-only feature toggle (see toggleHideJourneys()/renderAdmin()'s own
+  // "Features" section) — lives on `programme`, not a device-only key like
+  // `userRole`, since an Admin hiding Journeys is a programme-wide
+  // configuration decision meant to sync to every teammate opening the same
+  // linked file, the same reasoning `rolePasswords` above already follows.
+  if (typeof programme.hideJourneys !== 'boolean') programme.hideJourneys = false;
   if (!Array.isArray(deletedWorkstreamIds)) deletedWorkstreamIds = [];
   if (!Array.isArray(deletedItemIds)) deletedItemIds = [];
   if (!Array.isArray(deletedMilestoneIds)) deletedMilestoneIds = [];
@@ -3035,7 +3041,12 @@ function render() {
   MODES.forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
   document.getElementById('scopedBody').style.display = mode === 'admin' ? 'none' : '';
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
-  document.getElementById('planningModeToolbar').style.display = mode === 'planning' ? '' : 'none';
+  // Hidden outright (not just the Journeys button within it) once an Admin
+  // hides the feature — with only one real destination left (Scope Items),
+  // a tab bar with nothing to switch to/from would just be a pointless,
+  // slightly-broken-looking single button. See toggleHideJourneys()/
+  // featuresSectionHtml() in "Categories (Admin mode)".
+  document.getElementById('planningModeToolbar').style.display = (mode === 'planning' && !programme.hideJourneys) ? '' : 'none';
   document.getElementById('planningSearchToolbar').style.display = (mode === 'planning' && planningTab === 'scope') ? '' : 'none';
   document.getElementById('journeysSearchToolbar').style.display = (mode === 'planning' && planningTab === 'journeys') ? '' : 'none';
   document.getElementById('reviewToolbar').style.display = mode === 'review' ? '' : 'none';
@@ -3188,7 +3199,17 @@ function visibleWorkstreams() {
 }
 
 function renderMain() {
-  if (planningTab === 'journeys') {
+  // The `!programme.hideJourneys` half is a defensive backstop, not the
+  // primary gate — toggleHideJourneys() already forces planningTab back to
+  // 'scope' the moment the toggle itself fires. This only matters for the
+  // one narrower case that doesn't go through that function at all: an
+  // Admin on a *different*, synced device hides the feature, and the change
+  // arrives here (via mergeData()/a background poll) while this device
+  // happens to already be sitting on the Journeys tab — with no toolbar
+  // button left to click away from it, falling back here is what actually
+  // gets it out of the dead end rather than leaving a hidden feature
+  // silently still rendered.
+  if (planningTab === 'journeys' && !programme.hideJourneys) {
     renderJourneys();
   } else {
     renderStatusView(document.getElementById('main'));
@@ -7933,7 +7954,41 @@ function renderAdmin() {
           </div>`;
       }).join('')}
     </div>
+    ${featuresSectionHtml()}
     ${rolePasswordsSectionHtml()}`;
+}
+// Admin-only — an explicit user request ("as an admin, allow me to hide
+// the journey feature"). Unlike Role Passwords just below (which needs a
+// real modal, since it edits sensitive hashed values across a multi-field
+// form that re-rendering mid-type would otherwise wipe out), a single
+// boolean with nothing sensitive in it is safe to edit with a plain
+// checkbox living directly in this section — its checked state is fully
+// re-derivable from `programme.hideJourneys` on every render, so there's no
+// in-progress input to lose the way a live text field would have.
+function featuresSectionHtml() {
+  if (!hasRole('admin')) return '';
+  return `
+    <div class="admin-header" style="margin-top:24px">
+      <h2>Features</h2>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+      <input type="checkbox" ${programme.hideJourneys ? 'checked' : ''} onchange="toggleHideJourneys()">
+      Hide Journeys feature
+    </label>
+    <p style="margin-top:4px;color:var(--text-faint);font-size:12px">Removes the Journeys sub-tab from Planning for everyone. Existing Journey/Sub Journey data is kept, not deleted — turn this back off to see it again.</p>`;
+}
+// Forces planningTab back to 'scope' when hiding while it's currently
+// showing — otherwise an Admin hiding the tab out from under themselves
+// (or a teammate whose synced copy picks up the change) would be left on a
+// sub-tab with no button left to reach it, since setPlanningTab('journeys')
+// is now unreachable through the UI. Never reversed the other direction —
+// turning the feature back on doesn't need to force anyone *onto*
+// Journeys, only ever needs to guarantee no one gets stranded *on* it.
+function toggleHideJourneys() {
+  if (!requireRole('admin')) return;
+  programme.hideJourneys = !programme.hideJourneys;
+  if (programme.hideJourneys && mode === 'planning' && planningTab === 'journeys') planningTab = 'scope';
+  save(); render();
 }
 // Admin-only (both to view and to manage) — a Reviewer/Editor able to see
 // *which* roles are password-protected, even without the passwords
