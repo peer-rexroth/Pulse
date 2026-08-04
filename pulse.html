@@ -1213,6 +1213,18 @@
   .attention-tag { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; flex: 0 0 auto; }
   .attention-tag.overdue { background: var(--stat-red-bg); color: var(--stat-red); }
   .attention-tag.upcoming { background: var(--stat-amber-bg); color: var(--stat-amber); }
+  /* Dashboard's own Dependencies tracker (renderDashboard()'s dependencyHtml)
+     — needs more columns than .attention-row's simple 3-part shape (tag/
+     name/date), so it's a real grid with pinned widths rather than flex or
+     auto-sized columns — the same "header and data rows must agree on
+     column width, which requires a fixed value, not auto" lesson Action
+     Log's own header row already had to learn (see .action-log-row's CSS
+     comment) applied here from the start. */
+  .dash-dep-header, .dash-dep-row { display: grid; grid-template-columns: minmax(160px,1fr) 150px 150px 90px 110px; gap: 10px; align-items: center; }
+  .dash-dep-header { padding: 8px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); border-bottom: 1px solid var(--border); }
+  .dash-dep-row { padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .dash-dep-row:last-child { border-bottom: none; }
+  .dash-dep-ws, .dash-dep-spoc { color: var(--text-faint); font-size: 12px; }
 
   /* Dashboard's own toolbar (Export Exec Summary) — a right-aligned single
      row, unlike Planning's search box / Review's sub-tabs, both of which
@@ -7683,7 +7695,7 @@ function renderReview() {
 // ---------- Dashboard mode ----------
 function allMilestonesFlat(itemList) {
   const out = [];
-  (itemList || items).forEach(it => it.milestones.forEach(m => out.push(Object.assign({}, m, { itemName: it.name, itemId: it.id, workstreamId: it.workstreamId }))));
+  (itemList || items).forEach(it => it.milestones.forEach(m => out.push(Object.assign({}, m, { itemName: it.name, itemId: it.id, workstreamId: it.workstreamId, categoryId: it.categoryId }))));
   return out;
 }
 // Dashboard scopes everything to visibleWorkstreams() — the same shared
@@ -7742,8 +7754,43 @@ function computeDashboardData() {
     const wMsDone = wMs.filter(m => m.status === 'complete').length;
     return { w, itemCount: wItems.length, msTotal: wMs.length, msDone: wMsDone, msPct: wMs.length ? Math.round(wMsDone / wMs.length * 100) : 0 };
   });
+  // catStats is wsStats' own counterpart, cut by category instead of
+  // workstream — a later, explicit user request for a cross-cutting view
+  // ("are all our Dependency-type items lagging, across every workstream?")
+  // that wsStats alone can't answer, since it only ever groups within one
+  // workstream at a time. The reserved Pending category is excluded — an
+  // Unassigned item sitting in it already has workstreamId:null, so it's
+  // never in scopedItems to begin with (same exclusion wsStats already gets
+  // for free); filtering categories themselves is just for tidiness, so a
+  // reserved, always-empty-here row never shows up in this table at all.
+  // Sorted by each category's own `order`, the same order Admin's own list
+  // and every category <select> in the app already use.
+  const catStats = categories.filter(c => !c.pending).slice().sort((a, b) => a.order - b.order).map(c => {
+    const cItems = scopedItems.filter(it => it.categoryId === c.id);
+    const cMs = milestones.filter(m => m.categoryId === c.id);
+    const cMsDone = cMs.filter(m => m.status === 'complete').length;
+    return { c, itemCount: cItems.length, msTotal: cMs.length, msDone: cMsDone, msPct: cMs.length ? Math.round(cMsDone / cMs.length * 100) : 0 };
+  });
+  // Every scoped item flagged dependency:true, still open — a later,
+  // explicit user request for a dedicated cross-workstream tracker of
+  // external/vendor commitments, distinct from Planning's own per-workstream
+  // Dependencies sub-section (which lists every dependency item regardless
+  // of completion, since it's a structural grouping, not an attention feed).
+  // Excludes status:'complete' the same way the Overdue/Upcoming feeds
+  // above do, for the same reason: this is meant to stay a short, actionable
+  // "what's still outstanding" list, not a growing historical log — Excel
+  // export and Planning's own sub-section already cover the full picture.
+  // Sorted soonest-due-first, undated ones last, the same convention
+  // sortedActionLog() already uses for its own open items.
+  const dependencies = scopedItems.filter(it => it.dependency && it.status !== 'complete')
+    .map(it => ({
+      itemId: it.id, label: it.name, workstreamName: wsById(it.workstreamId).name,
+      spoc: it.dependencySpoc, date: it.dueDate, status: it.status,
+      overdue: !it.actualDate && it.dueDate < today
+    }))
+    .sort((a, b) => (a.date || '9999-99-99').localeCompare(b.date || '9999-99-99'));
 
-  return { wss, scopedItems, milestones, itemCounts, totalItems, msDone, msPct, overdueReviewWs, overdue, upcoming, wsStats };
+  return { wss, scopedItems, milestones, itemCounts, totalItems, msDone, msPct, overdueReviewWs, overdue, upcoming, wsStats, catStats, dependencies };
 }
 function renderDashboard() {
   const el = document.getElementById('main');
@@ -7751,7 +7798,7 @@ function renderDashboard() {
     el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-gauge-high"></i><div>No workstreams yet — add one in Planning first.</div></div>`;
     return;
   }
-  const { wss, itemCounts, totalItems, msDone, msPct, milestones, overdueReviewWs, overdue, upcoming, wsStats } = computeDashboardData();
+  const { wss, itemCounts, totalItems, msDone, msPct, milestones, overdueReviewWs, overdue, upcoming, wsStats, catStats, dependencies } = computeDashboardData();
 
   const bar = STATUSES.map(s => {
     const pct = totalItems ? (itemCounts[s.id] / totalItems * 100) : 0;
@@ -7762,6 +7809,16 @@ function renderDashboard() {
   const wsRows = wsStats.map(r => `<div class="dash-ws-row">
         <span class="ws-dot" style="background:var(--ws-${r.w.color})"></span>
         <span class="dash-ws-name">${esc(r.w.name)}</span>
+        <span class="dash-sub-stat">${r.itemCount} item${r.itemCount === 1 ? '' : 's'}</span>
+        <span class="dash-sub-stat">${r.msPct}% milestones done</span>
+      </div>`).join('');
+
+  // wsRows' own counterpart, cut by category — reuses .dash-ws-row wholesale
+  // (same padding/border/layout), just without a .ws-dot, since a category
+  // has no color of its own the way a workstream does (Admin's own category
+  // list has never colored them either).
+  const catRows = catStats.map(r => `<div class="dash-ws-row">
+        <span class="dash-ws-name">${esc(r.c.name)}</span>
         <span class="dash-sub-stat">${r.itemCount} item${r.itemCount === 1 ? '' : 's'}</span>
         <span class="dash-sub-stat">${r.msPct}% milestones done</span>
       </div>`).join('');
@@ -7782,6 +7839,25 @@ function renderDashboard() {
           <span class="item-dates">${fmtDate(e.date)}</span>
         </div>`).join('')
     : `<div class="attention-empty">Nothing here.</div>`;
+
+  // A dedicated cross-workstream tracker for items flagged dependency:true
+  // — a later, explicit user request. Reuses .attention-row-link for the
+  // same clickable-row treatment the Overdue/Upcoming feeds already have
+  // (openItemModal(), never role-gated), but needs its own bespoke column
+  // set (Item/Workstream/SPOC/Due/Status) rather than .attention-row's own
+  // simple 3-part shape — see .dash-dep-row's own CSS comment for why this
+  // is a real grid with pinned widths, not auto-sized columns.
+  const dependencyHtml = dependencies.length
+    ? `<div class="dash-dep-header">
+        <span>Item</span><span>Workstream</span><span>SPOC</span><span>Due</span><span>Status</span>
+      </div>` + dependencies.map(d => `<div class="dash-dep-row attention-row-link" onclick="openItemModal('${d.itemId}')" title="Open this item">
+          <span class="item-name">${esc(d.label)}</span>
+          <span class="dash-dep-ws">${esc(d.workstreamName)}</span>
+          <span class="dash-dep-spoc">${d.spoc ? esc(d.spoc) : '—'}</span>
+          <span class="item-dates" ${d.overdue ? 'style="color:var(--stat-red);font-weight:700"' : ''}>${d.date ? fmtDate(d.date) : '—'}</span>
+          <span class="status-badge" style="background:var(--stat-${d.status}-bg);color:var(--stat-${d.status});cursor:default">${esc(statusLabel(d.status))}</span>
+        </div>`).join('')
+    : `<div class="attention-empty">No open dependencies.</div>`;
 
   el.innerHTML = `
     <div class="dash-grid">
@@ -7805,6 +7881,10 @@ function renderDashboard() {
     </div>
     <div class="section-label">Per-workstream summary</div>
     <div class="dash-card" style="margin-bottom:20px">${wsRows}</div>
+    <div class="section-label">Per-category summary</div>
+    <div class="dash-card" style="margin-bottom:20px">${catRows}</div>
+    <div class="section-label">Dependencies</div>
+    <div class="category-list" style="margin-bottom:20px">${dependencyHtml}</div>
     <div class="dash-grid" style="grid-template-columns: 1fr 1fr;">
       <div>
         <div class="section-label">Overdue</div>

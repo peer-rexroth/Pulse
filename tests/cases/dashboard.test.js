@@ -229,6 +229,101 @@ test('selecting a specific workstream narrows the per-workstream summary and ove
   assertIncludes(html, '>1<'); // scoped to the still-overdue workstream only
 });
 
+// ---------- Per-category summary (catStats) ----------
+// wsStats' own counterpart, cut by category instead of workstream — an
+// explicit user request for a cross-cutting view a per-workstream table
+// alone can't answer ("are all our Dependency-type items lagging, across
+// every workstream?").
+
+test('computeDashboardData catStats groups scoped items by category, computing item count and milestone completion %', function () {
+  addDashItem({ name: 'Dev A', categoryId: categories[0].id, milestones: [
+    { id: 'm1', name: 'M1', dueDate: todayStr(), status: 'complete' },
+    { id: 'm2', name: 'M2', dueDate: todayStr(), status: 'not-started' }
+  ] });
+  addDashItem({ name: 'Dev B', categoryId: categories[0].id });
+  const dep = categories.find(c => c.name === 'Dependency');
+  addDashItem({ name: 'Dep A', categoryId: dep.id });
+  const { catStats } = computeDashboardData();
+  const devStats = catStats.find(r => r.c.id === categories[0].id);
+  assertEqual(devStats.itemCount, 2);
+  assertEqual(devStats.msTotal, 2);
+  assertEqual(devStats.msDone, 1);
+  assertEqual(devStats.msPct, 50);
+  const depStats = catStats.find(r => r.c.id === dep.id);
+  assertEqual(depStats.itemCount, 1);
+});
+
+test('catStats excludes the reserved Pending category', function () {
+  const { catStats } = computeDashboardData();
+  assertFalse(catStats.some(r => r.c.pending), 'the Pending category should never appear in this rollup');
+});
+
+test('renderDashboard renders a Per-category summary table with each category\'s name and stats', function () {
+  addDashItem({ name: 'Dev A', categoryId: categories[0].id });
+  renderDashboard();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Per-category summary');
+  assertIncludes(html, esc(categories[0].name));
+  assertIncludes(html, '1 item');
+});
+
+// ---------- Dependencies tracker ----------
+// A dedicated cross-workstream tracker for items flagged dependency:true —
+// an explicit user request, distinct from Planning's own per-workstream
+// Dependencies sub-section (which lists every dependency item regardless of
+// completion, since it's a structural grouping, not an attention feed).
+
+test('computeDashboardData dependencies lists every scoped, still-open item flagged dependency:true, sorted soonest-due-first', function () {
+  addDashItem({ name: 'Later dep', dependency: true, dueDate: isoDaysFromNow(10) });
+  addDashItem({ name: 'Sooner dep', dependency: true, dueDate: isoDaysFromNow(2) });
+  addDashItem({ name: 'Not a dependency', dependency: false });
+  const { dependencies } = computeDashboardData();
+  assertEqual(dependencies.length, 2);
+  assertEqual(dependencies[0].label, 'Sooner dep');
+  assertEqual(dependencies[1].label, 'Later dep');
+});
+
+test('dependencies excludes a dependency item once its status is complete', function () {
+  addDashItem({ name: 'Done dep', dependency: true, status: 'complete' });
+  const { dependencies } = computeDashboardData();
+  assertEqual(dependencies.length, 0);
+});
+
+test('a dependency entry carries its workstream name, SPOC, due date, status, and an overdue flag', function () {
+  const it = addDashItem({ name: 'Vendor delivery', dependency: true, dependencySpoc: 'Jane Vendor', dueDate: isoDaysFromNow(-3), status: 'red' });
+  const { dependencies } = computeDashboardData();
+  const d = dependencies[0];
+  assertEqual(d.itemId, it.id);
+  assertEqual(d.workstreamName, workstreams[0].name);
+  assertEqual(d.spoc, 'Jane Vendor');
+  assertEqual(d.status, 'red');
+  assertTrue(d.overdue);
+});
+
+test('a dependency entry with no SPOC recorded is not flagged overdue if not actually overdue', function () {
+  addDashItem({ name: 'Future dep', dependency: true, dependencySpoc: null, dueDate: isoDaysFromNow(5) });
+  const { dependencies } = computeDashboardData();
+  assertEqual(dependencies[0].spoc, null);
+  assertFalse(dependencies[0].overdue);
+});
+
+test('renderDashboard\'s Dependencies table renders a clickable row per dependency, with a header and an overdue-flagged due date', function () {
+  const it = addDashItem({ name: 'Vendor delivery', dependency: true, dependencySpoc: 'Jane Vendor', dueDate: isoDaysFromNow(-3), status: 'red' });
+  renderDashboard();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'dash-dep-header');
+  assertIncludes(html, 'Vendor delivery');
+  assertIncludes(html, 'Jane Vendor');
+  assertIncludes(html, `onclick="openItemModal('${it.id}')"`);
+  assertIncludes(html, 'color:var(--stat-red)'); // overdue due-date styling
+});
+
+test('renderDashboard shows a "No open dependencies." placeholder when nothing is flagged', function () {
+  addDashItem({ name: 'Plain item', dependency: false });
+  renderDashboard();
+  assertIncludes(document.getElementById('main').innerHTML, 'No open dependencies.');
+});
+
 // ---------- Export Dashboard as Exec Summary (PDF/PNG) ----------
 // exportExecSummaryPdf()/exportExecSummaryPng() themselves touch
 // window.print()/Image/canvas — none of which this JXA harness mocks (same
