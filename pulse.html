@@ -1892,12 +1892,22 @@
 </div>
 
 <!-- File sync onboarding modal -->
+<!-- Linking a file is mandatory for every role — an explicit user request
+     reversing this modal's own earlier "Not now, available at every role"
+     design. There is no dismiss button and this modal is deliberately
+     excluded from both the global Escape handler and the generic
+     backdrop-click-to-close wiring at the bottom of the script (the same
+     "must complete before closing" treatment scopeAssignModalBg already
+     uses elsewhere in this file) — successfully linking, creating, or
+     reconnecting a file is the only way to close it. See
+     openFileSyncModal()/closeFileSyncModal() and linkFile()/
+     createNewLinkedFile()/reconnectFile()'s own success-path close calls. -->
 <div class="modal-bg" id="fileSyncModalBg">
   <div class="modal" style="width:400px">
     <h3>Sync to a file</h3>
-    <p>Back up and auto-save this programme to a real file on disk.</p>
+    <p>Linking a file is required — this programme auto-saves and syncs to a real file on disk.</p>
     <div class="import-options" id="fileSyncOptions">
-      <div id="fileSyncReconnectOption" class="import-option" style="display:none" onclick="closeFileSyncModal();reconnectFile()">
+      <div id="fileSyncReconnectOption" class="import-option" style="display:none" onclick="reconnectFile()">
         <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-teal-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
           <i class="fa-solid fa-rotate-right" style="color:var(--ws-teal);font-size:15px"></i>
         </div>
@@ -1906,7 +1916,7 @@
           <span>Reconnect to restore auto-saving</span>
         </div>
       </div>
-      <div class="import-option" onclick="closeFileSyncModal();linkFile()">
+      <div class="import-option" onclick="linkFile()">
         <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-blue-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
           <i class="fa-solid fa-folder-open" style="color:var(--ws-blue);font-size:15px"></i>
         </div>
@@ -1915,7 +1925,7 @@
           <span>Open a .json data file and sync to it</span>
         </div>
       </div>
-      <div class="import-option" onclick="closeFileSyncModal();createNewLinkedFile()">
+      <div class="import-option" onclick="createNewLinkedFile()">
         <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-green-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
           <i class="fa-solid fa-file-circle-plus" style="color:var(--ws-green);font-size:15px"></i>
         </div>
@@ -1927,9 +1937,8 @@
     </div>
     <div id="fileSyncWarning" style="display:flex;align-items:flex-start;gap:8px;background:var(--stat-amber-bg);border-radius:10px;padding:10px 12px;margin-top:4px">
       <i class="fa-solid fa-triangle-exclamation" style="color:var(--stat-amber);font-size:13px;margin-top:2px;flex-shrink:0"></i>
-      <span style="font-size:12px;color:var(--stat-amber);line-height:1.55">Without a linked file, your programme is stored in browser storage and <strong>will be lost if you clear browsing data</strong>.</span>
+      <span style="font-size:12px;color:var(--stat-amber);line-height:1.55">A linked file is required for every role. Without one, your programme can't be saved here.</span>
     </div>
-    <div class="modal-actions" style="justify-content:flex-end"><button class="btn" onclick="closeFileSyncModal()">Not now</button></div>
   </div>
 </div>
 
@@ -9370,6 +9379,7 @@ async function writeBackupCopy(data) {
 // mismatch doesn't block anything, since a user might deliberately want
 // backups somewhere other than right next to the linked file.
 async function chooseBackupFolder() {
+  if (!requireRole('editor')) return;
   if (!window.showDirectoryPicker) { showToast('Daily backups require Chrome or Edge', true); return; }
   try {
     const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
@@ -9387,6 +9397,7 @@ async function chooseBackupFolder() {
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not access that folder', true); }
 }
 async function unlinkBackupFolder() {
+  if (!requireRole('editor')) return;
   backupDirHandle = null;
   lastBackupWrittenDate = null;
   await _fsDel(_FS.backupKey).catch(() => {});
@@ -9467,6 +9478,7 @@ async function createNewLinkedFile() {
     updateFileSyncUI();
     startFileSyncPolling();
     showToast(`Linked — auto-saving to ${handle.name}`);
+    closeFileSyncModal();
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not create file', true); }
 }
 async function linkFile() {
@@ -9490,6 +9502,7 @@ async function linkFile() {
           lastSyncedSnapshot = existingText; lastSyncedAt = Date.now();
           save(); render(); updateFileSyncUI(); startFileSyncPolling();
           showToast(`Restored from ${handle.name} — auto-saving enabled`);
+          closeFileSyncModal();
         } else {
           const { added, updated, conflicts } = mergeData(data);
           normalizeData();
@@ -9498,10 +9511,15 @@ async function linkFile() {
           reportSyncConflicts(conflicts);
           const parts = []; if (added) parts.push(`${added} added`); if (updated) parts.push(`${updated} updated`);
           showToast(`Merged from ${handle.name} — ${parts.length ? parts.join(', ') : 'nothing new'} — auto-saving enabled`);
+          closeFileSyncModal();
         }
       } else {
         fileHandle = null;
         showToast(`${handle.name} is not a Pulse data file — unlinked`, true);
+        // Not a success — the modal (mandatory, see its own HTML comment)
+        // deliberately stays open so the user can immediately try a
+        // different file rather than being left with nothing linked and
+        // no way back in.
       }
       return;
     }
@@ -9509,11 +9527,21 @@ async function linkFile() {
     updateFileSyncUI();
     startFileSyncPolling();
     showToast(`Linked — auto-saving to ${handle.name}`);
+    closeFileSyncModal();
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not link file', true); }
 }
+// Linking is mandatory (see fileSyncModalBg's own HTML comment) — unlinking
+// is still allowed (switching to a different file, undoing a mistake), but
+// immediately re-opens the same mandatory modal rather than leaving the
+// programme with nothing linked, an explicit user request ("make linking a
+// file mandatory for all roles"). isLaunch is false here since this isn't
+// part of the original launch sequence — closing it (once a new file is
+// linked) must not unexpectedly chain into the backup-folder onboarding
+// modal a second time.
 async function unlinkFile() {
   await _clearFileLink();
-  showToast('File unlinked — saving to browser storage only');
+  showToast('File unlinked — link a new one to keep saving');
+  openFileSyncModal(null, false);
 }
 async function reconnectFile() {
   if (!fileHandle) return;
@@ -9528,6 +9556,7 @@ async function reconnectFile() {
         lastSyncedSnapshot = text; lastSyncedAt = Date.now();
         save(); render(); updateFileSyncUI(); startFileSyncPolling();
         showToast(`Reconnected to ${fileHandle.name} — restored from file`);
+        closeFileSyncModal();
         return;
       }
       const { added, updated, conflicts } = mergeData(data);
@@ -9538,10 +9567,12 @@ async function reconnectFile() {
       reportSyncConflicts(conflicts);
       const parts = []; if (added) parts.push(`${added} added`); if (updated) parts.push(`${updated} updated`);
       showToast(`Reconnected to ${fileHandle.name}${parts.length ? ` — ${parts.join(', ')}` : ''}`);
+      closeFileSyncModal();
       return;
     }
     updateFileSyncUI();
     showToast(`Reconnected to ${fileHandle.name}`);
+    closeFileSyncModal();
   } catch (e) { showToast('Could not reconnect', true); }
 }
 function fadeSwapHTML(el, html) {
@@ -9586,21 +9617,36 @@ function updateFileSyncUI() {
 // chooseBackupFolder() directly rather than routing through a modal that
 // has nothing backup-related left in it (that row was removed after this
 // topbar indicator made it redundant).
+// Editor+ only — an explicit user request ("offer backup link only for
+// editor and admin role. disable it (grey) for all other roles"), unlike
+// linking the main file above, which is deliberately available (and now
+// mandatory) at every role including Visitor. Below Editor the button still
+// renders — same "always a real, visible control, just inert" convention
+// every other role-gated control in this app uses (the Not Applicable
+// toggle, the review confirm toggle) — just `disabled` (greyed via the
+// existing .btn:disabled rule) with a title explaining why, rather than
+// hidden outright. The linked folder's own name (once one is chosen) still
+// shows as plain informational text regardless of role — only the button
+// that would change anything is gated.
 function updateBackupSyncUI() {
   const el = document.getElementById('backupSyncIndicator');
   if (!el) return;
   if (!window.showDirectoryPicker) { el.style.display = 'none'; return; }
   el.style.display = '';
+  const canManage = hasRole('editor');
+  const gateAttrs = canManage ? '' : 'disabled ';
   if (!backupDirHandle) {
-    fadeSwapHTML(el, `<button class="btn btn-sm" onclick="chooseBackupFolder()" title="Save a dated backup copy to a folder every day"><i class="fa-solid fa-clock-rotate-left"></i> Backups off</button>`);
+    const title = canManage ? 'Save a dated backup copy to a folder every day' : 'Editor role or higher required to turn on daily backups';
+    fadeSwapHTML(el, `<button class="btn btn-sm" ${gateAttrs}onclick="chooseBackupFolder()" title="${title}"><i class="fa-solid fa-clock-rotate-left"></i> Backups off</button>`);
     return;
   }
+  const unlinkTitle = canManage ? 'Turn off daily backups' : 'Editor role or higher required to turn off daily backups';
   fadeSwapHTML(el, `
     <span class="sync-linked" title="Daily backup saved to ${esc(backupDirHandle.name)}">
       <i class="fa-solid fa-clock-rotate-left"></i>
       <span>${esc(backupDirHandle.name)}</span>
     </span>
-    <button class="btn btn-sm" onclick="unlinkBackupFolder()" title="Turn off daily backups" style="padding:4px 8px;line-height:1"><i class="fa-solid fa-link-slash"></i></button>`);
+    <button class="btn btn-sm" ${gateAttrs}onclick="unlinkBackupFolder()" title="${unlinkTitle}" style="padding:4px 8px;line-height:1"><i class="fa-solid fa-link-slash"></i></button>`);
 }
 async function initFileSync() {
   if (!window.showOpenFilePicker) return;
@@ -9681,9 +9727,10 @@ function openFileSyncModal(reconnectHandle, isLaunch) {
   const ro = document.getElementById('fileSyncReconnectOption');
   const rl = document.getElementById('fileSyncReconnectLabel');
   const warn = document.getElementById('fileSyncWarning');
-  // Linking/creating/reconnecting a synced file is available to every
+  // Linking/creating/reconnecting a synced file is mandatory for every
   // role — an explicit user request — so this modal has no gated content
-  // any more; it always shows the real options.
+  // and no dismiss path at all; it always shows the real options, and
+  // stays open until one of them actually succeeds.
   if (reconnectHandle) {
     ro.style.display = 'flex';
     rl.textContent = `Resume sync with ${reconnectHandle.name}`;
@@ -9694,16 +9741,15 @@ function openFileSyncModal(reconnectHandle, isLaunch) {
   }
   document.getElementById('fileSyncModalBg').classList.add('open');
 }
-// Chains into the backup-folder onboarding modal right after this one
-// closes — an explicit user request ("handle file link and backup link in
-// 2 modals after each other... ask when launching the app") — but only
-// when this particular open was itself part of that same launch sequence
-// (fileSyncModalIsLaunchFlow), not a manual reopen later (e.g. reconnecting
-// via the topbar indicator mid-session, where a second, unrelated modal
-// popping up on close would be surprising). Fires regardless of *how* this
-// modal was closed — Not now, or after Link/Create/Reconnect — the
-// backup-folder step is asked about either way, same as the file-link step
-// itself doesn't gate on what was chosen.
+// Only ever called from linkFile()/createNewLinkedFile()/reconnectFile()'s
+// own success paths now — see fileSyncModalBg's own HTML comment for why
+// this modal has no other way to close. Chains into the backup-folder
+// onboarding modal right after — an explicit user request ("handle file
+// link and backup link in 2 modals after each other... ask when launching
+// the app") — but only when this particular open was itself part of that
+// same launch sequence (fileSyncModalIsLaunchFlow), not a manual reopen
+// later (e.g. reconnecting via the topbar indicator mid-session, where a
+// second, unrelated modal popping up on close would be surprising).
 function closeFileSyncModal() {
   document.getElementById('fileSyncModalBg')?.classList.remove('open');
   if (fileSyncModalIsLaunchFlow) {
@@ -9716,10 +9762,18 @@ function closeFileSyncModal() {
 // for the one case (file already linked and working) where it's called
 // directly instead, since no file-sync modal ever opens to chain off of
 // there. A no-op if daily backups aren't supported at all (matches
-// updateBackupSyncUI()'s own gating) or a folder's already chosen.
+// updateBackupSyncUI()'s own gating), a folder's already chosen, or — an
+// explicit user request, matching chooseBackupFolder()'s own Editor+ gate —
+// the current role can't act on it anyway; prompting a Visitor/Planner/
+// Reviewer to pick a folder they have no permission to actually set would
+// just be a dead-end modal. Safe to check here: by the time this can fire,
+// a role is always already chosen (see "Roles (RBAC)" in CLAUDE.md — every
+// file-sync prompt, this one included, is deferred via pendingFileSyncPrompt
+// until the mandatory role picker has been resolved).
 function maybeShowBackupFolderOnboarding() {
   if (!window.showDirectoryPicker) return;
   if (backupDirHandle) return;
+  if (!hasRole('editor')) return;
   openBackupFolderModal();
 }
 function openBackupFolderModal() { document.getElementById('backupFolderModalBg').classList.add('open'); }
@@ -9755,7 +9809,10 @@ document.getElementById('confirmModalBg').addEventListener('click', (e) => { if 
 document.getElementById('importModalBg').addEventListener('click', (e) => { if (e.target.id === 'importModalBg') closeImportModal(); });
 document.getElementById('backupsModalBg').addEventListener('click', (e) => { if (e.target.id === 'backupsModalBg') closeBackupsModal(); });
 document.getElementById('syncConflictsModalBg').addEventListener('click', (e) => { if (e.target.id === 'syncConflictsModalBg') closeSyncConflictsModal(); });
-document.getElementById('fileSyncModalBg').addEventListener('click', (e) => { if (e.target.id === 'fileSyncModalBg') closeFileSyncModal(); });
+// fileSyncModalBg deliberately has no backdrop-click-to-close listener —
+// see its own HTML comment; linking is mandatory, and closeFileSyncModal()
+// is only ever called from linkFile()/createNewLinkedFile()/reconnectFile()'s
+// own success paths now.
 document.getElementById('backupFolderModalBg').addEventListener('click', (e) => { if (e.target.id === 'backupFolderModalBg') closeBackupFolderModal(); });
 document.getElementById('themeModalBg').addEventListener('click', (e) => { if (e.target.id === 'themeModalBg') closeThemeModal(); });
 document.getElementById('roleModalBg').addEventListener('click', (e) => { if (e.target.id === 'roleModalBg') closeRoleModal(); });
@@ -9763,7 +9820,7 @@ document.getElementById('helpModalBg').addEventListener('click', (e) => { if (e.
 document.getElementById('aboutModalBg').addEventListener('click', (e) => { if (e.target.id === 'aboutModalBg') closeAboutModal(); });
 document.getElementById('rolePasswordsModalBg').addEventListener('click', (e) => { if (e.target.id === 'rolePasswordsModalBg') closeRolePasswordsModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeJourneyConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeFileSyncModal(); closeBackupFolderModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeJourneyConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeBackupFolderModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
 });
 
 // A user-reported bug on some Chrome/Safari + macOS combinations: a modal's

@@ -430,6 +430,42 @@ test('updateBackupSyncUI hides the topbar indicator when the browser has no show
   assertEqual(document.getElementById('backupSyncIndicator').style.display, 'none');
 });
 
+// ---------- Daily backups are Editor+ only ----------
+// An explicit user request ("offer backup link only for editor and admin
+// role. disable it (grey) for all other roles") — unlike linking the main
+// file, which stays available (and is now mandatory) at every role. Both
+// guards run before either function ever touches window.showDirectoryPicker,
+// so — unlike the rest of this feature — they're safely testable here even
+// though the JXA harness has no such API to provide.
+
+test('chooseBackupFolder is blocked below Editor, and never touches backupDirHandle', async function () {
+  userRole = 'reviewer';
+  backupDirHandle = null;
+  await chooseBackupFolder();
+  assertEqual(backupDirHandle, null);
+});
+
+test('chooseBackupFolder is reachable at Editor and Admin (falls through to the missing-API guard in this harness, not the role one)', async function () {
+  userRole = 'editor';
+  backupDirHandle = null;
+  await chooseBackupFolder();
+  assertIncludes(document.getElementById('toastMsg').textContent, 'Daily backups require Chrome or Edge');
+});
+
+test('unlinkBackupFolder is blocked below Editor, and leaves an existing backupDirHandle untouched', async function () {
+  userRole = 'planner';
+  backupDirHandle = { name: 'Existing Folder' };
+  await unlinkBackupFolder();
+  assertEqual(backupDirHandle.name, 'Existing Folder');
+});
+
+test('unlinkBackupFolder proceeds at Editor+', async function () {
+  userRole = 'admin';
+  backupDirHandle = { name: 'Existing Folder' };
+  await unlinkBackupFolder();
+  assertEqual(backupDirHandle, null);
+});
+
 // ---------- Review cycles now merge field-by-field, not as an opaque whole ----------
 // A review cycle used to merge as one unit — mergeData() skipped an incoming
 // cycle entirely once its id was known locally, so a concurrent edit on two
