@@ -1946,14 +1946,24 @@
      above closes, as the second step of the same launch-time onboarding
      sequence (an explicit user request: "handle file link and backup link
      in 2 modals after each other... ask when launching the app"), or on
-     its own at launch if a file is already linked but no backup folder is
-     yet. See maybeShowBackupFolderOnboarding()/chooseBackupFolder(). -->
+     its own at launch (or right after a mid-session role switch) if a file
+     is already linked but no backup folder is yet. See
+     maybeShowBackupFolderOnboarding()/chooseBackupFolder(). Mandatory for
+     Editor and Admin, a later explicit user request ("make backup linking
+     mandatory for editor and admin role") — no "Not now" button, and
+     excluded from both the global Escape handler and the generic
+     backdrop-click-to-close wiring at the bottom of the script, the same
+     "must complete before closing" treatment fileSyncModalBg already uses.
+     This needs no role check of its own: maybeShowBackupFolderOnboarding()
+     already only ever opens this modal for Editor+ in the first place
+     (it's a no-op below that tier), so making the modal itself undismissable
+     is sufficient — it's structurally never shown to anyone else. -->
 <div class="modal-bg" id="backupFolderModalBg">
   <div class="modal" style="width:400px">
     <h3>Daily backups to a folder</h3>
-    <p>Optionally save a dated backup copy of this programme to a folder on disk every day, on top of any linked file above.</p>
+    <p>Choosing a backup folder is required for Editor and Admin — a dated backup copy of this programme is saved there every day, on top of any linked file above.</p>
     <div class="import-options">
-      <div class="import-option" onclick="closeBackupFolderModal();chooseBackupFolder()">
+      <div class="import-option" onclick="chooseBackupFolder()">
         <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-purple-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
           <i class="fa-solid fa-clock-rotate-left" style="color:var(--ws-purple);font-size:15px"></i>
         </div>
@@ -1963,7 +1973,6 @@
         </div>
       </div>
     </div>
-    <div class="modal-actions" style="justify-content:flex-end"><button class="btn" onclick="closeBackupFolderModal()">Not now</button></div>
   </div>
 </div>
 
@@ -4820,6 +4829,24 @@ function closeRoleModal() {
   // pendingFileSyncPrompt) now that a role actually exists — a no-op if
   // there's nothing pending or the chosen role isn't Admin.
   maybeShowPendingFileSyncPrompt();
+  // Covers the one path maybeShowPendingFileSyncPrompt() above doesn't:
+  // switching to Editor/Admin *mid-session* (via this same modal's shield-
+  // icon reopen, not the mandatory first pick) when backups aren't yet
+  // configured — an explicit user request ("make backup linking mandatory
+  // for editor and admin role"). Guarded the identical way initFileSync()'s
+  // own "file already linked and working" branch already guards its direct
+  // call to the same function (see its own comment) — fileHandle must
+  // already be set, and no file-sync prompt can be pending or currently
+  // showing — so this can never race the file-link mandate itself: at
+  // first launch fileHandle is still null here (nothing linked yet), so
+  // this correctly no-ops and leaves the launch-time chain (file-sync modal
+  // close -> maybeShowBackupFolderOnboarding()) as the only thing that
+  // fires. maybeShowBackupFolderOnboarding() itself is a no-op below Editor
+  // or once a folder's already chosen, so calling it defensively here on
+  // every close (not just an actual role change) is harmless.
+  if (fileHandle && !pendingFileSyncPrompt && !document.getElementById('fileSyncModalBg').classList.contains('open')) {
+    maybeShowBackupFolderOnboarding();
+  }
 }
 function setUserRole(role) {
   const changed = role !== userRole;
@@ -9449,15 +9476,27 @@ async function chooseBackupFolder() {
     try { await _fsPut(dir, _FS.backupKey); } catch (_) {}
     updateBackupSyncUI();
     showToast(`Daily backups enabled — saving to ${dir.name}`);
+    closeBackupFolderModal();
   } catch (e) { if (e.name !== 'AbortError') showToast('Could not access that folder', true); }
+  // A cancelled/failed picker deliberately leaves the modal open with no
+  // extra handling needed — nothing ever closed it in the first place (see
+  // backupFolderModalBg's own HTML comment), so trying again is just
+  // clicking the option a second time.
 }
+// requireRole('editor') above means this (and the reopen below) can only
+// ever run for Editor/Admin — unlinking is still allowed, the same
+// "switching/undoing is fine, being left unconfigured isn't" stance
+// unlinkFile() takes for the main file link, but immediately reopens the
+// same now-mandatory modal rather than leaving Editor/Admin's own
+// requirement unmet (see backupFolderModalBg's own HTML comment).
 async function unlinkBackupFolder() {
   if (!requireRole('editor')) return;
   backupDirHandle = null;
   lastBackupWrittenDate = null;
   await _fsDel(_FS.backupKey).catch(() => {});
   updateBackupSyncUI();
-  showToast('Daily backups turned off');
+  showToast('Daily backups turned off — choose a folder to keep them going');
+  openBackupFolderModal();
 }
 // Background polling — without this, an external change (a teammate's edit,
 // synced down by OneDrive/SharePoint) only gets noticed the next time *this*
@@ -9813,18 +9852,23 @@ function closeFileSyncModal() {
   }
 }
 // The second step of the launch-time onboarding sequence — see
-// closeFileSyncModal()'s own comment for when this fires, and initFileSync()
+// closeFileSyncModal()'s own comment for when this fires, initFileSync()
 // for the one case (file already linked and working) where it's called
-// directly instead, since no file-sync modal ever opens to chain off of
-// there. A no-op if daily backups aren't supported at all (matches
-// updateBackupSyncUI()'s own gating), a folder's already chosen, or — an
-// explicit user request, matching chooseBackupFolder()'s own Editor+ gate —
-// the current role can't act on it anyway; prompting a Visitor/Planner/
-// Reviewer to pick a folder they have no permission to actually set would
-// just be a dead-end modal. Safe to check here: by the time this can fire,
-// a role is always already chosen (see "Roles (RBAC)" in CLAUDE.md — every
-// file-sync prompt, this one included, is deferred via pendingFileSyncPrompt
-// until the mandatory role picker has been resolved).
+// directly instead (no file-sync modal ever opens to chain off of there),
+// and closeRoleModal() for the mid-session-role-switch case. A no-op if
+// daily backups aren't supported at all (matches updateBackupSyncUI()'s own
+// gating), a folder's already chosen, or — an explicit user request,
+// matching chooseBackupFolder()'s own Editor+ gate — the current role can't
+// act on it anyway; prompting a Visitor/Planner/Reviewer to pick a folder
+// they have no permission to actually set would just be a dead-end modal.
+// This one role check is also what makes the modal it opens (see
+// backupFolderModalBg's own HTML comment) safely mandatory for exactly
+// Editor/Admin with no further gating needed inside the modal itself — it's
+// structurally never opened for anyone else. Safe to check role here: by
+// the time this can fire, a role is always already chosen (see "Roles
+// (RBAC)" in CLAUDE.md — every file-sync prompt, this one included, is
+// deferred via pendingFileSyncPrompt until the mandatory role picker has
+// been resolved).
 function maybeShowBackupFolderOnboarding() {
   if (!window.showDirectoryPicker) return;
   if (backupDirHandle) return;
@@ -9867,15 +9911,16 @@ document.getElementById('syncConflictsModalBg').addEventListener('click', (e) =>
 // fileSyncModalBg deliberately has no backdrop-click-to-close listener —
 // see its own HTML comment; linking is mandatory, and closeFileSyncModal()
 // is only ever called from linkFile()/createNewLinkedFile()/reconnectFile()'s
-// own success paths now.
-document.getElementById('backupFolderModalBg').addEventListener('click', (e) => { if (e.target.id === 'backupFolderModalBg') closeBackupFolderModal(); });
+// own success paths now. backupFolderModalBg is the same, for the same
+// reason (see its own HTML comment) — closeBackupFolderModal() is only
+// ever called from chooseBackupFolder()'s own success path now.
 document.getElementById('themeModalBg').addEventListener('click', (e) => { if (e.target.id === 'themeModalBg') closeThemeModal(); });
 document.getElementById('roleModalBg').addEventListener('click', (e) => { if (e.target.id === 'roleModalBg') closeRoleModal(); });
 document.getElementById('helpModalBg').addEventListener('click', (e) => { if (e.target.id === 'helpModalBg') closeHelpModal(); });
 document.getElementById('aboutModalBg').addEventListener('click', (e) => { if (e.target.id === 'aboutModalBg') closeAboutModal(); });
 document.getElementById('rolePasswordsModalBg').addEventListener('click', (e) => { if (e.target.id === 'rolePasswordsModalBg') closeRolePasswordsModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeJourneyConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeBackupFolderModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeJourneyConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
 });
 
 // A user-reported bug on some Chrome/Safari + macOS combinations: a modal's

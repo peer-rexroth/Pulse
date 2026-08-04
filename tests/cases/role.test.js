@@ -183,6 +183,68 @@ test('closeRoleModal closes normally once a role has been chosen', function () {
   assertEqual(document.getElementById('roleModalBg').classList.contains('open'), false);
 });
 
+// ---------- closeRoleModal's mid-session backup-folder onboarding trigger ----------
+// An explicit user request ("make backup linking mandatory for editor and
+// admin role") — see maybeShowBackupFolderOnboarding()'s own call-site
+// comment. maybeShowBackupFolderOnboarding() itself always no-ops in this
+// harness (window.showDirectoryPicker is never provided — the same gap
+// documented for the rest of file sync), so a temporary spy stands in for
+// it here to verify closeRoleModal()'s own new *guard* logic in isolation —
+// the one piece of this feature that lives outside that gate entirely.
+
+test('closeRoleModal does not trigger backup-folder onboarding before a file is linked, to avoid racing the mandatory file-sync modal', function () {
+  const original = maybeShowBackupFolderOnboarding;
+  let calls = 0;
+  maybeShowBackupFolderOnboarding = function () { calls++; };
+  try {
+    userRole = 'admin';
+    fileHandle = null;
+    pendingFileSyncPrompt = null;
+    openRoleModal();
+    closeRoleModal();
+    assertEqual(calls, 0, 'nothing is linked yet at this point (e.g. first launch) — must not fire');
+  } finally {
+    maybeShowBackupFolderOnboarding = original;
+  }
+});
+
+test('closeRoleModal triggers backup-folder onboarding once a file is already linked and no other file-sync prompt is in flight', function () {
+  const original = maybeShowBackupFolderOnboarding;
+  let calls = 0;
+  maybeShowBackupFolderOnboarding = function () { calls++; };
+  try {
+    userRole = 'admin';
+    fileHandle = { name: 'pulse-data.json' };
+    pendingFileSyncPrompt = null;
+    document.getElementById('fileSyncModalBg').classList.remove('open');
+    openRoleModal();
+    closeRoleModal();
+    assertEqual(calls, 1, 'a mid-session switch to Admin with a file already linked should prompt for backups if not yet configured');
+  } finally {
+    maybeShowBackupFolderOnboarding = original;
+    fileHandle = null;
+  }
+});
+
+test('closeRoleModal does not trigger backup-folder onboarding while the file-sync modal is itself still open', function () {
+  const original = maybeShowBackupFolderOnboarding;
+  let calls = 0;
+  maybeShowBackupFolderOnboarding = function () { calls++; };
+  try {
+    userRole = 'admin';
+    fileHandle = { name: 'pulse-data.json' };
+    pendingFileSyncPrompt = null;
+    document.getElementById('fileSyncModalBg').classList.add('open');
+    openRoleModal();
+    closeRoleModal();
+    assertEqual(calls, 0, 'the file-sync modal is still mid-flow — stacking a second mandatory modal on top of it would be wrong');
+  } finally {
+    maybeShowBackupFolderOnboarding = original;
+    fileHandle = null;
+    document.getElementById('fileSyncModalBg').classList.remove('open');
+  }
+});
+
 test('renderRoleModal disables the Done button while no role is chosen yet, and enables it once one is', function () {
   userRole = null;
   renderRoleModal();
