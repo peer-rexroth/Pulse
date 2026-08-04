@@ -229,49 +229,53 @@ test('selecting a specific workstream narrows the per-workstream summary and ove
   assertIncludes(html, '>1<'); // scoped to the still-overdue workstream only
 });
 
-// ---------- Per-category summary (catStats) ----------
-// wsStats' own counterpart, cut by category instead of workstream — an
-// explicit user request for a cross-cutting view a per-workstream table
-// alone can't answer ("are all our Dependency-type items lagging, across
-// every workstream?").
+// ---------- Dashboard's own Overview/Dependencies sub-tabs ----------
+// A later, explicit user request moved the Dependencies tracker (below)
+// into its own tab rather than sharing the page with Overview — the same
+// planningTab/reviewTab shape (module-level, UI-only, not persisted).
 
-test('computeDashboardData catStats groups scoped items by category, computing item count and milestone completion %', function () {
-  addDashItem({ name: 'Dev A', categoryId: categories[0].id, milestones: [
-    { id: 'm1', name: 'M1', dueDate: todayStr(), status: 'complete' },
-    { id: 'm2', name: 'M2', dueDate: todayStr(), status: 'not-started' }
-  ] });
-  addDashItem({ name: 'Dev B', categoryId: categories[0].id });
-  const dep = categories.find(c => c.name === 'Dependency');
-  addDashItem({ name: 'Dep A', categoryId: dep.id });
-  const { catStats } = computeDashboardData();
-  const devStats = catStats.find(r => r.c.id === categories[0].id);
-  assertEqual(devStats.itemCount, 2);
-  assertEqual(devStats.msTotal, 2);
-  assertEqual(devStats.msDone, 1);
-  assertEqual(devStats.msPct, 50);
-  const depStats = catStats.find(r => r.c.id === dep.id);
-  assertEqual(depStats.itemCount, 1);
+test('render toggles dashboardModeToolbar only for Dashboard mode, and dashboardToolbar (Exec export) only for the Overview tab', function () {
+  mode = 'dashboard'; dashboardTab = 'overview';
+  render();
+  assertEqual(document.getElementById('dashboardModeToolbar').style.display, '');
+  assertEqual(document.getElementById('dashboardToolbar').style.display, '');
+  dashboardTab = 'dependencies';
+  render();
+  assertEqual(document.getElementById('dashboardModeToolbar').style.display, '', 'the sub-tab row itself stays visible on both tabs');
+  assertEqual(document.getElementById('dashboardToolbar').style.display, 'none', 'Exec Summary export doesn\'t cover the Dependencies tab\'s own content');
+  mode = 'planning';
+  render();
+  assertEqual(document.getElementById('dashboardModeToolbar').style.display, 'none');
 });
 
-test('catStats excludes the reserved Pending category', function () {
-  const { catStats } = computeDashboardData();
-  assertFalse(catStats.some(r => r.c.pending), 'the Pending category should never appear in this rollup');
+test('setDashboardTab switches dashboardTab and toggles each tab button\'s active class', function () {
+  mode = 'dashboard';
+  setDashboardTab('dependencies');
+  assertEqual(dashboardTab, 'dependencies');
+  assertTrue(document.getElementById('tabDashboardDependencies').classList.contains('active'));
+  assertFalse(document.getElementById('tabDashboardOverview').classList.contains('active'));
+  setDashboardTab('overview');
+  assertEqual(dashboardTab, 'overview');
+  assertTrue(document.getElementById('tabDashboardOverview').classList.contains('active'));
 });
 
-test('renderDashboard renders a Per-category summary table with each category\'s name and stats', function () {
-  addDashItem({ name: 'Dev A', categoryId: categories[0].id });
+test('renderDashboard shows the Overview content (cards, per-workstream summary) only on the Overview tab', function () {
+  addDashItem({ name: 'Any item' });
+  dashboardTab = 'overview';
   renderDashboard();
-  const html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'Per-category summary');
-  assertIncludes(html, esc(categories[0].name));
-  assertIncludes(html, '1 item');
+  assertIncludes(document.getElementById('main').innerHTML, 'Per-workstream summary');
+  dashboardTab = 'dependencies';
+  renderDashboard();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Per-workstream summary', 'Overview content must not leak into the Dependencies tab');
 });
 
 // ---------- Dependencies tracker ----------
 // A dedicated cross-workstream tracker for items flagged dependency:true —
-// an explicit user request, distinct from Planning's own per-workstream
-// Dependencies sub-section (which lists every dependency item regardless of
-// completion, since it's a structural grouping, not an attention feed).
+// an explicit user request, later moved into its own Dashboard sub-tab
+// (dashboardTab === 'dependencies') rather than sharing the page with
+// Overview. Distinct from Planning's own per-workstream Dependencies
+// sub-section, which lists every dependency item regardless of completion,
+// since it's a structural grouping, not an attention feed.
 
 test('computeDashboardData dependencies lists every scoped, still-open item flagged dependency:true, sorted soonest-due-first', function () {
   addDashItem({ name: 'Later dep', dependency: true, dueDate: isoDaysFromNow(10) });
@@ -307,8 +311,9 @@ test('a dependency entry with no SPOC recorded is not flagged overdue if not act
   assertFalse(dependencies[0].overdue);
 });
 
-test('renderDashboard\'s Dependencies table renders a clickable row per dependency, with a header and an overdue-flagged due date', function () {
+test('renderDashboard\'s Dependencies tab renders a clickable row per dependency, with a header and an overdue-flagged due date', function () {
   const it = addDashItem({ name: 'Vendor delivery', dependency: true, dependencySpoc: 'Jane Vendor', dueDate: isoDaysFromNow(-3), status: 'red' });
+  dashboardTab = 'dependencies';
   renderDashboard();
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'dash-dep-header');
@@ -318,8 +323,9 @@ test('renderDashboard\'s Dependencies table renders a clickable row per dependen
   assertIncludes(html, 'color:var(--stat-red)'); // overdue due-date styling
 });
 
-test('renderDashboard shows a "No open dependencies." placeholder when nothing is flagged', function () {
+test('renderDashboard\'s Dependencies tab shows a "No open dependencies." placeholder when nothing is flagged', function () {
   addDashItem({ name: 'Plain item', dependency: false });
+  dashboardTab = 'dependencies';
   renderDashboard();
   assertIncludes(document.getElementById('main').innerHTML, 'No open dependencies.');
 });

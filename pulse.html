@@ -1412,11 +1412,22 @@
       </div>
       <div class="status-filter-chips" id="reviewLogFilterChips"></div>
     </div>
-    <!-- Dashboard's own toolbar — currently just the Exec Summary export
-         (see exportExecSummaryPdf()/exportExecSummaryPng() below). Same
-         static-toolbar-outside-#main placement as the other two above, so
-         a future control added here (like this one) never gets torn down
-         by renderDashboard()'s own re-renders. -->
+    <!-- Dashboard's own two sub-tabs — Overview (the RAG/milestone cards,
+         per-workstream summary, Overdue/Upcoming feeds — the original
+         content) and Dependencies (the cross-workstream Dependencies
+         tracker, moved out to its own tab on a later, explicit user
+         request). Same static-toolbar-outside-#main placement/markup
+         Planning's/Review's own sub-tabs use. -->
+    <div class="planning-toolbar" id="dashboardModeToolbar" style="display:none">
+      <div class="view-tabs">
+        <button class="view-tab" id="tabDashboardOverview" onclick="setDashboardTab('overview')"><i class="fa-solid fa-gauge-high"></i> Overview</button>
+        <button class="view-tab" id="tabDashboardDependencies" onclick="setDashboardTab('dependencies')"><i class="fa-solid fa-globe"></i> Dependencies</button>
+      </div>
+    </div>
+    <!-- Dashboard's own Export Exec Summary toolbar — shown only for the
+         Overview tab (see render()), since the export doesn't cover the
+         Dependencies tracker's own content — see "Export Dashboard as Exec
+         Summary" in CLAUDE.md for that scoping decision. -->
     <div class="planning-toolbar" id="dashboardToolbar" style="display:none">
       <div class="data-dropdown" id="execExportDropdown">
         <button class="btn btn-sm" onclick="event.stopPropagation();toggleExecExportMenu()"><i class="fa-solid fa-file-arrow-down"></i> Export Exec Summary <i class="fa-solid fa-chevron-down" style="font-size:9px"></i></button>
@@ -2276,6 +2287,13 @@ let reviewTab = 'scope';
 // Journey tree, formerly its own top-level mode — see setPlanningTab()) —
 // UI-only, not persisted, same shape as reviewTab just one mode over.
 let planningTab = 'scope';
+// Dashboard's own two sub-tabs — 'overview' (the RAG/milestone cards,
+// per-workstream summary, Overdue/Upcoming feeds — this mode's original and
+// still-default content) or 'dependencies' (the cross-workstream Dependencies
+// tracker, moved out to its own tab on a later, explicit user request rather
+// than sharing the page with Overview) — UI-only, not persisted, same shape
+// as planningTab/reviewTab.
+let dashboardTab = 'overview';
 const HISTORY_PAGE_SIZE = 5;
 
 // Deletion tombstones: {id, deletedAt}[] — records "this id used to exist and
@@ -3019,7 +3037,8 @@ function render() {
   // (and the display='none' it would have set) never runs once mode is no
   // longer 'review'.
   document.getElementById('reviewLogSearchToolbar').style.display = (mode === 'review' && (reviewTab === 'actionLog' || reviewTab === 'decisionLog')) ? '' : 'none';
-  document.getElementById('dashboardToolbar').style.display = mode === 'dashboard' ? '' : 'none';
+  document.getElementById('dashboardModeToolbar').style.display = mode === 'dashboard' ? '' : 'none';
+  document.getElementById('dashboardToolbar').style.display = (mode === 'dashboard' && dashboardTab === 'overview') ? '' : 'none';
   document.getElementById('dataMenuImportItem').style.display = hasRole('admin') ? '' : 'none';
   document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
   renderPlanningStatusChips();
@@ -3069,6 +3088,8 @@ function render() {
     }
     renderReview();
   } else if (mode === 'dashboard') {
+    document.getElementById('tabDashboardOverview').classList.toggle('active', dashboardTab === 'overview');
+    document.getElementById('tabDashboardDependencies').classList.toggle('active', dashboardTab === 'dependencies');
     renderDashboard();
   } else if (mode === 'admin') {
     renderAdmin();
@@ -3081,6 +3102,9 @@ function setMode(m) {
 // declaration comment above. Mirrors setReviewTab() exactly: UI-only,
 // not persisted, no save() call.
 function setPlanningTab(t) { planningTab = t; render(); }
+// Dashboard's own Overview/Dependencies sub-tabs — see dashboardTab's own
+// declaration comment above. Same shape as setPlanningTab()/setReviewTab().
+function setDashboardTab(t) { dashboardTab = t; render(); }
 
 function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
@@ -7695,7 +7719,7 @@ function renderReview() {
 // ---------- Dashboard mode ----------
 function allMilestonesFlat(itemList) {
   const out = [];
-  (itemList || items).forEach(it => it.milestones.forEach(m => out.push(Object.assign({}, m, { itemName: it.name, itemId: it.id, workstreamId: it.workstreamId, categoryId: it.categoryId }))));
+  (itemList || items).forEach(it => it.milestones.forEach(m => out.push(Object.assign({}, m, { itemName: it.name, itemId: it.id, workstreamId: it.workstreamId }))));
   return out;
 }
 // Dashboard scopes everything to visibleWorkstreams() — the same shared
@@ -7754,23 +7778,6 @@ function computeDashboardData() {
     const wMsDone = wMs.filter(m => m.status === 'complete').length;
     return { w, itemCount: wItems.length, msTotal: wMs.length, msDone: wMsDone, msPct: wMs.length ? Math.round(wMsDone / wMs.length * 100) : 0 };
   });
-  // catStats is wsStats' own counterpart, cut by category instead of
-  // workstream — a later, explicit user request for a cross-cutting view
-  // ("are all our Dependency-type items lagging, across every workstream?")
-  // that wsStats alone can't answer, since it only ever groups within one
-  // workstream at a time. The reserved Pending category is excluded — an
-  // Unassigned item sitting in it already has workstreamId:null, so it's
-  // never in scopedItems to begin with (same exclusion wsStats already gets
-  // for free); filtering categories themselves is just for tidiness, so a
-  // reserved, always-empty-here row never shows up in this table at all.
-  // Sorted by each category's own `order`, the same order Admin's own list
-  // and every category <select> in the app already use.
-  const catStats = categories.filter(c => !c.pending).slice().sort((a, b) => a.order - b.order).map(c => {
-    const cItems = scopedItems.filter(it => it.categoryId === c.id);
-    const cMs = milestones.filter(m => m.categoryId === c.id);
-    const cMsDone = cMs.filter(m => m.status === 'complete').length;
-    return { c, itemCount: cItems.length, msTotal: cMs.length, msDone: cMsDone, msPct: cMs.length ? Math.round(cMsDone / cMs.length * 100) : 0 };
-  });
   // Every scoped item flagged dependency:true, still open — a later,
   // explicit user request for a dedicated cross-workstream tracker of
   // external/vendor commitments, distinct from Planning's own per-workstream
@@ -7790,7 +7797,7 @@ function computeDashboardData() {
     }))
     .sort((a, b) => (a.date || '9999-99-99').localeCompare(b.date || '9999-99-99'));
 
-  return { wss, scopedItems, milestones, itemCounts, totalItems, msDone, msPct, overdueReviewWs, overdue, upcoming, wsStats, catStats, dependencies };
+  return { wss, scopedItems, milestones, itemCounts, totalItems, msDone, msPct, overdueReviewWs, overdue, upcoming, wsStats, dependencies };
 }
 function renderDashboard() {
   const el = document.getElementById('main');
@@ -7798,7 +7805,33 @@ function renderDashboard() {
     el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-gauge-high"></i><div>No workstreams yet — add one in Planning first.</div></div>`;
     return;
   }
-  const { wss, itemCounts, totalItems, msDone, msPct, milestones, overdueReviewWs, overdue, upcoming, wsStats, catStats, dependencies } = computeDashboardData();
+  const { wss, itemCounts, totalItems, msDone, msPct, milestones, overdueReviewWs, overdue, upcoming, wsStats, dependencies } = computeDashboardData();
+
+  // A dedicated cross-workstream tracker for items flagged dependency:true
+  // — a later, explicit user request, moved into its own sub-tab (a
+  // further, separate explicit user request — see dashboardTab's own
+  // declaration comment) rather than sitting on the same page as the
+  // Overview cards. Reuses .attention-row-link for the same clickable-row
+  // treatment the Overdue/Upcoming feeds already have (openItemModal(),
+  // never role-gated), but needs its own bespoke column set (Item/
+  // Workstream/SPOC/Due/Status) rather than .attention-row's own simple
+  // 3-part shape — see .dash-dep-row's own CSS comment for why this is a
+  // real grid with pinned widths, not auto-sized columns.
+  if (dashboardTab === 'dependencies') {
+    const dependencyHtml = dependencies.length
+      ? `<div class="dash-dep-header">
+          <span>Item</span><span>Workstream</span><span>SPOC</span><span>Due</span><span>Status</span>
+        </div>` + dependencies.map(d => `<div class="dash-dep-row attention-row-link" onclick="openItemModal('${d.itemId}')" title="Open this item">
+            <span class="item-name">${esc(d.label)}</span>
+            <span class="dash-dep-ws">${esc(d.workstreamName)}</span>
+            <span class="dash-dep-spoc">${d.spoc ? esc(d.spoc) : '—'}</span>
+            <span class="item-dates" ${d.overdue ? 'style="color:var(--stat-red);font-weight:700"' : ''}>${d.date ? fmtDate(d.date) : '—'}</span>
+            <span class="status-badge" style="background:var(--stat-${d.status}-bg);color:var(--stat-${d.status});cursor:default">${esc(statusLabel(d.status))}</span>
+          </div>`).join('')
+      : `<div class="attention-empty">No open dependencies.</div>`;
+    el.innerHTML = `<div class="category-list">${dependencyHtml}</div>`;
+    return;
+  }
 
   const bar = STATUSES.map(s => {
     const pct = totalItems ? (itemCounts[s.id] / totalItems * 100) : 0;
@@ -7809,16 +7842,6 @@ function renderDashboard() {
   const wsRows = wsStats.map(r => `<div class="dash-ws-row">
         <span class="ws-dot" style="background:var(--ws-${r.w.color})"></span>
         <span class="dash-ws-name">${esc(r.w.name)}</span>
-        <span class="dash-sub-stat">${r.itemCount} item${r.itemCount === 1 ? '' : 's'}</span>
-        <span class="dash-sub-stat">${r.msPct}% milestones done</span>
-      </div>`).join('');
-
-  // wsRows' own counterpart, cut by category — reuses .dash-ws-row wholesale
-  // (same padding/border/layout), just without a .ws-dot, since a category
-  // has no color of its own the way a workstream does (Admin's own category
-  // list has never colored them either).
-  const catRows = catStats.map(r => `<div class="dash-ws-row">
-        <span class="dash-ws-name">${esc(r.c.name)}</span>
         <span class="dash-sub-stat">${r.itemCount} item${r.itemCount === 1 ? '' : 's'}</span>
         <span class="dash-sub-stat">${r.msPct}% milestones done</span>
       </div>`).join('');
@@ -7839,25 +7862,6 @@ function renderDashboard() {
           <span class="item-dates">${fmtDate(e.date)}</span>
         </div>`).join('')
     : `<div class="attention-empty">Nothing here.</div>`;
-
-  // A dedicated cross-workstream tracker for items flagged dependency:true
-  // — a later, explicit user request. Reuses .attention-row-link for the
-  // same clickable-row treatment the Overdue/Upcoming feeds already have
-  // (openItemModal(), never role-gated), but needs its own bespoke column
-  // set (Item/Workstream/SPOC/Due/Status) rather than .attention-row's own
-  // simple 3-part shape — see .dash-dep-row's own CSS comment for why this
-  // is a real grid with pinned widths, not auto-sized columns.
-  const dependencyHtml = dependencies.length
-    ? `<div class="dash-dep-header">
-        <span>Item</span><span>Workstream</span><span>SPOC</span><span>Due</span><span>Status</span>
-      </div>` + dependencies.map(d => `<div class="dash-dep-row attention-row-link" onclick="openItemModal('${d.itemId}')" title="Open this item">
-          <span class="item-name">${esc(d.label)}</span>
-          <span class="dash-dep-ws">${esc(d.workstreamName)}</span>
-          <span class="dash-dep-spoc">${d.spoc ? esc(d.spoc) : '—'}</span>
-          <span class="item-dates" ${d.overdue ? 'style="color:var(--stat-red);font-weight:700"' : ''}>${d.date ? fmtDate(d.date) : '—'}</span>
-          <span class="status-badge" style="background:var(--stat-${d.status}-bg);color:var(--stat-${d.status});cursor:default">${esc(statusLabel(d.status))}</span>
-        </div>`).join('')
-    : `<div class="attention-empty">No open dependencies.</div>`;
 
   el.innerHTML = `
     <div class="dash-grid">
@@ -7881,10 +7885,6 @@ function renderDashboard() {
     </div>
     <div class="section-label">Per-workstream summary</div>
     <div class="dash-card" style="margin-bottom:20px">${wsRows}</div>
-    <div class="section-label">Per-category summary</div>
-    <div class="dash-card" style="margin-bottom:20px">${catRows}</div>
-    <div class="section-label">Dependencies</div>
-    <div class="category-list" style="margin-bottom:20px">${dependencyHtml}</div>
     <div class="dash-grid" style="grid-template-columns: 1fr 1fr;">
       <div>
         <div class="section-label">Overdue</div>
