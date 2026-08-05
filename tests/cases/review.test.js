@@ -484,6 +484,124 @@ test('an item-level change (no milestone) sorts to the front of its item\'s grou
   assertTrue(idxTag >= 0 && idxTag < idxMilestone, 'the item-level change should display before the milestone-level one, even though it was logged second');
 });
 
+// ---------- Change log collapsing: only the net change per field, per cycle ----------
+
+test('collapseChangeLogForCycle nets several status changes to the same milestone down to one entry: first old value, last new value', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'M', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  cycleMilestoneStatus(it.id, it.milestones[0].id); // not-started -> green
+  cycleMilestoneStatus(it.id, it.milestones[0].id); // green -> amber
+  assertEqual(cycle.changeLog.length, 2, 'the raw, stored log still has every individual edit');
+  const collapsed = collapseChangeLogForCycle(cycle.changeLog);
+  assertEqual(collapsed.length, 1, 'display collapses them down to one net change');
+  assertEqual(collapsed[0].statusChange.oldValue, 'not-started', 'the former value from the very first edit this cycle, not the intermediate one');
+  assertEqual(collapsed[0].statusChange.newValue, 'amber', 'the final value from the most recent edit');
+});
+
+test('collapseChangeLogForCycle nets several date edits to the same milestone field down to one entry', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'M', dueDate: '2026-06-01', status: 'not-started', actualDate: null }]
+  });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'dueDate', '2026-07-01');
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'dueDate', '2026-08-01');
+  assertEqual(cycle.changeLog.length, 2);
+  const collapsed = collapseChangeLogForCycle(cycle.changeLog);
+  assertEqual(collapsed.length, 1);
+  assertEqual(collapsed[0].dateChange.oldValue, '2026-06-01', 'not the intermediate 2026-07-01');
+  assertEqual(collapsed[0].dateChange.newValue, '2026-08-01');
+});
+
+test('collapseChangeLogForCycle drops a field entirely once it nets back to exactly where it started this cycle', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'M', dueDate: '2026-06-01', status: 'not-started', actualDate: null }]
+  });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'dueDate', '2026-07-01');
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'dueDate', '2026-06-01'); // back to the original
+  assertEqual(cycle.changeLog.length, 2, 'both edits are still genuinely stored');
+  const collapsed = collapseChangeLogForCycle(cycle.changeLog);
+  assertEqual(collapsed.length, 0, 'a net no-op should not read as a "change" at all');
+});
+
+test('collapseChangeLogForCycle leaves different fields/milestones/items as separate, uncollapsed entries', function () {
+  const mA = { id: genId(), name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null };
+  const mB = { id: genId(), name: 'B', dueDate: todayStr(), status: 'not-started', actualDate: null };
+  const it = addReviewItem({ name: 'Call Money', milestones: [mA, mB] });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  cycleMilestoneStatus(it.id, mA.id);
+  cycleMilestoneStatus(it.id, mB.id);
+  const collapsed = collapseChangeLogForCycle(cycle.changeLog);
+  assertEqual(collapsed.length, 2, 'two different milestones each touched once must stay two separate rows');
+});
+
+test('collapseChangeLogForCycle never merges a plain-text entry (no structured old/new pair) — e.g. the Not Applicable toggle logs one row per toggle', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'M', dueDate: todayStr(), status: 'not-started', actualDate: null }]
+  });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id); // off -> on
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id); // on -> off (back to where it started)
+  assertEqual(cycle.changeLog.length, 2);
+  const collapsed = collapseChangeLogForCycle(cycle.changeLog);
+  assertEqual(collapsed.length, 2, 'plain-text entries have no old/new pair to net together, so both stay visible, even though the net effect is a no-op');
+});
+
+test('reviewHistoryRowHtml shows no chevron/expandable history once every change in the cycle nets to a no-op', function () {
+  const it = addReviewItem({
+    milestones: [{ id: genId(), name: 'M', dueDate: '2026-06-01', status: 'not-started', actualDate: null }]
+  });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'dueDate', '2026-07-01');
+  updateMilestoneDateField(it.id, it.milestones[0].id, 'dueDate', '2026-06-01');
+  toggleConfirmAllMilestones(cycle.id, it.id);
+  completeReviewCycle(cycle.id);
+  assertTrue(reviewCycles[0].changeLog.length > 0, 'sanity check — the raw log still has both edits stored');
+  const html = reviewHistoryRowHtml(reviewCycles[0]);
+  assertNotIncludes(html, 'fa-chevron-right', 'nothing left to expand once the net change is empty');
+  assertNotIncludes(html, 'fa-chevron-down');
+  assertIncludes(html, '<span class="item-chevron"></span>', 'the same inert, empty chevron placeholder used when a cycle never had any changes at all');
+});
+
+test('workstreamChangeLogEntries reflects the collapsed count, not the raw per-edit count', function () {
+  const it = addReviewItem({ name: 'Call Money', itStatus: 'green' });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  cycleItemAttr(it.id, 'itStatus'); // green -> amber
+  cycleItemAttr(it.id, 'itStatus'); // amber -> red
+  assertEqual(cycle.changeLog.length, 2, 'sanity check — two edits genuinely logged');
+  const entries = workstreamChangeLogEntries(workstreams[0].id);
+  assertEqual(entries.length, 1, 'the cross-workstream feed shows one net row, not one per edit');
+  assertEqual(entries[0].tagChange.oldValue, 'green');
+  assertEqual(entries[0].tagChange.newValue, 'red');
+});
+
+test('collapsing stays scoped per cycle — two edits to the same field in two different (already-closed) cycles must not collapse into each other', function () {
+  const it = addReviewItem({ name: 'Call Money', itStatus: 'green' });
+  startReviewCycle(workstreams[0].id);
+  const cycle1 = activeReviewCycle(workstreams[0].id);
+  cycleItemAttr(it.id, 'itStatus'); // green -> amber
+  toggleReviewConfirm(cycle1.id, it.id);
+  completeReviewCycle(cycle1.id);
+
+  startReviewCycle(workstreams[0].id);
+  const cycle2 = activeReviewCycle(workstreams[0].id);
+  cycleItemAttr(it.id, 'itStatus'); // amber -> red
+  toggleReviewConfirm(cycle2.id, it.id);
+  completeReviewCycle(cycle2.id);
+
+  const entries = workstreamChangeLogEntries(workstreams[0].id);
+  assertEqual(entries.length, 2, 'each cycle\'s own single edit stays its own row — they must not net together into "green -> red"');
+});
+
 test('nothing is logged when no review cycle is active for the item\'s workstream', function () {
   const it = addReviewItem({
     milestones: [{ id: genId(), name: 'M', dueDate: todayStr(), status: 'not-started', actualDate: null }]

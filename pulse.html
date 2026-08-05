@@ -7030,6 +7030,57 @@ function removeMinutes() {
     }
   });
 }
+// Collapses one review cycle's own changeLog down to a single entry per
+// field actually touched during that cycle — an explicit user request
+// ("history seems to track every change... shouldn't it only track the
+// final change?"): cycling a milestone's status through several values, or
+// correcting a mistyped date, used to leave one change-log row per click/
+// edit rather than one row for the net effect. This is display-only —
+// logReviewChange() itself, and every one of its callers, are untouched, so
+// the full edit-by-edit trail is still genuinely stored in cycle.changeLog
+// (nothing here mutates or removes an entry) — and mergeReviewCycle()'s own
+// changeLog merge stays a plain append-only union by id (see its own
+// comment), which depends on entries never changing after creation; this
+// function recomputes a fresh view on every render instead. Only the three
+// structured change types (statusChange/tagChange/dateChange) are
+// collapsed, since only those carry a real {oldValue, newValue} pair to net
+// together across several edits — a plain-text entry (the Not Applicable
+// toggle, a category switch) has no such pair to synthesize from multiple
+// edits, so those pass through unchanged, one row per edit, same as before.
+// Grouped by (itemId, milestoneId, field) — the same field on the same
+// item/milestone, touched more than once — and reduced to the *first*
+// entry's oldValue paired with the *last* entry's newValue; if those two
+// are equal (the field was edited back to exactly where it started this
+// cycle), the whole group is dropped — a net no-op shouldn't show as a
+// "change" at all. MUST be called on one cycle's own changeLog at a time,
+// before workstreamChangeLogEntries() ever flattens across cycles — a
+// status change logged in an old, already-completed cycle must never
+// collapse together with one logged in today's brand-new cycle just
+// because they happen to touch the same milestone.
+function collapseChangeLogForCycle(changeLog) {
+  const groups = new Map();
+  const passthrough = [];
+  (changeLog || []).forEach(e => {
+    const kind = e.tagChange ? `tag:${e.tagChange.field}` : e.statusChange ? 'status' : e.dateChange ? `date:${e.dateChange.label}` : null;
+    if (!kind) { passthrough.push(e); return; }
+    const key = `${e.itemId}|${e.milestoneId || ''}|${kind}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(e);
+  });
+  const collapsed = [];
+  groups.forEach(group => {
+    const first = group[0], last = group[group.length - 1];
+    const oldValue = first.tagChange ? first.tagChange.oldValue : first.statusChange ? first.statusChange.oldValue : first.dateChange.oldValue;
+    const newValue = last.tagChange ? last.tagChange.newValue : last.statusChange ? last.statusChange.newValue : last.dateChange.newValue;
+    if (oldValue === newValue) return; // net no-op — back to where it started this cycle
+    const merged = Object.assign({}, last);
+    if (last.tagChange) merged.tagChange = Object.assign({}, last.tagChange, { oldValue });
+    else if (last.statusChange) merged.statusChange = Object.assign({}, last.statusChange, { oldValue });
+    else if (last.dateChange) merged.dateChange = Object.assign({}, last.dateChange, { oldValue });
+    collapsed.push(merged);
+  });
+  return collapsed.concat(passthrough);
+}
 // changeLog entries (see logReviewChange()) are what let a history entry
 // show the actual changes made while that cycle was active — "Development
 // completed: Changed actual date to 26 Jul 2026" — not just a confirmed
@@ -7115,13 +7166,19 @@ function reviewHistoryRowHtml(c) {
   const summary = typeof c.itemCountAtClose === 'number'
     ? `<span style="color:var(--text-faint)">${c.confirmedCountAtClose} of ${c.itemCountAtClose} confirmed</span>`
     : '';
-  const hasLog = c.changeLog && c.changeLog.length > 0;
+  // Collapsed before anything else here reads it — hasLog/the chevron/the
+  // expanded rows must all agree on what will actually render, not the raw
+  // (possibly-larger, possibly-net-empty) stored array. See
+  // collapseChangeLogForCycle()'s own comment for why the underlying
+  // c.changeLog itself is left completely untouched.
+  const collapsedLog = collapseChangeLogForCycle(c.changeLog);
+  const hasLog = collapsedLog.length > 0;
   const expanded = expandedHistoryIds.has(c.id);
   const chevron = hasLog
     ? `<span class="item-chevron" onclick="toggleHistoryExpanded('${c.id}')"><i class="fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
     : `<span class="item-chevron"></span>`;
   const changeRows = (hasLog && expanded)
-    ? orderedChangeLog(c.changeLog).map(e => `<div class="review-change-row" title="${esc(e.change)}">
+    ? orderedChangeLog(collapsedLog).map(e => `<div class="review-change-row" title="${esc(e.change)}">
         <span class="review-change-label">${esc(changeLogEntryLabel(e))}</span>
         <span class="review-change-value">${changeLogValueHtml(e)}</span>
       </div>`).join('')
@@ -7162,9 +7219,14 @@ function reviewHistoryRowHtml(c) {
 // display within one cycle's own expanded history row), a cross-cycle,
 // cross-workstream feed has no single item list to order against —
 // changedAt is the only ordering that stays meaningful at this scope.
+// collapseChangeLogForCycle() runs per cycle, before this ever flattens
+// across cycles — see that function's own comment for why a cross-cycle
+// collapse would be wrong (two different reviews' worth of edits to the
+// same milestone must never merge into one row just because they share a
+// field).
 function workstreamChangeLogEntries(wsId) {
   const entries = [];
-  reviewCyclesForWs(wsId).forEach(c => (c.changeLog || []).forEach(e => entries.push(e)));
+  reviewCyclesForWs(wsId).forEach(c => collapseChangeLogForCycle(c.changeLog).forEach(e => entries.push(e)));
   return entries.sort((a, b) => b.changedAt - a.changedAt);
 }
 // Reuses .review-history-row's own flex row look (rather than a grid, the
