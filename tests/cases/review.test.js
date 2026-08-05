@@ -1727,6 +1727,78 @@ test('toggleActionLogItem flips completed and stamps/clears completedAt', functi
   assertEqual(workstreams[0].actionLog[0].completedAt, null);
 });
 
+// ---------- Editing an action item's own Due Date directly on its row ----------
+// An explicit user request ("for roles reviewer and upwards, allow to edit
+// the due date of action items") — previously the only way to change one
+// was to reopen the source cycle's meeting minutes and edit it there.
+
+test('updateActionLogDueDate sets a new due date, stamps updatedAt, and no-ops on a re-set to the same value', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  editingMinutesActionItems[0].dueDate = todayStr();
+  saveMinutes();
+  const id = workstreams[0].actionLog[0].id;
+
+  const newDate = isoDaysFromNow(7);
+  updateActionLogDueDate(workstreams[0].id, id, newDate);
+  assertEqual(workstreams[0].actionLog[0].dueDate, newDate);
+  const stamped = workstreams[0].actionLog[0].updatedAt;
+
+  updateActionLogDueDate(workstreams[0].id, id, newDate); // same value again
+  assertEqual(workstreams[0].actionLog[0].updatedAt, stamped, 'a re-set to the same value must not count as an edit');
+});
+
+test('updateActionLogDueDate accepts clearing the date back to null, matching the modal\'s own Actual-date fields', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  editingMinutesActionItems[0].dueDate = todayStr();
+  saveMinutes();
+  const id = workstreams[0].actionLog[0].id;
+
+  updateActionLogDueDate(workstreams[0].id, id, '');
+  assertEqual(workstreams[0].actionLog[0].dueDate, null);
+});
+
+test('updateActionLogDueDate is blocked below Reviewer', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  saveMinutes();
+  const id = workstreams[0].actionLog[0].id;
+  userRole = 'visitor';
+  updateActionLogDueDate(workstreams[0].id, id, todayStr());
+  assertEqual(workstreams[0].actionLog[0].dueDate, null, 'must stay untouched below Reviewer');
+});
+
+test('actionLogRowHtml renders Due Date as an editable date pill wired to updateActionLogDueDate at Reviewer+, and plain text below it', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  editingMinutesActionItems[0].dueDate = todayStr();
+  saveMinutes();
+  const w = workstreams[0];
+  const id = w.actionLog[0].id;
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('actionLog');
+
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `updateActionLogDueDate('${w.id}','${id}'`, 'Reviewer+ gets a real, editable pill');
+  assertIncludes(html, 'inline-date-input');
+
+  userRole = 'visitor';
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, `updateActionLogDueDate('${w.id}','${id}'`, 'not editable below Reviewer');
+  assertIncludes(html, fmtDate(todayStr()), 'still shows the real due date as plain text below Reviewer');
+});
+
 // ---------- The priority flag (Action Log + Decision Log) ----------
 // An explicit user request ("for action and decision items add a priority
 // flag (shown as a small flag in list view)") — a plain on/off toggle,

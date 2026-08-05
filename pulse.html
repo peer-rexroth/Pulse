@@ -7386,7 +7386,9 @@ function actionLogRowHtml(w, a, showWs) {
       <span class="action-log-text" style="grid-column:2">${esc(a.text)}</span>
       ${wsCellHtml}
       <span class="item-owner" style="grid-column:${3 + off}">${esc(a.owner)}</span>
-      <span class="item-dates-computed" style="grid-column:${4 + off}">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>
+      ${canManage
+        ? `<span style="grid-column:${4 + off}">${dateInputHtml(a.dueDate, `onblur="updateActionLogDueDate('${w.id}','${a.id}', this.value || null)"`, '', `v => updateActionLogDueDate('${w.id}','${a.id}',v)`)}</span>`
+        : `<span class="item-dates-computed" style="grid-column:${4 + off}">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>`}
       <span class="action-log-source" style="grid-column:${5 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
       <span class="item-dates-computed" style="grid-column:${6 + off}">${fmtDate(dateStrFromTs(a.addedAt))}</span>
       <span class="item-dates-computed" style="grid-column:${7 + off}">${a.completedAt ? fmtDate(dateStrFromTs(a.completedAt)) : ''}</span>
@@ -7528,6 +7530,28 @@ function toggleActionLogFlag(wsId, itemId) {
   const a = w.actionLog.find(x => x.id === itemId);
   if (!a) return;
   a.flagged = !a.flagged;
+  a.updatedAt = Date.now();
+  save(); render();
+}
+// Editing an action item's own Due Date directly on its Action Log row —
+// an explicit user request ("for roles reviewer and upwards, allow to edit
+// the due date of action items"). Before this, the only way to change one
+// was to reopen the *source* review cycle's meeting minutes and edit it
+// there (editingMinutesActionItems, re-synced via syncActionLogFromMinutes()
+// on Save) — a real detour for a field an action item can outlive its own
+// cycle for (see "The Action Log is a workstream-wide, review-cycle-
+// spanning list" in CLAUDE.md). Accepts a cleared value the same way the
+// modal's own Actual-date fields do (this.value || null, no incomplete-edit
+// guard/reset) — same tier (Reviewer+) as every other Action Log mutation.
+function updateActionLogDueDate(wsId, itemId, value) {
+  if (!requireRole('reviewer')) return;
+  const w = wsById(wsId);
+  if (!w) return;
+  const a = w.actionLog.find(x => x.id === itemId);
+  if (!a) return;
+  const newValue = value || null;
+  if (newValue === a.dueDate) return; // a focus+blur with no real edit shouldn't count as one
+  a.dueDate = newValue;
   a.updatedAt = Date.now();
   save(); render();
 }
