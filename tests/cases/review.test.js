@@ -1775,7 +1775,7 @@ test('updateActionLogDueDate is blocked below Reviewer', function () {
   assertEqual(workstreams[0].actionLog[0].dueDate, null, 'must stay untouched below Reviewer');
 });
 
-test('actionLogRowHtml renders Due Date as an editable date pill wired to updateActionLogDueDate at Reviewer+, and plain text below it', function () {
+test('actionLogRowHtml shows Due Date as the plain fmtDate() text plus a calendar icon at rest, at Reviewer+ — not a native input by default', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
   addMinutesActionItemRow();
@@ -1789,14 +1789,59 @@ test('actionLogRowHtml renders Due Date as an editable date pill wired to update
   setReviewTab('actionLog');
 
   let html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `updateActionLogDueDate('${w.id}','${id}'`, 'Reviewer+ gets a real, editable pill');
-  assertIncludes(html, 'inline-date-input');
+  assertIncludes(html, fmtDate(todayStr()), 'the resting display is the plain short-format date, same as before this feature');
+  assertIncludes(html, `onclick="revealActionLogDueDate('${id}')"`, 'a calendar icon is the only affordance at rest');
+  assertNotIncludes(html, 'inline-date-input', 'the native dd.mm.yyyy input must not show until the icon is clicked');
 
   userRole = 'visitor';
   renderReview();
   html = document.getElementById('main').innerHTML;
-  assertNotIncludes(html, `updateActionLogDueDate('${w.id}','${id}'`, 'not editable below Reviewer');
+  assertNotIncludes(html, `revealActionLogDueDate('${id}')`, 'no edit affordance at all below Reviewer');
   assertIncludes(html, fmtDate(todayStr()), 'still shows the real due date as plain text below Reviewer');
+});
+
+test('revealActionLogDueDate swaps the row into the real editable date pill; updateActionLogDueDate collapses it back to plain text on commit', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  editingMinutesActionItems[0].dueDate = todayStr();
+  saveMinutes();
+  const w = workstreams[0];
+  const id = w.actionLog[0].id;
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('actionLog');
+
+  revealActionLogDueDate(id);
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `id="action-log-due-input-${id}"`);
+  assertIncludes(html, `updateActionLogDueDate('${w.id}','${id}'`, 'the revealed pill commits through the same write path');
+  assertIncludes(html, 'inline-date-input', 'now a real native input, not just text');
+
+  const newDate = isoDaysFromNow(3);
+  updateActionLogDueDate(w.id, id, newDate);
+  assertEqual(w.actionLog[0].dueDate, newDate);
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, fmtDate(newDate), 'collapses back to the plain display, now showing the new date');
+  assertNotIncludes(html, `id="action-log-due-input-${id}"`, 'no longer revealed after a successful commit');
+});
+
+test('cancelRevealActionLogDueDate collapses back to display mode without touching the stored value', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  editingMinutesActionItems[0].dueDate = todayStr();
+  saveMinutes();
+  const w = workstreams[0];
+  const id = w.actionLog[0].id;
+
+  revealActionLogDueDate(id);
+  assertTrue(revealedActionLogDueIds.has(id));
+  cancelRevealActionLogDueDate(id);
+  assertFalse(revealedActionLogDueIds.has(id));
+  assertEqual(w.actionLog[0].dueDate, todayStr(), 'cancelling must never write anything');
 });
 
 // ---------- The priority flag (Action Log + Decision Log) ----------

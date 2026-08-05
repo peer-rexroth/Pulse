@@ -2301,6 +2301,17 @@ let revealedActualIds = new Set();
 // 'pending' milestone (see STATUSES' own comment) starts with no due date
 // at all, so an empty one starts hidden the same way an empty Actual does.
 let revealedDueIds = new Set();
+// A different shape of reveal from the two above: an action item's own Due
+// Date usually already has a real value (transcribed from meeting minutes),
+// not an empty field waiting to be filled — so this isn't about hiding an
+// empty field behind a "+", it's about keeping the *resting* display simple
+// (the plain "Mar 15"-style fmtDate() text, matching how this column always
+// looked) rather than always showing a native <input type="date">'s own
+// full dd.mm.yyyy segmented rendering. See updateActionLogDueDate()/
+// actionLogRowHtml() below — an explicit user request ("keep the simple
+// date format as before, not full dd.mm.yyyy... show a small calendar icon
+// next to it or allow inline edit").
+let revealedActionLogDueIds = new Set();
 // Whether the Unassigned section's inline "Add item" input is currently
 // showing in place of its button — UI-only, not persisted. See
 // unassignedSectionHtml()/openInlineQuickAdd().
@@ -4424,6 +4435,25 @@ function revealDueDate(milestoneId) {
 
 function cancelRevealDueDate(milestoneId) {
   revealedDueIds.delete(milestoneId);
+  render();
+}
+
+// revealActualDate()'s counterpart for an action item's own Due Date — see
+// revealedActionLogDueIds' own comment for why this one starts from a
+// usually-already-populated field instead of an empty one.
+function revealActionLogDueDate(itemId) {
+  revealedActionLogDueIds.add(itemId);
+  render();
+  document.getElementById(`action-log-due-input-${itemId}`)?.focus();
+}
+// Bails out of an in-progress edit without committing whatever's mid-typed,
+// reverting the display back to the pre-edit value — unconditional, unlike
+// cancelRevealDueDate()'s own Escape handler (only wired for a still-empty
+// field, since a populated one there has nothing to cancel back out of).
+// Here the field is normally already populated, so Escape reverting to "the
+// value it already had" is exactly the useful case.
+function cancelRevealActionLogDueDate(itemId) {
+  revealedActionLogDueIds.delete(itemId);
   render();
 }
 
@@ -7386,9 +7416,16 @@ function actionLogRowHtml(w, a, showWs) {
       <span class="action-log-text" style="grid-column:2">${esc(a.text)}</span>
       ${wsCellHtml}
       <span class="item-owner" style="grid-column:${3 + off}">${esc(a.owner)}</span>
-      ${canManage
-        ? `<span style="grid-column:${4 + off}">${dateInputHtml(a.dueDate, `onblur="updateActionLogDueDate('${w.id}','${a.id}', this.value || null)"`, '', `v => updateActionLogDueDate('${w.id}','${a.id}',v)`)}</span>`
-        : `<span class="item-dates-computed" style="grid-column:${4 + off}">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>`}
+      ${(() => {
+        if (!canManage) return `<span class="item-dates-computed" style="grid-column:${4 + off}">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>`;
+        if (revealedActionLogDueIds.has(a.id)) {
+          return `<span style="grid-column:${4 + off}">${dateInputHtml(a.dueDate, `id="action-log-due-input-${a.id}" onblur="updateActionLogDueDate('${w.id}','${a.id}', this.value || null)" onkeydown="if(event.key==='Escape') cancelRevealActionLogDueDate('${a.id}')"`, '', `v => updateActionLogDueDate('${w.id}','${a.id}',v)`)}</span>`;
+        }
+        return `<span style="grid-column:${4 + off};display:flex;align-items:center;gap:4px">
+          <span class="item-dates-computed">${a.dueDate ? fmtDate(a.dueDate) : '—'}</span>
+          <button class="row-icon-btn" onclick="revealActionLogDueDate('${a.id}')" title="Change due date"><i class="fa-solid fa-calendar"></i></button>
+        </span>`;
+      })()}
       <span class="action-log-source" style="grid-column:${5 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
       <span class="item-dates-computed" style="grid-column:${6 + off}">${fmtDate(dateStrFromTs(a.addedAt))}</span>
       <span class="item-dates-computed" style="grid-column:${7 + off}">${a.completedAt ? fmtDate(dateStrFromTs(a.completedAt)) : ''}</span>
@@ -7543,14 +7580,20 @@ function toggleActionLogFlag(wsId, itemId) {
 // spanning list" in CLAUDE.md). Accepts a cleared value the same way the
 // modal's own Actual-date fields do (this.value || null, no incomplete-edit
 // guard/reset) — same tier (Reviewer+) as every other Action Log mutation.
+// Always collapses revealedActionLogDueIds back to the plain display state
+// (see that Set's own comment) — whether or not anything actually changed —
+// since a commit (or a blur with nothing typed) both mean "done editing";
+// only a genuine value change goes on to save()/render(), a plain reveal
+// collapse still needs its own render() to actually redraw the row.
 function updateActionLogDueDate(wsId, itemId, value) {
   if (!requireRole('reviewer')) return;
   const w = wsById(wsId);
   if (!w) return;
   const a = w.actionLog.find(x => x.id === itemId);
   if (!a) return;
+  revealedActionLogDueIds.delete(itemId);
   const newValue = value || null;
-  if (newValue === a.dueDate) return; // a focus+blur with no real edit shouldn't count as one
+  if (newValue === a.dueDate) { render(); return; }
   a.dueDate = newValue;
   a.updatedAt = Date.now();
   save(); render();
