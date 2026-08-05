@@ -28,6 +28,20 @@ test('openInlineQuickAdd/saveInlineQuickAddItem creates an Unassigned item in th
   assertFalse(unassignedQuickAddOpen, 'the input should have closed back to the button after saving');
 });
 
+// A user-reported bug: a freshly quick-added item's one milestone
+// ("Scope Item Confirmed") is always seeded Pending/dateless, so there is
+// genuinely nothing planned yet — but this function used to fall back to
+// today's date for the item's own startDate/dueDate when it had nothing to
+// compute a range from, which meant every quick-added item silently got a
+// real due date at creation and read as Overdue on the Dashboard the very
+// next day, despite still being entirely un-triaged. See
+// computedDateRangeFromMilestones()'s own comment in pulse.html.
+test('saveInlineQuickAddItem creates an item with no date planned at all (startDate/dueDate both null), not today\'s date', function () {
+  const it = addPendingItem('Some new ask');
+  assertEqual(it.startDate, null, 'must not silently default to today\'s date');
+  assertEqual(it.dueDate, null);
+});
+
 test('saveInlineQuickAddItem closes the input without creating anything when the name is blank', function () {
   openInlineQuickAdd();
   document.getElementById('unassignedQuickAddInput').value = '   ';

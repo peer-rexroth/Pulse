@@ -90,11 +90,16 @@ test('saveItem creates a scope item carrying the standard milestones through', f
   assertEqual(it.name, 'Ship schema v1');
   // A freshly-seeded milestone has no due date at all (see
   // milestonesForCategory()'s own comment) — computedDateRangeFromMilestones()
-  // therefore has nothing to compute a range from and returns null, so
-  // saveItem() falls back to the manual Start/Due fields from the form
-  // itself, same fallback an item with zero milestones always used.
-  assertEqual(it.startDate, '2026-08-01');
-  assertEqual(it.dueDate, '2026-08-15');
+  // therefore has nothing to compute a range from and returns null. An item
+  // WITH milestones never falls back to the manual Start/Due fields (that
+  // fallback is only for a genuinely zero-milestone item) — it gets null
+  // dates instead, the honest "nothing planned yet" state, not the form's
+  // own leftover values. See computedDateRangeFromMilestones()'s own
+  // comment in pulse.html for why the old fallback-to-manual behavior here
+  // was a real bug (it silently gave a brand-new item today's date, which
+  // read as Overdue on the Dashboard the very next day).
+  assertEqual(it.startDate, null);
+  assertEqual(it.dueDate, null);
   assertEqual(it.milestones.length, DEFAULT_CATEGORY_MILESTONES.length);
   assertEqual(it.milestones[0].name, 'Requirements Defined');
 });

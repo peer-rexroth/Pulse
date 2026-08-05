@@ -1036,6 +1036,24 @@ test('an item with milestones shows its plan dates as read-only text, not editab
   assertNotIncludes(html, 'item-dates-inline', 'an item with milestones should not offer editable Start/Due inputs on the row');
 });
 
+// A user-reported bug: an item whose milestones are all still Pending (no
+// date planned on any of them) used to show a stale/fabricated date range
+// on its own row anyway (see saveItem()'s own fix in pulse.html) — now that
+// it.startDate/it.dueDate correctly end up null in that case, the row must
+// render a plain "—" rather than a bare, empty "→" arrow with nothing on
+// either side of it.
+test('an item whose milestones are all Pending (no date planned at all) shows a plain "—" on its row, not a bare arrow', function () {
+  addItem({
+    name: 'Nothing planned yet',
+    status: 'pending', startDate: null, dueDate: null,
+    milestones: [{ id: 'm1', name: 'Scope Item Confirmed', dueDate: null, status: 'pending', actualDate: null }]
+  });
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'item-dates-computed');
+  assertIncludes(html, '>—<', 'a genuinely dateless item should render the same plain em-dash placeholder used elsewhere for "nothing to show"');
+});
+
 test('an item with no milestones still shows editable Start/Due inputs on the row', function () {
   addItem({ name: 'No milestones', milestones: [] });
   renderMain();

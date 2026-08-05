@@ -2756,11 +2756,18 @@ function normalizeData() {
     // plan-date-range invariants on every load/merge/import too, not just at
     // save time — self-heals legacy data (manual values saved before these
     // rules existed) and anything arriving from an external file that
-    // predates or ignores them.
+    // predates or ignores them. A null range (every milestone Pending or
+    // Not Applicable — nothing to compute a date from) now self-heals the
+    // item's own dates back to null too, rather than leaving a stale
+    // leftover value in place — see computedDateRangeFromMilestones()'s own
+    // comment for why "leave it alone" was the actual bug (a Pending item
+    // reading as Overdue on the Dashboard once its stale date rolled into
+    // the past, despite nothing actually being planned).
     if (it.milestones.length) {
       it.status = computedStatusFromMilestones(it.milestones);
       const range = computedDateRangeFromMilestones(it.milestones);
-      if (range) { it.startDate = range.startDate; it.dueDate = range.dueDate; }
+      it.startDate = range ? range.startDate : null;
+      it.dueDate = range ? range.dueDate : null;
     }
   });
   // order backfill — separate pass, after workstreamId has already been
@@ -2875,7 +2882,17 @@ function computedStatusFromMilestones(milestones) {
 // null-means-"nothing to compute from" convention as computedStatusFromMilestones.
 // A milestone marked notApplicable (see toggleMilestoneNotApplicable()) is
 // excluded here too — its date shouldn't stretch the item's displayed range
-// for a milestone that was never really going to happen.
+// for a milestone that was never really going to happen. It also, just as
+// commonly, returns null whenever every milestone is genuinely 'pending'
+// (dueDate: null by design — see "Pending status" in CLAUDE.md), which is
+// the normal state of a freshly quick-added or freshly category-assigned
+// item, not a rare edge case the way all-Not-Applicable is. Every call site
+// that reads this result MUST write null back to the item's own
+// startDate/dueDate in that case, not fall back to a stale previous value or
+// (worse) today's date — a null range genuinely means "nothing has been
+// planned yet," and silently substituting a real-looking date is what
+// caused a Pending item, days later, to start reading as Overdue on the
+// Dashboard despite never having had a real due date at all.
 function computedDateRangeFromMilestones(milestones) {
   if (!milestones.length) return null;
   const dates = [];
@@ -3780,7 +3797,9 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
         ? `<span class="item-dates-computed" title="${journeyRangeTitle}">${fmtDateY(journeyRange.startDate)} → ${fmtDateY(journeyRange.dueDate)}</span>`
         : `<span class="item-dates-computed" style="color:var(--text-faint)" title="${journeyRangeEmptyTitle}">—</span>`)
     : (total || reviewCycle)
-    ? `<span class="item-dates-computed" title="${total ? 'Computed from the earliest and latest milestone date (due or actual)' : 'Not editable during a review'}">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>`
+    ? (it.startDate || it.dueDate
+        ? `<span class="item-dates-computed" title="${total ? 'Computed from the earliest and latest milestone date (due or actual)' : 'Not editable during a review'}">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>`
+        : `<span class="item-dates-computed" style="color:var(--text-faint)" title="No milestone has a date planned yet">—</span>`)
     : `<span class="item-dates-inline">
       ${dateInputHtml(it.startDate, `title="Start date" ${editable ? `onblur="if(this.value) updateItemDateField('${it.id}','startDate',this.value); else this.value='${it.startDate}'"` : 'disabled'}`, '', editable ? `v => updateItemDateField('${it.id}','startDate',v)` : null)}
       <span class="item-dates-arrow">→</span>
@@ -4458,7 +4477,8 @@ function toggleMilestoneNotApplicable(itemId, milestoneId) {
   m.updatedAt = Date.now();
   it.status = computedStatusFromMilestones(it.milestones);
   const range = computedDateRangeFromMilestones(it.milestones);
-  if (range) { it.startDate = range.startDate; it.dueDate = range.dueDate; }
+  it.startDate = range ? range.startDate : null;
+  it.dueDate = range ? range.dueDate : null;
   it.updatedAt = Date.now();
   logReviewChange(it.workstreamId, it.name, m.name, m.notApplicable ? 'Marked as Not Applicable' : 'Marked as Applicable again', { itemId: it.id, milestoneId: m.id });
   save(); render();
@@ -4529,7 +4549,8 @@ function updateMilestoneDateField(itemId, milestoneId, field, value) {
   // into computedStatusFromMilestones()) — recomputed here only because the
   // auto-advance just above may have actually changed what it's rolling up.
   const range = computedDateRangeFromMilestones(it.milestones);
-  if (range) { it.startDate = range.startDate; it.dueDate = range.dueDate; }
+  it.startDate = range ? range.startDate : null;
+  it.dueDate = range ? range.dueDate : null;
   if (autoAdvanced) it.status = computedStatusFromMilestones(it.milestones);
   // For an actual date, "former" is whatever actual date was already there,
   // or — if this is the first one — the milestone's own plan (due) date, so
@@ -5501,12 +5522,18 @@ function updateItemStatusFieldMode() {
   document.getElementById('itemDatesManual').style.display = showComputedDates ? 'none' : '';
   document.getElementById('itemDatesComputed').style.display = showComputedDates ? '' : 'none';
   if (hasMilestones) {
+    // A null range (every milestone Pending or Not Applicable) must clear
+    // the badge/hidden inputs to a real "nothing planned" state, not leave
+    // them showing whatever stale value (often today's date, seeded when
+    // the modal first opened) happened to be sitting there — see
+    // computedDateRangeFromMilestones()'s own comment for why leaving a
+    // stale value in place was the actual bug.
     const range = computedDateRangeFromMilestones(editingMilestones);
-    if (range) {
-      document.getElementById('itemDatesComputedBadge').textContent = `${fmtDateY(range.startDate)} → ${fmtDateY(range.dueDate)}`;
-      document.getElementById('itemStartInput').value = range.startDate;
-      document.getElementById('itemDueInput').value = range.dueDate;
-    }
+    document.getElementById('itemDatesComputedBadge').textContent = range
+      ? `${fmtDateY(range.startDate)} → ${fmtDateY(range.dueDate)}`
+      : 'No date planned yet';
+    document.getElementById('itemStartInput').value = range ? range.startDate : '';
+    document.getElementById('itemDueInput').value = range ? range.dueDate : '';
     document.getElementById('itemDatesComputedNote').textContent = 'Computed from the earliest and latest milestone date (due or actual)';
   } else if (isJourney || isSubJourney) {
     document.getElementById('itemDatesComputedBadge').textContent = journeyRange
@@ -5619,9 +5646,16 @@ function saveItem() {
   const status = savingJourneyLike
     ? (editingItemForSave ? editingItemForSave.status : 'not-started')
     : (milestones.length ? computedStatusFromMilestones(milestones) : document.getElementById('itemStatusSelect').value);
+  // Manual Start/Due only ever apply to a genuinely zero-milestone item — an
+  // item that DOES have milestones but nothing computable among them
+  // (everything Pending or Not Applicable) must end up with null dates, not
+  // silently fall back to the manual inputs' own value (which, for a
+  // brand-new item, is today's date, seeded when the modal first opened —
+  // see computedDateRangeFromMilestones()'s own comment for why that's a
+  // real bug, not a reasonable fallback).
   const range = milestones.length ? computedDateRangeFromMilestones(milestones) : null;
-  const startDate = range ? range.startDate : manualStartDate;
-  const dueDate = range ? range.dueDate : manualDueDate;
+  const startDate = milestones.length ? (range ? range.startDate : null) : manualStartDate;
+  const dueDate = milestones.length ? (range ? range.dueDate : null) : manualDueDate;
   const data = { workstreamId, categoryId, name, status, startDate, dueDate, actualDate, milestones, dependency, dependencySpoc, updatedAt: Date.now() };
   // Switching an existing (non-Pending, non-Journey) item's category away
   // from whatever it already was is destructive whenever it currently has
@@ -5645,12 +5679,18 @@ function saveItem() {
   if (editingItemId && !savingJourneyLike && !stillPendingOnSave && editingItemForSave.categoryId !== categoryId && editingItemForSave.milestones.length) {
     const newCat = categoryById(categoryId);
     const freshMilestones = milestonesForCategory(categoryId, editingItemForSave.dueDate);
+    // freshMilestones come straight from milestonesForCategory(), which
+    // always seeds Pending/dateless milestones — so freshRange is null here
+    // in the overwhelming common case. Falling back to data.startDate/
+    // data.dueDate (the item's PRE-switch dates) would just be another
+    // stale value smuggled in under a new category — null is the honest
+    // "nothing planned under the new template yet" state.
     const freshRange = computedDateRangeFromMilestones(freshMilestones);
     const swapData = Object.assign({}, data, {
       milestones: freshMilestones,
       status: computedStatusFromMilestones(freshMilestones),
-      startDate: freshRange ? freshRange.startDate : data.startDate,
-      dueDate: freshRange ? freshRange.dueDate : data.dueDate
+      startDate: freshRange ? freshRange.startDate : null,
+      dueDate: freshRange ? freshRange.dueDate : null
     });
     const oldCount = editingItemForSave.milestones.length;
     const targetId = editingItemId;
@@ -5772,14 +5812,20 @@ function saveInlineQuickAddItem() {
   const name = (document.getElementById('unassignedQuickAddInput').value || '').trim();
   if (!name) { render(); return; } // blurring/Enter with nothing typed just closes it, no error
   const cat = pendingCategory();
-  const today = todayStr();
-  const milestones = milestonesForCategory(cat.id, today);
+  const milestones = milestonesForCategory(cat.id, todayStr());
+  // The Pending category's own single "Scope Item Confirmed" milestone is
+  // always seeded Pending/dateless (see "Pending status" in CLAUDE.md), so
+  // this range is null for literally every quick-added item — falling back
+  // to today's date here (an earlier version of this function did) meant
+  // every quick-added item silently got a real due date at creation, and
+  // read as Overdue on the Dashboard the very next day despite nothing
+  // ever having been planned. null is the honest "no date yet" state.
   const range = computedDateRangeFromMilestones(milestones);
   const order = items.filter(i => i.workstreamId == null).length;
   items.push({
     id: genId(), workstreamId: null, categoryId: cat.id, name, itemType: 'scope', journeyId: null,
     status: computedStatusFromMilestones(milestones), actualDate: null,
-    startDate: range ? range.startDate : today, dueDate: range ? range.dueDate : today,
+    startDate: range ? range.startDate : null, dueDate: range ? range.dueDate : null,
     milestones, itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
     order, updatedAt: Date.now()
   });
@@ -5875,8 +5921,13 @@ function applyScopeCategory(itemId, workstreamId, categoryId) {
   it.milestones.forEach(m => tombstone(deletedMilestoneIds, m.id));
   it.milestones = milestonesForCategory(categoryId, it.dueDate);
   it.status = computedStatusFromMilestones(it.milestones);
+  // The freshly-seeded milestones above are always Pending/dateless, so
+  // range is always null here — it.dueDate must become null too, not keep
+  // whatever stale value it had from before this item was scope-assigned
+  // (see computedDateRangeFromMilestones()'s own comment).
   const range = computedDateRangeFromMilestones(it.milestones);
-  if (range) { it.startDate = range.startDate; it.dueDate = range.dueDate; }
+  it.startDate = range ? range.startDate : null;
+  it.dueDate = range ? range.dueDate : null;
   it.updatedAt = Date.now();
   logReviewChange(it.workstreamId, it.name, null, `Category set to "${categoryById(categoryId).name}"`, { itemId: it.id });
   save(); render();
@@ -7931,11 +7982,17 @@ function computeDashboardData() {
   // mirrors the same "actualDate is the ground-truth signal of completion
   // timing, status can't be fully trusted alone" reasoning isCompletedLate()
   // already applies elsewhere in this app.
-  const overdue = scopedItems.filter(it => it.status !== 'complete' && !it.actualDate && it.dueDate < today).map(x => toEntry(x, false))
-    .concat(milestones.filter(m => m.status !== 'complete' && !m.actualDate && m.dueDate < today).map(x => toEntry(x, true)))
+  // Explicit it.dueDate/m.dueDate truthy guards below, even though a null
+  // dueDate would already fail the `< today`/`>= today` string comparisons
+  // on its own — a Pending (or all-Not-Applicable) item/milestone genuinely
+  // has no date planned at all, and this makes that invariant obvious to a
+  // reader rather than relying on a JS coercion quirk, the same explicit
+  // style dueOverdue's own milestone-level check already uses.
+  const overdue = scopedItems.filter(it => it.status !== 'complete' && !it.actualDate && it.dueDate && it.dueDate < today).map(x => toEntry(x, false))
+    .concat(milestones.filter(m => m.status !== 'complete' && !m.actualDate && m.dueDate && m.dueDate < today).map(x => toEntry(x, true)))
     .sort((a, b) => a.date.localeCompare(b.date));
-  const upcoming = scopedItems.filter(it => it.status !== 'complete' && !it.actualDate && it.dueDate >= today && it.dueDate <= soon).map(x => toEntry(x, false))
-    .concat(milestones.filter(m => m.status !== 'complete' && !m.actualDate && m.dueDate >= today && m.dueDate <= soon).map(x => toEntry(x, true)))
+  const upcoming = scopedItems.filter(it => it.status !== 'complete' && !it.actualDate && it.dueDate && it.dueDate >= today && it.dueDate <= soon).map(x => toEntry(x, false))
+    .concat(milestones.filter(m => m.status !== 'complete' && !m.actualDate && m.dueDate && m.dueDate >= today && m.dueDate <= soon).map(x => toEntry(x, true)))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const wsStats = wss.map(w => {
@@ -8302,7 +8359,8 @@ function applyCategoryMilestoneSync(categoryId, addedNames, removedNames, ordere
     if (it.milestones.length) {
       it.status = computedStatusFromMilestones(it.milestones);
       const range = computedDateRangeFromMilestones(it.milestones);
-      if (range) { it.startDate = range.startDate; it.dueDate = range.dueDate; }
+      it.startDate = range ? range.startDate : null;
+      it.dueDate = range ? range.dueDate : null;
     }
     it.updatedAt = Date.now();
   });

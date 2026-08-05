@@ -80,6 +80,26 @@ test('a completed item past its due date does not appear as overdue', function (
   assertNotIncludes(document.getElementById('main').innerHTML, 'Done already');
 });
 
+// A user-reported bug: a scope item whose milestones are all still Pending
+// (nothing planned yet) had its own dueDate silently defaulted to today's
+// date at creation time (see saveItem()/saveInlineQuickAddItem()'s own
+// comments in pulse.html) — which then read as genuinely Overdue on the
+// Dashboard the very next day, despite the item and every one of its
+// milestones still showing Pending. The fix makes a Pending item's own
+// dueDate null instead of a fabricated date; this locks in that a null
+// dueDate never shows up as Overdue regardless of status.
+test('a Pending item with no date planned at all (dueDate: null) never appears in the Overdue feed', function () {
+  addDashItem({ name: 'Not yet triaged', status: 'pending', dueDate: null, startDate: null });
+  renderDashboard();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Not yet triaged');
+});
+
+test('a Pending milestone with no date planned at all (dueDate: null) never appears in the Overdue feed', function () {
+  addDashItem({ name: 'Parent item', status: 'pending', milestones: [{ id: 'm1', name: 'Scope Item Confirmed', dueDate: null, status: 'pending', actualDate: null }] });
+  renderDashboard();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Scope Item Confirmed');
+});
+
 test('an item due within the next 30 days appears in the Upcoming feed', function () {
   addDashItem({ name: 'Due soon', status: 'amber', dueDate: isoDaysFromNow(3) });
   renderDashboard();
