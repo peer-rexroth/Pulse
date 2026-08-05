@@ -9748,6 +9748,155 @@ function reportSyncConflicts(conflicts) {
     false, () => openSyncConflictsModal(), 'Review'
   );
 }
+
+// ---------- Stray sync-conflict-copy detection & absorption ----------
+// A cloud sync client (OneDrive, Dropbox, SharePoint, iCloud) that can't
+// reconcile two edits to the same file byte-for-byte resolves it by keeping
+// one version under the file's real name and renaming the *other* into a
+// "conflicted copy" — the exact convention varies by provider
+// ("<name>-<device>.json", "<name> (<user>'s conflicted copy ...).json",
+// "<name> (1).json", ...) — but every one of them leaves the real base name
+// as a literal prefix. Every read path in this app (readJsonFile()'s
+// callers) only ever looks for the *exact* filename pulse-index.json/
+// wsFileName() computes, so a renamed conflict copy is completely invisible
+// to all of them — its edits would otherwise sit there, unmerged, until a
+// human notices the stray file and reconciles it by hand.
+//
+// isStrayFileName()/strayMergedFileName() are the pure predicate/naming
+// logic (directly unit-tested, no DOM/FS dependency, same "pure logic gets
+// a direct test, real I/O gets Playwright" split slugify()/wsFileName()
+// already established); findStrayFiles()/fileExists()/renameStrayFile()/
+// scanAndMergeStrayFiles() are the thin I/O layer around them, gated the
+// same way every other syncDirHandle-touching function in this file is.
+const STRAY_MERGED_SUFFIX = '.merged.json';
+// Deliberately a loose prefix match, not an attempt to parse any one
+// provider's own suffix convention — this has to work the same way
+// regardless of which cloud sync client produced the stray copy. Excludes
+// the exact canonical name itself and anything already carrying
+// STRAY_MERGED_SUFFIX (a file a previous scan already absorbed and renamed
+// — re-matching it would just mean re-reading it every scan for a merge
+// that's already a guaranteed no-op, since its content was folded in the
+// moment it was found).
+function isStrayFileName(name, base, exactName) {
+  return name !== exactName && name.endsWith('.json') && !name.endsWith(STRAY_MERGED_SUFFIX) && name.startsWith(base);
+}
+// name is always one findStrayFiles() already confirmed ends in '.json' —
+// this is an internal helper, not exposed to arbitrary input.
+function strayMergedFileName(name, n) {
+  const stem = name.slice(0, -'.json'.length);
+  return n > 1 ? `${stem}-${n}${STRAY_MERGED_SUFFIX}` : `${stem}${STRAY_MERGED_SUFFIX}`;
+}
+async function fileExists(dirHandle, name) {
+  try { await dirHandle.getFileHandle(name); return true; } catch (_) { return false; }
+}
+async function findStrayFiles(dirHandle, base, exactName) {
+  const strays = [];
+  if (!dirHandle.values) return strays;
+  try {
+    for await (const entry of dirHandle.values()) {
+      if (entry.kind === 'file' && isStrayFileName(entry.name, base, exactName)) strays.push(entry.name);
+    }
+  } catch (_) {}
+  return strays;
+}
+// Renamed, not deleted — this app's own "never delete data we don't have to"
+// stance (a renamed/deleted workstream's own now-unreferenced sync file is
+// already left behind as a harmless orphan — see wsFileName()'s comment).
+// There's no direct rename in the File System Access API, so this is
+// write-under-the-new-name-then-remove-the-old-one — the same two-step
+// shape any other operation in this app with no atomic primitive to lean on
+// already takes (see writeBackupCopy()'s own existence-check comment).
+async function renameStrayFile(dirHandle, name, text) {
+  let n = 1, target = strayMergedFileName(name, n);
+  while (await fileExists(dirHandle, target)) target = strayMergedFileName(name, ++n);
+  await writeJsonFile(dirHandle, target, text);
+  await dirHandle.removeEntry(name);
+  return target;
+}
+// Called after the normal index+workstream read/merge has already run (so
+// `workstreams` reflects current state) from linkFolder()/reconnectFolder()
+// — a natural moment to sweep up whatever accumulated while this device
+// wasn't watching — and from every pollFileSync() cycle, so a conflict copy
+// that appears mid-session gets absorbed within one interval rather than
+// only at reconnect. Deliberately NOT also wired into doFileSyncWrite()
+// itself: that path fires on every single save, and a directory-wide
+// listing is cheap but not free, so this stays confined to the two
+// lower-frequency hooks.
+//
+// Each stray file found (the index's own, or any currently-known
+// workstream's own) is folded into the in-memory state through the exact
+// same mergeData() the canonical files already use — a stray file's content
+// is structurally nothing different to that function than "another
+// incoming version of this data" — then renamed to flag it as absorbed, and
+// logged through the same conflict-audit trail (reportSyncConflicts()) a
+// field-level clash already uses, so this being resolved automatically
+// doesn't also mean it happened invisibly.
+//
+// Returns true if anything was actually merged in (as opposed to a stray
+// file that turned out to carry nothing new), so callers know whether they
+// need their own extra normalizeData()/save()/render() pass on top of
+// whatever the canonical-file merge already did.
+async function scanAndMergeStrayFiles(dirHandle) {
+  let mergedAny = false;
+  const conflicts = [];
+
+  const indexBase = SYNC_INDEX_FILE.slice(0, -'.json'.length);
+  for (const strayName of await findStrayFiles(dirHandle, indexBase, SYNC_INDEX_FILE)) {
+    const r = await readJsonFile(dirHandle, strayName);
+    if (!r) continue;
+    // recombineSyncData(r.data, {}) — not a raw mergeData(r.data) — so a
+    // workstream this device has never seen before, mentioned only in this
+    // stray index, still gets its actionLog/decisionLog defaulted to []
+    // before ever reaching mergeData()'s own push-a-new-workstream branch
+    // (the index's own workstream entries are metadata-only, see
+    // buildIndexPayload()'s comment — mergeData() normally only ever sees
+    // one already carrying those fields, via recombineSyncData()'s regular
+    // callers). An empty wsDataById is correct here: any workstream *file*
+    // content sitting alongside this stray index is picked up separately,
+    // by the per-workstream loop below.
+    const { changed } = mergeData(recombineSyncData(r.data, {}));
+    if (changed) mergedAny = true;
+    const renamedTo = await renameStrayFile(dirHandle, strayName, r.text);
+    conflicts.push({ itemName: strayName, milestoneName: null,
+      note: `Found a sync conflict copy of the programme index ("${strayName}") — its changes were merged in, and the file renamed to "${renamedTo}".` });
+  }
+
+  // workstreams.slice() — a snapshot before the loop, since mergeData()
+  // calls inside it can themselves push a brand-new workstream (e.g. one
+  // just discovered via the stray-index loop above) mid-iteration; this
+  // loop only ever reads name/color/order off each entry, so a snapshot up
+  // front is enough, and picking up a workstream the index loop just added
+  // (if this same pass happens to also find a stray file for it) is a
+  // deliberate bonus, not something relied on.
+  for (const w of workstreams.slice()) {
+    const exactName = wsFileName(w.id, w.name);
+    const base = exactName.slice(0, -'.json'.length);
+    for (const strayName of await findStrayFiles(dirHandle, base, exactName)) {
+      const r = await readJsonFile(dirHandle, strayName);
+      if (!r) continue;
+      // A wrapped, single-workstream-shaped payload — updatedAt:0 on the
+      // wrapper is deliberate: mergeWorkstreamFields() only overwrites
+      // name/color when the incoming updatedAt is newer, and a stray
+      // workstream *file* never carries its own name/color at all (see
+      // buildWorkstreamPayload()) — 0 guarantees only actionLog/decisionLog
+      // (their own per-record updatedAt-gated merge) and items/reviewCycles
+      // actually move, never a stale name/color.
+      const { changed } = mergeData({
+        items: r.data.items || [], reviewCycles: r.data.reviewCycles || [],
+        workstreams: [{ id: w.id, name: w.name, color: w.color, order: w.order, updatedAt: 0,
+          actionLog: r.data.actionLog || [], decisionLog: r.data.decisionLog || [] }]
+      });
+      if (changed) mergedAny = true;
+      const renamedTo = await renameStrayFile(dirHandle, strayName, r.text);
+      conflicts.push({ itemName: w.name, milestoneName: null,
+        note: `Found a sync conflict copy of "${w.name}"'s file ("${strayName}") — its changes were merged in, and the file renamed to "${renamedTo}".` });
+    }
+  }
+
+  if (conflicts.length) reportSyncConflicts(conflicts);
+  return mergedAny;
+}
+
 // save() fires a file write on every single change (a keystroke, a status
 // cycle, a rename) without waiting for the previous one to finish — with no
 // queuing, two overlapping writes could finish in either order, and if the
@@ -9985,7 +10134,10 @@ function stopFileSyncPolling() {
 // Reads the index plus every workstream file the union of (locally known
 // ids ∪ the freshly-read index's own ids) implies — a workstream's own file
 // can change without the index ever changing at all (the common case), so
-// it isn't enough to only re-read the index and compare its own text.
+// it isn't enough to only re-read the index and compare its own text. Also
+// runs scanAndMergeStrayFiles() every cycle (see its own comment) so a
+// stray sync-conflict copy left behind by OneDrive/Dropbox/etc. gets
+// absorbed within one interval, not just at the next reconnect.
 async function pollFileSync() {
   if (!syncDirHandle) return;
   try {
@@ -10011,30 +10163,42 @@ async function pollFileSync() {
         if (r.text !== lastSyncedSnapshots[id]) anyChanged = true;
       }
     }
-    if (!anyChanged) return; // nothing external changed anywhere
-    const wsDataById = {};
-    Object.entries(freshWsReads).forEach(([id, r]) => { if (r) wsDataById[id] = r.data; });
-    const externalData = recombineSyncData(indexRead.data, wsDataById);
-    const { added, updated, conflicts, changed } = mergeData(externalData);
-    lastSyncedAt = Date.now();
-    // `changed`, not just `added || updated` — see doFileSyncWrite()'s own
-    // identical comment: a review-cycle confirmation or a workstream's
-    // actionLog/decisionLog merging in is just as real a change as an item
-    // being added/updated, and must not be left sitting unsaved in memory
-    // (and invisible in the UI) until some unrelated later save.
-    if (changed) {
+    let addedTotal = 0, updatedTotal = 0, mergedSomething = false;
+    if (anyChanged) {
+      const wsDataById = {};
+      Object.entries(freshWsReads).forEach(([id, r]) => { if (r) wsDataById[id] = r.data; });
+      const externalData = recombineSyncData(indexRead.data, wsDataById);
+      const { added, updated, conflicts, changed } = mergeData(externalData);
+      lastSyncedAt = Date.now();
+      // `changed`, not just `added || updated` — see doFileSyncWrite()'s own
+      // identical comment: a review-cycle confirmation or a workstream's
+      // actionLog/decisionLog merging in is just as real a change as an item
+      // being added/updated, and must not be left sitting unsaved in memory
+      // (and invisible in the UI) until some unrelated later save.
+      if (changed) {
+        mergedSomething = true;
+        addedTotal += added; updatedTotal += updated;
+      } else {
+        // Nothing we track changed (e.g. only mode/theme/colorScheme differ) —
+        // still remember these texts so the next poll doesn't keep re-parsing them.
+        lastSyncedSnapshots[SYNC_INDEX_FILE] = indexRead.text;
+        Object.entries(freshWsReads).forEach(([id, r]) => { if (r) lastSyncedSnapshots[id] = r.text; });
+      }
+      reportSyncConflicts(conflicts);
+    }
+    // Runs every poll, independent of anyChanged above — a stray conflict
+    // copy can appear alongside a canonical file whose own content hasn't
+    // changed at all (see scanAndMergeStrayFiles()'s own comment), so this
+    // must not be skipped just because the files this app already knew
+    // about didn't change this cycle.
+    if (await scanAndMergeStrayFiles(syncDirHandle)) mergedSomething = true;
+    if (mergedSomething) {
       normalizeData();
       save(); render();
-      showToast(added || updated
-        ? `Synced changes from another tab/device (${added} added, ${updated} updated)`
+      showToast(addedTotal || updatedTotal
+        ? `Synced changes from another tab/device (${addedTotal} added, ${updatedTotal} updated)`
         : 'Synced changes from another tab/device');
-    } else {
-      // Nothing we track changed (e.g. only mode/theme/colorScheme differ) —
-      // still remember these texts so the next poll doesn't keep re-parsing them.
-      lastSyncedSnapshots[SYNC_INDEX_FILE] = indexRead.text;
-      Object.entries(freshWsReads).forEach(([id, r]) => { if (r) lastSyncedSnapshots[id] = r.text; });
     }
-    reportSyncConflicts(conflicts);
   } catch (_) { /* transient read failure — next interval tries again */ }
 }
 async function _clearFileLink() {
@@ -10107,6 +10271,10 @@ async function linkFolder() {
       const data = await readAndRecombineFolder(dir, indexRead);
       const msg = applyIncomingFolderData(data, `Linked to ${dir.name}`);
       updateFileSyncUI(); startFileSyncPolling();
+      // A natural moment to sweep up any sync-conflict copy that
+      // accumulated in this folder while nothing was watching it — see
+      // scanAndMergeStrayFiles()'s own comment.
+      if (await scanAndMergeStrayFiles(dir)) { normalizeData(); save(); render(); }
       showToast(`${msg} — auto-saving enabled`);
       closeFileSyncModal();
       return;
@@ -10117,6 +10285,7 @@ async function linkFolder() {
         lastSyncedAt = Date.now();
         const msg = applyIncomingFolderData(legacyRead.data, `Migrated from ${LEGACY_SYNC_FILE}`);
         updateFileSyncUI(); startFileSyncPolling();
+        if (await scanAndMergeStrayFiles(dir)) { normalizeData(); save(); render(); }
         showToast(`${msg} — auto-saving enabled`);
         closeFileSyncModal();
       } else {
@@ -10166,6 +10335,7 @@ async function reconnectFolder() {
     const data = await readAndRecombineFolder(syncDirHandle, indexRead);
     const msg = applyIncomingFolderData(data, `Reconnected to ${syncDirHandle.name}`);
     updateFileSyncUI(); startFileSyncPolling();
+    if (await scanAndMergeStrayFiles(syncDirHandle)) { normalizeData(); save(); render(); }
     showToast(msg);
     closeFileSyncModal();
   } catch (e) { showToast('Could not reconnect', true); }

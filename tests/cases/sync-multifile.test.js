@@ -240,3 +240,134 @@ test('wsNameLookup() falls back to the local name for an id the index doesn\'t k
   const map = wsNameLookup([]); // e.g. a workstream created locally, not yet synced out
   assertEqual(map[wsA.id], wsA.name);
 });
+
+// ---------- Stray sync-conflict-copy detection & absorption ----------
+// isStrayFileName()/strayMergedFileName() are pure, no DOM/FS dependency —
+// tested directly, same split as the rest of this file.
+// scanAndMergeStrayFiles()/renameStrayFile() take a dirHandle as a plain
+// parameter rather than reading the syncDirHandle global, so unlike
+// linkFolder()/reconnectFolder()/pollFileSync() (real entry points, gated
+// behind window.showDirectoryPicker and thus unreachable here) these are
+// exercisable directly against a minimal in-memory fake standing in for a
+// real FileSystemDirectoryHandle — the same "substitute a minimal fake, not
+// the real DOM/FS mock" technique already used for backupDirHandle in this
+// project's own test history (see writeBackupCopy()'s own tests).
+function makeFakeDir(initialFiles) {
+  const files = Object.assign({}, initialFiles || {});
+  return {
+    files,
+    async getFileHandle(name, opts) {
+      if (!(name in files)) {
+        if (opts && opts.create) { files[name] = ''; }
+        else { const e = new Error('NotFoundError'); e.name = 'NotFoundError'; throw e; }
+      }
+      return {
+        async getFile() { return { async text() { return files[name]; } }; },
+        async createWritable() { return { async write(text) { files[name] = text; }, async close() {} }; }
+      };
+    },
+    async removeEntry(name) { delete files[name]; },
+    values() { return Object.keys(files).map(n => ({ kind: 'file', name: n })); }
+  };
+}
+
+test('isStrayFileName matches a file sharing the real file\'s base name but not its exact name', function () {
+  assertTrue(isStrayFileName('pulse-ws-alpha-abc123-JOHNS-MAC.json', 'pulse-ws-alpha-abc123', 'pulse-ws-alpha-abc123.json'));
+  assertFalse(isStrayFileName('pulse-ws-alpha-abc123.json', 'pulse-ws-alpha-abc123', 'pulse-ws-alpha-abc123.json'), 'the exact canonical name itself is never its own stray');
+  assertFalse(isStrayFileName('pulse-ws-beta-def456.json', 'pulse-ws-alpha-abc123', 'pulse-ws-alpha-abc123.json'), 'a different workstream\'s own file must never match');
+});
+
+test('isStrayFileName ignores non-.json files and a file already renamed .merged.json by a previous scan', function () {
+  assertFalse(isStrayFileName('pulse-ws-alpha-abc123-JOHNS-MAC.txt', 'pulse-ws-alpha-abc123', 'pulse-ws-alpha-abc123.json'));
+  assertFalse(isStrayFileName('pulse-ws-alpha-abc123-JOHNS-MAC.merged.json', 'pulse-ws-alpha-abc123', 'pulse-ws-alpha-abc123.json'), 'already absorbed on a prior scan — must not be re-treated as a fresh stray');
+});
+
+test('strayMergedFileName appends .merged.json, and disambiguates with a number when that name is already taken', function () {
+  assertEqual(strayMergedFileName('pulse-ws-alpha-abc123-JOHNS-MAC.json', 1), 'pulse-ws-alpha-abc123-JOHNS-MAC.merged.json');
+  assertEqual(strayMergedFileName('pulse-ws-alpha-abc123-JOHNS-MAC.json', 2), 'pulse-ws-alpha-abc123-JOHNS-MAC-2.merged.json');
+});
+
+test('renameStrayFile writes the content under the disambiguated name and removes the original — a rename, not a delete', async function () {
+  const strayName = 'pulse-ws-alpha-abc123-JOHNS-MAC.json';
+  const collidingName = 'pulse-ws-alpha-abc123-JOHNS-MAC.merged.json';
+  const dir = makeFakeDir({ [strayName]: '{"a":1}', [collidingName]: '{"already":"here"}' });
+  const target = await renameStrayFile(dir, strayName, '{"a":1}');
+  assertEqual(target, 'pulse-ws-alpha-abc123-JOHNS-MAC-2.merged.json', 'must not collide with the pre-existing .merged.json');
+  assertFalse(strayName in dir.files, 'the original stray name must be gone');
+  assertEqual(dir.files[collidingName], '{"already":"here"}', 'the pre-existing collision itself must be untouched');
+  assertEqual(dir.files[target], '{"a":1}');
+});
+
+test('scanAndMergeStrayFiles finds a stray workstream-file conflict copy, merges its changes in, and renames (not deletes) it', async function () {
+  const { wsA } = seedMultiFileFixture();
+  const { indexText, wsTexts, wsFileNames } = buildAllSyncPayloads();
+  const strayData = JSON.parse(wsTexts[wsA.id]);
+  const strayEntryId = genId();
+  strayData.actionLog.push({ id: strayEntryId, text: 'Only in the stray copy', owner: '', dueDate: null, completed: false, completedAt: null, cycleId: 'c', addedAt: Date.now(), updatedAt: Date.now(), flagged: false });
+  const strayText = JSON.stringify(strayData, null, 2);
+  const strayName = wsFileNames[wsA.id].replace('.json', '-JOHNS-MAC.json');
+  const mergedName = strayName.replace('.json', '.merged.json');
+
+  const dir = makeFakeDir({
+    [SYNC_INDEX_FILE]: indexText,
+    [wsFileNames[wsA.id]]: wsTexts[wsA.id],
+    [strayName]: strayText
+  });
+
+  const before = syncConflictLog.length;
+  const mergedAny = await scanAndMergeStrayFiles(dir);
+
+  assertTrue(mergedAny, 'the stray file carried a genuinely new action item, so this must report a real change');
+  assertTrue(wsA.actionLog.some(a => a.id === strayEntryId), 'the stray copy\'s action item must actually land in memory');
+  assertFalse(strayName in dir.files, 'the stray file itself must be gone from its original name');
+  assertTrue(mergedName in dir.files, 'renamed, not deleted, per this app\'s own "never delete data we don\'t have to" convention');
+  assertEqual(dir.files[mergedName], strayText, 'the renamed copy keeps the exact original content');
+  assertTrue(syncConflictLog.length > before, 'must be logged through the same conflict-audit trail a field-level clash already uses');
+});
+
+test('scanAndMergeStrayFiles finds a stray index conflict copy and merges its changes in via recombineSyncData, so a brand-new item mentioned only there is picked up', async function () {
+  const { wsA } = seedMultiFileFixture();
+  const { indexText, wsTexts, wsFileNames } = buildAllSyncPayloads();
+  const strayIndexData = JSON.parse(indexText);
+  const strayItemId = genId();
+  strayIndexData.items.push({ id: strayItemId, workstreamId: null, categoryId: pendingCategory().id, name: 'Only in the stray index', status: 'pending', startDate: todayStr(), dueDate: todayStr(), actualDate: null, updatedAt: Date.now(), milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 99, dependency: false, dependencySpoc: null, itemType: 'scope', journeyId: null });
+  const strayText = JSON.stringify(strayIndexData, null, 2);
+  const strayName = SYNC_INDEX_FILE.replace('.json', '-JOHNS-MAC.json');
+
+  const dir = makeFakeDir({
+    [SYNC_INDEX_FILE]: indexText,
+    [wsFileNames[wsA.id]]: wsTexts[wsA.id],
+    [strayName]: strayText
+  });
+
+  const mergedAny = await scanAndMergeStrayFiles(dir);
+
+  assertTrue(mergedAny);
+  assertTrue(items.some(it => it.id === strayItemId), 'the item only present in the stray index must be merged into memory');
+  assertFalse(strayName in dir.files);
+  assertTrue(strayName.replace('.json', '.merged.json') in dir.files);
+});
+
+test('scanAndMergeStrayFiles is a no-op — returns false, renames nothing — when the folder has nothing stray in it', async function () {
+  const { wsA } = seedMultiFileFixture();
+  const { indexText, wsTexts, wsFileNames } = buildAllSyncPayloads();
+  const dir = makeFakeDir({ [SYNC_INDEX_FILE]: indexText, [wsFileNames[wsA.id]]: wsTexts[wsA.id] });
+  const namesBefore = Object.keys(dir.files).slice().sort();
+  const mergedAny = await scanAndMergeStrayFiles(dir);
+  assertFalse(mergedAny);
+  assertDeepEqual(Object.keys(dir.files).slice().sort(), namesBefore, 'nothing in the folder should be touched');
+});
+
+test('a file already renamed .merged.json by a previous scan is left alone on the next scan, not re-processed', async function () {
+  const { wsA } = seedMultiFileFixture();
+  const { indexText, wsTexts, wsFileNames } = buildAllSyncPayloads();
+  const alreadyMergedName = wsFileNames[wsA.id].replace('.json', '-JOHNS-MAC.merged.json');
+  const dir = makeFakeDir({
+    [SYNC_INDEX_FILE]: indexText,
+    [wsFileNames[wsA.id]]: wsTexts[wsA.id],
+    [alreadyMergedName]: wsTexts[wsA.id]
+  });
+  const mergedAny = await scanAndMergeStrayFiles(dir);
+  assertFalse(mergedAny);
+  assertTrue(alreadyMergedName in dir.files, 'must still be there, untouched — not re-read, not re-renamed');
+});
