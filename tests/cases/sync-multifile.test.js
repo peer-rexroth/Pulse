@@ -111,20 +111,26 @@ test('buildIndexPayload() includes only workstreamId:null items — Unassigned s
   assertFalse(idx.items.some(it => it.id === itemB.id));
 });
 
-test('buildIndexPayload() carries programme/categories/mode/theme/colorScheme/filterWorkstreamId and all tombstone lists', function () {
+test('buildIndexPayload() carries programme/categories and all tombstone lists', function () {
   seedMultiFileFixture();
   programme.name = 'Test Programme';
   const idx = buildIndexPayload();
   assertEqual(idx.programme.name, 'Test Programme');
   assertDeepEqual(idsOf(idx.categories), idsOf(categories));
-  assertEqual(idx.mode, mode);
-  assertEqual(idx.theme, theme);
-  assertEqual(idx.colorScheme, colorScheme);
   assertDeepEqual(idx.deletedItemIds, deletedItemIds);
   assertDeepEqual(idx.deletedMilestoneIds, deletedMilestoneIds);
   assertDeepEqual(idx.deletedWorkstreamIds, deletedWorkstreamIds);
   assertDeepEqual(idx.deletedActionLogIds, deletedActionLogIds);
   assertDeepEqual(idx.deletedDecisionLogIds, deletedDecisionLogIds);
+});
+
+test('buildIndexPayload() never includes mode/theme/colorScheme/filterWorkstreamId — nothing reads them back from a synced file, so they must not trigger a write on every navigation', function () {
+  seedMultiFileFixture();
+  const idx = buildIndexPayload();
+  assertFalse('mode' in idx, 'mode must not be part of the index payload');
+  assertFalse('theme' in idx, 'theme must not be part of the index payload');
+  assertFalse('colorScheme' in idx, 'colorScheme must not be part of the index payload');
+  assertFalse('filterWorkstreamId' in idx, 'filterWorkstreamId must not be part of the index payload');
 });
 
 test('buildWorkstreamPayload(id) includes only that workstream\'s own items, review cycles, actionLog, and decisionLog', function () {

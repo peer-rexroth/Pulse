@@ -9255,12 +9255,21 @@ function wsFileName(id, name) { return `pulse-ws-${slugify(name)}-${id.slice(-6)
 // lifetime, so a tombstone has no one fixed owning file the way live data
 // does; these are small, infrequent records relative to the actual
 // review-cycle churn this split exists to isolate).
+// mode/theme/colorScheme/filterWorkstreamId are deliberately NOT included
+// here, even though they're part of the same flat localStorage blob every
+// other field above comes from. Nothing downstream ever reads them back out
+// of a synced file — mergeData() never touches them, and neither does
+// replaceFromFileData() (the one path that could plausibly want them, for a
+// genuinely fresh device's first link). Writing them would only mean every
+// mode switch or workstream pick recomputes indexText and triggers a real
+// (write-only, never-consumed) rewrite of pulse-index.json — reintroducing,
+// on a smaller scale, exactly the kind of index-file collision surface this
+// whole multi-file split exists to shrink, for a field nothing reads back.
 function buildIndexPayload() {
   return {
     programme, categories,
     workstreams: workstreams.map(w => ({ id: w.id, name: w.name, color: w.color, order: w.order, updatedAt: w.updatedAt })),
     items: items.filter(it => it.workstreamId === null),
-    mode, theme, colorScheme, filterWorkstreamId,
     deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds, deletedActionLogIds, deletedDecisionLogIds
   };
 }
@@ -9301,19 +9310,21 @@ function buildAllSyncPayloads() {
   });
   return { indexText, wsTexts, wsFileNames };
 }
-// The inverse of the two build functions above: reconstructs the exact flat
-// {programme, workstreams, items, categories, reviewCycles, mode, theme,
-// colorScheme, filterWorkstreamId, deletedWorkstreamIds, deletedItemIds,
-// deletedMilestoneIds, deletedActionLogIds, deletedDecisionLogIds} shape
-// mergeData()/isFreshLocalState()/replaceFromFileData() already expect from
-// a single linked file — so once the multiple files are read back and
-// recombined into this one shape, every one of those functions runs
-// completely unchanged, with no idea it's looking at data assembled from
-// several files instead of one. `wsDataById` is a plain {workstreamId:
+// The inverse of the two build functions above: reconstructs the flat
+// {programme, workstreams, items, categories, reviewCycles,
+// deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
+// deletedActionLogIds, deletedDecisionLogIds} shape mergeData()/
+// isFreshLocalState()/replaceFromFileData() already expect from a single
+// linked file — so once the multiple files are read back and recombined
+// into this one shape, every one of those functions runs completely
+// unchanged, with no idea it's looking at data assembled from several files
+// instead of one. `wsDataById` is a plain {workstreamId:
 // parsedWorkstreamFileContent} map — a workstream listed in the index whose
 // own file is missing, unreadable, or simply not yet passed in recombines as
 // empty (never throws) rather than dropping that workstream's metadata
-// entirely.
+// entirely. mode/theme/colorScheme/filterWorkstreamId are deliberately
+// absent — see buildIndexPayload()'s own comment for why they're never
+// written to the index at all, so there's nothing here to read back either.
 function recombineSyncData(indexData, wsDataById) {
   const indexWs = indexData.workstreams || [];
   const workstreamsOut = indexWs.map(w => {
@@ -9334,8 +9345,6 @@ function recombineSyncData(indexData, wsDataById) {
     items: itemsOut,
     categories: indexData.categories || [],
     reviewCycles: reviewCyclesOut,
-    mode: indexData.mode, theme: indexData.theme, colorScheme: indexData.colorScheme,
-    filterWorkstreamId: indexData.filterWorkstreamId,
     deletedWorkstreamIds: indexData.deletedWorkstreamIds || [],
     deletedItemIds: indexData.deletedItemIds || [],
     deletedMilestoneIds: indexData.deletedMilestoneIds || [],
