@@ -198,7 +198,7 @@ test('closeRoleModal does not trigger backup-folder onboarding before a file is 
   maybeShowBackupFolderOnboarding = function () { calls++; };
   try {
     userRole = 'admin';
-    fileHandle = null;
+    syncDirHandle = null;
     pendingFileSyncPrompt = null;
     openRoleModal();
     closeRoleModal();
@@ -214,7 +214,7 @@ test('closeRoleModal triggers backup-folder onboarding once a file is already li
   maybeShowBackupFolderOnboarding = function () { calls++; };
   try {
     userRole = 'admin';
-    fileHandle = { name: 'pulse-data.json' };
+    syncDirHandle = { name: 'MySyncFolder' };
     pendingFileSyncPrompt = null;
     document.getElementById('fileSyncModalBg').classList.remove('open');
     openRoleModal();
@@ -222,7 +222,7 @@ test('closeRoleModal triggers backup-folder onboarding once a file is already li
     assertEqual(calls, 1, 'a mid-session switch to Admin with a file already linked should prompt for backups if not yet configured');
   } finally {
     maybeShowBackupFolderOnboarding = original;
-    fileHandle = null;
+    syncDirHandle = null;
   }
 });
 
@@ -232,7 +232,7 @@ test('closeRoleModal does not trigger backup-folder onboarding while the file-sy
   maybeShowBackupFolderOnboarding = function () { calls++; };
   try {
     userRole = 'admin';
-    fileHandle = { name: 'pulse-data.json' };
+    syncDirHandle = { name: 'MySyncFolder' };
     pendingFileSyncPrompt = null;
     document.getElementById('fileSyncModalBg').classList.add('open');
     openRoleModal();
@@ -240,7 +240,7 @@ test('closeRoleModal does not trigger backup-folder onboarding while the file-sy
     assertEqual(calls, 0, 'the file-sync modal is still mid-flow — stacking a second mandatory modal on top of it would be wrong');
   } finally {
     maybeShowBackupFolderOnboarding = original;
-    fileHandle = null;
+    syncDirHandle = null;
     document.getElementById('fileSyncModalBg').classList.remove('open');
   }
 });

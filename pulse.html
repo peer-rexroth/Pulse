@@ -1892,22 +1892,29 @@
 </div>
 
 <!-- File sync onboarding modal -->
-<!-- Linking a file is mandatory for every role — an explicit user request
+<!-- Linking a folder is mandatory for every role — an explicit user request
      reversing this modal's own earlier "Not now, available at every role"
      design. There is no dismiss button and this modal is deliberately
      excluded from both the global Escape handler and the generic
      backdrop-click-to-close wiring at the bottom of the script (the same
      "must complete before closing" treatment scopeAssignModalBg already
-     uses elsewhere in this file) — successfully linking, creating, or
-     reconnecting a file is the only way to close it. See
-     openFileSyncModal()/closeFileSyncModal() and linkFile()/
-     createNewLinkedFile()/reconnectFile()'s own success-path close calls. -->
+     uses elsewhere in this file) — successfully linking or reconnecting a
+     folder is the only way to close it. See openFileSyncModal()/
+     closeFileSyncModal() and linkFolder()/reconnectFolder()'s own
+     success-path close calls.
+
+     Only 2 options, not 3 — a folder transparently covers what used to need
+     a separate "link existing file"/"create new file" pair: linkFolder()
+     itself figures out whether the chosen folder already holds the current
+     multi-file layout, a pre-this-feature single legacy file (migrated
+     automatically), or nothing at all yet — see "File System Access API
+     sync" in CLAUDE.md. -->
 <div class="modal-bg" id="fileSyncModalBg">
   <div class="modal" style="width:400px">
-    <h3>Sync to a file</h3>
-    <p>Linking a file is required — this programme auto-saves and syncs to a real file on disk.</p>
+    <h3>Sync to a folder</h3>
+    <p>Linking a folder is required — this programme auto-saves and syncs to real files on disk.</p>
     <div class="import-options" id="fileSyncOptions">
-      <div id="fileSyncReconnectOption" class="import-option" style="display:none" onclick="reconnectFile()">
+      <div id="fileSyncReconnectOption" class="import-option" style="display:none" onclick="reconnectFolder()">
         <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-teal-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
           <i class="fa-solid fa-rotate-right" style="color:var(--ws-teal);font-size:15px"></i>
         </div>
@@ -1916,28 +1923,19 @@
           <span>Reconnect to restore auto-saving</span>
         </div>
       </div>
-      <div class="import-option" onclick="linkFile()">
+      <div class="import-option" onclick="linkFolder()">
         <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-blue-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
           <i class="fa-solid fa-folder-open" style="color:var(--ws-blue);font-size:15px"></i>
         </div>
         <div class="import-option-text">
-          <strong>Link existing file</strong>
-          <span>Open a .json data file and sync to it</span>
-        </div>
-      </div>
-      <div class="import-option" onclick="createNewLinkedFile()">
-        <div style="width:34px;height:34px;border-radius:8px;background:var(--ws-green-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <i class="fa-solid fa-file-circle-plus" style="color:var(--ws-green);font-size:15px"></i>
-        </div>
-        <div class="import-option-text">
-          <strong>Create new file</strong>
-          <span>Save this programme to a new .json file</span>
+          <strong>Choose a folder</strong>
+          <span>Sync to a folder — existing, migrated, or new</span>
         </div>
       </div>
     </div>
     <div id="fileSyncWarning" style="display:flex;align-items:flex-start;gap:8px;background:var(--stat-amber-bg);border-radius:10px;padding:10px 12px;margin-top:4px">
       <i class="fa-solid fa-triangle-exclamation" style="color:var(--stat-amber);font-size:13px;margin-top:2px;flex-shrink:0"></i>
-      <span style="font-size:12px;color:var(--stat-amber);line-height:1.55">A linked file is required for every role. Without one, your programme can't be saved here.</span>
+      <span style="font-size:12px;color:var(--stat-amber);line-height:1.55">A linked folder is required for every role. Without one, your programme can't be saved here.</span>
     </div>
   </div>
 </div>
@@ -4883,17 +4881,17 @@ function closeRoleModal() {
   // icon reopen, not the mandatory first pick) when backups aren't yet
   // configured — an explicit user request ("make backup linking mandatory
   // for editor and admin role"). Guarded the identical way initFileSync()'s
-  // own "file already linked and working" branch already guards its direct
-  // call to the same function (see its own comment) — fileHandle must
+  // own "folder already linked and working" branch already guards its direct
+  // call to the same function (see its own comment) — syncDirHandle must
   // already be set, and no file-sync prompt can be pending or currently
   // showing — so this can never race the file-link mandate itself: at
-  // first launch fileHandle is still null here (nothing linked yet), so
+  // first launch syncDirHandle is still null here (nothing linked yet), so
   // this correctly no-ops and leaves the launch-time chain (file-sync modal
   // close -> maybeShowBackupFolderOnboarding()) as the only thing that
   // fires. maybeShowBackupFolderOnboarding() itself is a no-op below Editor
   // or once a folder's already chosen, so calling it defensively here on
   // every close (not just an actual role change) is harmless.
-  if (fileHandle && !pendingFileSyncPrompt && !document.getElementById('fileSyncModalBg').classList.contains('open')) {
+  if (syncDirHandle && !pendingFileSyncPrompt && !document.getElementById('fileSyncModalBg').classList.contains('open')) {
     maybeShowBackupFolderOnboarding();
   }
 }
@@ -8892,7 +8890,7 @@ function closeImportModal() {
 // default workstream, the single default category, still the placeholder
 // name. This is what a fresh page load produces after localStorage has been
 // wiped (e.g. the user cleared browsing data), which is exactly the case
-// linkFile()/reconnectFile()/initFileSync() need to tell apart from "I
+// linkFolder()/reconnectFolder()/initFileSync() need to tell apart from "I
 // already have real local data and I'm bringing in a second source": for a
 // truly fresh state there is nothing to lose, so replacing wholesale from
 // the incoming file is correct — merging would silently keep the fresh
@@ -9079,8 +9077,8 @@ function mergeWorkstreamFields(existing, incoming, respectTombstones) {
   return changed;
 }
 // Additive merge used by every "read data from outside localStorage" path
-// (linkFile, reconnectFile, initFileSync, doFileSyncWrite's cross-tab merge,
-// pollFileSync, and applyImport's merge mode). Tombstones are what let this
+// (linkFolder, reconnectFolder, initFileSync, doFileSyncWrite's cross-tab
+// merge, pollFileSync, and applyImport's merge mode). Tombstones are what let this
 // tell "never seen this id" apart from "saw it, user deleted it" — without
 // them, an id merely absent from the local array looks new either way, so a
 // stale copy from an old linked file or another device gets silently
@@ -9200,6 +9198,117 @@ function mergeData(data, opts) {
   const changed = added > 0 || updated > 0 || wsOrCategoriesChanged || cyclesChanged;
   return { added, updated, conflicts, changed };
 }
+
+// ---------- Multi-file sync: partition/recombine (pure — see "File System
+// Access API sync" in CLAUDE.md) ----------
+// A linked *folder* (not a single file — see below) holds one pulse-index.json
+// plus one pulse-ws-<id>.json per real workstream, so that an edit inside one
+// workstream only ever rewrites that workstream's own file, not the whole
+// programme. Everything in this section is a pure function of the live
+// in-memory globals (workstreams/items/categories/reviewCycles/...) — no
+// DOM, no I/O — which is what makes it directly unit-testable the same way
+// mergeData()/mergeWorkstreamFields() already are, and what lets the actual
+// I/O layer below stay a thin, dumb read/write wrapper around it.
+const SYNC_INDEX_FILE = 'pulse-index.json';
+// The pre-this-feature single-file layout's own filename — still recognized
+// on link, so an existing linked-file setup migrates automatically the first
+// time its folder is linked (see linkFolder()) rather than needing a
+// separate, explicit "migrate" step.
+const LEGACY_SYNC_FILE = 'pulse-data.json';
+function wsFileName(id) { return `pulse-ws-${id}.json`; }
+// The index file: programme-wide/structural data plus anything that doesn't
+// belong to exactly one workstream — Unassigned scope items and every
+// Journey/Sub Journey (itemType 'journey'/'subjourney', always
+// workstreamId:null by design — see "Journeys" in CLAUDE.md), since neither
+// is owned by a single workstream file. workstreams here is metadata only
+// (id/name/color/order/updatedAt) — actionLog/decisionLog live in each
+// workstream's own file instead (see buildWorkstreamPayload()), so a
+// meeting-minutes edit on one workstream never touches this file. All four
+// tombstone lists stay here too, not split per-workstream — see CLAUDE.md
+// for why (an item can move between workstreams/Unassigned over its
+// lifetime, so a tombstone has no one fixed owning file the way live data
+// does; these are small, infrequent records relative to the actual
+// review-cycle churn this split exists to isolate).
+function buildIndexPayload() {
+  return {
+    programme, categories,
+    workstreams: workstreams.map(w => ({ id: w.id, name: w.name, color: w.color, order: w.order, updatedAt: w.updatedAt })),
+    items: items.filter(it => it.workstreamId === null),
+    mode, theme, colorScheme, filterWorkstreamId,
+    deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds, deletedActionLogIds, deletedDecisionLogIds
+  };
+}
+// One workstream's own file: its items, its own review cycles, and its own
+// actionLog/decisionLog — moved out of the in-memory workstream object only
+// for this file's own shape; the real `workstream` object in the `workstreams`
+// array is completely untouched, still carries actionLog/decisionLog
+// directly, exactly as it always has (see "Data model" in CLAUDE.md) — every
+// render/mutate function elsewhere in this app keeps reading/writing it that
+// way, with no idea any of this file-splitting exists.
+function buildWorkstreamPayload(wsId) {
+  const w = workstreams.find(x => x.id === wsId);
+  return {
+    workstreamId: wsId,
+    items: items.filter(it => it.workstreamId === wsId),
+    reviewCycles: reviewCycles.filter(c => c.workstreamId === wsId),
+    actionLog: (w && w.actionLog) || [],
+    decisionLog: (w && w.decisionLog) || []
+  };
+}
+// The full set of file contents the current in-memory state implies —
+// JSON.stringify'd (matching the existing null,2 formatting doFileSyncWrite()
+// already used for the single-file layout) so the I/O layer can diff each
+// against its own last-known-written text and only actually write the ones
+// that changed, with no caller needing to say which workstream it touched.
+function buildAllSyncPayloads() {
+  const indexText = JSON.stringify(buildIndexPayload(), null, 2);
+  const wsTexts = {};
+  workstreams.forEach(w => { wsTexts[w.id] = JSON.stringify(buildWorkstreamPayload(w.id), null, 2); });
+  return { indexText, wsTexts };
+}
+// The inverse of the two build functions above: reconstructs the exact flat
+// {programme, workstreams, items, categories, reviewCycles, mode, theme,
+// colorScheme, filterWorkstreamId, deletedWorkstreamIds, deletedItemIds,
+// deletedMilestoneIds, deletedActionLogIds, deletedDecisionLogIds} shape
+// mergeData()/isFreshLocalState()/replaceFromFileData() already expect from
+// a single linked file — so once the multiple files are read back and
+// recombined into this one shape, every one of those functions runs
+// completely unchanged, with no idea it's looking at data assembled from
+// several files instead of one. `wsDataById` is a plain {workstreamId:
+// parsedWorkstreamFileContent} map — a workstream listed in the index whose
+// own file is missing, unreadable, or simply not yet passed in recombines as
+// empty (never throws) rather than dropping that workstream's metadata
+// entirely.
+function recombineSyncData(indexData, wsDataById) {
+  const indexWs = indexData.workstreams || [];
+  const workstreamsOut = indexWs.map(w => {
+    const wf = wsDataById[w.id];
+    return { ...w, actionLog: (wf && wf.actionLog) || [], decisionLog: (wf && wf.decisionLog) || [] };
+  });
+  let itemsOut = (indexData.items || []).slice();
+  let reviewCyclesOut = [];
+  indexWs.forEach(w => {
+    const wf = wsDataById[w.id];
+    if (!wf) return;
+    itemsOut = itemsOut.concat(wf.items || []);
+    reviewCyclesOut = reviewCyclesOut.concat(wf.reviewCycles || []);
+  });
+  return {
+    programme: indexData.programme,
+    workstreams: workstreamsOut,
+    items: itemsOut,
+    categories: indexData.categories || [],
+    reviewCycles: reviewCyclesOut,
+    mode: indexData.mode, theme: indexData.theme, colorScheme: indexData.colorScheme,
+    filterWorkstreamId: indexData.filterWorkstreamId,
+    deletedWorkstreamIds: indexData.deletedWorkstreamIds || [],
+    deletedItemIds: indexData.deletedItemIds || [],
+    deletedMilestoneIds: indexData.deletedMilestoneIds || [],
+    deletedActionLogIds: indexData.deletedActionLogIds || [],
+    deletedDecisionLogIds: indexData.deletedDecisionLogIds || []
+  };
+}
+
 function applyImport(mode) {
   if (!requireRole('admin')) return;
   if (!pendingImportData) return;
@@ -9302,12 +9411,18 @@ function restoreBackup(date) {
 }
 
 // ---------- File System Access API ----------
-let fileHandle = null;
+// The linked *sync* folder's own directory handle — see "File System Access
+// API sync" in CLAUDE.md for the multi-file (pulse-index.json +
+// pulse-ws-<id>.json) layout it holds. Deliberately a different variable
+// (and a different concept) from backupDirHandle just below, which is a
+// second, independent folder for dated archival copies, not the live sync
+// target.
+let syncDirHandle = null;
 // A separate, independently-persisted folder handle for daily backups — see
 // writeBackupCopy()/chooseBackupFolder() below. Its lifecycle is deliberately
-// not tied to fileHandle's own: unlinking the main file doesn't clear this,
-// so relinking a file later resumes backups into the already-chosen folder
-// with no need to pick it again. lastBackupWrittenDate is session-only (not
+// not tied to syncDirHandle's own: unlinking the main sync folder doesn't
+// clear this, so relinking one later resumes backups into the already-chosen
+// folder with no need to pick it again. lastBackupWrittenDate is session-only (not
 // persisted) — worst case on reload it just writes one extra, harmless
 // same-day copy before settling back into "once per day".
 let backupDirHandle = null;
@@ -9339,21 +9454,54 @@ function _fsIdb(mode, fn) {
     req.onerror = () => rej(req.error);
   });
 }
-// key defaults to the linked-file slot so every pre-existing call site
-// (fileHandle's own get/put/del) is unaffected; chooseBackupFolder() below
-// is the only caller that passes _FS.backupKey, to persist a second,
+// key defaults to the linked-sync-folder slot so every pre-existing call
+// site (syncDirHandle's own get/put/del) is unaffected; chooseBackupFolder()
+// below is the only caller that passes _FS.backupKey, to persist a second,
 // independent handle in the same object store.
 const _fsGet = (key = _FS.key) => _fsIdb('readonly', (s, r, j) => { const q = s.get(key); q.onsuccess = () => r(q.result); q.onerror = () => j(q.error); });
 const _fsPut = (h, key = _FS.key) => _fsIdb('readwrite', (s, r, j) => { const q = s.put(h, key); q.onsuccess = () => r(); q.onerror = () => j(q.error); });
 const _fsDel = (key = _FS.key) => _fsIdb('readwrite', (s, r, j) => { const q = s.delete(key); q.onsuccess = () => r(); q.onerror = () => j(q.error); });
 
-let lastSyncedSnapshot = null;
-// The last time this browser successfully reconciled with the linked file
+// Thin I/O wrappers around a linked directory handle — everything that
+// actually understands the file *contents* lives in the pure
+// build.../recombineSyncData() functions above; these two just move text.
+// readJsonFile() returns null (rather than throwing) for a missing file or
+// one that fails to parse, so a caller can treat "nothing there yet" and
+// "couldn't read it" the same safe way recombineSyncData() already treats a
+// missing per-workstream entry — never crash the whole sync cycle over one
+// unreadable file.
+async function readJsonFile(dirHandle, name) {
+  try {
+    const fh = await dirHandle.getFileHandle(name);
+    const text = await (await fh.getFile()).text();
+    if (!text.trim()) return null;
+    let data; try { data = JSON.parse(text); } catch (_) { return null; }
+    return { text, data };
+  } catch (_) { return null; }
+}
+async function writeJsonFile(dirHandle, name, text) {
+  const fh = await dirHandle.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  await w.write(text);
+  await w.close();
+}
+
+// One entry per file this session has successfully read or written —
+// `index` for pulse-index.json, plus one per workstream id (see
+// wsFileName()) — the multi-file counterpart to what used to be a single
+// `lastSyncedSnapshot` string. Reset to {} whenever the linked folder
+// changes, same "never report a false conflict against edits made before
+// this folder was ever connected" reasoning the old single value had.
+let lastSyncedSnapshots = {};
+// The last time this browser successfully reconciled with the linked folder
 // (a link, reconnect, write-time merge, or background poll — see below) —
 // mergeData()'s conflict detection uses this as the merge "base": an item or
 // milestone that changed on *both* sides since this checkpoint was a genuine
-// concurrent edit, not just "their copy happened to be newer". Reset to 0
-// whenever the file link changes, so a freshly-linked file never reports
+// concurrent edit, not just "their copy happened to be newer". Stays a
+// single global timestamp, not one per file — it's a time threshold for
+// "touched since we last agreed", which is meaningful across the whole
+// reconciliation regardless of how many files it spanned. Reset to 0
+// whenever the folder link changes, so a freshly-linked folder never reports
 // false conflicts against edits made before it was ever connected.
 let lastSyncedAt = 0;
 // Plain-English audit trail of conflicts mergeData() has resolved
@@ -9388,7 +9536,7 @@ function reportSyncConflicts(conflicts) {
 let fileSyncWriteInFlight = false;
 let fileSyncWritePending = false;
 function queueFileSyncWrite() {
-  if (!fileHandle) return;
+  if (!syncDirHandle) return;
   if (fileSyncWriteInFlight) { fileSyncWritePending = true; return; }
   fileSyncWriteInFlight = true;
   doFileSyncWrite().finally(() => {
@@ -9396,57 +9544,88 @@ function queueFileSyncWrite() {
     if (fileSyncWritePending) { fileSyncWritePending = false; queueFileSyncWrite(); }
   });
 }
+// The multi-file counterpart of what used to be a single whole-programme
+// write — see "File System Access API sync" in CLAUDE.md for the full
+// rationale. Two passes: first a read-and-merge check (does the folder have
+// anything this device hasn't seen yet, in the index or in any workstream's
+// own file — a workstream file can change without the index ever changing
+// at all, so every currently-known workstream is re-read too, not just
+// re-checked when the index itself looks stale), then a write pass that
+// only actually touches the files whose freshly-computed text differs from
+// what was last written — buildAllSyncPayloads()/wsFileName() are the pure
+// functions that make this diffing possible with no caller needing to say
+// which workstream it touched.
 async function doFileSyncWrite() {
-  if (!fileHandle) return;
-  const data = {
-    programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
-    filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
-    deletedActionLogIds, deletedDecisionLogIds
-  };
+  if (!syncDirHandle) return;
   try {
-    const perm = await fileHandle.requestPermission({ mode: 'readwrite' });
+    const perm = await syncDirHandle.requestPermission({ mode: 'readwrite' });
     if (perm !== 'granted') { await _clearFileLink(); return; }
-    let payload = data;
-    if (lastSyncedSnapshot !== null) {
-      let currentText = '';
-      try { currentText = await (await fileHandle.getFile()).text(); } catch (_) {}
-      if (currentText.trim() && currentText !== lastSyncedSnapshot) {
-        let externalData; try { externalData = JSON.parse(currentText); } catch (_) { externalData = null; }
-        if (externalData && externalData.workstreams && externalData.items) {
-          const { added, updated, conflicts, changed } = mergeData(externalData);
-          // Gated on `changed`, not just `added || updated` — items are the
-          // only thing added/updated actually counts (see mergeData()'s own
-          // comment), but a merge that only touched review-cycle
-          // confirmations or a workstream's actionLog/decisionLog is just as
-          // real and just as much needs to reach localStorage/the UI here,
-          // not sit unsaved in memory until some unrelated later save.
-          if (changed) {
-            normalizeData();
-            payload = { ...data, workstreams, items, categories, reviewCycles, deletedMilestoneIds, deletedActionLogIds, deletedDecisionLogIds };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-            render();
-            showToast(added || updated
-              ? `Synced changes from another tab/device (${added} added, ${updated} updated)`
-              : 'Synced changes from another tab/device');
-          }
-          reportSyncConflicts(conflicts);
+
+    const indexRead = await readJsonFile(syncDirHandle, SYNC_INDEX_FILE);
+    if (indexRead) {
+      const knownIds = new Set(workstreams.map(w => w.id));
+      (indexRead.data.workstreams || []).forEach(w => { if (isSafeId(w.id)) knownIds.add(w.id); });
+      const wsDataById = {};
+      let anyChanged = indexRead.text !== lastSyncedSnapshots[SYNC_INDEX_FILE];
+      for (const id of knownIds) {
+        const r = await readJsonFile(syncDirHandle, wsFileName(id));
+        if (r) {
+          wsDataById[id] = r.data;
+          if (r.text !== lastSyncedSnapshots[id]) anyChanged = true;
         }
       }
+      if (anyChanged) {
+        const externalData = recombineSyncData(indexRead.data, wsDataById);
+        const { added, updated, conflicts, changed } = mergeData(externalData);
+        // Gated on `changed`, not just `added || updated` — items are the
+        // only thing added/updated actually counts (see mergeData()'s own
+        // comment), but a merge that only touched review-cycle
+        // confirmations or a workstream's actionLog/decisionLog is just as
+        // real and just as much needs to reach localStorage/the UI here,
+        // not sit unsaved in memory until some unrelated later save.
+        if (changed) {
+          normalizeData();
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
+            filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
+            deletedActionLogIds, deletedDecisionLogIds
+          }));
+          render();
+          showToast(added || updated
+            ? `Synced changes from another tab/device (${added} added, ${updated} updated)`
+            : 'Synced changes from another tab/device');
+        }
+        reportSyncConflicts(conflicts);
+      }
     }
-    const w = await fileHandle.createWritable();
-    const text = JSON.stringify(payload, null, 2);
-    await w.write(text);
-    await w.close();
-    lastSyncedSnapshot = text;
+
+    // Workstream files first, index last — a device polling mid-write must
+    // never see the index announce a workstream whose own file doesn't
+    // exist on disk yet.
+    const { indexText, wsTexts } = buildAllSyncPayloads();
+    for (const [id, text] of Object.entries(wsTexts)) {
+      if (text !== lastSyncedSnapshots[id]) {
+        await writeJsonFile(syncDirHandle, wsFileName(id), text);
+        lastSyncedSnapshots[id] = text;
+      }
+    }
+    if (indexText !== lastSyncedSnapshots[SYNC_INDEX_FILE]) {
+      await writeJsonFile(syncDirHandle, SYNC_INDEX_FILE, indexText);
+      lastSyncedSnapshots[SYNC_INDEX_FILE] = indexText;
+    }
     lastSyncedAt = Date.now();
     updateFileSyncUI();
-    await writeBackupCopy(payload);
+    await writeBackupCopy({
+      programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
+      filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
+      deletedActionLogIds, deletedDecisionLogIds
+    });
   } catch (e) {
     // localStorage remains the authoritative fallback, but a silent failure
     // here means a change (like a rename) could look saved in the app while
-    // never actually reaching the linked file — surface it so that's never
-    // a mystery.
-    showToast('Could not save to the linked file — it will keep retrying on the next change', true);
+    // never actually reaching the linked folder — surface it so that's
+    // never a mystery.
+    showToast('Could not save to the linked folder — it will keep retrying on the next change', true);
   }
 }
 function backupFileName(dateStr) { return `pulse-backup-${dateStr}.json`; }
@@ -9499,25 +9678,24 @@ async function writeBackupCopy(data) {
     lastBackupWrittenDate = todayStr();
   } catch (_) { /* silent — see comment above */ }
 }
-// Picking the backup folder is its own, separate permission grant — the
-// File System Access API has no way to walk from fileHandle (a single file
-// handle) up to its own parent folder, so there's no way to derive "the
-// folder the linked file lives in" automatically; the user has to point at
-// it directly. dir.resolve(fileHandle), when supported, is used purely as a
-// soft sanity check — it tells us whether the chosen folder actually
-// contains the linked file, so a mis-click (picking the wrong folder) surfaces
-// as a toast instead of silently backing up to an unexpected place — but a
-// mismatch doesn't block anything, since a user might deliberately want
-// backups somewhere other than right next to the linked file.
+// Picking the backup folder is its own, separate permission grant, deliberately
+// independent of syncDirHandle — the two are unrelated locations, one the
+// live sync target (pulse-index.json/pulse-ws-*.json), one a dated archival
+// copy (see "Daily backups to a linked folder" in CLAUDE.md), so the user
+// points at each directly. isSameEntry(), when supported, is used purely as
+// a soft sanity check — it tells us whether the chosen backup folder is
+// literally the same one already linked for live sync, so a mis-click
+// surfaces as a toast instead of silently mixing the two file sets in one
+// place — but a match doesn't block anything, since a user might
+// deliberately want that.
 async function chooseBackupFolder() {
   if (!requireRole('editor')) return;
   if (!window.showDirectoryPicker) { showToast('Daily backups require Chrome or Edge', true); return; }
   try {
     const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
-    if (fileHandle && dir.resolve) {
+    if (syncDirHandle && dir.isSameEntry) {
       try {
-        const path = await dir.resolve(fileHandle);
-        if (path === null) showToast(`Note: that folder doesn't contain ${fileHandle.name} — backups will still save there`, false);
+        if (await dir.isSameEntry(syncDirHandle)) showToast(`Note: that's the same folder the linked programme already syncs to — backups will still save there`, false);
       } catch (_) {}
     }
     backupDirHandle = dir;
@@ -9535,7 +9713,7 @@ async function chooseBackupFolder() {
 // requireRole('editor') above means this (and the reopen below) can only
 // ever run for Editor/Admin — unlinking is still allowed, the same
 // "switching/undoing is fine, being left unconfigured isn't" stance
-// unlinkFile() takes for the main file link, but immediately reopens the
+// unlinkFolder() takes for the main sync folder, but immediately reopens the
 // same now-mandatory modal rather than leaving Editor/Admin's own
 // requirement unmet (see backupFolderModalBg's own HTML comment).
 async function unlinkBackupFolder() {
@@ -9566,19 +9744,34 @@ function startFileSyncPolling() {
 function stopFileSyncPolling() {
   if (fileSyncPollTimer) { clearInterval(fileSyncPollTimer); fileSyncPollTimer = null; }
 }
+// Reads the index plus every workstream file the union of (locally known
+// ids ∪ the freshly-read index's own ids) implies — a workstream's own file
+// can change without the index ever changing at all (the common case), so
+// it isn't enough to only re-read the index and compare its own text.
 async function pollFileSync() {
-  if (!fileHandle) return;
+  if (!syncDirHandle) return;
   try {
     // queryPermission, not requestPermission — a background timer has no
     // user gesture behind it, so this must never risk popping an OS
     // permission prompt on its own; if permission was lost, the existing
     // "Reconnect" affordance (see updateFileSyncUI()) is what re-grants it.
-    const perm = await fileHandle.queryPermission({ mode: 'readwrite' });
+    const perm = await syncDirHandle.queryPermission({ mode: 'readwrite' });
     if (perm !== 'granted') return;
-    const currentText = await (await fileHandle.getFile()).text();
-    if (!currentText.trim() || currentText === lastSyncedSnapshot) return; // nothing external changed
-    let externalData; try { externalData = JSON.parse(currentText); } catch (_) { return; }
-    if (!externalData || !externalData.workstreams || !externalData.items) return;
+    const indexRead = await readJsonFile(syncDirHandle, SYNC_INDEX_FILE);
+    if (!indexRead) return;
+    const knownIds = new Set(workstreams.map(w => w.id));
+    (indexRead.data.workstreams || []).forEach(w => { if (isSafeId(w.id)) knownIds.add(w.id); });
+    const freshWsReads = {};
+    let anyChanged = indexRead.text !== lastSyncedSnapshots[SYNC_INDEX_FILE];
+    for (const id of knownIds) {
+      const r = await readJsonFile(syncDirHandle, wsFileName(id));
+      freshWsReads[id] = r;
+      if (r && r.text !== lastSyncedSnapshots[id]) anyChanged = true;
+    }
+    if (!anyChanged) return; // nothing external changed anywhere
+    const wsDataById = {};
+    Object.entries(freshWsReads).forEach(([id, r]) => { if (r) wsDataById[id] = r.data; });
+    const externalData = recombineSyncData(indexRead.data, wsDataById);
     const { added, updated, conflicts, changed } = mergeData(externalData);
     lastSyncedAt = Date.now();
     // `changed`, not just `added || updated` — see doFileSyncWrite()'s own
@@ -9594,127 +9787,141 @@ async function pollFileSync() {
         : 'Synced changes from another tab/device');
     } else {
       // Nothing we track changed (e.g. only mode/theme/colorScheme differ) —
-      // still remember this text so the next poll doesn't keep re-parsing it.
-      lastSyncedSnapshot = currentText;
+      // still remember these texts so the next poll doesn't keep re-parsing them.
+      lastSyncedSnapshots[SYNC_INDEX_FILE] = indexRead.text;
+      Object.entries(freshWsReads).forEach(([id, r]) => { if (r) lastSyncedSnapshots[id] = r.text; });
     }
     reportSyncConflicts(conflicts);
   } catch (_) { /* transient read failure — next interval tries again */ }
 }
 async function _clearFileLink() {
-  fileHandle = null;
-  lastSyncedSnapshot = null;
+  syncDirHandle = null;
+  lastSyncedSnapshots = {};
   lastSyncedAt = 0;
   stopFileSyncPolling();
   await _fsDel().catch(() => {});
   updateFileSyncUI();
 }
-async function createNewLinkedFile() {
-  if (!window.showSaveFilePicker) { showToast('File linking requires Chrome or Edge', true); return; }
-  try {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: 'pulse-data.json',
-      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
-    });
-    fileHandle = handle;
-    try { await _fsPut(handle); } catch (_) {}
-    await doFileSyncWrite();
-    updateFileSyncUI();
-    startFileSyncPolling();
-    showToast(`Linked — auto-saving to ${handle.name}`);
-    closeFileSyncModal();
-  } catch (e) { if (e.name !== 'AbortError') showToast('Could not create file', true); }
+// Shared by linkFolder()/reconnectFolder() — reads every workstream file the
+// given (already-read) index references and recombines into the flat shape
+// mergeData()/isFreshLocalState()/replaceFromFileData() expect, stamping
+// lastSyncedSnapshots for every file actually read along the way (the same
+// "the baseline is set the moment the file was read, before whatever
+// merge/replace decision follows" timing the old single lastSyncedSnapshot
+// assignment had).
+async function readAndRecombineFolder(dir, indexRead) {
+  lastSyncedSnapshots[SYNC_INDEX_FILE] = indexRead.text;
+  const wsDataById = {};
+  for (const w of (indexRead.data.workstreams || [])) {
+    if (!isSafeId(w.id)) continue;
+    const r = await readJsonFile(dir, wsFileName(w.id));
+    if (r) { wsDataById[w.id] = r.data; lastSyncedSnapshots[w.id] = r.text; }
+  }
+  lastSyncedAt = Date.now();
+  return recombineSyncData(indexRead.data, wsDataById);
 }
-async function linkFile() {
-  if (!window.showOpenFilePicker) { showToast('File linking requires Chrome or Edge', true); return; }
+// Shared merge-or-replace branch used by linkFolder()/reconnectFolder() the
+// moment a folder's existing data (current-format or migrated-from-legacy)
+// is in hand — isFreshLocalState() decides between a full replace (nothing
+// local to lose) and mergeData()'s own field-level merge (see that
+// function's comment for why). Returns the toast message the caller shows,
+// so each call site can still phrase its own wording (Linked/Reconnected/
+// Migrated) around the same added/updated facts.
+function applyIncomingFolderData(data, actionLabel) {
+  if (isFreshLocalState()) {
+    replaceFromFileData(data);
+    save(); render();
+    return `${actionLabel} — restored from folder`;
+  }
+  const { added, updated, conflicts } = mergeData(data);
+  normalizeData();
+  save(); render();
+  reportSyncConflicts(conflicts);
+  const parts = []; if (added) parts.push(`${added} added`); if (updated) parts.push(`${updated} updated`);
+  return `${actionLabel} — ${parts.length ? parts.join(', ') : 'nothing new'}`;
+}
+// Replaces the old separate "link existing file"/"create new file" pair — a
+// folder transparently covers what used to need two options: it may already
+// hold the current multi-file layout (pulse-index.json + pulse-ws-*.json),
+// it may hold the pre-this-feature single legacy file (pulse-data.json,
+// migrated automatically below, with no separate "migrate" step for the
+// user to find — the old file is left in place, untouched), or it may be
+// genuinely empty (start fresh here). pulse-index.json's presence always
+// takes priority over a leftover pulse-data.json on every future link.
+async function linkFolder() {
+  if (!window.showDirectoryPicker) { showToast('File linking requires Chrome or Edge', true); return; }
   try {
-    const [handle] = await window.showOpenFilePicker({
-      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
-      multiple: false
-    });
-    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    const perm = await dir.requestPermission({ mode: 'readwrite' });
     if (perm !== 'granted') { showToast('Write permission denied', true); return; }
-    fileHandle = handle;
-    try { await _fsPut(handle); } catch (_) {}
-    let existingText = '';
-    try { existingText = await (await handle.getFile()).text(); } catch (_) {}
-    if (existingText.trim()) {
-      let data; try { data = JSON.parse(existingText); } catch (_) {}
-      if (data && data.workstreams && data.items) {
-        if (isFreshLocalState()) {
-          replaceFromFileData(data);
-          lastSyncedSnapshot = existingText; lastSyncedAt = Date.now();
-          save(); render(); updateFileSyncUI(); startFileSyncPolling();
-          showToast(`Restored from ${handle.name} — auto-saving enabled`);
-          closeFileSyncModal();
-        } else {
-          const { added, updated, conflicts } = mergeData(data);
-          normalizeData();
-          lastSyncedSnapshot = existingText; lastSyncedAt = Date.now();
-          save(); render(); updateFileSyncUI(); startFileSyncPolling();
-          reportSyncConflicts(conflicts);
-          const parts = []; if (added) parts.push(`${added} added`); if (updated) parts.push(`${updated} updated`);
-          showToast(`Merged from ${handle.name} — ${parts.length ? parts.join(', ') : 'nothing new'} — auto-saving enabled`);
-          closeFileSyncModal();
-        }
+    syncDirHandle = dir;
+    try { await _fsPut(dir); } catch (_) {}
+
+    const indexRead = await readJsonFile(dir, SYNC_INDEX_FILE);
+    if (indexRead) {
+      const data = await readAndRecombineFolder(dir, indexRead);
+      const msg = applyIncomingFolderData(data, `Linked to ${dir.name}`);
+      updateFileSyncUI(); startFileSyncPolling();
+      showToast(`${msg} — auto-saving enabled`);
+      closeFileSyncModal();
+      return;
+    }
+    const legacyRead = await readJsonFile(dir, LEGACY_SYNC_FILE);
+    if (legacyRead) {
+      if (legacyRead.data && legacyRead.data.workstreams && legacyRead.data.items) {
+        lastSyncedAt = Date.now();
+        const msg = applyIncomingFolderData(legacyRead.data, `Migrated from ${LEGACY_SYNC_FILE}`);
+        updateFileSyncUI(); startFileSyncPolling();
+        showToast(`${msg} — auto-saving enabled`);
+        closeFileSyncModal();
       } else {
-        fileHandle = null;
-        showToast(`${handle.name} is not a Pulse data file — unlinked`, true);
+        syncDirHandle = null;
+        showToast(`${LEGACY_SYNC_FILE} in that folder isn't a Pulse data file — unlinked`, true);
         // Not a success — the modal (mandatory, see its own HTML comment)
         // deliberately stays open so the user can immediately try a
-        // different file rather than being left with nothing linked and
+        // different folder rather than being left with nothing linked and
         // no way back in.
       }
       return;
     }
+    // Neither a current-format index nor a legacy file — an empty (or
+    // unrelated) folder; start fresh here.
     await doFileSyncWrite();
     updateFileSyncUI();
     startFileSyncPolling();
-    showToast(`Linked — auto-saving to ${handle.name}`);
+    showToast(`Linked — auto-saving to ${dir.name}`);
     closeFileSyncModal();
-  } catch (e) { if (e.name !== 'AbortError') showToast('Could not link file', true); }
+  } catch (e) { if (e.name !== 'AbortError') showToast('Could not link folder', true); }
 }
 // Linking is mandatory (see fileSyncModalBg's own HTML comment) — unlinking
-// is still allowed (switching to a different file, undoing a mistake), but
+// is still allowed (switching to a different folder, undoing a mistake), but
 // immediately re-opens the same mandatory modal rather than leaving the
 // programme with nothing linked, an explicit user request ("make linking a
 // file mandatory for all roles"). isLaunch is false here since this isn't
-// part of the original launch sequence — closing it (once a new file is
+// part of the original launch sequence — closing it (once a new folder is
 // linked) must not unexpectedly chain into the backup-folder onboarding
 // modal a second time.
-async function unlinkFile() {
+async function unlinkFolder() {
   await _clearFileLink();
-  showToast('File unlinked — link a new one to keep saving');
+  showToast('Folder unlinked — link a new one to keep saving');
   openFileSyncModal(null, false);
 }
-async function reconnectFile() {
-  if (!fileHandle) return;
+async function reconnectFolder() {
+  if (!syncDirHandle) return;
   try {
-    const perm = await fileHandle.requestPermission({ mode: 'readwrite' });
+    const perm = await syncDirHandle.requestPermission({ mode: 'readwrite' });
     if (perm !== 'granted') { showToast('Permission denied', true); return; }
-    const text = await (await fileHandle.getFile()).text();
-    const data = JSON.parse(text);
-    if (data.workstreams && data.items) {
-      if (isFreshLocalState()) {
-        replaceFromFileData(data);
-        lastSyncedSnapshot = text; lastSyncedAt = Date.now();
-        save(); render(); updateFileSyncUI(); startFileSyncPolling();
-        showToast(`Reconnected to ${fileHandle.name} — restored from file`);
-        closeFileSyncModal();
-        return;
-      }
-      const { added, updated, conflicts } = mergeData(data);
-      normalizeData();
-      lastSyncedSnapshot = text; lastSyncedAt = Date.now();
-      save(); render();
-      updateFileSyncUI(); startFileSyncPolling();
-      reportSyncConflicts(conflicts);
-      const parts = []; if (added) parts.push(`${added} added`); if (updated) parts.push(`${updated} updated`);
-      showToast(`Reconnected to ${fileHandle.name}${parts.length ? ` — ${parts.join(', ')}` : ''}`);
+    const indexRead = await readJsonFile(syncDirHandle, SYNC_INDEX_FILE);
+    if (!indexRead) {
+      updateFileSyncUI();
+      showToast(`Reconnected to ${syncDirHandle.name}`);
       closeFileSyncModal();
       return;
     }
-    updateFileSyncUI();
-    showToast(`Reconnected to ${fileHandle.name}`);
+    const data = await readAndRecombineFolder(syncDirHandle, indexRead);
+    const msg = applyIncomingFolderData(data, `Reconnected to ${syncDirHandle.name}`);
+    updateFileSyncUI(); startFileSyncPolling();
+    showToast(msg);
     closeFileSyncModal();
   } catch (e) { showToast('Could not reconnect', true); }
 }
@@ -9731,22 +9938,22 @@ function fadeSwapHTML(el, html) {
 function updateFileSyncUI() {
   const el = document.getElementById('fileSyncIndicator');
   if (!el) return;
-  if (!window.showOpenFilePicker) { el.style.display = 'none'; return; }
+  if (!window.showDirectoryPicker) { el.style.display = 'none'; return; }
   el.style.display = '';
-  if (!fileHandle) { fadeSwapHTML(el, `<button class="btn btn-sm" onclick="openFileSyncModal()" title="Link a .json data file for auto-save"><i class="fa-solid fa-link"></i> Link file</button>`); return; }
-  fileHandle.queryPermission({ mode: 'readwrite' }).then(perm => {
+  if (!syncDirHandle) { fadeSwapHTML(el, `<button class="btn btn-sm" onclick="openFileSyncModal()" title="Link a folder for auto-save"><i class="fa-solid fa-link"></i> Link folder</button>`); return; }
+  syncDirHandle.queryPermission({ mode: 'readwrite' }).then(perm => {
     if (!el) return;
     if (perm === 'granted') {
       fadeSwapHTML(el, `
         <span class="sync-linked">
-          <i class="fa-solid fa-file-circle-check"></i>
-          <span title="${esc(fileHandle.name)}">${esc(fileHandle.name)}</span>
+          <i class="fa-solid fa-folder-tree"></i>
+          <span title="${esc(syncDirHandle.name)}">${esc(syncDirHandle.name)}</span>
         </span>
-        <button class="btn btn-sm" onclick="unlinkFile()" title="Unlink file" style="padding:4px 8px;line-height:1"><i class="fa-solid fa-link-slash"></i></button>`);
+        <button class="btn btn-sm" onclick="unlinkFolder()" title="Unlink folder" style="padding:4px 8px;line-height:1"><i class="fa-solid fa-link-slash"></i></button>`);
     } else {
-      fadeSwapHTML(el, `<button class="btn btn-sm sync-reconnect" onclick="reconnectFile()" title="Reconnect to ${esc(fileHandle.name)}"><i class="fa-solid fa-triangle-exclamation"></i> Reconnect</button>`);
+      fadeSwapHTML(el, `<button class="btn btn-sm sync-reconnect" onclick="reconnectFolder()" title="Reconnect to ${esc(syncDirHandle.name)}"><i class="fa-solid fa-triangle-exclamation"></i> Reconnect</button>`);
     }
-  }).catch(() => { if (el) fadeSwapHTML(el, `<button class="btn btn-sm" onclick="openFileSyncModal()"><i class="fa-solid fa-link"></i> Link file</button>`); });
+  }).catch(() => { if (el) fadeSwapHTML(el, `<button class="btn btn-sm" onclick="openFileSyncModal()"><i class="fa-solid fa-link"></i> Link folder</button>`); });
 }
 // backupSyncIndicator's own counterpart, right next to fileSyncIndicator —
 // same on/off toggle shape (an "off" button, or a linked-looking status +
@@ -9792,12 +9999,12 @@ function updateBackupSyncUI() {
     <button class="btn btn-sm" ${gateAttrs}onclick="unlinkBackupFolder()" title="${unlinkTitle}" style="padding:4px 8px;line-height:1"><i class="fa-solid fa-link-slash"></i></button>`);
 }
 async function initFileSync() {
-  if (!window.showOpenFilePicker) return;
+  if (!window.showDirectoryPicker) return;
   updateFileSyncUI();
   updateBackupSyncUI();
-  // Restored independently of fileHandle's own try/catch below, in its own
-  // isolated block that can never throw into (and so never trips) that
-  // block's fileHandle-clearing catch — the two handles' lifecycles are
+  // Restored independently of syncDirHandle's own try/catch below, in its
+  // own isolated block that can never throw into (and so never trips) that
+  // block's syncDirHandle-clearing catch — the two handles' lifecycles are
   // deliberately unrelated (see backupDirHandle's own comment above).
   try {
     const storedBackupDir = await _fsGet(_FS.backupKey);
@@ -9807,29 +10014,28 @@ async function initFileSync() {
   } catch (_) {}
   updateBackupSyncUI();
   try {
-    const handle = await _fsGet();
+    let handle = await _fsGet();
+    // A handle persisted by a pre-this-feature version of this app is a
+    // FileSystemFileHandle (kind 'file'), not a directory — calling a
+    // directory-only method on it would throw. Treat it exactly like
+    // "nothing usable stored" rather than crashing: clear it and fall
+    // through to the mandatory link prompt below, same as a brand-new
+    // browser. This is the one explicit upgrade-compatibility guard the
+    // whole multi-file layout hinges on for an existing linked-file setup.
+    if (handle && handle.kind !== 'directory') { handle = null; await _fsDel().catch(() => {}); }
     // On a brand-new browser (no role chosen yet, userRole still null) this
     // is parked in pendingFileSyncPrompt instead of opened immediately,
     // since opening it here would race the mandatory role-picker gate below
     // and get buried behind it before any role has actually been chosen.
     if (!handle) { if (!userRole) pendingFileSyncPrompt = 'link'; else openFileSyncModal(undefined, true); return; }
-    fileHandle = handle;
+    syncDirHandle = handle;
     const perm = await handle.queryPermission({ mode: 'readwrite' });
     if (perm === 'granted') {
       try {
-        const text = await (await handle.getFile()).text();
-        const data = JSON.parse(text);
-        if (data.workstreams && data.items) {
-          let conflicts = [];
-          if (isFreshLocalState()) {
-            replaceFromFileData(data);
-          } else {
-            ({ conflicts } = mergeData(data));
-            normalizeData();
-          }
-          lastSyncedSnapshot = text; lastSyncedAt = Date.now();
-          save(); render();
-          reportSyncConflicts(conflicts);
+        const indexRead = await readJsonFile(handle, SYNC_INDEX_FILE);
+        if (indexRead) {
+          const data = await readAndRecombineFolder(handle, indexRead);
+          applyIncomingFolderData(data, 'Synced'); // return value unused — no toast on a quiet launch-time reconnect, matching prior behavior
         }
         startFileSyncPolling();
       } catch (_) { /* read failed — keep localStorage data */ }
@@ -9838,7 +10044,7 @@ async function initFileSync() {
     } else {
       openFileSyncModal(handle, true);
     }
-    // The file link was already present and working (the 'granted' branch
+    // The folder link was already present and working (the 'granted' branch
     // above, having fallen through without returning) — no file-sync modal
     // was ever shown to chain the backup-folder step off of (see
     // closeFileSyncModal()), so it's checked directly here instead. A no-op
@@ -9851,7 +10057,7 @@ async function initFileSync() {
     }
     updateFileSyncUI();
   } catch (e) {
-    fileHandle = null;
+    syncDirHandle = null;
     _fsDel().catch(() => {});
     updateFileSyncUI();
     if (!userRole) pendingFileSyncPrompt = 'link'; else openFileSyncModal(undefined, true);
@@ -9870,10 +10076,10 @@ function openFileSyncModal(reconnectHandle, isLaunch) {
   const ro = document.getElementById('fileSyncReconnectOption');
   const rl = document.getElementById('fileSyncReconnectLabel');
   const warn = document.getElementById('fileSyncWarning');
-  // Linking/creating/reconnecting a synced file is mandatory for every
-  // role — an explicit user request — so this modal has no gated content
-  // and no dismiss path at all; it always shows the real options, and
-  // stays open until one of them actually succeeds.
+  // Linking or reconnecting a synced folder is mandatory for every role —
+  // an explicit user request — so this modal has no gated content and no
+  // dismiss path at all; it always shows the real options, and stays open
+  // until one of them actually succeeds.
   if (reconnectHandle) {
     ro.style.display = 'flex';
     rl.textContent = `Resume sync with ${reconnectHandle.name}`;
@@ -9884,8 +10090,8 @@ function openFileSyncModal(reconnectHandle, isLaunch) {
   }
   document.getElementById('fileSyncModalBg').classList.add('open');
 }
-// Only ever called from linkFile()/createNewLinkedFile()/reconnectFile()'s
-// own success paths now — see fileSyncModalBg's own HTML comment for why
+// Only ever called from linkFolder()/reconnectFolder()'s own success paths
+// now — see fileSyncModalBg's own HTML comment for why
 // this modal has no other way to close. Chains into the backup-folder
 // onboarding modal right after — an explicit user request ("handle file
 // link and backup link in 2 modals after each other... ask when launching
@@ -9959,10 +10165,10 @@ document.getElementById('backupsModalBg').addEventListener('click', (e) => { if 
 document.getElementById('syncConflictsModalBg').addEventListener('click', (e) => { if (e.target.id === 'syncConflictsModalBg') closeSyncConflictsModal(); });
 // fileSyncModalBg deliberately has no backdrop-click-to-close listener —
 // see its own HTML comment; linking is mandatory, and closeFileSyncModal()
-// is only ever called from linkFile()/createNewLinkedFile()/reconnectFile()'s
-// own success paths now. backupFolderModalBg is the same, for the same
-// reason (see its own HTML comment) — closeBackupFolderModal() is only
-// ever called from chooseBackupFolder()'s own success path now.
+// is only ever called from linkFolder()/reconnectFolder()'s own success
+// paths now. backupFolderModalBg is the same, for the same reason (see its
+// own HTML comment) — closeBackupFolderModal() is only ever called from
+// chooseBackupFolder()'s own success path now.
 document.getElementById('themeModalBg').addEventListener('click', (e) => { if (e.target.id === 'themeModalBg') closeThemeModal(); });
 document.getElementById('roleModalBg').addEventListener('click', (e) => { if (e.target.id === 'roleModalBg') closeRoleModal(); });
 document.getElementById('helpModalBg').addEventListener('click', (e) => { if (e.target.id === 'helpModalBg') closeHelpModal(); });

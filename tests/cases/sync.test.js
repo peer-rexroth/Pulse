@@ -315,7 +315,7 @@ test('applyImport replace mode backs up current data first, then overwrites ever
 });
 
 // ---------- isFreshLocalState / replaceFromFileData ----------
-// linkFile()/reconnectFile()/initFileSync() all gate on window.showOpenFilePicker,
+// linkFolder()/reconnectFolder()/initFileSync() all gate on window.showDirectoryPicker,
 // which the test harness's fake window doesn't have (see "Testing caveat" in
 // CLAUDE.md), so those three functions themselves can't be exercised here.
 // isFreshLocalState()/replaceFromFileData() are pure logic against the
@@ -386,15 +386,15 @@ test('restoreBackup replaces current data with the snapshot after confirmation',
 });
 
 // ---------- Daily backups to a separately-chosen folder ----------
-// A second, independent copy of every linked-file write, dated and dropped
+// A second, independent copy of every live-sync write, dated and dropped
 // directly into a separately-chosen folder (backupDirHandle, no nested
 // "Backup" subfolder) — see writeBackupCopy()/chooseBackupFolder() in
 // pulse.html. Its on/off state
 // is surfaced only via the topbar's #backupSyncIndicator (updateBackupSyncUI(),
-// tested below) — there's no longer a matching row in the "Sync to a file"
+// tested below) — there's no longer a matching row in the "Sync to a folder"
 // modal, removed once the topbar indicator made it redundant. Most of this
 // is gated behind window.showDirectoryPicker/indexedDB, neither of which the
-// JXA harness provides, so (matching unlinkFile()'s own documented
+// JXA harness provides, so (matching unlinkFolder()'s own documented
 // exception) chooseBackupFolder()/unlinkBackupFolder() and the IndexedDB-
 // touching half of initFileSync() are not exercised here. What's tested
 // directly is the pure logic: the filename builder and writeBackupCopy()'s
