@@ -9768,23 +9768,30 @@ function reportSyncConflicts(conflicts) {
 // already established); findStrayFiles()/fileExists()/renameStrayFile()/
 // scanAndMergeStrayFiles() are the thin I/O layer around them, gated the
 // same way every other syncDirHandle-touching function in this file is.
-const STRAY_MERGED_SUFFIX = '.merged.json';
+//
+// A leading prefix, not a trailing suffix — an explicit user request — so
+// "merged" reads at a glance at the front of the filename rather than
+// hiding after a long device-suffixed original name. slugify() never
+// produces an underscore (every non-alphanumeric run collapses to "-"), and
+// neither does a workstream's own id-derived suffix, so no real
+// pulse-index.json/wsFileName() output can ever start with this prefix —
+// it's an unambiguous marker for "this app already merged this one".
+const STRAY_MERGED_PREFIX = 'merged_';
 // Deliberately a loose prefix match, not an attempt to parse any one
 // provider's own suffix convention — this has to work the same way
 // regardless of which cloud sync client produced the stray copy. Excludes
 // the exact canonical name itself and anything already carrying
-// STRAY_MERGED_SUFFIX (a file a previous scan already absorbed and renamed
+// STRAY_MERGED_PREFIX (a file a previous scan already absorbed and renamed
 // — re-matching it would just mean re-reading it every scan for a merge
 // that's already a guaranteed no-op, since its content was folded in the
 // moment it was found).
 function isStrayFileName(name, base, exactName) {
-  return name !== exactName && name.endsWith('.json') && !name.endsWith(STRAY_MERGED_SUFFIX) && name.startsWith(base);
+  return name !== exactName && name.endsWith('.json') && !name.startsWith(STRAY_MERGED_PREFIX) && name.startsWith(base);
 }
 // name is always one findStrayFiles() already confirmed ends in '.json' —
 // this is an internal helper, not exposed to arbitrary input.
 function strayMergedFileName(name, n) {
-  const stem = name.slice(0, -'.json'.length);
-  return n > 1 ? `${stem}-${n}${STRAY_MERGED_SUFFIX}` : `${stem}${STRAY_MERGED_SUFFIX}`;
+  return n > 1 ? `${STRAY_MERGED_PREFIX}${n}_${name}` : `${STRAY_MERGED_PREFIX}${name}`;
 }
 async function fileExists(dirHandle, name) {
   try { await dirHandle.getFileHandle(name); return true; } catch (_) { return false; }

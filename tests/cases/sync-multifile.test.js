@@ -277,22 +277,22 @@ test('isStrayFileName matches a file sharing the real file\'s base name but not 
   assertFalse(isStrayFileName('pulse-ws-beta-def456.json', 'pulse-ws-alpha-abc123', 'pulse-ws-alpha-abc123.json'), 'a different workstream\'s own file must never match');
 });
 
-test('isStrayFileName ignores non-.json files and a file already renamed .merged.json by a previous scan', function () {
+test('isStrayFileName ignores non-.json files and a file already renamed merged_... by a previous scan', function () {
   assertFalse(isStrayFileName('pulse-ws-alpha-abc123-JOHNS-MAC.txt', 'pulse-ws-alpha-abc123', 'pulse-ws-alpha-abc123.json'));
-  assertFalse(isStrayFileName('pulse-ws-alpha-abc123-JOHNS-MAC.merged.json', 'pulse-ws-alpha-abc123', 'pulse-ws-alpha-abc123.json'), 'already absorbed on a prior scan — must not be re-treated as a fresh stray');
+  assertFalse(isStrayFileName('merged_pulse-ws-alpha-abc123-JOHNS-MAC.json', 'pulse-ws-alpha-abc123', 'pulse-ws-alpha-abc123.json'), 'already absorbed on a prior scan — must not be re-treated as a fresh stray');
 });
 
-test('strayMergedFileName appends .merged.json, and disambiguates with a number when that name is already taken', function () {
-  assertEqual(strayMergedFileName('pulse-ws-alpha-abc123-JOHNS-MAC.json', 1), 'pulse-ws-alpha-abc123-JOHNS-MAC.merged.json');
-  assertEqual(strayMergedFileName('pulse-ws-alpha-abc123-JOHNS-MAC.json', 2), 'pulse-ws-alpha-abc123-JOHNS-MAC-2.merged.json');
+test('strayMergedFileName prefixes with merged_ (not a trailing suffix), and disambiguates with a number when that name is already taken', function () {
+  assertEqual(strayMergedFileName('pulse-ws-alpha-abc123-JOHNS-MAC.json', 1), 'merged_pulse-ws-alpha-abc123-JOHNS-MAC.json');
+  assertEqual(strayMergedFileName('pulse-ws-alpha-abc123-JOHNS-MAC.json', 2), 'merged_2_pulse-ws-alpha-abc123-JOHNS-MAC.json');
 });
 
 test('renameStrayFile writes the content under the disambiguated name and removes the original — a rename, not a delete', async function () {
   const strayName = 'pulse-ws-alpha-abc123-JOHNS-MAC.json';
-  const collidingName = 'pulse-ws-alpha-abc123-JOHNS-MAC.merged.json';
+  const collidingName = 'merged_pulse-ws-alpha-abc123-JOHNS-MAC.json';
   const dir = makeFakeDir({ [strayName]: '{"a":1}', [collidingName]: '{"already":"here"}' });
   const target = await renameStrayFile(dir, strayName, '{"a":1}');
-  assertEqual(target, 'pulse-ws-alpha-abc123-JOHNS-MAC-2.merged.json', 'must not collide with the pre-existing .merged.json');
+  assertEqual(target, 'merged_2_pulse-ws-alpha-abc123-JOHNS-MAC.json', 'must not collide with the pre-existing merged_... name');
   assertFalse(strayName in dir.files, 'the original stray name must be gone');
   assertEqual(dir.files[collidingName], '{"already":"here"}', 'the pre-existing collision itself must be untouched');
   assertEqual(dir.files[target], '{"a":1}');
@@ -306,7 +306,7 @@ test('scanAndMergeStrayFiles finds a stray workstream-file conflict copy, merges
   strayData.actionLog.push({ id: strayEntryId, text: 'Only in the stray copy', owner: '', dueDate: null, completed: false, completedAt: null, cycleId: 'c', addedAt: Date.now(), updatedAt: Date.now(), flagged: false });
   const strayText = JSON.stringify(strayData, null, 2);
   const strayName = wsFileNames[wsA.id].replace('.json', '-JOHNS-MAC.json');
-  const mergedName = strayName.replace('.json', '.merged.json');
+  const mergedName = `merged_${strayName}`;
 
   const dir = makeFakeDir({
     [SYNC_INDEX_FILE]: indexText,
@@ -345,7 +345,7 @@ test('scanAndMergeStrayFiles finds a stray index conflict copy and merges its ch
   assertTrue(mergedAny);
   assertTrue(items.some(it => it.id === strayItemId), 'the item only present in the stray index must be merged into memory');
   assertFalse(strayName in dir.files);
-  assertTrue(strayName.replace('.json', '.merged.json') in dir.files);
+  assertTrue(`merged_${strayName}` in dir.files);
 });
 
 test('scanAndMergeStrayFiles is a no-op — returns false, renames nothing — when the folder has nothing stray in it', async function () {
@@ -358,10 +358,10 @@ test('scanAndMergeStrayFiles is a no-op — returns false, renames nothing — w
   assertDeepEqual(Object.keys(dir.files).slice().sort(), namesBefore, 'nothing in the folder should be touched');
 });
 
-test('a file already renamed .merged.json by a previous scan is left alone on the next scan, not re-processed', async function () {
+test('a file already renamed merged_... by a previous scan is left alone on the next scan, not re-processed', async function () {
   const { wsA } = seedMultiFileFixture();
   const { indexText, wsTexts, wsFileNames } = buildAllSyncPayloads();
-  const alreadyMergedName = wsFileNames[wsA.id].replace('.json', '-JOHNS-MAC.merged.json');
+  const alreadyMergedName = `merged_${wsFileNames[wsA.id].replace('.json', '-JOHNS-MAC.json')}`;
   const dir = makeFakeDir({
     [SYNC_INDEX_FILE]: indexText,
     [wsFileNames[wsA.id]]: wsTexts[wsA.id],
