@@ -4456,11 +4456,24 @@ function cancelRevealDueDate(milestoneId) {
 
 // revealActualDate()'s counterpart for an action item's own Due Date — see
 // revealedActionLogDueIds' own comment for why this one starts from a
-// usually-already-populated field instead of an empty one.
-function revealActionLogDueDate(itemId) {
+// usually-already-populated field instead of an empty one. Unlike
+// revealActualDate()/revealDueDate(), which just focus the newly-revealed
+// input and leave it to the user to either type or click the pill's own
+// calendar icon, this one goes straight to the native picker itself — a
+// user correction: clicking *the resting state's own calendar icon* reads
+// as "let me pick a date," not "let me now go find a second icon to click."
+// armPickerCommit() has to be armed here explicitly, the same way
+// dateInputHtml()'s own icon onclick already does — showPicker() alone
+// doesn't reliably fire blur on a selection (see "Every inline date field
+// renders as a 'pill'" in CLAUDE.md), so without this a date picked via
+// this auto-opened picker could silently fail to commit at all.
+function revealActionLogDueDate(wsId, itemId) {
   revealedActionLogDueIds.add(itemId);
   render();
-  document.getElementById(`action-log-due-input-${itemId}`)?.focus();
+  const inp = document.getElementById(`action-log-due-input-${itemId}`);
+  if (!inp) return;
+  inp.focus();
+  if (inp.showPicker) { inp.showPicker(); armPickerCommit(inp, v => updateActionLogDueDate(wsId, itemId, v)); }
 }
 // Bails out of an in-progress edit without committing whatever's mid-typed,
 // reverting the display back to the pre-edit value — unconditional, unlike
@@ -7438,7 +7451,7 @@ function actionLogRowHtml(w, a, showWs) {
           return `<span style="grid-column:${4 + off}">${dateInputHtml(a.dueDate, `id="action-log-due-input-${a.id}" onblur="updateActionLogDueDate('${w.id}','${a.id}', this.value || null)" onkeydown="if(event.key==='Escape') cancelRevealActionLogDueDate('${a.id}')"`, '', `v => updateActionLogDueDate('${w.id}','${a.id}',v)`)}</span>`;
         }
         return `<span style="grid-column:${4 + off};display:flex;align-items:center;gap:4px">
-          <button class="row-icon-btn" onclick="revealActionLogDueDate('${a.id}')" title="Change due date"><i class="fa-solid fa-calendar"></i></button>
+          <button class="row-icon-btn" onclick="revealActionLogDueDate('${w.id}','${a.id}')" title="Change due date"><i class="fa-solid fa-calendar"></i></button>
           <span class="item-dates-computed">${a.dueDate ? fmtDate(a.dueDate) : '—'}</span>
         </span>`;
       })()}

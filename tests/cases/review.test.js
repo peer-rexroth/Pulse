@@ -1790,13 +1790,13 @@ test('actionLogRowHtml shows Due Date as the plain fmtDate() text plus a calenda
 
   let html = document.getElementById('main').innerHTML;
   assertIncludes(html, fmtDate(todayStr()), 'the resting display is the plain short-format date, same as before this feature');
-  assertIncludes(html, `onclick="revealActionLogDueDate('${id}')"`, 'a calendar icon is the only affordance at rest');
+  assertIncludes(html, `onclick="revealActionLogDueDate('${w.id}','${id}')"`, 'a calendar icon is the only affordance at rest');
   assertNotIncludes(html, 'inline-date-input', 'the native dd.mm.yyyy input must not show until the icon is clicked');
 
   userRole = 'visitor';
   renderReview();
   html = document.getElementById('main').innerHTML;
-  assertNotIncludes(html, `revealActionLogDueDate('${id}')`, 'no edit affordance at all below Reviewer');
+  assertNotIncludes(html, `revealActionLogDueDate('${w.id}','${id}')`, 'no edit affordance at all below Reviewer');
   assertIncludes(html, fmtDate(todayStr()), 'still shows the real due date as plain text below Reviewer');
 });
 
@@ -1813,7 +1813,7 @@ test('revealActionLogDueDate swaps the row into the real editable date pill; upd
   setMode('review');
   setReviewTab('actionLog');
 
-  revealActionLogDueDate(id);
+  revealActionLogDueDate(w.id, id);
   let html = document.getElementById('main').innerHTML;
   assertIncludes(html, `id="action-log-due-input-${id}"`);
   assertIncludes(html, `updateActionLogDueDate('${w.id}','${id}'`, 'the revealed pill commits through the same write path');
@@ -1827,6 +1827,43 @@ test('revealActionLogDueDate swaps the row into the real editable date pill; upd
   assertNotIncludes(html, `id="action-log-due-input-${id}"`, 'no longer revealed after a successful commit');
 });
 
+// A later user correction: clicking the resting-state calendar icon used to
+// only reveal the plain editable pill, requiring a *second* click on that
+// pill's own icon to actually open the picker. It now opens the native
+// picker directly on the first click — the same "substitute a minimal
+// fake, not the real DOM mock" technique armPickerCommit()'s own tests
+// already use, since the JXA harness's fake elements stub addEventListener/
+// removeEventListener as no-ops and have no real showPicker() at all.
+test('revealActionLogDueDate opens the native picker directly and arms the commit listener, when the browser supports it', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  editingMinutesActionItems[0].dueDate = todayStr();
+  saveMinutes();
+  const w = workstreams[0];
+  const id = w.actionLog[0].id;
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('actionLog');
+
+  const inp = document.getElementById(`action-log-due-input-${id}`);
+  let showPickerCalled = false;
+  let armedHandler = null;
+  inp.showPicker = () => { showPickerCalled = true; };
+  inp.addEventListener = (type, fn) => { if (type === 'change') armedHandler = fn; };
+  inp.removeEventListener = () => {};
+
+  revealActionLogDueDate(w.id, id);
+  assertTrue(showPickerCalled, 'clicking the resting-state calendar icon must open the native picker directly, not just reveal a plain input');
+  assertTrue(typeof armedHandler === 'function', 'armPickerCommit must be armed so a picker-driven pick reliably commits, the same way showPicker() alone never reliably fires blur');
+
+  const newDate = isoDaysFromNow(9);
+  inp.value = newDate;
+  armedHandler();
+  assertEqual(w.actionLog[0].dueDate, newDate, 'firing the armed change handler must commit through updateActionLogDueDate with the right workstream/item ids');
+});
+
 test('cancelRevealActionLogDueDate collapses back to display mode without touching the stored value', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
@@ -1837,7 +1874,7 @@ test('cancelRevealActionLogDueDate collapses back to display mode without touchi
   const w = workstreams[0];
   const id = w.actionLog[0].id;
 
-  revealActionLogDueDate(id);
+  revealActionLogDueDate(w.id, id);
   assertTrue(revealedActionLogDueIds.has(id));
   cancelRevealActionLogDueDate(id);
   assertFalse(revealedActionLogDueIds.has(id));
