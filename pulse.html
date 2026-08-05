@@ -7438,8 +7438,8 @@ function actionLogRowHtml(w, a, showWs) {
           return `<span style="grid-column:${4 + off}">${dateInputHtml(a.dueDate, `id="action-log-due-input-${a.id}" onblur="updateActionLogDueDate('${w.id}','${a.id}', this.value || null)" onkeydown="if(event.key==='Escape') cancelRevealActionLogDueDate('${a.id}')"`, '', `v => updateActionLogDueDate('${w.id}','${a.id}',v)`)}</span>`;
         }
         return `<span style="grid-column:${4 + off};display:flex;align-items:center;gap:4px">
-          <span class="item-dates-computed">${a.dueDate ? fmtDate(a.dueDate) : '—'}</span>
           <button class="row-icon-btn" onclick="revealActionLogDueDate('${a.id}')" title="Change due date"><i class="fa-solid fa-calendar"></i></button>
+          <span class="item-dates-computed">${a.dueDate ? fmtDate(a.dueDate) : '—'}</span>
         </span>`;
       })()}
       <span class="action-log-source" style="grid-column:${5 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
