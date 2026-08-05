@@ -9215,7 +9215,33 @@ const SYNC_INDEX_FILE = 'pulse-index.json';
 // time its folder is linked (see linkFolder()) rather than needing a
 // separate, explicit "migrate" step.
 const LEGACY_SYNC_FILE = 'pulse-data.json';
-function wsFileName(id) { return `pulse-ws-${id}.json`; }
+// Lowercase, non-alphanumeric runs collapsed to a single "-", edges
+// trimmed, capped at 40 characters — used only to make a workstream's own
+// sync file readable at a glance in the linked folder (an explicit user
+// request, "the workstream json file now has a cryptic id. can we use the
+// workstream name instead?"). Never used as an actual identifier anywhere
+// else in the app — wsFileName() below still appends a short id-derived
+// suffix specifically so this alone is never relied on for uniqueness.
+function slugify(name) {
+  let s = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  s = s.slice(0, 40).replace(/-+$/g, '');
+  return s || 'workstream';
+}
+// A workstream's own sync filename is `pulse-ws-<slug>-<id-suffix>.json` —
+// readable (the whole point of the request above) but still guaranteed
+// unique and stable, via the trailing 6 characters of its own id (the
+// random suffix genId() itself already ends with, so this never collides
+// between two workstreams even if they share a name or slugify to the same
+// string). Deliberately NOT re-derived from a workstream's *current* name at
+// read time for an id whose file already exists under an older name — see
+// every call site's own comment for how the right name (current, for a
+// write; whatever the index says, for a read) gets passed in. Renaming a
+// workstream is not a rename-on-disk: the next write simply computes a new
+// slug and writes a new file under it, leaving the old one behind exactly
+// as an orphan — the same "never delete data we don't have to" stance a
+// deleted workstream's own now-unreferenced file already takes (see
+// "File System Access API sync" in CLAUDE.md).
+function wsFileName(id, name) { return `pulse-ws-${slugify(name)}-${id.slice(-6)}.json`; }
 // The index file: programme-wide/structural data plus anything that doesn't
 // belong to exactly one workstream — Unassigned scope items and every
 // Journey/Sub Journey (itemType 'journey'/'subjourney', always
@@ -9260,11 +9286,20 @@ function buildWorkstreamPayload(wsId) {
 // already used for the single-file layout) so the I/O layer can diff each
 // against its own last-known-written text and only actually write the ones
 // that changed, with no caller needing to say which workstream it touched.
+// wsTexts/wsFileNames are both keyed by id (the stable key content-diffing
+// already relies on — see wsFileName()'s own comment for why the *filename*
+// itself is never used as that key) — wsFileNames is computed here, from
+// each workstream's own *current* name, specifically because writing is the
+// one context where "current" is unambiguously the right name to use.
 function buildAllSyncPayloads() {
   const indexText = JSON.stringify(buildIndexPayload(), null, 2);
   const wsTexts = {};
-  workstreams.forEach(w => { wsTexts[w.id] = JSON.stringify(buildWorkstreamPayload(w.id), null, 2); });
-  return { indexText, wsTexts };
+  const wsFileNames = {};
+  workstreams.forEach(w => {
+    wsTexts[w.id] = JSON.stringify(buildWorkstreamPayload(w.id), null, 2);
+    wsFileNames[w.id] = wsFileName(w.id, w.name);
+  });
+  return { indexText, wsTexts, wsFileNames };
 }
 // The inverse of the two build functions above: reconstructs the exact flat
 // {programme, workstreams, items, categories, reviewCycles, mode, theme,
@@ -9307,6 +9342,23 @@ function recombineSyncData(indexData, wsDataById) {
     deletedActionLogIds: indexData.deletedActionLogIds || [],
     deletedDecisionLogIds: indexData.deletedDecisionLogIds || []
   };
+}
+// Which *name* to hand wsFileName() when reading a workstream's own file —
+// distinct from buildAllSyncPayloads()' own wsFileNames, which is always
+// about the current name for a *write*. The freshly-read index's own name
+// wins over whatever this device has locally cached for the same id: the
+// file actually on disk was written under whatever name its own last
+// writer used, and the index (having just been read fresh) is the best
+// available signal for what that was — reading under a stale local name
+// after a remote rename would look for a file that no longer exists.
+// Local name is the only source for an id the index doesn't know about yet
+// (a workstream created locally and not yet synced out) — moot in
+// practice, since there's no remote file to find for one of those anyway.
+function wsNameLookup(indexWorkstreams) {
+  const byId = {};
+  workstreams.forEach(w => { byId[w.id] = w.name; });
+  (indexWorkstreams || []).forEach(w => { byId[w.id] = w.name; });
+  return byId;
 }
 
 function applyImport(mode) {
@@ -9493,6 +9545,19 @@ async function writeJsonFile(dirHandle, name, text) {
 // changes, same "never report a false conflict against edits made before
 // this folder was ever connected" reasoning the old single value had.
 let lastSyncedSnapshots = {};
+// Which filename each workstream id's own file was last read from or
+// written to — keyed by id, mirroring lastSyncedSnapshots. Needed
+// separately from it because a workstream's own file *content*
+// (items/reviewCycles/actionLog/decisionLog, via buildWorkstreamPayload())
+// never includes its name — only pulse-index.json does — so renaming a
+// workstream with nothing else about it changed leaves that content
+// identical to what was already written, and content-diffing alone would
+// never notice the filename itself (computed fresh from the *current* name
+// every time, see wsFileName()) needs to change too. The write loop below
+// checks both: same content *and* same filename means truly nothing to do;
+// either differing means a write, even if that means writing identical
+// content to a brand-new file. Reset to {} alongside lastSyncedSnapshots.
+let lastSyncedFileNames = {};
 // The last time this browser successfully reconciled with the linked folder
 // (a link, reconnect, write-time merge, or background poll — see below) —
 // mergeData()'s conflict detection uses this as the merge "base": an item or
@@ -9565,12 +9630,15 @@ async function doFileSyncWrite() {
     if (indexRead) {
       const knownIds = new Set(workstreams.map(w => w.id));
       (indexRead.data.workstreams || []).forEach(w => { if (isSafeId(w.id)) knownIds.add(w.id); });
+      const nameById = wsNameLookup(indexRead.data.workstreams);
       const wsDataById = {};
       let anyChanged = indexRead.text !== lastSyncedSnapshots[SYNC_INDEX_FILE];
       for (const id of knownIds) {
-        const r = await readJsonFile(syncDirHandle, wsFileName(id));
+        const fname = wsFileName(id, nameById[id]);
+        const r = await readJsonFile(syncDirHandle, fname);
         if (r) {
           wsDataById[id] = r.data;
+          lastSyncedFileNames[id] = fname; // this is genuinely the file's current name on disk
           if (r.text !== lastSyncedSnapshots[id]) anyChanged = true;
         }
       }
@@ -9602,11 +9670,20 @@ async function doFileSyncWrite() {
     // Workstream files first, index last — a device polling mid-write must
     // never see the index announce a workstream whose own file doesn't
     // exist on disk yet.
-    const { indexText, wsTexts } = buildAllSyncPayloads();
+    const { indexText, wsTexts, wsFileNames } = buildAllSyncPayloads();
     for (const [id, text] of Object.entries(wsTexts)) {
-      if (text !== lastSyncedSnapshots[id]) {
-        await writeJsonFile(syncDirHandle, wsFileName(id), text);
+      const fname = wsFileNames[id];
+      // Either check alone can trigger a write on its own: a rename with
+      // nothing else touched leaves `text` identical to last time (a
+      // workstream's own name isn't part of its file's content — see
+      // buildWorkstreamPayload()) but still needs a fresh file under the
+      // new name; conversely a genuine content edit under an unchanged name
+      // is the common case this already handled before filenames could
+      // change at all.
+      if (text !== lastSyncedSnapshots[id] || fname !== lastSyncedFileNames[id]) {
+        await writeJsonFile(syncDirHandle, fname, text);
         lastSyncedSnapshots[id] = text;
+        lastSyncedFileNames[id] = fname;
       }
     }
     if (indexText !== lastSyncedSnapshots[SYNC_INDEX_FILE]) {
@@ -9761,12 +9838,17 @@ async function pollFileSync() {
     if (!indexRead) return;
     const knownIds = new Set(workstreams.map(w => w.id));
     (indexRead.data.workstreams || []).forEach(w => { if (isSafeId(w.id)) knownIds.add(w.id); });
+    const nameById = wsNameLookup(indexRead.data.workstreams);
     const freshWsReads = {};
     let anyChanged = indexRead.text !== lastSyncedSnapshots[SYNC_INDEX_FILE];
     for (const id of knownIds) {
-      const r = await readJsonFile(syncDirHandle, wsFileName(id));
+      const fname = wsFileName(id, nameById[id]);
+      const r = await readJsonFile(syncDirHandle, fname);
       freshWsReads[id] = r;
-      if (r && r.text !== lastSyncedSnapshots[id]) anyChanged = true;
+      if (r) {
+        lastSyncedFileNames[id] = fname; // this is genuinely the file's current name on disk
+        if (r.text !== lastSyncedSnapshots[id]) anyChanged = true;
+      }
     }
     if (!anyChanged) return; // nothing external changed anywhere
     const wsDataById = {};
@@ -9797,6 +9879,7 @@ async function pollFileSync() {
 async function _clearFileLink() {
   syncDirHandle = null;
   lastSyncedSnapshots = {};
+  lastSyncedFileNames = {};
   lastSyncedAt = 0;
   stopFileSyncPolling();
   await _fsDel().catch(() => {});
@@ -9814,8 +9897,9 @@ async function readAndRecombineFolder(dir, indexRead) {
   const wsDataById = {};
   for (const w of (indexRead.data.workstreams || [])) {
     if (!isSafeId(w.id)) continue;
-    const r = await readJsonFile(dir, wsFileName(w.id));
-    if (r) { wsDataById[w.id] = r.data; lastSyncedSnapshots[w.id] = r.text; }
+    const fname = wsFileName(w.id, w.name);
+    const r = await readJsonFile(dir, fname);
+    if (r) { wsDataById[w.id] = r.data; lastSyncedSnapshots[w.id] = r.text; lastSyncedFileNames[w.id] = fname; }
   }
   lastSyncedAt = Date.now();
   return recombineSyncData(indexRead.data, wsDataById);

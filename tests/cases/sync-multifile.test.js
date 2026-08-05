@@ -1,15 +1,16 @@
 // ---------- Multi-file sync: partition/recombine ----------
 // A linked *folder* (see "File System Access API sync" in CLAUDE.md) holds
-// one pulse-index.json plus one pulse-ws-<id>.json per real workstream, so
-// that concurrent edits to *different* workstreams never collide on the
-// same file the way a single linked file always did. wsFileName()/
-// buildIndexPayload()/buildWorkstreamPayload()/buildAllSyncPayloads()/
-// recombineSyncData() are the pure functions this whole feature is built
-// on — no DOM, no I/O — so unlike linkFolder()/reconnectFolder()/
-// doFileSyncWrite()/pollFileSync() (which are gated behind
-// window.showDirectoryPicker/indexedDB and can't be exercised in this
-// harness, matching the rest of file sync's own documented testing
-// caveat), these are fully testable directly against live global state.
+// one pulse-index.json plus one readable pulse-ws-<slug>-<id-suffix>.json
+// per real workstream, so that concurrent edits to *different* workstreams
+// never collide on the same file the way a single linked file always did.
+// slugify()/wsFileName()/wsNameLookup()/buildIndexPayload()/
+// buildWorkstreamPayload()/buildAllSyncPayloads()/recombineSyncData() are
+// the pure functions this whole feature is built on — no DOM, no I/O — so
+// unlike linkFolder()/reconnectFolder()/doFileSyncWrite()/pollFileSync()
+// (which are gated behind window.showDirectoryPicker/indexedDB and can't be
+// exercised in this harness, matching the rest of file sync's own
+// documented testing caveat), these are fully testable directly against
+// live global state.
 
 function idsOf(list) { return list.map(x => x.id).sort(); }
 function byId(list) { const m = {}; list.forEach(x => m[x.id] = x); return m; }
@@ -48,8 +49,51 @@ function seedMultiFileFixture() {
   return { wsA, wsB, itemA, itemB, itemUnassigned, journey, subJourney, cycleA, cycleB };
 }
 
-test('wsFileName builds a pulse-ws-<id>.json name', function () {
-  assertEqual(wsFileName('abc123'), 'pulse-ws-abc123.json');
+test('wsFileName builds a readable pulse-ws-<slug>-<id-suffix>.json name, not a bare cryptic id', function () {
+  assertEqual(wsFileName('abcdef123456', 'Marketing Launch'), 'pulse-ws-marketing-launch-123456.json');
+});
+
+test('slugify lowercases, collapses non-alphanumeric runs to a single dash, and trims the edges', function () {
+  assertEqual(slugify('Marketing Launch'), 'marketing-launch');
+  assertEqual(slugify('  Q1 / Q2  Rollout!! '), 'q1-q2-rollout');
+  assertEqual(slugify('--already--dashed--'), 'already-dashed');
+});
+
+test('slugify falls back to "workstream" for a name with nothing slug-safe in it (blank, or symbols/emoji only)', function () {
+  assertEqual(slugify(''), 'workstream');
+  assertEqual(slugify('   '), 'workstream');
+  assertEqual(slugify('★彡🚀'), 'workstream');
+  assertEqual(slugify(null), 'workstream');
+});
+
+test('slugify caps at 40 characters and never leaves a trailing dash from the cut', function () {
+  const long = 'A'.repeat(50) + ' Extra Words That Get Cut Off Here';
+  const s = slugify(long);
+  assertTrue(s.length <= 40, `expected <= 40 chars, got ${s.length}`);
+  assertFalse(s.endsWith('-'), 'must not end on a dash left over from truncation');
+});
+
+test('wsFileName stays unique for two workstreams that slugify to the exact same string, via the id suffix', function () {
+  const nameA = wsFileName('id0000001111aa', 'Migration!!!');
+  const nameB = wsFileName('id0000002222bb', 'Migration???'); // same slug, "migration", different id
+  assertTrue(nameA !== nameB, `expected distinct filenames, got ${nameA} and ${nameB}`);
+});
+
+test('buildAllSyncPayloads() computes each workstream\'s current filename via wsFileNames, keyed by id like wsTexts', function () {
+  const { wsA, wsB } = seedMultiFileFixture();
+  const { wsFileNames } = buildAllSyncPayloads();
+  assertEqual(wsFileNames[wsA.id], wsFileName(wsA.id, wsA.name));
+  assertEqual(wsFileNames[wsB.id], wsFileName(wsB.id, wsB.name));
+  assertTrue(wsFileNames[wsA.id].includes(slugify(wsA.name)), 'the workstream\'s own current name must be reflected in its filename');
+});
+
+test('buildAllSyncPayloads() recomputes the filename fresh from the current name — renaming a workstream changes which file it writes to next, without needing any special rename-handling code', function () {
+  const { wsA } = seedMultiFileFixture();
+  const before = buildAllSyncPayloads().wsFileNames[wsA.id];
+  wsA.name = 'Renamed Workstream';
+  const after = buildAllSyncPayloads().wsFileNames[wsA.id];
+  assertTrue(before !== after, 'the computed filename must reflect the rename on the very next call, with no caching');
+  assertTrue(after.includes('renamed-workstream'), `expected the new slug in ${after}`);
 });
 
 test('buildIndexPayload() strips actionLog/decisionLog off each workstream, keeping only real metadata', function () {
@@ -175,4 +219,18 @@ test('buildIndexPayload()/buildWorkstreamPayload() are pure functions of live st
 
   assertFalse(buildWorkstreamPayload(wsA.id).items.some(it => it.id === itemA.id), 'must no longer show up in its old workstream\'s payload');
   assertTrue(buildWorkstreamPayload(wsB.id).items.some(it => it.id === itemA.id), 'must now show up in its new workstream\'s payload');
+});
+
+test('wsNameLookup() prefers the freshly-read index\'s own name over a locally-cached one for the same id', function () {
+  const { wsA } = seedMultiFileFixture();
+  const staleLocalName = wsA.name;
+  const map = wsNameLookup([{ id: wsA.id, name: 'Renamed Elsewhere' }]);
+  assertEqual(map[wsA.id], 'Renamed Elsewhere', 'the index is the best signal for what the file on disk was actually named under');
+  assertTrue(map[wsA.id] !== staleLocalName);
+});
+
+test('wsNameLookup() falls back to the local name for an id the index doesn\'t know about yet', function () {
+  const { wsA } = seedMultiFileFixture();
+  const map = wsNameLookup([]); // e.g. a workstream created locally, not yet synced out
+  assertEqual(map[wsA.id], wsA.name);
 });
