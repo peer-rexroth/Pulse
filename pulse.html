@@ -9196,7 +9196,21 @@ function replaceFromFileData(data) {
 function mergeMilestonesArray(existingList, incomingList, respectTombstones) {
   let changed = false;
   const conflictedNames = [];
-  const merged = existingList.map(m => ({ ...m }));
+  let merged = existingList.map(m => ({ ...m }));
+  // The same purely-additive gap mergeKeyedRecords() had (see its own
+  // comment) — a milestone already sitting in existingList that's simply
+  // absent from incomingList (removed via the modal, deleted by a category
+  // switch, etc., elsewhere) was never even considered for removal, since
+  // the loop below only ever acts on what's incoming. Swept here, before
+  // that loop runs, so a genuinely newer incoming edit can still resurrect
+  // it via that loop's own "not found locally" branch exactly as before.
+  if (respectTombstones) {
+    merged = merged.filter(m => {
+      const tomb = deletedMilestoneIds.find(x => x.id === m.id);
+      if (tomb && tomb.deletedAt >= (m.updatedAt || 0)) { changed = true; return false; }
+      return true;
+    });
+  }
   incomingList.forEach(im => {
     const idx = merged.findIndex(m => m.id === im.id);
     if (idx !== -1) {
@@ -9255,6 +9269,12 @@ function mergeMilestonesArray(existingList, incomingList, respectTombstones) {
 // Gated on `respectTombstones` for the same reason the loop below already
 // is (applyImport('merge')'s one deliberate opt-out — see mergeData()'s own
 // comment) — with it false, nothing here should be dropped either.
+//
+// The identical fix was extended to mergeMilestonesArray() (an item's own
+// milestones) and mergeData()'s own items pass right after this was
+// diagnosed — same purely-additive gap, same fix shape, once it turned out
+// to affect scope items (and Journeys/Sub Journeys, which are just items
+// with workstreamId:null) too, not only Action Log/Decision Log.
 function mergeKeyedRecords(existingList, incomingList, keyField, tombstones, respectTombstones) {
   let changed = false;
   let merged = existingList.map(r => ({ ...r }));
@@ -9510,6 +9530,25 @@ function mergeData(data, opts) {
   });
   if (cyclesChanged) reconcileDuplicateActiveCycles();
   let added = 0, updated = 0;
+  // The same purely-additive gap mergeKeyedRecords()/mergeMilestonesArray()
+  // had (see their own comments) — an item already known locally that's
+  // simply absent from data.items (deleted+tombstoned elsewhere — including
+  // a Journey/Sub Journey, which is just an item with workstreamId:null,
+  // not a structurally distinct concept the merge logic knows about) was
+  // never swept, only ever protected against being re-added by a stale
+  // incoming copy. Runs globally, not just against whatever this call's
+  // own data.items happens to cover — safe regardless of how partial that
+  // set is (e.g. scanAndMergeStrayFiles()'s own single-workstream-scoped
+  // wrapped merge), since it only ever removes an item whose own tombstone
+  // is already present and at least as new as its own last edit.
+  let itemsSwept = false;
+  if (respectTombstones) {
+    items = items.filter(it => {
+      const tomb = deletedItemIds.find(x => x.id === it.id);
+      if (tomb && tomb.deletedAt >= (it.updatedAt || 0)) { itemsSwept = true; return false; }
+      return true;
+    });
+  }
   (data.items || []).forEach(ii => {
     const existing = items.find(i => i.id === ii.id);
     if (existing) {
@@ -9544,12 +9583,11 @@ function mergeData(data, opts) {
   });
   // `changed` is the umbrella signal doFileSyncWrite()/pollFileSync() gate
   // their own save()/render() on — added/updated alone only ever counted
-  // items (see this function's own comment above), so a merge that only
-  // touched review-cycle confirmations, a workstream's actionLog/
-  // decisionLog, or (now) programme itself would otherwise never reach
-  // localStorage or the screen until some unrelated later save happened to
-  // trigger one.
-  const changed = added > 0 || updated > 0 || wsOrCategoriesChanged || cyclesChanged || programmeChanged;
+  // items added/edited (see this function's own comment above), never one
+  // swept away by the sweep just above, so itemsSwept has to be folded in
+  // here explicitly too, the same reason wsOrCategoriesChanged/
+  // cyclesChanged/programmeChanged already are.
+  const changed = added > 0 || updated > 0 || wsOrCategoriesChanged || cyclesChanged || programmeChanged || itemsSwept;
   return { added, updated, conflicts, changed };
 }
 

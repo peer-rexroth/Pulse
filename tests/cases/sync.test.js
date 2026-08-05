@@ -131,6 +131,57 @@ test('mergeData with respectTombstones:false lets a tombstoned item back in rega
   assertEqual(items.length, 1);
 });
 
+// ---------- Scope items (and Journeys, which are just items with
+// workstreamId:null) now get the same proactive sweep action items got —
+// a user-reported parallel to the same bug. Every test above this point
+// only ever covered the "incoming copy resurrects a deletion" direction;
+// none of them cover a device that already had its own local copy of an
+// item *before* the deletion ever reached it — that copy was never dropped,
+// since the merge loop only ever acted on what was actually incoming.
+
+test('mergeData proactively sweeps a locally-existing item once its tombstone merges in, even though data.items simply omits it', function () {
+  const local = { id: 'stale-item', workstreamId: workstreams[0].id, name: 'Deleted elsewhere', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 1000 };
+  items.push(local);
+  const { changed } = mergeData({ workstreams: [], items: [], deletedItemIds: [{ id: 'stale-item', deletedAt: 2000 }] });
+  assertTrue(changed);
+  assertEqual(items.length, 0, 'a locally-existing item whose tombstone just merged in must be swept, not just protected against being re-added');
+});
+
+test('mergeData does not sweep a locally-existing item whose own edit is newer than the incoming tombstone', function () {
+  const local = { id: 'edited-after-item', workstreamId: workstreams[0].id, name: 'Edited after the delete', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 3000 };
+  items.push(local);
+  mergeData({ workstreams: [], items: [], deletedItemIds: [{ id: 'edited-after-item', deletedAt: 2000 }] });
+  assertEqual(items.length, 1, 'a locally-newer edit must survive an older/stale tombstone');
+});
+
+test('mergeData with respectTombstones:false never sweeps a locally-existing item', function () {
+  const local = { id: 'kept-item', workstreamId: workstreams[0].id, name: 'Kept regardless', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 1000 };
+  items.push(local);
+  mergeData({ workstreams: [], items: [], deletedItemIds: [{ id: 'kept-item', deletedAt: 9999999999999 }] }, { respectTombstones: false });
+  assertEqual(items.length, 1);
+});
+
+test('mergeData sweeps a locally-existing Journey (itemType:journey, workstreamId:null) the exact same way as an ordinary scope item — no special-casing needed', function () {
+  const journey = { id: 'stale-journey', workstreamId: null, categoryId: null, itemType: 'journey', journeyId: null, name: 'Deleted elsewhere', owner: '', status: 'not-started', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 1000 };
+  items.push(journey);
+  mergeData({ workstreams: [], items: [], deletedItemIds: [{ id: 'stale-journey', deletedAt: 2000 }] });
+  assertEqual(items.length, 0, 'a Journey is just an item under the hood — the sweep works on all of `items` and never needs to know or care about itemType');
+});
+
+test('the actual fix for the reported bug: a device that already had its own local copy of a scope item drops it once the deleting device\'s tombstone merges in', function () {
+  const local = { id: 'race-item', workstreamId: workstreams[0].id, name: 'Already deleted on device A', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 1000 };
+  items.push(local);
+  // Device A's own recombined data (index + its own workstream file) simply
+  // no longer lists the item at all — its own tombstone, now merged in
+  // here, is what actually drives the removal.
+  mergeData({
+    workstreams: [{ id: workstreams[0].id, name: workstreams[0].name, color: workstreams[0].color, order: 0, updatedAt: 0, actionLog: [], decisionLog: [] }],
+    items: [],
+    deletedItemIds: [{ id: 'race-item', deletedAt: 2000 }]
+  });
+  assertFalse(items.some(it => it.id === 'race-item'), 'this device\'s own copy must be dropped, so its own next write can no longer resurrect it');
+});
+
 // ---------- Per-milestone merge ----------
 // A milestone-bearing item's milestones merge by id independently of the
 // item's own scalar fields (name/owner/status/dates) — see mergeData()'s and
@@ -185,6 +236,39 @@ test('mergeData keeps a tombstoned milestone deleted when the incoming copy is s
   mergeData({ workstreams: [], items: [incoming] });
   assertTrue(items[0].milestones.some(m => m.id === 'ms-b'), 'an incoming edit newer than the deletion should let the milestone back in');
   assertFalse(deletedMilestoneIds.some(x => x.id === 'ms-b'), 'the stale tombstone should be cleared');
+});
+
+// The test above starts from a local copy that already lacks ms-b *before*
+// it's ever tombstoned — it only ever exercises "does a stale/fresh
+// incoming copy get let back in", the pre-existing protection. These cover
+// the other direction: this device's own local item still genuinely has
+// the milestone, and only learns it was deleted elsewhere via the
+// tombstone merging in — the incoming item's own milestones list simply
+// never mentions it at all, the ordinary shape of "the other side already
+// deleted it."
+
+test('mergeData proactively sweeps a locally-existing milestone once its tombstone merges in, even though the incoming item\'s own milestones list simply omits it', function () {
+  const local = addMergeTestItem(); // still has both ms-a and ms-b locally
+  const incoming = { ...local, updatedAt: 1000, milestones: [{ ...local.milestones[0] }] }; // no ms-b at all
+  const { updated } = mergeData({ workstreams: [], items: [incoming], deletedMilestoneIds: [{ id: 'ms-b', deletedAt: 2000 }] });
+  assertTrue(updated >= 1);
+  assertFalse(items[0].milestones.some(m => m.id === 'ms-b'), 'a locally-existing milestone whose tombstone just merged in must be swept, not just protected against being re-added');
+  assertEqual(items[0].milestones.length, 1);
+});
+
+test('mergeData does not sweep a locally-existing milestone whose own edit is newer than the incoming tombstone', function () {
+  const local = addMergeTestItem();
+  local.milestones[1].updatedAt = Date.now() + 100000; // ms-b edited locally after the tombstone below
+  const incoming = { ...local, updatedAt: 1000, milestones: [{ ...local.milestones[0] }] };
+  mergeData({ workstreams: [], items: [incoming], deletedMilestoneIds: [{ id: 'ms-b', deletedAt: Date.now() }] });
+  assertTrue(items[0].milestones.some(m => m.id === 'ms-b'), 'a locally-newer edit must survive an older/stale tombstone');
+});
+
+test('mergeData with respectTombstones:false never sweeps a locally-existing milestone', function () {
+  const local = addMergeTestItem();
+  const incoming = { ...local, updatedAt: 1000, milestones: [{ ...local.milestones[0] }] };
+  mergeData({ workstreams: [], items: [incoming], deletedMilestoneIds: [{ id: 'ms-b', deletedAt: 9999999999999 }] }, { respectTombstones: false });
+  assertTrue(items[0].milestones.some(m => m.id === 'ms-b'));
 });
 
 test('mergeData reports a conflict when the same milestone was edited on both sides since the last sync', function () {
