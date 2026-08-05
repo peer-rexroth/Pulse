@@ -599,14 +599,37 @@ test('normalizeData does not refill a pending milestone\'s null due date from th
   assertEqual(items[0].milestones[0].dueDate, null, 'a fresh pending milestone deliberately has no date planned yet — normalizeData() must not silently fill one in');
 });
 
-test('toggleMilestoneNotApplicable is blocked below Editor', function () {
+test('toggleMilestoneNotApplicable is blocked below Editor outside Review mode', function () {
   openItemModal(null);
   fillItemForm({});
   saveItem();
   const it = items[0];
   userRole = 'reviewer';
+  mode = 'planning';
   toggleMilestoneNotApplicable(it.id, it.milestones[0].id);
-  assertEqual(items[0].milestones[0].notApplicable, false, 'toggling must have been blocked below Editor');
+  assertEqual(items[0].milestones[0].notApplicable, false, 'toggling must have been blocked below Editor in Planning');
+});
+
+test('toggleMilestoneNotApplicable is allowed for a Reviewer while mode is review — an explicit user request', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  userRole = 'reviewer';
+  mode = 'review';
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id);
+  assertEqual(items[0].milestones[0].notApplicable, true, 'toggling must be allowed for a Reviewer while mode is review');
+});
+
+test('toggleMilestoneNotApplicable is blocked for a Visitor even while mode is review', function () {
+  openItemModal(null);
+  fillItemForm({});
+  saveItem();
+  const it = items[0];
+  userRole = 'visitor';
+  mode = 'review';
+  toggleMilestoneNotApplicable(it.id, it.milestones[0].id);
+  assertEqual(items[0].milestones[0].notApplicable, false, 'a Visitor stays blocked regardless of mode');
 });
 
 test('toggleMilestoneNotApplicable logs a plain-text review change entry', function () {

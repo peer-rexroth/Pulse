@@ -1364,6 +1364,20 @@ test('the Not Applicable toggle renders as an inert (non-clickable) icon below E
   assertIncludes(html, 'fa-solid fa-toggle-off', 'a Not Applicable milestone\'s toggle-off state should still be visibly shown, just inert');
 });
 
+test('the Not Applicable toggle becomes clickable for a Reviewer while inside Review mode — an explicit user request', function () {
+  const it = addItem({
+    workstreamId: workstreams[0].id,
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Not skipped yet', dueDate: todayStr(), status: 'not-started', actualDate: null, notApplicable: false }]
+  });
+  const cycle = { id: 'c1', workstreamId: workstreams[0].id, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [] };
+  toggleItemExpanded(it.id);
+  userRole = 'reviewer';
+  mode = 'review';
+  const html = itemRowHtml(it, cycle);
+  assertIncludes(html, `onclick="toggleMilestoneNotApplicable('${it.id}','m1')"`, 'a Reviewer must be able to click the toggle while actually reviewing');
+});
+
 test('the "X/Y milestones" badge excludes notApplicable milestones from both sides of the fraction', function () {
   addItem({
     name: 'Mixed',

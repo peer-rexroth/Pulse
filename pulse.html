@@ -4227,8 +4227,8 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // viewOnly mode the toggle is dropped entirely, not just made inert —
     // an explicit user request ("MS Req. is not necessary to show") — since
     // there's nothing here a viewOnly list is ever meant to let anyone
-    // change, unlike the below-Editor case, which still shows the real
-    // on/off state for anyone who might later be able to act on it.
+    // change, unlike the below-the-required-role case, which still shows
+    // the real on/off state for anyone who might later be able to act on it.
     // A still-Pending item's one "Scope Item Confirmed" milestone can never
     // be marked Not Applicable — an explicit user request. Marking it N/A
     // would clear its Due/Actual dates and freeze its status badge (see
@@ -4237,7 +4237,13 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // trigger maybeOfferScopeAssign() at all. Same guard, same reasoning as
     // the Remove-milestone button already being blocked for a Pending item
     // (see renderMilestonesEditor()'s own isPendingItem).
-    const naEditable = editable && !isPendingCategory(it.categoryId);
+    // Uses fieldsEditable, not the plain editable — a later, explicit user
+    // request ("reviewer should also be able to toggle n/a for milestones in
+    // review mode only") extends the same Reviewer-inside-Review-mode
+    // elevation canEditReviewFields() already grants Due/Actual/status/tags
+    // to this toggle too. Outside Review, this still collapses back to
+    // Editor+ only, same as before.
+    const naEditable = fieldsEditable && !isPendingCategory(it.categoryId);
     // The inert (span) case's *off* state is faded the same way the Remove
     // button's own disabled trash icon is (opacity:.35, see below) — a
     // user-reported inconsistency, screenshot-confirmed: the N/A icon read
@@ -4438,7 +4444,7 @@ function cycleMilestoneStatus(itemId, milestoneId) {
 // Recomputes the item's own rolled-up status/date range immediately, same
 // as cycleMilestoneStatus() does, since both are inputs to that roll-up.
 function toggleMilestoneNotApplicable(itemId, milestoneId) {
-  if (!requireRole('editor')) return;
+  if (!requireReviewFieldRole()) return;
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   // Defense-in-depth alongside milestoneRowsHtml()'s own inert (non-
