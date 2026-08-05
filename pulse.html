@@ -8020,10 +8020,19 @@ function computeDashboardData() {
   // coercion quirk, the same explicit style dueOverdue's own
   // milestone-level check already uses. (isOverdue() above carries the
   // equivalent guard itself for Overdue.)
-  const overdue = scopedItems.filter(it => it.status !== 'complete' && isOverdue(it.dueDate, it.actualDate)).map(x => toEntry(x, false))
+  // Item-level entries are restricted to zero-milestone items — an explicit
+  // user request/fix. An item with milestones has its own dueDate/status
+  // *computed* from those milestones (see "Item plan date range roll-up" in
+  // CLAUDE.md), so it was showing up as its own Overdue/Upcoming row
+  // *alongside* the very milestone row(s) driving that same date — the same
+  // problem twice, once labeled with just the item's name and once labeled
+  // "<item> — <milestone>". A zero-milestone item has no milestone row to
+  // stand in for it, so it still needs its own entry — only a milestone-
+  // bearing item's redundant item-level row is dropped.
+  const overdue = scopedItems.filter(it => !it.milestones.length && it.status !== 'complete' && isOverdue(it.dueDate, it.actualDate)).map(x => toEntry(x, false))
     .concat(milestones.filter(m => m.status !== 'complete' && isOverdue(m.dueDate, m.actualDate)).map(x => toEntry(x, true)))
     .sort((a, b) => a.date.localeCompare(b.date));
-  const upcoming = scopedItems.filter(it => it.status !== 'complete' && !hasHappened(it.actualDate) && it.dueDate && it.dueDate >= today && it.dueDate <= soon).map(x => toEntry(x, false))
+  const upcoming = scopedItems.filter(it => !it.milestones.length && it.status !== 'complete' && !hasHappened(it.actualDate) && it.dueDate && it.dueDate >= today && it.dueDate <= soon).map(x => toEntry(x, false))
     .concat(milestones.filter(m => m.status !== 'complete' && !hasHappened(m.actualDate) && m.dueDate && m.dueDate >= today && m.dueDate <= soon).map(x => toEntry(x, true)))
     .sort((a, b) => a.date.localeCompare(b.date));
 

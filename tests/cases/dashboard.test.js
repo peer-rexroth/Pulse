@@ -80,6 +80,39 @@ test('a completed item past its due date does not appear as overdue', function (
   assertNotIncludes(document.getElementById('main').innerHTML, 'Done already');
 });
 
+// An item with milestones has its own dueDate/status *computed* from those
+// milestones (see "Item plan date range roll-up" in CLAUDE.md) — so before
+// this fix, an overdue milestone-bearing item produced two rows on the same
+// feed: one labeled with just the item's own name (the item-level check)
+// and one labeled "<item> — <milestone>" (the milestone-level check) for
+// the very same underlying lateness. A user-reported duplicate; the fix
+// restricts the item-level row to zero-milestone items only.
+test('an overdue item WITH milestones does not get a redundant item-level Overdue row — only its own overdue milestone(s) show', function () {
+  addDashItem({
+    name: 'Milestone Task', status: 'red', dueDate: isoDaysFromNow(-3),
+    milestones: [{ id: genId(), name: 'Late Milestone', dueDate: isoDaysFromNow(-3), status: 'red', actualDate: null, notApplicable: false }]
+  });
+  const { overdue } = computeDashboardData();
+  assertFalse(overdue.some(e => e.label === 'Milestone Task'), 'the item-level row is redundant with the milestone row below and must not also appear');
+  assertTrue(overdue.some(e => e.label === 'Milestone Task — Late Milestone'), 'the actual overdue milestone must still appear');
+});
+
+test('a zero-milestone overdue item still gets its own item-level Overdue row — there is no milestone to stand in for it', function () {
+  addDashItem({ name: 'Plain Task', status: 'red', dueDate: isoDaysFromNow(-3) });
+  const { overdue } = computeDashboardData();
+  assertTrue(overdue.some(e => e.label === 'Plain Task'));
+});
+
+test('the same item-level/milestone-level dedup applies to the Upcoming feed', function () {
+  addDashItem({
+    name: 'Upcoming Milestone Task', status: 'amber', dueDate: isoDaysFromNow(5),
+    milestones: [{ id: genId(), name: 'Soon Milestone', dueDate: isoDaysFromNow(5), status: 'amber', actualDate: null, notApplicable: false }]
+  });
+  const { upcoming } = computeDashboardData();
+  assertFalse(upcoming.some(e => e.label === 'Upcoming Milestone Task'));
+  assertTrue(upcoming.some(e => e.label === 'Upcoming Milestone Task — Soon Milestone'));
+});
+
 // A user-reported bug: a scope item whose milestones are all still Pending
 // (nothing planned yet) had its own dueDate silently defaulted to today's
 // date at creation time (see saveItem()/saveInlineQuickAddItem()'s own
