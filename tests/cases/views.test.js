@@ -731,7 +731,7 @@ test('a Due ghost is not clickable (renders as nothing) below Editor', function 
   assertNotIncludes(html, `revealDueDate('${it.milestones[0].id}')`);
 });
 
-test('Due is locked to a plain read-only "—" (not a crash) during a review when the milestone has no due date yet', function () {
+test('Due is locked to a plain read-only "—" (not a crash) during a review, for a role below Reviewer, when the milestone has no due date yet', function () {
   const it = addItem({
     workstreamId: workstreams[0].id,
     name: 'Parent',
@@ -739,8 +739,24 @@ test('Due is locked to a plain read-only "—" (not a crash) during a review whe
   });
   const cycle = { id: 'c1', workstreamId: workstreams[0].id, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [] };
   toggleItemExpanded(it.id);
+  userRole = 'planner';
   const html = itemRowHtml(it, cycle);
   assertIncludes(html, '>—<');
+});
+
+test('Due becomes a real, editable ghost during a review for a Reviewer (and above) — an explicit user request', function () {
+  const it = addItem({
+    workstreamId: workstreams[0].id,
+    name: 'Parent',
+    milestones: [{ id: 'm1', name: 'Undated milestone', dueDate: null, status: 'pending', actualDate: null }]
+  });
+  const cycle = { id: 'c1', workstreamId: workstreams[0].id, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [] };
+  toggleItemExpanded(it.id);
+  mode = 'review';
+  userRole = 'reviewer';
+  const html = itemRowHtml(it, cycle);
+  assertNotIncludes(html, '>—<');
+  assertIncludes(html, `revealDueDate('${it.milestones[0].id}')`, 'an undated milestone still gets the same ghost-reveal affordance a Reviewer sees in Planning');
 });
 
 test('a milestone shows an inline actual-date input once its item is expanded', function () {

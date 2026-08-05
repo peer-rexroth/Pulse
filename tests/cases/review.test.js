@@ -1411,18 +1411,66 @@ test('renderReview hides the Edit/Delete actions on the item row', function () {
   assertNotIncludes(html, `onclick="openItemModal('${it.id}')" title="Edit"`, 'Edit must not be reachable from the row during a review');
 });
 
-test('renderReview locks each milestone\'s own Due date too, leaving only Actual editable', function () {
+test('renderReview lets a Reviewer (and above) edit each milestone\'s own Due date, same as Actual — an explicit user request', function () {
   const it = addReviewItemWithMilestones(['A']);
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
   startReviewCycle(workstreams[0].id);
   toggleItemExpanded(it.id);
   revealedActualIds.add(it.milestones[0].id); // reveal the empty Actual field's ghost placeholder
+  userRole = 'reviewer';
   renderReview();
   const html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'milestone-sub-actual-inline', 'Actual should still be a real, editable input');
-  assertNotIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','dueDate'`, 'Due must not be editable inline during a review');
+  assertIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','dueDate'`, 'Due must be editable inline during a review for a Reviewer');
   assertIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','actualDate'`, 'Actual must still be editable inline during a review');
+});
+
+test('renderReview still locks Due/Actual/status/tags read-only for a Planner (below Reviewer) during a review', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  toggleItemExpanded(it.id);
+  userRole = 'planner';
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','dueDate'`, 'Due must stay locked below Reviewer');
+  assertNotIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','actualDate'`, 'Actual must stay locked below Reviewer');
+  assertNotIncludes(html, `onclick="cycleMilestoneStatus('${it.id}'`, 'milestone status must not be cycleable below Reviewer');
+  assertNotIncludes(html, `onclick="cycleItemAttr('${it.id}'`, 'IT/Business/Budget tags must not be cycleable below Reviewer');
+});
+
+test('a Reviewer\'s elevated editing of Due/Actual/status/tags is scoped to Review mode only — it does not carry over to Planning', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  toggleItemExpanded(it.id);
+  userRole = 'reviewer';
+  renderMain();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','dueDate'`, 'a Reviewer must not gain Due-editing in Planning');
+  assertNotIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','actualDate'`, 'a Reviewer must not gain Actual-editing in Planning');
+  assertNotIncludes(html, `onclick="cycleMilestoneStatus('${it.id}'`, 'a Reviewer must not gain status-cycling in Planning');
+  assertNotIncludes(html, `onclick="cycleItemAttr('${it.id}'`, 'a Reviewer must not gain tag-cycling in Planning');
+});
+
+test('a Reviewer can also cycle a milestone status and an item\'s own tags directly, but only while mode is review', function () {
+  const it = addReviewItemWithMilestones(['A']);
+  setFilterWorkstream(workstreams[0].id);
+  startReviewCycle(workstreams[0].id);
+  userRole = 'reviewer';
+
+  // Blocked from Planning, even with an active cycle sitting there unrelated.
+  mode = 'planning';
+  const beforeStatus = it.milestones[0].status;
+  cycleMilestoneStatus(it.id, it.milestones[0].id);
+  cycleItemAttr(it.id, 'itStatus');
+  assertEqual(it.milestones[0].status, beforeStatus, 'cycleMilestoneStatus must be blocked for a Reviewer outside Review mode');
+
+  // Allowed once actually in Review mode.
+  mode = 'review';
+  cycleMilestoneStatus(it.id, it.milestones[0].id);
+  cycleItemAttr(it.id, 'itStatus');
+  assertTrue(it.milestones[0].status !== beforeStatus, 'cycleMilestoneStatus must be allowed for a Reviewer inside Review mode');
 });
 
 test('the same item still shows its Edit/Delete actions and editable milestone Due dates back in Planning', function () {

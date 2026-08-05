@@ -2108,7 +2108,7 @@ const ROLES = ['visitor', 'planner', 'reviewer', 'editor', 'admin'];
 const ROLE_META = {
   visitor: { label: 'Visitor', icon: 'fa-eye', desc: 'View Planning, Review, and Dashboard — no edits.' },
   planner: { label: 'Planner', icon: 'fa-route', desc: 'Everything a Visitor can see, plus create/edit Journeys and Sub Journeys, and link/delink scope items to them.' },
-  reviewer: { label: 'Reviewer', icon: 'fa-clipboard-check', desc: 'Everything a Visitor can see, plus run review cycles, attach meeting minutes, and manage the Action Log.' },
+  reviewer: { label: 'Reviewer', icon: 'fa-clipboard-check', desc: 'Everything a Visitor can see, plus run review cycles, attach meeting minutes, manage the Action Log, and — while actually inside Review mode — correct a milestone\'s Due/Actual dates, its status, and an item\'s IT/Business/Budget tags.' },
   editor: { label: 'Editor', icon: 'fa-pen', desc: 'Everything a Reviewer can do, plus create/edit/delete workstreams, scope items, milestones, and categories (including Journeys/Sub Journeys, same as a Planner).' },
   admin: { label: 'Admin', icon: 'fa-user-shield', desc: 'Everything an Editor can do, plus import/restore data.' }
 };
@@ -2144,6 +2144,28 @@ function requireJourneyAccess() {
 function requireRole(minRole) {
   if (hasRole(minRole)) return true;
   showToast(`${ROLE_META[minRole].label} role or higher required for this action`, true);
+  return false;
+}
+// A milestone's Due/Actual dates and status, and an item's own IT/Business/
+// Budget tags, are Editor+ everywhere by default — but a Reviewer can also
+// make these same edits, scoped specifically to Review mode itself, an
+// explicit user request ("a reviewer should be able to change milestone
+// dates... status and IT/Business/Budget. But only in review view/process,
+// not in normal planning view"). Checking `mode === 'review'` directly
+// (rather than, say, trusting that a reviewCycle argument was passed to the
+// row that rendered the control) is what keeps this elevation from leaking
+// into Planning — itemRowHtml()/milestoneRowsHtml() only ever receive a
+// reviewCycle from renderReview(), which only ever runs while mode is
+// already 'review', so the two agree in practice, but gating the actual
+// mutation on mode itself is the real, defense-in-depth boundary, the same
+// "never trust the render-time check alone" stance requireRole() and
+// requireJourneyAccess() already take. Every other edit these two rows still
+// gate (Edit/Delete/drag, the Not Applicable toggle, an item's own manual
+// Plan dates) is untouched — still plain Editor+, in or out of a review.
+function canEditReviewFields() { return hasRole('editor') || (mode === 'review' && hasRole('reviewer')); }
+function requireReviewFieldRole() {
+  if (canEditReviewFields()) return true;
+  showToast(hasRole('reviewer') ? 'This can only be edited from Review mode' : 'Editor role or higher required for this action', true);
   return false;
 }
 
@@ -3688,6 +3710,14 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // not otherwise holding Editor-tier access — see canManageJourneys()'s
   // own comment near ROLES above.
   const editable = !viewOnly && ((isJourney || isSubJourney) ? canManageJourneys() : hasRole('editor'));
+  // Editor+ everywhere, same as `editable` above, except for one specific
+  // set of fields (IT/Business/Budget tags here; Due/Actual dates and
+  // milestone status in milestoneRowsHtml() below) — those are additionally
+  // editable by a Reviewer, but only while actually inside Review mode. See
+  // canEditReviewFields()'s own comment near ROLES above. Never applies to a
+  // Journey/Sub Journey (their tags are always computed, never hand-set —
+  // see "IT/Business/Budget tags" in CLAUDE.md) or a viewOnly row.
+  const reviewFieldsEditable = !viewOnly && !isJourney && !isSubJourney && canEditReviewFields();
   const subJourneys = isJourney ? connectedSubJourneys(it.id) : [];
   const connected = isSubJourney ? connectedScopeItems(it.id) : [];
   const expandable = total || isJourney || isSubJourney;
@@ -3799,7 +3829,7 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
         const title = isJourney ? `${TAG_FIELD_LABELS[f]} (rolled up from connected Sub Journeys)`
           : isSubJourney ? `${TAG_FIELD_LABELS[f]} (rolled up from connected scope items)`
           : TAG_FIELD_LABELS[f];
-        return (editable && !isJourney && !isSubJourney)
+        return reviewFieldsEditable
           ? `<button class="tag-badge" style="background:var(--stat-${val}-bg);color:var(--stat-${val})" onclick="cycleItemAttr('${it.id}','${f}')" title="${title}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></button>`
           : `<span class="tag-badge" style="background:var(--stat-${val}-bg);color:var(--stat-${val});cursor:default" title="${title}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></span>`;
       }).join('')}
@@ -4030,6 +4060,13 @@ function milestoneHeaderHtml(reviewCycle, viewOnly) {
 // each row; they don't dictate the row order.
 function milestoneRowsHtml(it, reviewCycle, viewOnly) {
   const editable = !viewOnly && hasRole('editor');
+  // Due/Actual dates and the status badge are additionally editable by a
+  // Reviewer while actually inside Review mode (mode === 'review' — the only
+  // context this function is ever called with a reviewCycle in the first
+  // place). Everything else here (the Not Applicable toggle) stays Editor+
+  // only via `editable` above, unaffected — see canEditReviewFields()'s own
+  // comment near ROLES above.
+  const fieldsEditable = !viewOnly && canEditReviewFields();
   return it.milestones.map(m => {
     // Same implicit 12th column as itemRowHtml()'s review cell — only exists
     // when reviewCycle is passed, and is the ONLY way a milestone can be
@@ -4076,11 +4113,17 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
           </span>`;
       }
     }
-    // Due is part of the plan — locked read-only during a review, same as
-    // the item's own Plan dates above. Actual stays editable regardless:
+    // Due is part of the plan — locked read-only during a review for anyone
+    // below Reviewer, same as the item's own Plan dates above (those stay
+    // locked for every role, with no Reviewer exception — only a milestone's
+    // own Due/Actual, status, and an item's own tags gained one, see
+    // canEditReviewFields()'s own comment near ROLES above). A Reviewer (or
+    // Editor+) can edit it like any other date pill while actually inside
+    // Review mode; outside Review, this collapses back to the original
+    // Editor+-only requirement. Actual stays editable on the same terms:
     // recording when something actually finished is exactly what a review
-    // pass is for. Below Editor, both are disabled the same way the item's
-    // own Plan dates are (see planDatesHtml above). A milestone marked
+    // pass is for. Below the required role, both are disabled the same way
+    // the item's own Plan dates are (see planDatesHtml above). A milestone marked
     // notApplicable (see toggleMilestoneNotApplicable()) clears both dates
     // outright, so rendering a *disabled-but-still-visible* empty pill here
     // (icon + blank "tt.mm.jjjj" placeholder) read as a lingering, editable-
@@ -4089,7 +4132,7 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // blank cell rather than a disabled ghost/pill once there's nothing to
     // show (see actualHtml below). Due now matches: a real but empty
     // element, not the date-pill at all, while notApplicable.
-    const dueEditable = editable && !m.notApplicable;
+    const dueEditable = fieldsEditable && !m.notApplicable;
     // onblur's else-branch snaps an incomplete edit back to the stored date
     // immediately rather than silently no-oping — see planDatesHtml()'s own
     // comment above for the full rationale (same fix, same bug, one level
@@ -4112,23 +4155,23 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     const isDueRevealedEmpty = !m.dueDate && revealedDueIds.has(m.id);
     const dueHtml = m.notApplicable
       ? `<span></span>`
-      : (reviewCycle
+      : (reviewCycle && !dueEditable)
           ? `<span class="item-dates-computed" ${dueOverdue ? 'style="color:var(--stat-red)"' : ''} title="${dueOverdue ? 'Overdue — ' : ''}Not editable during a review">${m.dueDate ? fmtDate(m.dueDate) : '—'}</span>`
           : ((!m.dueDate && !revealedDueIds.has(m.id))
               ? (dueEditable ? `<button class="due-date-ghost" title="Set a due date — not planned yet" onclick="revealDueDate('${m.id}')"><i class="fa-solid fa-plus"></i></button>` : '')
               : `<span class="item-dates-inline">
                 ${dateInputHtml(m.dueDate, `id="due-input-${m.id}" title="${dueOverdue ? 'Overdue — ' : ''}Due date" ${dueEditable ? `onblur="if(this.value) updateMilestoneDateField('${it.id}','${m.id}','dueDate',this.value); else this.value='${m.dueDate || ''}'" ${isDueRevealedEmpty ? `onkeydown="if(event.key==='Escape') cancelRevealDueDate('${m.id}')"` : ''}` : 'disabled'}`, dueOverdue ? 'pill-overdue' : '', dueEditable ? `v => updateMilestoneDateField('${it.id}','${m.id}','dueDate',v)` : null)}
-              </span>`));
+              </span>`);
     // An unset Actual date starts hidden behind a muted "+" — it only needs
     // a value when a milestone actually finishes on a different date than
     // planned, so a permanently-empty pill here would misread as a required
     // field. Revealing it (see revealActualDate()) swaps in the real pill;
     // Escape while it's still unset/unsaved reverts back to the "+" instead
-    // of leaving a half-typed field hanging open. Below Editor, an unset
-    // Actual date has nothing to reveal (the ghost "+" is itself an edit
-    // affordance), so it renders as a plain blank cell instead. Same
+    // of leaving a half-typed field hanging open. Below the required role, an
+    // unset Actual date has nothing to reveal (the ghost "+" is itself an
+    // edit affordance), so it renders as a plain blank cell instead. Same
     // notApplicable override as Due above.
-    const actualEditable = editable && !m.notApplicable;
+    const actualEditable = fieldsEditable && !m.notApplicable;
     const isRevealedEmpty = !m.actualDate && revealedActualIds.has(m.id);
     // Flags a late finish — recorded after its own Due date AND not still in
     // the future — the other half of the delayed-milestone signal alongside
@@ -4166,7 +4209,7 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     const mStatusLabel = m.status === 'complete' && actualLate ? 'Completed Late' : statusLabel(m.status);
     const statusHtml = m.notApplicable
       ? `<span class="status-badge" style="background:var(--stat-not-started-bg);color:var(--stat-not-started);cursor:default" title="Status is ignored while marked Not Applicable">N/A</span>`
-      : (editable
+      : (fieldsEditable
           ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleMilestoneStatus('${it.id}','${m.id}')">${esc(mStatusLabel)}</button>`
           : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(mStatusLabel)}</span>`);
     // The Not Applicable toggle sits immediately after the Status badge —
@@ -4362,7 +4405,7 @@ function cancelRevealDueDate(milestoneId) {
 }
 
 function cycleMilestoneStatus(itemId, milestoneId) {
-  if (!requireRole('editor')) return;
+  if (!requireReviewFieldRole()) return;
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   const m = it.milestones.find(m => m.id === milestoneId);
@@ -4420,7 +4463,7 @@ function toggleMilestoneNotApplicable(itemId, milestoneId) {
 // above) — a plain 3-state click-to-cycle, independent of the main status
 // and milestone roll-up.
 function cycleItemAttr(itemId, field) {
-  if (!requireRole('editor')) return;
+  if (!requireReviewFieldRole()) return;
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   const oldValue = it[field];
@@ -4450,7 +4493,7 @@ function updateItemDateField(itemId, field, value) {
   save(); render();
 }
 function updateMilestoneDateField(itemId, milestoneId, field, value) {
-  if (!requireRole('editor')) return;
+  if (!requireReviewFieldRole()) return;
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   const m = it.milestones.find(x => x.id === milestoneId);
