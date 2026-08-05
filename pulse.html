@@ -9193,9 +9193,47 @@ function mergeMilestonesArray(existingList, incomingList, respectTombstones) {
 // incoming copy — omitted for the two confirmation arrays, which are never
 // actually removed (see setConfirmRecord()), only flipped, so there's
 // nothing to tombstone there.
+//
+// A user-reported bug, traced to this function being purely additive: the
+// loop below only ever adds/updates a record that's actually present in
+// incomingList — a record already sitting in existingList that's simply
+// *absent* from incomingList (the ordinary shape of "someone else deleted
+// it" — their own actionLog/decisionLog no longer includes it at all) was
+// never even considered, tombstone or not. Concretely: device A deletes a
+// review cycle's meeting minutes, correctly tombstoning and shrinking its
+// own actionLog/decisionLog and writing that out — but a second device that
+// had already synced in its own (now-stale) copy of that action item never
+// drops it, since nothing in incomingList ever tells this loop to remove
+// anything. That second device's own next write (triggered by any
+// unrelated edit at all) then republishes its still-stale, longer array
+// right back into the shared file, silently resurrecting a deletion that
+// already correctly landed elsewhere.
+//
+// The fix: before ever looking at incomingList, proactively drop any
+// existingList record whose own tombstone (just merged in by mergeData()'s
+// own top-level tombstone pass, which always runs before this) is at least
+// as new as that record's own last edit — the same deletedAt-vs-updatedAt
+// comparison the loop below already uses for an *incoming* record, just
+// applied up front to what's already local instead of only gating what's
+// arriving. Running this first, not after, is what lets the existing loop
+// below still correctly resurrect a record on its own if the incoming copy
+// turns out to be a genuine edit made *after* the deletion (newer than the
+// tombstone) — swept out here, it falls into that loop's own
+// "not found locally" branch exactly as if this were the very first time
+// this device ever saw it, tombstone-vs-updatedAt comparison and all.
+// Gated on `respectTombstones` for the same reason the loop below already
+// is (applyImport('merge')'s one deliberate opt-out — see mergeData()'s own
+// comment) — with it false, nothing here should be dropped either.
 function mergeKeyedRecords(existingList, incomingList, keyField, tombstones, respectTombstones) {
   let changed = false;
-  const merged = existingList.map(r => ({ ...r }));
+  let merged = existingList.map(r => ({ ...r }));
+  if (tombstones && respectTombstones) {
+    merged = merged.filter(r => {
+      const tomb = tombstones.find(x => x.id === r[keyField]);
+      if (tomb && tomb.deletedAt >= (r.updatedAt || 0)) { changed = true; return false; }
+      return true;
+    });
+  }
   incomingList.forEach(ir => {
     const idx = merged.findIndex(r => r[keyField] === ir[keyField]);
     if (idx !== -1) {

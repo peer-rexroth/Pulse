@@ -591,6 +591,98 @@ test('reconcileDuplicateActiveCycles never folds active cycles that belong to di
   assertEqual(reviewCycles.length, 2);
 });
 
+// ---------- mergeKeyedRecords() proactively sweeps a stale local record, not just protects against re-adding one ----------
+// A user-reported bug: this function used to be purely additive — the loop
+// over incomingList only ever adds/updates a record actually present there,
+// so a record already sitting in existingList but simply *absent* from
+// incomingList (the ordinary shape of "someone else already deleted it")
+// was never even considered for removal. Concretely: device A deletes a
+// review cycle's meeting minutes, correctly tombstoning and shrinking its
+// own actionLog — but a second device that had already synced in its own
+// copy of that action item beforehand never dropped it, and its own next
+// write (any unrelated edit at all) could republish that still-stale,
+// longer array right back into the shared file.
+
+test('mergeKeyedRecords proactively removes an existing record whose tombstone is at least as new as its own updatedAt, even when incomingList is empty', function () {
+  const existing = [{ id: 'a', updatedAt: 1000 }];
+  const tombstones = [{ id: 'a', deletedAt: 2000 }];
+  const { merged, changed } = mergeKeyedRecords(existing, [], 'id', tombstones, true);
+  assertEqual(merged.length, 0);
+  assertTrue(changed);
+});
+
+test('mergeKeyedRecords leaves an existing record alone when its own updatedAt is newer than the tombstone — a genuine edit made after the delete wins', function () {
+  const existing = [{ id: 'a', updatedAt: 3000 }];
+  const tombstones = [{ id: 'a', deletedAt: 2000 }];
+  const { merged, changed } = mergeKeyedRecords(existing, [], 'id', tombstones, true);
+  assertEqual(merged.length, 1);
+  assertFalse(changed);
+});
+
+test('mergeKeyedRecords skips the sweep entirely when respectTombstones is false (applyImport merge mode\'s own opt-out)', function () {
+  const existing = [{ id: 'a', updatedAt: 1000 }];
+  const tombstones = [{ id: 'a', deletedAt: 9999 }];
+  const { merged, changed } = mergeKeyedRecords(existing, [], 'id', tombstones, false);
+  assertEqual(merged.length, 1);
+  assertFalse(changed);
+});
+
+test('mergeKeyedRecords skips the sweep entirely when no tombstones list is given at all — the two confirmation arrays\' own shape, which are never removed, only flipped', function () {
+  const existing = [{ id: 'a', updatedAt: 1000, confirmed: true }];
+  const { merged, changed } = mergeKeyedRecords(existing, [], 'id', null, true);
+  assertEqual(merged.length, 1);
+  assertFalse(changed);
+});
+
+test('mergeData proactively drops a locally-existing action item once its tombstone merges in, even though the incoming actionLog simply omits it rather than listing it — the second-device scenario above', function () {
+  const w = workstreams[0];
+  w.actionLog = [{ id: 'stale-a', text: 'Already deleted elsewhere', owner: '', dueDate: null, completed: false, completedAt: null, cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }];
+  const incoming = {
+    workstreams: [{ id: w.id, name: w.name, color: w.color, order: 0, updatedAt: 0, actionLog: [], decisionLog: [] }],
+    items: [],
+    deletedActionLogIds: [{ id: 'stale-a', deletedAt: 2000 }]
+  };
+  const { changed } = mergeData(incoming);
+  assertTrue(changed);
+  assertEqual(w.actionLog.length, 0, 'a locally-existing record whose tombstone just merged in must be swept, not just protected against being re-added');
+});
+
+test('mergeData does the identical sweep for decisionLog', function () {
+  const w = workstreams[0];
+  w.decisionLog = [{ id: 'stale-d', text: 'Already deleted elsewhere', cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }];
+  const incoming = {
+    workstreams: [{ id: w.id, name: w.name, color: w.color, order: 0, updatedAt: 0, actionLog: [], decisionLog: [] }],
+    items: [],
+    deletedDecisionLogIds: [{ id: 'stale-d', deletedAt: 2000 }]
+  };
+  mergeData(incoming);
+  assertEqual(w.decisionLog.length, 0);
+});
+
+test('mergeData does not sweep a locally-existing action item whose own edit is newer than the incoming tombstone', function () {
+  const w = workstreams[0];
+  w.actionLog = [{ id: 'edited-after', text: 'Edited after the delete', owner: '', dueDate: null, completed: false, completedAt: null, cycleId: 'c1', addedAt: 1000, updatedAt: 3000, flagged: false }];
+  const incoming = {
+    workstreams: [{ id: w.id, name: w.name, color: w.color, order: 0, updatedAt: 0, actionLog: [], decisionLog: [] }],
+    items: [],
+    deletedActionLogIds: [{ id: 'edited-after', deletedAt: 2000 }] // older than the local edit
+  };
+  mergeData(incoming);
+  assertEqual(w.actionLog.length, 1, 'a locally-newer edit must survive an older/stale tombstone');
+});
+
+test('mergeData with respectTombstones:false (applyImport merge mode) never sweeps a locally-existing action item', function () {
+  const w = workstreams[0];
+  w.actionLog = [{ id: 'kept', text: 'Kept regardless', owner: '', dueDate: null, completed: false, completedAt: null, cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }];
+  const incoming = {
+    workstreams: [{ id: w.id, name: w.name, color: w.color, order: 0, updatedAt: 0, actionLog: [], decisionLog: [] }],
+    items: [],
+    deletedActionLogIds: [{ id: 'kept', deletedAt: 9999 }]
+  };
+  mergeData(incoming, { respectTombstones: false });
+  assertEqual(w.actionLog.length, 1, 'respectTombstones:false must leave the local copy untouched, matching the existing incoming-side opt-out');
+});
+
 // ---------- Workstreams now merge field-by-field too (actionLog/decisionLog/name/color) ----------
 // mergeWorkstreamFields() extends the identical fix one level up: a
 // workstream used to be skipped outright once its id was known locally,
