@@ -7854,7 +7854,7 @@ function computeDashboardData() {
   const overdueReviewWs = wss.filter(w => isReviewOverdue(w.id));
 
   const today = todayStr();
-  const soon = dateStrFromTs(Date.now() + 7 * DAY_MS);
+  const soon = dateStrFromTs(Date.now() + 30 * DAY_MS);
   const toEntry = (x, isMilestone) => ({ label: isMilestone ? `${x.itemName} — ${x.name}` : x.name, date: x.dueDate, itemId: isMilestone ? x.itemId : x.id });
   // An item/milestone that already has an actualDate set is excluded from
   // both feeds regardless of what its status field currently says — an
@@ -7995,7 +7995,7 @@ function renderDashboard() {
         <div class="category-list">${attentionHtml(overdue, 'overdue')}</div>
       </div>
       <div>
-        <div class="section-label">Upcoming (next 7 days)</div>
+        <div class="section-label">Upcoming (next 30 days)</div>
         <div class="category-list">${attentionHtml(upcoming, 'upcoming')}</div>
       </div>
     </div>`;
@@ -8655,7 +8655,7 @@ function buildExecSummaryHtml() {
         ${execSummaryFeedRows(overdue)}
       </div>
       <div style="flex:1;">
-        ${sectionLabel('Upcoming (Next 7 Days)')}
+        ${sectionLabel('Upcoming (Next 30 Days)')}
         ${execSummaryFeedRows(upcoming)}
       </div>
     </div>
@@ -8844,7 +8844,7 @@ function drawExecSummaryCanvas(ctx, d) {
     }
   };
   drawFeed(PAD, 'Overdue', d.overdue);
-  drawFeed(PAD + colW + colGap, 'Upcoming (Next 7 Days)', d.upcoming);
+  drawFeed(PAD + colW + colGap, 'Upcoming (Next 30 Days)', d.upcoming);
 }
 async function exportExecSummaryPng() {
   const probeCanvas = document.createElement('canvas');

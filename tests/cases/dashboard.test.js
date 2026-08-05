@@ -62,7 +62,7 @@ test('an overdue notApplicable milestone does not appear in the Overdue feed', f
   assertNotIncludes(document.getElementById('main').innerHTML, 'Skipped milestone');
 });
 
-test('a notApplicable milestone due within the next 7 days does not appear in the Upcoming feed', function () {
+test('a notApplicable milestone due within the next 30 days does not appear in the Upcoming feed', function () {
   addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Skipped soon', dueDate: isoDaysFromNow(3), status: 'not-started', notApplicable: true }] });
   renderDashboard();
   assertNotIncludes(document.getElementById('main').innerHTML, 'Skipped soon');
@@ -80,14 +80,14 @@ test('a completed item past its due date does not appear as overdue', function (
   assertNotIncludes(document.getElementById('main').innerHTML, 'Done already');
 });
 
-test('an item due within the next 7 days appears in the Upcoming feed', function () {
+test('an item due within the next 30 days appears in the Upcoming feed', function () {
   addDashItem({ name: 'Due soon', status: 'amber', dueDate: isoDaysFromNow(3) });
   renderDashboard();
   assertIncludes(document.getElementById('main').innerHTML, 'Due soon');
 });
 
-test('an item due more than 7 days out does not appear in the Upcoming feed', function () {
-  addDashItem({ name: 'Far off', status: 'amber', dueDate: isoDaysFromNow(20) });
+test('an item due more than 30 days out does not appear in the Upcoming feed', function () {
+  addDashItem({ name: 'Far off', status: 'amber', dueDate: isoDaysFromNow(45) });
   renderDashboard();
   assertNotIncludes(document.getElementById('main').innerHTML, 'Far off');
 });
