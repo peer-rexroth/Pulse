@@ -7995,14 +7995,33 @@ function computeDashboardData() {
   // — exactly the "ground-truth signal" reasoning above only holds once
   // that date has actually arrived.
   const hasHappened = actualDate => !!actualDate && actualDate <= today;
-  // Explicit it.dueDate/m.dueDate truthy guards below, even though a null
-  // dueDate would already fail the `< today`/`>= today` string comparisons
-  // on its own — a Pending (or all-Not-Applicable) item/milestone genuinely
-  // has no date planned at all, and this makes that invariant obvious to a
-  // reader rather than relying on a JS coercion quirk, the same explicit
-  // style dueOverdue's own milestone-level check already uses.
-  const overdue = scopedItems.filter(it => it.status !== 'complete' && !hasHappened(it.actualDate) && it.dueDate && it.dueDate < today).map(x => toEntry(x, false))
-    .concat(milestones.filter(m => m.status !== 'complete' && !hasHappened(m.actualDate) && m.dueDate && m.dueDate < today).map(x => toEntry(x, true)))
+  // Overdue specifically (not Upcoming) also weighs a *revised* actualDate
+  // — an explicit user request ("if actual date is newer and not yet
+  // overdue, do not show as overdue"). A later actualDate than dueDate,
+  // still logged as a plan (hasHappened() already ruled out a genuinely
+  // past one), reads as "this got pushed out to a new target" — the
+  // original dueDate is superseded, so being past *that* stale date no
+  // longer means anything is actually late; only missing the *revised*
+  // target would. Once isOverdue() reaches its own dueDate < today
+  // fallback, either there's no actualDate at all, or the one that's set
+  // isn't a later revision (it's on-time/early, or hasHappened() would
+  // already have excluded it above) — so the plain dueDate check is still
+  // the right one to fall back on.
+  const isOverdue = (dueDate, actualDate) => {
+    if (!dueDate || hasHappened(actualDate)) return false;
+    if (actualDate && actualDate > dueDate) return false; // revised target — still ahead, not missed yet
+    return dueDate < today;
+  };
+  // Explicit it.dueDate/m.dueDate truthy guards on Upcoming below, even
+  // though a null dueDate would already fail the `>= today` string
+  // comparison on its own — a Pending (or all-Not-Applicable)
+  // item/milestone genuinely has no date planned at all, and this makes
+  // that invariant obvious to a reader rather than relying on a JS
+  // coercion quirk, the same explicit style dueOverdue's own
+  // milestone-level check already uses. (isOverdue() above carries the
+  // equivalent guard itself for Overdue.)
+  const overdue = scopedItems.filter(it => it.status !== 'complete' && isOverdue(it.dueDate, it.actualDate)).map(x => toEntry(x, false))
+    .concat(milestones.filter(m => m.status !== 'complete' && isOverdue(m.dueDate, m.actualDate)).map(x => toEntry(x, true)))
     .sort((a, b) => a.date.localeCompare(b.date));
   const upcoming = scopedItems.filter(it => it.status !== 'complete' && !hasHappened(it.actualDate) && it.dueDate && it.dueDate >= today && it.dueDate <= soon).map(x => toEntry(x, false))
     .concat(milestones.filter(m => m.status !== 'complete' && !hasHappened(m.actualDate) && m.dueDate && m.dueDate >= today && m.dueDate <= soon).map(x => toEntry(x, true)))

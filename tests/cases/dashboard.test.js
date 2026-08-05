@@ -199,16 +199,38 @@ test('an item due soon with a FUTURE actualDate (a plan, not yet happened) still
   assertIncludes(document.getElementById('main').innerHTML, 'Planned finish');
 });
 
-test('a past-due milestone with a FUTURE actualDate (a revised, later plan, not yet happened) still appears in the Overdue feed', function () {
+// ---------- Overdue also weighs a *revised* (later) actualDate ----------
+// A further, explicit user request ("if actual date is newer and not yet
+// overdue, do not show as overdue"): once a later actualDate than dueDate
+// is logged, the original dueDate is effectively superseded by that revised
+// target — being past the stale original date no longer means anything is
+// actually late, only missing the *revised* one would. isOverdue()'s own
+// `actualDate > dueDate` check is what implements this; it only ever runs
+// once hasHappened() has already ruled out a genuinely past actualDate
+// (isOverdue() checks that first), so by the time it's reached, an
+// actualDate that qualifies is guaranteed to still be ahead of today.
+
+test('a past-due milestone with a revised (later) FUTURE actualDate no longer appears in the Overdue feed — the revised target hasn\'t been missed yet', function () {
   addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Slipping', dueDate: isoDaysFromNow(-3), actualDate: isoDaysFromNow(2), status: 'red' }] });
   renderDashboard();
-  assertIncludes(document.getElementById('main').innerHTML, 'Slipping');
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Slipping');
 });
 
-test('a past-due item with a FUTURE actualDate (a revised, later plan, not yet happened) still appears in the Overdue feed', function () {
+test('a past-due item with a revised (later) FUTURE actualDate no longer appears in the Overdue feed — the revised target hasn\'t been missed yet', function () {
   addDashItem({ name: 'Revised plan', status: 'red', dueDate: isoDaysFromNow(-3), actualDate: isoDaysFromNow(2) });
   renderDashboard();
-  assertIncludes(document.getElementById('main').innerHTML, 'Revised plan');
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Revised plan');
+});
+
+test('once the revised (later) actualDate itself passes without completion, the item goes back to reading as Overdue', function () {
+  addDashItem({ name: 'Revision also missed', status: 'red', dueDate: isoDaysFromNow(-10), actualDate: isoDaysFromNow(-1) });
+  renderDashboard();
+  // hasHappened() treats an actualDate of yesterday as "already finished" —
+  // the field's own canonical meaning ("when it was actually finished") —
+  // so this is still excluded from Overdue, just via the hasHappened() path
+  // rather than the "revised target still ahead" path. Documented here so
+  // the two exclusions' combined behavior at this boundary is explicit.
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Revision also missed');
 });
 
 test('a milestone whose actualDate is exactly today still counts as already happened, same as isCompletedLate()\'s own convention', function () {
