@@ -683,6 +683,114 @@ test('mergeData with respectTombstones:false (applyImport merge mode) never swee
   assertEqual(w.actionLog.length, 1, 'respectTombstones:false must leave the local copy untouched, matching the existing incoming-side opt-out');
 });
 
+// ---------- programme now merges field-by-field too, not never at all ----------
+// mergeData() used to never touch data.programme at all — the only path
+// that ever applied an incoming programme object was replaceFromFileData(),
+// gated by isFreshLocalState(), which only ever fires for a genuinely
+// untouched, brand-new install. A role password (or a rename, or a
+// hideJourneys toggle) changed on one device would otherwise never reach a
+// second device that already had any real data of its own — a
+// user-reported bug.
+
+test('mergeData merges an incoming programme rename when the incoming updatedAt is newer', function () {
+  programme.name = 'Old Name';
+  programme.updatedAt = 1000;
+  const { changed } = mergeData({ programme: { name: 'New Name', updatedAt: 2000, hideJourneys: false, rolePasswords: {}, rolePasswordsUpdatedAt: {} }, workstreams: [], items: [] });
+  assertTrue(changed);
+  assertEqual(programme.name, 'New Name');
+  assertEqual(programme.updatedAt, 2000);
+});
+
+test('mergeData does not let a stale incoming programme rename overwrite a newer local one', function () {
+  programme.name = 'Fresh Local Name';
+  programme.updatedAt = 5000;
+  const { changed } = mergeData({ programme: { name: 'Stale Incoming Name', updatedAt: 1000, hideJourneys: false, rolePasswords: {}, rolePasswordsUpdatedAt: {} }, workstreams: [], items: [] });
+  assertFalse(changed);
+  assertEqual(programme.name, 'Fresh Local Name');
+});
+
+test('mergeData merges hideJourneys as the same scalar pair as name, sharing one updatedAt', function () {
+  programme.hideJourneys = false;
+  programme.updatedAt = 1000;
+  mergeData({ programme: { name: programme.name, updatedAt: 2000, hideJourneys: true, rolePasswords: {}, rolePasswordsUpdatedAt: {} }, workstreams: [], items: [] });
+  assertEqual(programme.hideJourneys, true);
+});
+
+test('mergeData merges rolePasswords per-role via rolePasswordsUpdatedAt — one role\'s newer change never touches a different role\'s own, independently-set entry', async function () {
+  const localEditorHash = await hashRolePassword('local-editor-pass');
+  programme.rolePasswords = { planner: null, reviewer: null, editor: localEditorHash, admin: null };
+  programme.rolePasswordsUpdatedAt = { planner: 0, reviewer: 0, editor: 5000, admin: 0 };
+
+  const incomingReviewerHash = await hashRolePassword('incoming-reviewer-pass');
+  const staleIncomingEditorHash = await hashRolePassword('stale-incoming-editor-pass');
+  const { changed } = mergeData({
+    programme: {
+      name: programme.name, updatedAt: 0, hideJourneys: false,
+      rolePasswords: { planner: null, reviewer: incomingReviewerHash, editor: staleIncomingEditorHash, admin: null },
+      rolePasswordsUpdatedAt: { planner: 0, reviewer: 3000, editor: 1000, admin: 0 } // reviewer is newer, editor is older than local
+    },
+    workstreams: [], items: []
+  });
+
+  assertTrue(changed);
+  assertDeepEqual(programme.rolePasswords.reviewer, incomingReviewerHash, 'reviewer had no local entry — the incoming (newer) one wins');
+  assertDeepEqual(programme.rolePasswords.editor, localEditorHash, 'editor\'s own local change is newer than the incoming one — must survive');
+  assertEqual(programme.rolePasswordsUpdatedAt.editor, 5000, 'the local timestamp must stay too, not just the value');
+});
+
+test('mergeData can merge a role password being cleared (set back to null) via a newer incoming rolePasswordsUpdatedAt', function () {
+  programme.rolePasswords = { planner: null, reviewer: { salt: 'x', hash: 'y' }, editor: null, admin: null };
+  programme.rolePasswordsUpdatedAt = { planner: 0, reviewer: 1000, editor: 0, admin: 0 };
+  mergeData({
+    programme: {
+      name: programme.name, updatedAt: 0, hideJourneys: false,
+      rolePasswords: { planner: null, reviewer: null, editor: null, admin: null },
+      rolePasswordsUpdatedAt: { planner: 0, reviewer: 2000, editor: 0, admin: 0 }
+    },
+    workstreams: [], items: []
+  });
+  assertEqual(programme.rolePasswords.reviewer, null, 'a genuinely newer "cleared" state must win, the same as a genuinely newer set one would');
+});
+
+test('mergeData reports changed:false when the incoming programme has nothing newer at all', function () {
+  programme.name = 'Steady Name';
+  programme.updatedAt = 5000;
+  programme.rolePasswords = { planner: null, reviewer: null, editor: null, admin: null };
+  programme.rolePasswordsUpdatedAt = { planner: 0, reviewer: 0, editor: 0, admin: 0 };
+  const { changed } = mergeData({ programme: { name: 'Steady Name', updatedAt: 1000, hideJourneys: false, rolePasswords: {}, rolePasswordsUpdatedAt: {} }, workstreams: [], items: [] });
+  assertFalse(changed);
+});
+
+test('mergeData works even when the incoming data has no programme field at all (e.g. a stray workstream-only file)', function () {
+  const before = programme.name;
+  const { changed } = mergeData({ workstreams: [], items: [] });
+  assertFalse(changed);
+  assertEqual(programme.name, before);
+});
+
+test('the actual fix for the reported bug: a device with real data of its own (isFreshLocalState() false) still picks up an incoming role password change through the ordinary merge path, not just through a fresh-install replace', async function () {
+  // Renaming the programme alone is enough to make isFreshLocalState() false
+  // (see its own tests above) — the whole point being that mergeData(), not
+  // just replaceFromFileData(), must be what carries the change through
+  // from here on, once this device has any real data of its own.
+  programme.name = 'A Real Programme, Not a Fresh Install';
+  assertFalse(isFreshLocalState());
+  programme.rolePasswords = { planner: null, reviewer: null, editor: null, admin: null };
+  programme.rolePasswordsUpdatedAt = { planner: 0, reviewer: 0, editor: 0, admin: 0 };
+
+  const newHash = await hashRolePassword('set-on-another-device');
+  const { changed } = mergeData({
+    programme: {
+      name: programme.name, updatedAt: 0, hideJourneys: false,
+      rolePasswords: { planner: null, reviewer: null, editor: newHash, admin: null },
+      rolePasswordsUpdatedAt: { planner: 0, reviewer: 0, editor: Date.now(), admin: 0 }
+    },
+    workstreams: [], items: []
+  });
+  assertTrue(changed);
+  assertDeepEqual(programme.rolePasswords.editor, newHash);
+});
+
 // ---------- Workstreams now merge field-by-field too (actionLog/decisionLog/name/color) ----------
 // mergeWorkstreamFields() extends the identical fix one level up: a
 // workstream used to be skipped outright once its id was known locally,

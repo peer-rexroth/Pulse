@@ -310,6 +310,20 @@ test('normalizeData backfills a missing/malformed programme.rolePasswords to {pl
   assertDeepEqual(programme.rolePasswords.admin, hash, 'a genuinely valid {salt,hash} must be left alone');
 });
 
+test('normalizeData backfills programme.updatedAt and rolePasswordsUpdatedAt to 0 (not Date.now()) when missing, and leaves real values alone', function () {
+  delete programme.updatedAt;
+  delete programme.rolePasswordsUpdatedAt;
+  normalizeData();
+  assertEqual(programme.updatedAt, 0, 'legacy data predating this field must not look freshly edited just because this device loaded it first');
+  assertDeepEqual(programme.rolePasswordsUpdatedAt, { planner: 0, reviewer: 0, editor: 0, admin: 0 });
+
+  programme.updatedAt = 5000;
+  programme.rolePasswordsUpdatedAt = { planner: 0, reviewer: 1234, editor: 0, admin: 0 };
+  normalizeData();
+  assertEqual(programme.updatedAt, 5000, 'a real value must not be reset');
+  assertEqual(programme.rolePasswordsUpdatedAt.reviewer, 1234);
+});
+
 test('normalizeData backfills a missing programme.hideJourneys to false, and leaves an existing true alone', function () {
   delete programme.hideJourneys;
   normalizeData();

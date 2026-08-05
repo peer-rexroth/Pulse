@@ -2491,6 +2491,22 @@ function normalizeData() {
   // configuration decision meant to sync to every teammate opening the same
   // linked file, the same reasoning `rolePasswords` above already follows.
   if (typeof programme.hideJourneys !== 'boolean') programme.hideJourneys = false;
+  // programme.updatedAt (for name/hideJourneys) and rolePasswordsUpdatedAt
+  // (one timestamp per role, independent of whether that role's own entry
+  // is currently set or null — see mergeProgramme()'s own comment for why a
+  // plain null can't carry a timestamp inline the way a real {salt,hash}
+  // could) are what let mergeProgramme() merge `programme` field-by-field
+  // instead of never touching it at all — see that function's own comment.
+  // Backfilled to 0, not Date.now(), matching every other legacy-updatedAt
+  // backfill in this app: an untouched record predating this field
+  // shouldn't look freshly edited to a merge just because this device
+  // happened to load it first.
+  if (typeof programme.updatedAt !== 'number') programme.updatedAt = 0;
+  if (!programme.rolePasswordsUpdatedAt || typeof programme.rolePasswordsUpdatedAt !== 'object') programme.rolePasswordsUpdatedAt = {};
+  ROLES.forEach(r => {
+    if (r === 'visitor') return;
+    if (typeof programme.rolePasswordsUpdatedAt[r] !== 'number') programme.rolePasswordsUpdatedAt[r] = 0;
+  });
   if (!Array.isArray(deletedWorkstreamIds)) deletedWorkstreamIds = [];
   if (!Array.isArray(deletedItemIds)) deletedItemIds = [];
   if (!Array.isArray(deletedMilestoneIds)) deletedMilestoneIds = [];
@@ -4835,7 +4851,7 @@ function startRenameProgramme() {
 function commitRenameProgramme() {
   if (!renamingProgramme) return;
   const name = document.getElementById('programmeNameInput').value.trim() || programme.name;
-  programme.name = name;
+  if (name !== programme.name) { programme.name = name; programme.updatedAt = Date.now(); }
   renamingProgramme = false;
   document.getElementById('programmeNameInput').style.display = 'none';
   document.getElementById('programmeNameDisplay').style.display = '';
@@ -8288,6 +8304,7 @@ function featuresSectionHtml() {
 function toggleHideJourneys() {
   if (!requireRole('admin')) return;
   programme.hideJourneys = !programme.hideJourneys;
+  programme.updatedAt = Date.now();
   if (programme.hideJourneys && mode === 'planning' && planningTab === 'journeys') planningTab = 'scope';
   save(); render();
 }
@@ -8356,10 +8373,24 @@ function closeRolePasswordsModal() {
 async function saveRolePasswords() {
   if (!requireRole('admin')) return;
   if (!hasSecureCrypto()) { showToast('Could not save — password hashing needs a secure context (the local server, or https — not a plain file)', true); return; }
+  // Each role's own rolePasswordsUpdatedAt[role] is stamped independently,
+  // not a shared programme.updatedAt — this is what lets mergeProgramme()
+  // merge each role's password entry on its own, so a change to one role
+  // made on one device can never clobber a different role's own,
+  // independently-newer change made elsewhere (see that function's own
+  // comment for why a plain null can't carry a timestamp inline the way a
+  // real {salt,hash} entry could).
   async function applyOne(role, inputId, clearId) {
-    if (clearId && document.getElementById(clearId).checked) { programme.rolePasswords[role] = null; return; }
+    if (clearId && document.getElementById(clearId).checked) {
+      programme.rolePasswords[role] = null;
+      programme.rolePasswordsUpdatedAt[role] = Date.now();
+      return;
+    }
     const value = document.getElementById(inputId).value.trim();
-    if (value) programme.rolePasswords[role] = await hashRolePassword(value);
+    if (value) {
+      programme.rolePasswords[role] = await hashRolePassword(value);
+      programme.rolePasswordsUpdatedAt[role] = Date.now();
+    }
   }
   await applyOne('planner', 'rolePasswordPlannerInput', 'rolePasswordPlannerClear');
   await applyOne('reviewer', 'rolePasswordReviewerInput', 'rolePasswordReviewerClear');
@@ -9342,6 +9373,61 @@ function mergeWorkstreamFields(existing, incoming, respectTombstones) {
   }
   return changed;
 }
+// programme's own field-level merge — a later, explicit user request/fix,
+// closing a real gap: mergeData() below never touched `data.programme` at
+// all before this. Before this fix, the *only* place an incoming programme
+// object ever got applied was replaceFromFileData(), gated by
+// isFreshLocalState() — which only ever fires for a genuinely untouched,
+// brand-new install (see that function's own comment). Once a device has
+// any real data of its own, an incoming programme change — a role password
+// set on a different device, a rename, a hideJourneys toggle — was simply
+// never applied through the ordinary link/reconnect/poll/write-time merge
+// cycle at all, so it stayed permanently stuck at whatever this device's
+// own copy already had.
+//
+// name/hideJourneys are plain scalars sharing one `updatedAt`, the same
+// "one scalar pair, newer overall updatedAt wins for both together"
+// coarser treatment mergeWorkstreamFields() already gives a workstream's
+// own name/color — programme.name changes rarely, and hideJourneys is a
+// single admin-only toggle, so genuinely concurrent edits to either are
+// not worth a finer-grained merge of their own.
+//
+// rolePasswords gets real per-role granularity instead, via a companion
+// `rolePasswordsUpdatedAt` map (one timestamp per role, independent of
+// whichever role's own entry is currently a real {salt,hash} or null) —
+// an Admin on one device changing the Editor password must never have any
+// chance of clobbering a Reviewer password someone else set on another
+// device around the same time, or vice versa, the way a single shared
+// programme.updatedAt would risk (whichever side touched *anything* about
+// programme most recently would otherwise win the *whole* object,
+// silently discarding an unrelated, non-conflicting change made on the
+// other side). A plain `null` role-password entry can't carry its own
+// `updatedAt` inline the way a real {salt,hash} object could, which is
+// why this timestamp lives in its own companion map rather than inside
+// each entry — see normalizeData()'s own backfill for both fields.
+function mergeProgramme(existing, incoming) {
+  if (!incoming || typeof incoming !== 'object') return false;
+  let changed = false;
+  if ((incoming.updatedAt || 0) > (existing.updatedAt || 0)) {
+    if (incoming.name !== undefined) existing.name = incoming.name;
+    if (typeof incoming.hideJourneys === 'boolean') existing.hideJourneys = incoming.hideJourneys;
+    existing.updatedAt = incoming.updatedAt;
+    changed = true;
+  }
+  const incomingRp = incoming.rolePasswords || {};
+  const incomingRpUpdated = incoming.rolePasswordsUpdatedAt || {};
+  ROLES.forEach(r => {
+    if (r === 'visitor') return;
+    const incomingTs = incomingRpUpdated[r] || 0;
+    const existingTs = existing.rolePasswordsUpdatedAt[r] || 0;
+    if (incomingTs > existingTs) {
+      existing.rolePasswords[r] = incomingRp[r] || null;
+      existing.rolePasswordsUpdatedAt[r] = incomingTs;
+      changed = true;
+    }
+  });
+  return changed;
+}
 // Additive merge used by every "read data from outside localStorage" path
 // (linkFolder, reconnectFolder, initFileSync, doFileSyncWrite's cross-tab
 // merge, pollFileSync, and applyImport's merge mode). Tombstones are what let this
@@ -9366,6 +9452,7 @@ function mergeWorkstreamFields(existing, incoming, respectTombstones) {
 function mergeData(data, opts) {
   const respectTombstones = !opts || opts.respectTombstones !== false;
   const conflicts = [];
+  const programmeChanged = data.programme ? mergeProgramme(programme, data.programme) : false;
   (data.deletedWorkstreamIds || []).forEach(dw => {
     const existing = deletedWorkstreamIds.find(x => x.id === dw.id);
     if (!existing) deletedWorkstreamIds.push({ id: dw.id, deletedAt: dw.deletedAt || Date.now() });
@@ -9458,10 +9545,11 @@ function mergeData(data, opts) {
   // `changed` is the umbrella signal doFileSyncWrite()/pollFileSync() gate
   // their own save()/render() on — added/updated alone only ever counted
   // items (see this function's own comment above), so a merge that only
-  // touched review-cycle confirmations or a workstream's actionLog/
-  // decisionLog would otherwise never reach localStorage or the screen
-  // until some unrelated later save happened to trigger one.
-  const changed = added > 0 || updated > 0 || wsOrCategoriesChanged || cyclesChanged;
+  // touched review-cycle confirmations, a workstream's actionLog/
+  // decisionLog, or (now) programme itself would otherwise never reach
+  // localStorage or the screen until some unrelated later save happened to
+  // trigger one.
+  const changed = added > 0 || updated > 0 || wsOrCategoriesChanged || cyclesChanged || programmeChanged;
   return { added, updated, conflicts, changed };
 }
 
