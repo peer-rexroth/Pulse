@@ -176,6 +176,47 @@ test('a past-due milestone with no actualDate yet still appears in the Overdue f
   assertIncludes(document.getElementById('main').innerHTML, 'Still open');
 });
 
+// ---------- A future-dated actualDate is a plan, not a finished fact ----------
+// A user-reported gap: actualDate is sometimes logged ahead of time (a
+// planned completion date — the same "sometimes logged ahead of time" case
+// isCompletedLate()'s own actualLate flag already accounts for via its own
+// `<= todayStr()` gate). The bare `!actualDate` check above used to treat
+// ANY actualDate, future or past, as "already finished" and hid it from
+// both feeds regardless — silently dropping something genuinely still
+// upcoming (or still overdue) the moment anyone logged a forward-looking
+// actualDate against it. hasHappened() fixes this by only excluding once
+// that date is today or earlier.
+
+test('a milestone due soon with a FUTURE actualDate (a plan, not yet happened) still appears in the Upcoming feed', function () {
+  addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Planned early', dueDate: isoDaysFromNow(10), actualDate: isoDaysFromNow(5), status: 'amber' }] });
+  renderDashboard();
+  assertIncludes(document.getElementById('main').innerHTML, 'Planned early');
+});
+
+test('an item due soon with a FUTURE actualDate (a plan, not yet happened) still appears in the Upcoming feed', function () {
+  addDashItem({ name: 'Planned finish', status: 'amber', dueDate: isoDaysFromNow(10), actualDate: isoDaysFromNow(5) });
+  renderDashboard();
+  assertIncludes(document.getElementById('main').innerHTML, 'Planned finish');
+});
+
+test('a past-due milestone with a FUTURE actualDate (a revised, later plan, not yet happened) still appears in the Overdue feed', function () {
+  addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Slipping', dueDate: isoDaysFromNow(-3), actualDate: isoDaysFromNow(2), status: 'red' }] });
+  renderDashboard();
+  assertIncludes(document.getElementById('main').innerHTML, 'Slipping');
+});
+
+test('a past-due item with a FUTURE actualDate (a revised, later plan, not yet happened) still appears in the Overdue feed', function () {
+  addDashItem({ name: 'Revised plan', status: 'red', dueDate: isoDaysFromNow(-3), actualDate: isoDaysFromNow(2) });
+  renderDashboard();
+  assertIncludes(document.getElementById('main').innerHTML, 'Revised plan');
+});
+
+test('a milestone whose actualDate is exactly today still counts as already happened, same as isCompletedLate()\'s own convention', function () {
+  addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Done today', dueDate: isoDaysFromNow(3), actualDate: todayStr(), status: 'amber' }] });
+  renderDashboard();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Done today');
+});
+
 test('a workstream overdue for review is counted and named in the Overdue for Review card', function () {
   addDashItem({});
   renderDashboard();
