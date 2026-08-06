@@ -1128,6 +1128,21 @@
      the same sub-tab row. */
   .action-log-header, .decision-log-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); border-radius: var(--radius) var(--radius) 0 0; }
   .action-log-text { white-space: pre-wrap; }
+  /* Inline text/owner editing on an Action Log/Decision Log row (Reviewer+)
+     — the same "flat, invisible until focused" treatment
+     .minutes-action-item-row's own inputs already use (see that rule's own
+     comment), reused here via a shared class rather than duplicated, but
+     kept free of that rule's own hardcoded font-size so it still blends
+     with the row's own ambient text size (font/color: inherit) instead of
+     visibly mismatching its un-edited neighbors (Source, Created, ...). */
+  .action-log-row .flat-cell-input, .decision-log-row .flat-cell-input {
+    width: 100%; box-sizing: border-box; padding: 3px 4px; margin: 0; border: none; border-radius: 5px;
+    background: transparent; color: inherit; font: inherit;
+  }
+  .action-log-row textarea.flat-cell-input, .decision-log-row textarea.flat-cell-input {
+    resize: none; overflow: hidden; min-height: 22px; field-sizing: content;
+  }
+  .action-log-row .flat-cell-input:focus, .decision-log-row .flat-cell-input:focus { outline: none; background: var(--panel-2); }
   .action-log-source { color: var(--text-faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* A full explicit grid-template-columns (not implicit/auto tracks) — every
      column gets a pinned width, so nothing is ever "auto"-sized from a given
@@ -7442,9 +7457,13 @@ function actionLogRowHtml(w, a, showWs) {
     : '';
   return `<div class="item-row action-log-row ${showWs ? 'with-ws' : ''} ${a.completed ? 'review-confirmed' : ''}">
       ${priorityFlagHtml(a.flagged, canManage, `toggleActionLogFlag('${w.id}','${a.id}')`, 1)}
-      <span class="action-log-text" style="grid-column:2">${esc(a.text)}</span>
+      ${canManage
+        ? `<textarea class="flat-cell-input" rows="1" style="grid-column:2" onblur="updateActionLogText('${w.id}','${a.id}', this.value)">${esc(a.text)}</textarea>`
+        : `<span class="action-log-text" style="grid-column:2">${esc(a.text)}</span>`}
       ${wsCellHtml}
-      <span class="item-owner" style="grid-column:${3 + off}">${esc(a.owner)}</span>
+      ${canManage
+        ? `<input type="text" class="flat-cell-input" style="grid-column:${3 + off}" value="${esc(a.owner)}" onblur="updateActionLogOwner('${w.id}','${a.id}', this.value)">`
+        : `<span class="item-owner" style="grid-column:${3 + off}">${esc(a.owner)}</span>`}
       ${(() => {
         if (!canManage) return `<span class="item-dates-computed" style="grid-column:${4 + off}">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>`;
         if (revealedActionLogDueIds.has(a.id)) {
@@ -7599,6 +7618,49 @@ function toggleActionLogFlag(wsId, itemId) {
   a.updatedAt = Date.now();
   save(); render();
 }
+// Direct inline editing of an action item's own text/owner, right on its
+// Action Log row — a later, explicit user request ("allow inline editing
+// of action items and decision for reviewer and up"). Before this, the
+// only way to fix a typo or reassign an owner was to reopen the *source*
+// review cycle's meeting minutes and edit it there — the identical detour
+// Due Date editing already had, fixed the same way (see
+// updateActionLogDueDate()'s own comment) and at the same tier.
+//
+// Unlike Due Date, there's no reveal/ghost step here at all — a plain flat
+// text field (see .flat-cell-input's own CSS comment) has no "ugly native
+// widget at rest" problem the way a native date input does, so it can just
+// always render as a real, directly-editable field for Reviewer+, styled
+// to look like plain text until focused. Commits only on blur, never on
+// oninput, for the same reason every other inline edit in this app that
+// actually calls save()/render() does: re-rendering on every keystroke
+// would destroy the still-focused field mid-edit (the Minutes modal's own
+// identical-looking fields use oninput instead, but those only ever touch
+// a detached working array with no render() call at all — see
+// renderMinutesActionItemsRows()'s own comment).
+function updateActionLogText(wsId, itemId, value) {
+  if (!requireRole('reviewer')) return;
+  const w = wsById(wsId);
+  if (!w) return;
+  const a = w.actionLog.find(x => x.id === itemId);
+  if (!a) return;
+  const newValue = value.trim();
+  if (!newValue || newValue === a.text) { render(); return; } // blank isn't a valid edit — snap back to the stored value
+  a.text = newValue;
+  a.updatedAt = Date.now();
+  save(); render();
+}
+function updateActionLogOwner(wsId, itemId, value) {
+  if (!requireRole('reviewer')) return;
+  const w = wsById(wsId);
+  if (!w) return;
+  const a = w.actionLog.find(x => x.id === itemId);
+  if (!a) return;
+  const newValue = value.trim();
+  if (newValue === a.owner) return; // owner can legitimately be cleared to blank — no reset-on-blank guard needed, unlike text
+  a.owner = newValue;
+  a.updatedAt = Date.now();
+  save(); render();
+}
 // Editing an action item's own Due Date directly on its Action Log row —
 // an explicit user request ("for roles reviewer and upwards, allow to edit
 // the due date of action items"). Before this, the only way to change one
@@ -7737,7 +7799,9 @@ function decisionLogRowHtml(w, d, showWs) {
     : '';
   return `<div class="item-row decision-log-row ${showWs ? 'with-ws' : ''}">
       ${priorityFlagHtml(d.flagged, canManage, `toggleDecisionLogFlag('${w.id}','${d.id}')`, 1)}
-      <span class="action-log-text" style="grid-column:2">${esc(d.text)}</span>
+      ${canManage
+        ? `<textarea class="flat-cell-input" rows="1" style="grid-column:2" onblur="updateDecisionLogText('${w.id}','${d.id}', this.value)">${esc(d.text)}</textarea>`
+        : `<span class="action-log-text" style="grid-column:2">${esc(d.text)}</span>`}
       ${wsCellHtml}
       <span class="action-log-source" style="grid-column:${3 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
       <span class="item-dates-computed" style="grid-column:${4 + off}">${fmtDate(dateStrFromTs(d.addedAt))}</span>
@@ -7853,6 +7917,21 @@ function toggleDecisionLogFlag(wsId, itemId) {
   const d = w.decisionLog.find(x => x.id === itemId);
   if (!d) return;
   d.flagged = !d.flagged;
+  d.updatedAt = Date.now();
+  save(); render();
+}
+// updateActionLogText()'s exact counterpart for Decision Log — see that
+// function's own comment for why this is a plain always-on flat field, not
+// a reveal/ghost step, and why it only ever commits on blur.
+function updateDecisionLogText(wsId, itemId, value) {
+  if (!requireRole('reviewer')) return;
+  const w = wsById(wsId);
+  if (!w) return;
+  const d = w.decisionLog.find(x => x.id === itemId);
+  if (!d) return;
+  const newValue = value.trim();
+  if (!newValue || newValue === d.text) { render(); return; }
+  d.text = newValue;
   d.updatedAt = Date.now();
   save(); render();
 }

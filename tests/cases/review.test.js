@@ -1881,6 +1881,117 @@ test('cancelRevealActionLogDueDate collapses back to display mode without touchi
   assertEqual(w.actionLog[0].dueDate, todayStr(), 'cancelling must never write anything');
 });
 
+// ---------- Direct inline editing of Action Log/Decision Log text/owner ----------
+// An explicit user request ("allow inline editing of action items and
+// decision for reviewer and up") — previously the only way to fix a typo
+// or reassign an owner was to reopen the source review cycle's meeting
+// minutes. Unlike Due Date, there's no reveal step — the field is always a
+// real, directly-editable one at Reviewer+.
+
+test('updateActionLogText edits the text, and snaps back on a blank value rather than clearing it', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Original text';
+  saveMinutes();
+  const w = workstreams[0];
+  const id = w.actionLog[0].id;
+
+  updateActionLogText(w.id, id, 'Edited text');
+  assertEqual(w.actionLog[0].text, 'Edited text');
+
+  updateActionLogText(w.id, id, '   ');
+  assertEqual(w.actionLog[0].text, 'Edited text', 'a blank edit must not clear the text — it snaps back to the last real value');
+});
+
+test('updateActionLogOwner edits the owner, and — unlike text — allows clearing it back to blank', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  editingMinutesActionItems[0].owner = 'Alice';
+  saveMinutes();
+  const w = workstreams[0];
+  const id = w.actionLog[0].id;
+
+  updateActionLogOwner(w.id, id, 'Bob');
+  assertEqual(w.actionLog[0].owner, 'Bob');
+
+  updateActionLogOwner(w.id, id, '');
+  assertEqual(w.actionLog[0].owner, '', 'owner can legitimately be cleared to blank, unlike the text field');
+});
+
+test('updateActionLogText/updateActionLogOwner are both blocked below Reviewer', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  saveMinutes();
+  const w = workstreams[0];
+  const id = w.actionLog[0].id;
+  userRole = 'visitor';
+  updateActionLogText(w.id, id, 'Hacked text');
+  updateActionLogOwner(w.id, id, 'Hacked owner');
+  assertEqual(w.actionLog[0].text, 'Do the thing');
+  assertEqual(w.actionLog[0].owner, '');
+});
+
+test('actionLogRowHtml renders the text/owner cells as real editable fields at Reviewer+, and plain read-only spans below it', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  saveMinutes();
+  const w = workstreams[0];
+  const id = w.actionLog[0].id;
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('actionLog');
+
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `updateActionLogText('${w.id}','${id}'`, 'Reviewer+ gets a real editable text field');
+  assertIncludes(html, `updateActionLogOwner('${w.id}','${id}'`, 'Reviewer+ gets a real editable owner field');
+
+  userRole = 'visitor';
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'updateActionLogText', 'not editable below Reviewer');
+  assertNotIncludes(html, 'updateActionLogOwner', 'not editable below Reviewer');
+  assertIncludes(html, '<span class="action-log-text"', 'still shows the real text as plain, read-only text below Reviewer');
+});
+
+test('updateDecisionLogText edits the text, snaps back on a blank value, and is blocked below Reviewer', function () {
+  const w = workstreams[0];
+  w.decisionLog = [{ id: 'd1', text: 'Original decision', cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }];
+
+  updateDecisionLogText(w.id, 'd1', 'Edited decision');
+  assertEqual(w.decisionLog[0].text, 'Edited decision');
+
+  updateDecisionLogText(w.id, 'd1', '');
+  assertEqual(w.decisionLog[0].text, 'Edited decision', 'a blank edit must not clear the decision text');
+
+  userRole = 'visitor';
+  updateDecisionLogText(w.id, 'd1', 'Hacked decision');
+  assertEqual(w.decisionLog[0].text, 'Edited decision');
+});
+
+test('decisionLogRowHtml renders the text cell as a real editable field at Reviewer+, and a plain read-only span below it', function () {
+  const w = workstreams[0];
+  w.decisionLog = [{ id: 'd1', text: 'A real decision', cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }];
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('decisionLog');
+
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `updateDecisionLogText('${w.id}','d1'`, 'Reviewer+ gets a real editable text field');
+
+  userRole = 'visitor';
+  renderReview();
+  html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'updateDecisionLogText', 'not editable below Reviewer');
+  assertIncludes(html, '<span class="action-log-text"', 'still shows the real decision text as plain, read-only text below Reviewer');
+});
+
 // ---------- The priority flag (Action Log + Decision Log) ----------
 // An explicit user request ("for action and decision items add a priority
 // flag (shown as a small flag in list view)") — a plain on/off toggle,
@@ -2514,7 +2625,7 @@ test('actionLogHtml\'s header and data rows agree on where the flag/Action Item/
 
   const id = workstreams[0].actionLog[0].id;
   assertIncludes(html, `grid-column:1" onclick="toggleActionLogFlag('${workstreams[0].id}','${id}')"`, 'the priority flag must sit at column 1, before Action Item');
-  assertIncludes(html, `<span class="action-log-text" style="grid-column:2">`, 'Action Item must sit at column 2 on the data row too');
+  assertIncludes(html, `<textarea class="flat-cell-input" rows="1" style="grid-column:2"`, 'Action Item must sit at column 2 on the data row too (a real textarea at Reviewer+ now, not a plain span)');
   assertIncludes(html, `grid-column:8" onclick="deleteActionLogItem('${workstreams[0].id}','${id}')"`, 'Delete must sit at column 8, after Created/Closed');
   assertIncludes(html, `grid-column:9" onclick="toggleActionLogItem('${workstreams[0].id}','${id}')"`, 'the confirm toggle must sit at column 9, last');
 });
