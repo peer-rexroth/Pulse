@@ -8974,7 +8974,7 @@ function buildScopeItemsSheet(wb) {
       excelRagCellStyle(row.getCell('status'), it.status);
       [['it', it.itStatus], ['biz', it.businessStatus], ['budget', it.budgetStatus]].forEach(([key, val]) => excelRagCellStyle(row.getCell(key), val));
       it.milestones.forEach(m => {
-        const mrow = sheet.addRow({ name: m.name, status: m.notApplicable ? 'N/A' : (isCompletedLate(m.status, m.dueDate, m.actualDate, m.notApplicable) ? 'Completed Late' : statusLabel(m.status)) });
+        const mrow = sheet.addRow({ ws: w.name, cat: cat ? cat.name : '', name: m.name, status: m.notApplicable ? 'N/A' : (isCompletedLate(m.status, m.dueDate, m.actualDate, m.notApplicable) ? 'Completed Late' : statusLabel(m.status)) });
         mrow.getCell('name').alignment = { indent: 2 };
         mrow.font = { italic: true, color: { argb: 'FF666666' } };
         if (m.notApplicable) {
