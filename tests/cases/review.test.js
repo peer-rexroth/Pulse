@@ -2614,10 +2614,10 @@ test('actionLogHtml shows a header row (Action Item / Owner / Due Date / Source 
   assertIncludes(html, 'Created');
   assertIncludes(html, 'Closed');
   // Delete/the confirm toggle share one "Actions" label spanning both
-  // columns (8/10) — a user-reported gap, since it used to be left
+  // columns (9/11) — a user-reported gap, since it used to be left
   // unlabeled while every other column here had its own header text.
   const headerRow = html.slice(html.indexOf('action-log-header'), html.indexOf('action-log-header') + 600);
-  assertIncludes(headerRow, 'grid-column:8/10', 'the Actions label must span both the Delete and Confirm columns');
+  assertIncludes(headerRow, 'grid-column:9/11', 'the Actions label must span both the Delete and Confirm columns');
   assertIncludes(headerRow, '>Actions<');
 });
 
@@ -2678,15 +2678,15 @@ test('actionLogHtml\'s header and data rows agree on where the flag/Action Item/
   assertIncludes(headerRow, 'grid-column:2">Action Item');
   assertIncludes(headerRow, 'grid-column:3">Owner');
   assertIncludes(headerRow, 'grid-column:4">Due Date');
-  assertIncludes(headerRow, 'grid-column:5">Source');
-  assertIncludes(headerRow, 'grid-column:6">Created');
-  assertIncludes(headerRow, 'grid-column:7">Closed');
+  assertIncludes(headerRow, 'grid-column:6">Source');
+  assertIncludes(headerRow, 'grid-column:7">Created');
+  assertIncludes(headerRow, 'grid-column:8">Closed');
 
   const id = workstreams[0].actionLog[0].id;
   assertIncludes(html, `grid-column:1" onclick="toggleActionLogFlag('${workstreams[0].id}','${id}')"`, 'the priority flag must sit at column 1, before Action Item');
   assertIncludes(html, `<span class="action-log-text" style="grid-column:2"`, 'Action Item must sit at column 2 on the data row too (a double-click-to-edit span at rest)');
-  assertIncludes(html, `grid-column:8" onclick="deleteActionLogItem('${workstreams[0].id}','${id}')"`, 'Delete must sit at column 8, after Created/Closed');
-  assertIncludes(html, `grid-column:9" onclick="toggleActionLogItem('${workstreams[0].id}','${id}')"`, 'the confirm toggle must sit at column 9, last');
+  assertIncludes(html, `grid-column:9" onclick="deleteActionLogItem('${workstreams[0].id}','${id}')"`, 'Delete must sit at column 9, after the Due Date/Source spacer and Created/Closed');
+  assertIncludes(html, `grid-column:10" onclick="toggleActionLogItem('${workstreams[0].id}','${id}')"`, 'the confirm toggle must sit at column 10, last');
 });
 
 // Regression test: the same shape of bug as actionLogHtml()'s header above,
@@ -2779,7 +2779,7 @@ test('allWorkstreamsActionLogHtml merges every workstream\'s own action log into
   assertIncludes(html, 'action-log-row with-ws', 'each data row must carry the with-ws modifier so its CSS grid gets the extra Workstream column');
 });
 
-test('allWorkstreamsActionLogHtml\'s header includes a Workstream column and shifts every later column one slot right (columns 3-10)', function () {
+test('allWorkstreamsActionLogHtml\'s header includes a Workstream column and shifts every later column one slot right (columns 3-11)', function () {
   addCompletedReviewCycle();
   const w = workstreams[0];
   w.actionLog = [{ id: 'a1', text: 'X', owner: 'Alice', dueDate: null, completed: false, completedAt: null, cycleId: null, addedAt: Date.now(), flagged: false }];
@@ -2790,14 +2790,14 @@ test('allWorkstreamsActionLogHtml\'s header includes a Workstream column and shi
   assertIncludes(headerRow, 'grid-column:3">Workstream');
   assertIncludes(headerRow, 'grid-column:4">Owner');
   assertIncludes(headerRow, 'grid-column:5">Due Date');
-  assertIncludes(headerRow, 'grid-column:6">Source');
-  assertIncludes(headerRow, 'grid-column:7">Created');
-  assertIncludes(headerRow, 'grid-column:8">Closed');
+  assertIncludes(headerRow, 'grid-column:7">Source');
+  assertIncludes(headerRow, 'grid-column:8">Created');
+  assertIncludes(headerRow, 'grid-column:9">Closed');
 
   assertIncludes(html, `grid-column:1" onclick="toggleActionLogFlag('${w.id}','a1')"`, 'the priority flag stays at column 1 in this view too');
   assertIncludes(html, `<span class="action-log-ws" style="grid-column:3"`, 'the Workstream cell must sit at column 3 on the data row too');
-  assertIncludes(html, `grid-column:9" onclick="deleteActionLogItem('${w.id}','a1')"`, 'Delete shifts to column 9 to make room for the flag and Workstream columns');
-  assertIncludes(html, `grid-column:10" onclick="toggleActionLogItem('${w.id}','a1')"`, 'the confirm toggle shifts to column 10, still last');
+  assertIncludes(html, `grid-column:10" onclick="deleteActionLogItem('${w.id}','a1')"`, 'Delete shifts to column 10 to make room for the flag/Workstream columns and the Due Date/Source spacer');
+  assertIncludes(html, `grid-column:11" onclick="toggleActionLogItem('${w.id}','a1')"`, 'the confirm toggle shifts to column 11, still last');
 });
 
 test('allWorkstreamsActionLogHtml shows the same empty state as the per-workstream table when no workstream has any action items', function () {

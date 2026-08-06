@@ -1172,8 +1172,20 @@
      priority flag"), added as a new leading column rather than folded into
      the trailing Actions cluster, so it reads at a glance the same way an
      email client's own flag column does. */
+  /* A later, explicit user request ("add a small spacer column between due
+     date and source") inserted a purely decorative 20px blank column
+     between Due Date and Source, the same "add a narrow gap column, don't
+     resize an existing one" fix --item-grid-cols itself already used for
+     the identical class of bug (see "Column layout is a real CSS grid" in
+     CLAUDE.md): revealing Due Date's own editable native <input
+     type="date"> pill (icon + full dd.mm.yyyy segmented value) needs more
+     width than the 90px Due Date track alone gives it, and used to spill
+     over and visually clip into Source's own text right next to it (a
+     user-reported bug, screenshot-confirmed) — every column from Source
+     onward shifted one slot right accordingly (see actionLogRowHtml()'s
+     own grid-column:N+off values). */
   .action-log-row, .action-log-header {
-    grid-template-columns: 28px minmax(220px,1fr) 100px 90px 80px 90px 90px 40px 40px;
+    grid-template-columns: 28px minmax(220px,1fr) 100px 90px 20px 80px 90px 90px 40px 40px;
   }
   /* The "All Workstreams" Action Log (see allWorkstreamsActionLogHtml())
      inserts one extra Workstream column right after Action Item — every
@@ -1182,7 +1194,7 @@
      flexible width to make room, same tradeoff --item-grid-cols itself
      makes for its own name column. */
   .action-log-row.with-ws, .action-log-header.with-ws {
-    grid-template-columns: 28px minmax(160px,1fr) 130px 100px 90px 80px 90px 90px 40px 40px;
+    grid-template-columns: 28px minmax(160px,1fr) 130px 100px 90px 20px 80px 90px 90px 40px 40px;
   }
   .action-log-ws { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Decision Log (Review's third tab) — Action Log's counterpart for the
@@ -7591,17 +7603,18 @@ function actionLogRowHtml(w, a, showWs) {
           <span class="item-dates-computed">${a.dueDate ? fmtDate(a.dueDate) : '—'}</span>
         </span>`;
       })()}
-      <span class="action-log-source" style="grid-column:${5 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
-      <span class="item-dates-computed" style="grid-column:${6 + off}">${fmtDate(dateStrFromTs(a.addedAt))}</span>
-      <span class="item-dates-computed" style="grid-column:${7 + off}">${a.completedAt ? fmtDate(dateStrFromTs(a.completedAt)) : ''}</span>
+      <span style="grid-column:${5 + off}"></span>
+      <span class="action-log-source" style="grid-column:${6 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
+      <span class="item-dates-computed" style="grid-column:${7 + off}">${fmtDate(dateStrFromTs(a.addedAt))}</span>
+      <span class="item-dates-computed" style="grid-column:${8 + off}">${a.completedAt ? fmtDate(dateStrFromTs(a.completedAt)) : ''}</span>
       ${canManage
-        ? `<button class="row-icon-btn" style="grid-column:${8 + off}" onclick="deleteActionLogItem('${w.id}','${a.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>`
-        : `<span style="grid-column:${8 + off}"></span>`}
+        ? `<button class="row-icon-btn" style="grid-column:${9 + off}" onclick="deleteActionLogItem('${w.id}','${a.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>`
+        : `<span style="grid-column:${9 + off}"></span>`}
       ${canManage
-        ? `<button class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:${9 + off}" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
+        ? `<button class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:${10 + off}" onclick="toggleActionLogItem('${w.id}','${a.id}')" title="${a.completed ? 'Completed — click to reopen' : 'Mark this action item as done'}">
         <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
       </button>`
-        : `<span class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:${9 + off}" title="${a.completed ? 'Completed' : 'Not completed'}">
+        : `<span class="review-confirm-toggle item-level ${a.completed ? 'confirmed' : ''}" style="grid-column:${10 + off}" title="${a.completed ? 'Completed' : 'Not completed'}">
         <i class="fa-${a.completed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
       </span>`}
     </div>`;
@@ -7668,10 +7681,11 @@ function actionLogHtml(w) {
         <span style="grid-column:2">Action Item</span>
         <span style="grid-column:3">Owner</span>
         <span style="grid-column:4">Due Date</span>
-        <span style="grid-column:5">Source</span>
-        <span style="grid-column:6">Created</span>
-        <span style="grid-column:7">Closed</span>
-        <span style="grid-column:8/10">Actions</span>
+        <span style="grid-column:5"></span>
+        <span style="grid-column:6">Source</span>
+        <span style="grid-column:7">Created</span>
+        <span style="grid-column:8">Closed</span>
+        <span style="grid-column:9/11">Actions</span>
       </div>
       ${sortedActionLog(filtered).map(a => actionLogRowHtml(w, a)).join('')}
     </div>`;
@@ -7702,10 +7716,11 @@ function allWorkstreamsActionLogHtml() {
         <span style="grid-column:3">Workstream</span>
         <span style="grid-column:4">Owner</span>
         <span style="grid-column:5">Due Date</span>
-        <span style="grid-column:6">Source</span>
-        <span style="grid-column:7">Created</span>
-        <span style="grid-column:8">Closed</span>
-        <span style="grid-column:9/11">Actions</span>
+        <span style="grid-column:6"></span>
+        <span style="grid-column:7">Source</span>
+        <span style="grid-column:8">Created</span>
+        <span style="grid-column:9">Closed</span>
+        <span style="grid-column:10/12">Actions</span>
       </div>
       ${sortedActionLog(filtered, x => x.a).map(({ w, a }) => actionLogRowHtml(w, a, true)).join('')}
     </div>`;
