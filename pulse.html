@@ -2327,6 +2327,28 @@ let revealedDueIds = new Set();
 // date format as before, not full dd.mm.yyyy... show a small calendar icon
 // next to it or allow inline edit").
 let revealedActionLogDueIds = new Set();
+// Reveal-on-double-click state for Action Log/Decision Log's own inline
+// text fields (an action item's own text/owner, a decision's own text) —
+// UI-only, not persisted. A later user correction ("inline edit should
+// work on doubleclick of the text, not directly") to the first cut of this
+// feature, which rendered these as always-live, always-focusable fields —
+// which read as too eager for plain prose sitting in an otherwise
+// read-only list, unlike Due Date's own icon-triggered reveal (there's no
+// icon here to click instead). Keyed by `${itemId}:${field}` rather than
+// one Set per field, since Action Item text/Owner/Decision text are all
+// the exact same interaction, just applied to three different fields —
+// see revealLogTextField()/updateActionLogText()'s own comments.
+let revealedLogTextFields = new Set();
+function isLogTextRevealed(itemId, field) { return revealedLogTextFields.has(`${itemId}:${field}`); }
+function revealLogTextField(itemId, field, inputId) {
+  revealedLogTextFields.add(`${itemId}:${field}`);
+  render();
+  document.getElementById(inputId)?.focus();
+}
+function cancelRevealLogTextField(itemId, field) {
+  revealedLogTextFields.delete(`${itemId}:${field}`);
+  render();
+}
 // Whether the Unassigned section's inline "Add item" input is currently
 // showing in place of its button — UI-only, not persisted. See
 // unassignedSectionHtml()/openInlineQuickAdd().
@@ -7457,13 +7479,13 @@ function actionLogRowHtml(w, a, showWs) {
     : '';
   return `<div class="item-row action-log-row ${showWs ? 'with-ws' : ''} ${a.completed ? 'review-confirmed' : ''}">
       ${priorityFlagHtml(a.flagged, canManage, `toggleActionLogFlag('${w.id}','${a.id}')`, 1)}
-      ${canManage
-        ? `<textarea class="flat-cell-input" rows="1" style="grid-column:2" onblur="updateActionLogText('${w.id}','${a.id}', this.value)">${esc(a.text)}</textarea>`
-        : `<span class="action-log-text" style="grid-column:2">${esc(a.text)}</span>`}
+      ${canManage && isLogTextRevealed(a.id, 'text')
+        ? `<textarea id="action-log-text-input-${a.id}" class="flat-cell-input" rows="1" style="grid-column:2" onblur="updateActionLogText('${w.id}','${a.id}', this.value)" onkeydown="if(event.key==='Escape') cancelRevealLogTextField('${a.id}','text')">${esc(a.text)}</textarea>`
+        : `<span class="action-log-text" style="grid-column:2" ${canManage ? `ondblclick="revealLogTextField('${a.id}','text','action-log-text-input-${a.id}')" title="Double-click to edit"` : ''}>${esc(a.text)}</span>`}
       ${wsCellHtml}
-      ${canManage
-        ? `<input type="text" class="flat-cell-input" style="grid-column:${3 + off}" value="${esc(a.owner)}" onblur="updateActionLogOwner('${w.id}','${a.id}', this.value)">`
-        : `<span class="item-owner" style="grid-column:${3 + off}">${esc(a.owner)}</span>`}
+      ${canManage && isLogTextRevealed(a.id, 'owner')
+        ? `<input id="action-log-owner-input-${a.id}" type="text" class="flat-cell-input" style="grid-column:${3 + off}" value="${esc(a.owner)}" onblur="updateActionLogOwner('${w.id}','${a.id}', this.value)" onkeydown="if(event.key==='Escape') cancelRevealLogTextField('${a.id}','owner')">`
+        : `<span class="item-owner" style="grid-column:${3 + off}" ${canManage ? `ondblclick="revealLogTextField('${a.id}','owner','action-log-owner-input-${a.id}')" title="Double-click to edit"` : ''}>${esc(a.owner)}</span>`}
       ${(() => {
         if (!canManage) return `<span class="item-dates-computed" style="grid-column:${4 + off}">${a.dueDate ? fmtDate(a.dueDate) : ''}</span>`;
         if (revealedActionLogDueIds.has(a.id)) {
@@ -7626,23 +7648,27 @@ function toggleActionLogFlag(wsId, itemId) {
 // Due Date editing already had, fixed the same way (see
 // updateActionLogDueDate()'s own comment) and at the same tier.
 //
-// Unlike Due Date, there's no reveal/ghost step here at all — a plain flat
-// text field (see .flat-cell-input's own CSS comment) has no "ugly native
-// widget at rest" problem the way a native date input does, so it can just
-// always render as a real, directly-editable field for Reviewer+, styled
-// to look like plain text until focused. Commits only on blur, never on
-// oninput, for the same reason every other inline edit in this app that
-// actually calls save()/render() does: re-rendering on every keystroke
-// would destroy the still-focused field mid-edit (the Minutes modal's own
-// identical-looking fields use oninput instead, but those only ever touch
-// a detached working array with no render() call at all — see
-// renderMinutesActionItemsRows()'s own comment).
+// Double-click to reveal, mirroring Due Date's own reveal — a later user
+// correction ("inline edit should work on doubleclick of the text, not
+// directly"), reversing this feature's first cut, which rendered these as
+// always-live fields. Both always delete the field's own reveal entry and
+// re-render, whether or not the value actually changed — a commit (or a
+// blur with nothing changed) collapses the field straight back to plain
+// text; only a genuine value change goes on to save() and stamp the
+// entry's own updatedAt. Commits only on blur, never on oninput, for the
+// same reason every other inline edit in this app that actually calls
+// save()/render() does: re-rendering on every keystroke would destroy the
+// still-focused field mid-edit (the Minutes modal's own identical-looking
+// fields use oninput instead, but those only ever touch the detached
+// editingMinutesActionItems working array with no render() call at all —
+// see renderMinutesActionItemsRows()'s own comment).
 function updateActionLogText(wsId, itemId, value) {
   if (!requireRole('reviewer')) return;
   const w = wsById(wsId);
   if (!w) return;
   const a = w.actionLog.find(x => x.id === itemId);
   if (!a) return;
+  revealedLogTextFields.delete(`${itemId}:text`);
   const newValue = value.trim();
   if (!newValue || newValue === a.text) { render(); return; } // blank isn't a valid edit — snap back to the stored value
   a.text = newValue;
@@ -7655,8 +7681,9 @@ function updateActionLogOwner(wsId, itemId, value) {
   if (!w) return;
   const a = w.actionLog.find(x => x.id === itemId);
   if (!a) return;
+  revealedLogTextFields.delete(`${itemId}:owner`);
   const newValue = value.trim();
-  if (newValue === a.owner) return; // owner can legitimately be cleared to blank — no reset-on-blank guard needed, unlike text
+  if (newValue === a.owner) { render(); return; } // owner can legitimately be cleared to blank — no reset-on-blank guard needed, unlike text
   a.owner = newValue;
   a.updatedAt = Date.now();
   save(); render();
@@ -7799,9 +7826,9 @@ function decisionLogRowHtml(w, d, showWs) {
     : '';
   return `<div class="item-row decision-log-row ${showWs ? 'with-ws' : ''}">
       ${priorityFlagHtml(d.flagged, canManage, `toggleDecisionLogFlag('${w.id}','${d.id}')`, 1)}
-      ${canManage
-        ? `<textarea class="flat-cell-input" rows="1" style="grid-column:2" onblur="updateDecisionLogText('${w.id}','${d.id}', this.value)">${esc(d.text)}</textarea>`
-        : `<span class="action-log-text" style="grid-column:2">${esc(d.text)}</span>`}
+      ${canManage && isLogTextRevealed(d.id, 'text')
+        ? `<textarea id="decision-log-text-input-${d.id}" class="flat-cell-input" rows="1" style="grid-column:2" onblur="updateDecisionLogText('${w.id}','${d.id}', this.value)" onkeydown="if(event.key==='Escape') cancelRevealLogTextField('${d.id}','text')">${esc(d.text)}</textarea>`
+        : `<span class="action-log-text" style="grid-column:2" ${canManage ? `ondblclick="revealLogTextField('${d.id}','text','decision-log-text-input-${d.id}')" title="Double-click to edit"` : ''}>${esc(d.text)}</span>`}
       ${wsCellHtml}
       <span class="action-log-source" style="grid-column:${3 + off}" title="${esc(sourceTitle)}">${esc(source)}</span>
       <span class="item-dates-computed" style="grid-column:${4 + off}">${fmtDate(dateStrFromTs(d.addedAt))}</span>
@@ -7921,14 +7948,15 @@ function toggleDecisionLogFlag(wsId, itemId) {
   save(); render();
 }
 // updateActionLogText()'s exact counterpart for Decision Log — see that
-// function's own comment for why this is a plain always-on flat field, not
-// a reveal/ghost step, and why it only ever commits on blur.
+// function's own comment for why this reveals on double-click, and why it
+// only ever commits on blur.
 function updateDecisionLogText(wsId, itemId, value) {
   if (!requireRole('reviewer')) return;
   const w = wsById(wsId);
   if (!w) return;
   const d = w.decisionLog.find(x => x.id === itemId);
   if (!d) return;
+  revealedLogTextFields.delete(`${itemId}:text`);
   const newValue = value.trim();
   if (!newValue || newValue === d.text) { render(); return; }
   d.text = newValue;

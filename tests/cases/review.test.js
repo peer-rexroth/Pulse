@@ -1936,7 +1936,7 @@ test('updateActionLogText/updateActionLogOwner are both blocked below Reviewer',
   assertEqual(w.actionLog[0].owner, '');
 });
 
-test('actionLogRowHtml renders the text/owner cells as real editable fields at Reviewer+, and plain read-only spans below it', function () {
+test('actionLogRowHtml shows the text/owner cells as plain double-click-to-edit spans at rest, at Reviewer+ — not live fields by default', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
   addMinutesActionItemRow();
@@ -1949,15 +1949,64 @@ test('actionLogRowHtml renders the text/owner cells as real editable fields at R
   setReviewTab('actionLog');
 
   let html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `updateActionLogText('${w.id}','${id}'`, 'Reviewer+ gets a real editable text field');
-  assertIncludes(html, `updateActionLogOwner('${w.id}','${id}'`, 'Reviewer+ gets a real editable owner field');
+  assertIncludes(html, `ondblclick="revealLogTextField('${id}','text','action-log-text-input-${id}')"`, 'text is a double-click affordance at rest');
+  assertIncludes(html, `ondblclick="revealLogTextField('${id}','owner','action-log-owner-input-${id}')"`, 'owner is a double-click affordance at rest');
+  assertNotIncludes(html, 'updateActionLogText', 'no live field until double-clicked');
+  assertNotIncludes(html, 'updateActionLogOwner', 'no live field until double-clicked');
 
   userRole = 'visitor';
   renderReview();
   html = document.getElementById('main').innerHTML;
-  assertNotIncludes(html, 'updateActionLogText', 'not editable below Reviewer');
-  assertNotIncludes(html, 'updateActionLogOwner', 'not editable below Reviewer');
+  assertNotIncludes(html, 'revealLogTextField', 'no double-click affordance at all below Reviewer');
   assertIncludes(html, '<span class="action-log-text"', 'still shows the real text as plain, read-only text below Reviewer');
+});
+
+test('revealLogTextField swaps the row into the real editable field; updateActionLogText/updateActionLogOwner collapse it back to plain text on commit', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  saveMinutes();
+  const w = workstreams[0];
+  const id = w.actionLog[0].id;
+  setFilterWorkstream(w.id);
+  setMode('review');
+  setReviewTab('actionLog');
+
+  revealLogTextField(id, 'text', `action-log-text-input-${id}`);
+  let html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `id="action-log-text-input-${id}"`);
+  assertIncludes(html, `updateActionLogText('${w.id}','${id}'`, 'the revealed field commits through the same write path');
+
+  updateActionLogText(w.id, id, 'Edited via double-click');
+  assertEqual(w.actionLog[0].text, 'Edited via double-click');
+  html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, `id="action-log-text-input-${id}"`, 'no longer revealed after a successful commit');
+  assertIncludes(html, 'Edited via double-click', 'collapses back to the plain display, now showing the new text');
+
+  revealLogTextField(id, 'owner', `action-log-owner-input-${id}`);
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, `id="action-log-owner-input-${id}"`);
+  updateActionLogOwner(w.id, id, 'Alice');
+  assertEqual(w.actionLog[0].owner, 'Alice');
+  html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, `id="action-log-owner-input-${id}"`, 'no longer revealed after a successful commit');
+});
+
+test('cancelRevealLogTextField collapses back to display mode without touching the stored value', function () {
+  const cycle = addCompletedReviewCycle();
+  openMinutesModal(cycle.id);
+  addMinutesActionItemRow();
+  editingMinutesActionItems[0].text = 'Do the thing';
+  saveMinutes();
+  const w = workstreams[0];
+  const id = w.actionLog[0].id;
+
+  revealLogTextField(id, 'text', `action-log-text-input-${id}`);
+  assertTrue(isLogTextRevealed(id, 'text'));
+  cancelRevealLogTextField(id, 'text');
+  assertFalse(isLogTextRevealed(id, 'text'));
+  assertEqual(w.actionLog[0].text, 'Do the thing', 'cancelling must never write anything');
 });
 
 test('updateDecisionLogText edits the text, snaps back on a blank value, and is blocked below Reviewer', function () {
@@ -1975,7 +2024,7 @@ test('updateDecisionLogText edits the text, snaps back on a blank value, and is 
   assertEqual(w.decisionLog[0].text, 'Edited decision');
 });
 
-test('decisionLogRowHtml renders the text cell as a real editable field at Reviewer+, and a plain read-only span below it', function () {
+test('decisionLogRowHtml shows the text cell as a plain double-click-to-edit span at rest, at Reviewer+, and a plain read-only span (no affordance) below it', function () {
   const w = workstreams[0];
   w.decisionLog = [{ id: 'd1', text: 'A real decision', cycleId: 'c1', addedAt: 1000, updatedAt: 1000, flagged: false }];
   setFilterWorkstream(w.id);
@@ -1983,12 +2032,22 @@ test('decisionLogRowHtml renders the text cell as a real editable field at Revie
   setReviewTab('decisionLog');
 
   let html = document.getElementById('main').innerHTML;
-  assertIncludes(html, `updateDecisionLogText('${w.id}','d1'`, 'Reviewer+ gets a real editable text field');
+  assertIncludes(html, `ondblclick="revealLogTextField('d1','text','decision-log-text-input-d1')"`, 'double-click affordance at rest, at Reviewer+');
+  assertNotIncludes(html, 'updateDecisionLogText', 'no live field until double-clicked');
+
+  revealLogTextField('d1', 'text', 'decision-log-text-input-d1');
+  html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'id="decision-log-text-input-d1"');
+  assertIncludes(html, `updateDecisionLogText('${w.id}','d1'`, 'the revealed field commits through the same write path');
+  updateDecisionLogText(w.id, 'd1', 'Edited via double-click');
+  assertEqual(w.decisionLog[0].text, 'Edited via double-click');
+  html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'id="decision-log-text-input-d1"', 'no longer revealed after a successful commit');
 
   userRole = 'visitor';
   renderReview();
   html = document.getElementById('main').innerHTML;
-  assertNotIncludes(html, 'updateDecisionLogText', 'not editable below Reviewer');
+  assertNotIncludes(html, 'revealLogTextField', 'no double-click affordance at all below Reviewer');
   assertIncludes(html, '<span class="action-log-text"', 'still shows the real decision text as plain, read-only text below Reviewer');
 });
 
@@ -2625,7 +2684,7 @@ test('actionLogHtml\'s header and data rows agree on where the flag/Action Item/
 
   const id = workstreams[0].actionLog[0].id;
   assertIncludes(html, `grid-column:1" onclick="toggleActionLogFlag('${workstreams[0].id}','${id}')"`, 'the priority flag must sit at column 1, before Action Item');
-  assertIncludes(html, `<textarea class="flat-cell-input" rows="1" style="grid-column:2"`, 'Action Item must sit at column 2 on the data row too (a real textarea at Reviewer+ now, not a plain span)');
+  assertIncludes(html, `<span class="action-log-text" style="grid-column:2"`, 'Action Item must sit at column 2 on the data row too (a double-click-to-edit span at rest)');
   assertIncludes(html, `grid-column:8" onclick="deleteActionLogItem('${workstreams[0].id}','${id}')"`, 'Delete must sit at column 8, after Created/Closed');
   assertIncludes(html, `grid-column:9" onclick="toggleActionLogItem('${workstreams[0].id}','${id}')"`, 'the confirm toggle must sit at column 9, last');
 });
