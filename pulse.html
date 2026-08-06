@@ -1142,7 +1142,21 @@
   .action-log-row textarea.flat-cell-input, .decision-log-row textarea.flat-cell-input {
     resize: none; overflow: hidden; min-height: 22px; field-sizing: content;
   }
-  .action-log-row .flat-cell-input:focus, .decision-log-row .flat-cell-input:focus { outline: none; background: var(--panel-2); }
+  /* A user-reported readability bug: this originally matched
+     .minutes-action-item-row's own :focus background (--panel-2) — but
+     unlike that modal table, .action-log-row/.decision-log-row share the
+     plain .item-row class, which already sets --panel-2 as its own
+     :hover background. Since the row is almost always hovered right when
+     its field is focused (the mouse just double-clicked into it), the
+     "focused" field and the merely-hovered row around it rendered as the
+     exact same color, so the field's own edges vanished into the row. An
+     accent-colored inset ring (never used by .item-row's own hover) plus
+     the page's own --bg (distinct from both --panel and --panel-2, in
+     every color scheme) is what actually stays visible regardless of
+     whether the row happens to be hovered too. */
+  .action-log-row .flat-cell-input:focus, .decision-log-row .flat-cell-input:focus {
+    outline: none; background: var(--bg); box-shadow: inset 0 0 0 1px var(--accent);
+  }
   .action-log-source { color: var(--text-faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* A full explicit grid-template-columns (not implicit/auto tracks) — every
      column gets a pinned width, so nothing is ever "auto"-sized from a given
