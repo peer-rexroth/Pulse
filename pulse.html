@@ -2454,12 +2454,22 @@ function save() {
 // device's picker defaults to. null means "no role chosen yet on this
 // browser" — render() gates the whole app behind openRoleModal() until one is.
 const ROLE_STORAGE_KEY = 'pulse-role-v1';
+// Persists verifiedRolePasswordHash (see its own comment, near pickRole())
+// alongside the role itself — without this, checkCurrentRolePasswordChallenge()
+// would re-prompt for a password on *every* page reload, not just when the
+// password has actually changed since it was last verified, since that
+// variable would otherwise start back at null on every fresh page load
+// regardless of what was already verified in a previous session.
+const ROLE_VERIFIED_HASH_KEY = 'pulse-role-verified-v1';
 function loadRole() {
   const raw = localStorage.getItem(ROLE_STORAGE_KEY);
   userRole = ROLES.includes(raw) ? raw : null;
+  verifiedRolePasswordHash = localStorage.getItem(ROLE_VERIFIED_HASH_KEY) || null;
 }
 function saveRole() {
   localStorage.setItem(ROLE_STORAGE_KEY, userRole);
+  if (verifiedRolePasswordHash) localStorage.setItem(ROLE_VERIFIED_HASH_KEY, verifiedRolePasswordHash);
+  else localStorage.removeItem(ROLE_VERIFIED_HASH_KEY);
 }
 
 // No default workstream — a brand-new programme starts with zero of them
@@ -5015,6 +5025,11 @@ function closeRoleModal() {
 function setUserRole(role) {
   const changed = role !== userRole;
   userRole = role;
+  // Any role switch starts unverified — submitRolePassword() re-sets this
+  // immediately afterward on its own success path, so this only actually
+  // matters for the free "no password set (yet)" pick path, which is
+  // exactly the case checkCurrentRolePasswordChallenge() needs to catch.
+  verifiedRolePasswordHash = null;
   saveRole();
   renderRoleModal();
   // Sitting on the Admin page while switching away to any non-Admin role
@@ -5082,6 +5097,21 @@ async function verifyRolePassword(password, stored) {
 // category of protection. Only the actual *picked* role stays
 // browser-local (see ROLE_STORAGE_KEY's own comment).
 let pendingRolePick = null;
+// The exact `hash` string most recently *verified* (by successfully typing
+// the real password into pickRole()'s own password step) for whichever
+// role is currently active — persisted alongside userRole itself (see
+// ROLE_VERIFIED_HASH_KEY) specifically so a page reload doesn't forget it
+// and re-challenge for a password that hasn't actually changed since it
+// was last verified. Reset to null by setUserRole() on every role switch
+// (a new role starts unverified, even if the switch itself came from the
+// free "no password set yet" path), and set by submitRolePassword() the
+// moment a real password check succeeds. See
+// checkCurrentRolePasswordChallenge() below for what this is actually for
+// — comparing by the hash's own value, not by object reference, is what
+// lets a password that changes later (typed locally, or synced in from
+// elsewhere) still correctly re-trigger a challenge even though
+// verifiedRolePasswordHash itself hasn't changed.
+let verifiedRolePasswordHash = null;
 function pickRole(role) {
   if (role === 'visitor' || !programme.rolePasswords[role]) { setUserRole(role); return; }
   pendingRolePick = role;
@@ -5121,6 +5151,12 @@ async function submitRolePassword() {
   }
   cancelRolePasswordStep();
   setUserRole(role);
+  // setUserRole() itself unconditionally clears this (and already persisted
+  // that clear via its own saveRole() call) — re-set right after, now that
+  // the real password has genuinely just been verified, and persist that
+  // too so a page reload doesn't forget it and re-challenge for no reason.
+  verifiedRolePasswordHash = programme.rolePasswords[role].hash;
+  saveRole();
 }
 function cancelRolePasswordStep() {
   pendingRolePick = null;
@@ -5129,6 +5165,51 @@ function cancelRolePasswordStep() {
   document.getElementById('roleModalDoneRow').style.display = '';
   document.getElementById('roleModalIntro').style.display = '';
   document.getElementById('roleModalTitle').textContent = 'Choose your role';
+}
+// Closes a real, user-reported gap: picking a role on a genuinely fresh
+// device (no rolePasswords set locally yet, so the free "no password"
+// path in pickRole() applies) and *then* linking/reconnecting to an
+// existing file that turns out to have a real password set for that same
+// role used to leave the already-active role completely unchallenged —
+// replaceFromFileData()/mergeProgramme() bring in the file's own real
+// rolePasswords, but nothing ever re-checked the role sitting active in
+// this session against them. Concretely: start fresh, pick Admin (free,
+// since programme.rolePasswords.admin is still null on a brand-new local
+// state), then link a folder whose own pulse-index.json has a real Admin
+// password set — the session stayed Admin throughout, no challenge ever
+// shown.
+//
+// Called after every point `programme` can be updated from an external
+// source — linkFolder(), reconnectFolder(), and initFileSync()'s own quiet
+// launch-time reconnect — deliberately *not* also wired into the routine
+// background poll/write-time merges: those are meant to be unobtrusive
+// (the same toast-and-badge treatment sync conflicts already get, not a
+// modal interrupting whatever the user is mid-typing), whereas linking/
+// reconnecting is already a deliberate, foreground action the user just
+// took, so popping the password step right after it is the expected
+// continuation of that action, not a surprise interruption.
+//
+// If the currently-active role now has a real password this session was
+// never actually verified against, it's downgraded back to Visitor and
+// immediately re-challenged via the exact same pickRole() password step a
+// fresh pick would show — reusing that flow outright rather than a
+// second, parallel one. Comparing by the stored hash's own value (not
+// object identity, which a merge/replace always changes) is what makes
+// this correctly re-trigger if the password changes again later too, not
+// just the first time one appears.
+function checkCurrentRolePasswordChallenge() {
+  if (!userRole || userRole === 'visitor') return;
+  const stored = programme.rolePasswords[userRole];
+  if (!stored || stored.hash === verifiedRolePasswordHash) return;
+  const roleToReclaim = userRole;
+  userRole = 'visitor';
+  verifiedRolePasswordHash = null;
+  saveRole();
+  updateRoleBtn();
+  render();
+  openRoleModal();
+  pickRole(roleToReclaim);
+  showToast(`This linked file requires a password for the ${ROLE_META[roleToReclaim].label} role`, true);
 }
 // Keeps the topbar shield icon in sync with the actual current role (it
 // used to be a hardcoded fa-user-shield regardless of role — a user-
@@ -10644,6 +10725,7 @@ async function linkFolder() {
       if (await scanAndMergeStrayFiles(dir)) { normalizeData(); save(); render(); }
       showToast(`${msg} — auto-saving enabled`);
       closeFileSyncModal();
+      checkCurrentRolePasswordChallenge();
       return;
     }
     const legacyRead = await readJsonFile(dir, LEGACY_SYNC_FILE);
@@ -10655,6 +10737,7 @@ async function linkFolder() {
         if (await scanAndMergeStrayFiles(dir)) { normalizeData(); save(); render(); }
         showToast(`${msg} — auto-saving enabled`);
         closeFileSyncModal();
+        checkCurrentRolePasswordChallenge();
       } else {
         syncDirHandle = null;
         showToast(`${LEGACY_SYNC_FILE} in that folder isn't a Pulse data file — unlinked`, true);
@@ -10705,6 +10788,7 @@ async function reconnectFolder() {
     if (await scanAndMergeStrayFiles(syncDirHandle)) { normalizeData(); save(); render(); }
     showToast(msg);
     closeFileSyncModal();
+    checkCurrentRolePasswordChallenge();
   } catch (e) { showToast('Could not reconnect', true); }
 }
 function fadeSwapHTML(el, html) {
@@ -10818,6 +10902,7 @@ async function initFileSync() {
         if (indexRead) {
           const data = await readAndRecombineFolder(handle, indexRead);
           applyIncomingFolderData(data, 'Synced'); // return value unused — no toast on a quiet launch-time reconnect, matching prior behavior
+          checkCurrentRolePasswordChallenge();
         }
         startFileSyncPolling();
       } catch (_) { /* read failed — keep localStorage data */ }

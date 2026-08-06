@@ -194,7 +194,7 @@ async function run(argv) {
   // before RBAC existed, and testing functionality rather than permissions —
   // keeps exercising full behavior unimpeded. Tests that specifically cover
   // role gating set userRole to a lower tier themselves (see role.test.js).
-  userRole = 'admin';
+  userRole = 'admin'; pendingRolePick = null; verifiedRolePasswordHash = null;
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
   editingItemType = 'scope'; journeyConnectItemId = null;
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set(); revealedDueIds = new Set(); revealedActionLogDueIds = new Set(); revealedLogTextFields = new Set();

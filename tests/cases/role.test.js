@@ -389,6 +389,121 @@ test('submitRolePassword switches roles on a correct password and closes the pas
   assertEqual(document.getElementById('roleOptions').style.display, '', 'the tile grid should be showing again');
 });
 
+test('submitRolePassword sets and persists verifiedRolePasswordHash on success, so a later reload doesn\'t forget it', async function () {
+  const hash = await hashRolePassword('correct-horse');
+  programme.rolePasswords.admin = hash;
+  userRole = 'visitor';
+  pickRole('admin');
+  document.getElementById('roleModalPasswordInput').value = 'correct-horse';
+  await submitRolePassword();
+  assertEqual(verifiedRolePasswordHash, hash.hash);
+  assertEqual(localStorage.getItem(ROLE_VERIFIED_HASH_KEY), hash.hash, 'must be persisted, not just held in memory');
+});
+
+test('setUserRole clears verifiedRolePasswordHash (and its persisted copy) on every role switch', async function () {
+  const hash = await hashRolePassword('correct-horse');
+  programme.rolePasswords.admin = hash;
+  userRole = 'visitor';
+  pickRole('admin');
+  document.getElementById('roleModalPasswordInput').value = 'correct-horse';
+  await submitRolePassword();
+  assertTrue(!!verifiedRolePasswordHash);
+
+  setUserRole('planner');
+  assertEqual(verifiedRolePasswordHash, null);
+  assertEqual(localStorage.getItem(ROLE_VERIFIED_HASH_KEY), null);
+});
+
+// ---------- checkCurrentRolePasswordChallenge() ----------
+// A user-reported bypass: start fresh (no rolePasswords set locally yet),
+// pick Admin for free via pickRole()'s own "no password set" path, then
+// link/reconnect to an existing file whose own pulse-index.json has a real
+// Admin password — the already-active Admin role was never re-challenged,
+// since nothing ever re-checked it against what the file actually required.
+
+test('checkCurrentRolePasswordChallenge is a no-op for Visitor or no role at all', async function () {
+  const hash = await hashRolePassword('secret');
+  programme.rolePasswords.admin = hash;
+  userRole = 'visitor';
+  checkCurrentRolePasswordChallenge();
+  assertEqual(userRole, 'visitor');
+  userRole = null;
+  checkCurrentRolePasswordChallenge();
+  assertEqual(userRole, null);
+});
+
+test('checkCurrentRolePasswordChallenge is a no-op when the current role has no password set', function () {
+  userRole = 'admin';
+  programme.rolePasswords.admin = null;
+  checkCurrentRolePasswordChallenge();
+  assertEqual(userRole, 'admin', 'nothing to challenge against');
+});
+
+test('checkCurrentRolePasswordChallenge is a no-op when the current role\'s password matches what was already verified', async function () {
+  const hash = await hashRolePassword('secret');
+  programme.rolePasswords.admin = hash;
+  userRole = 'admin';
+  verifiedRolePasswordHash = hash.hash;
+  checkCurrentRolePasswordChallenge();
+  assertEqual(userRole, 'admin', 'already verified against this exact password — no need to re-challenge');
+});
+
+test('checkCurrentRolePasswordChallenge reproduces and fixes the reported bypass: a role picked for free (no password set at pick time) is downgraded and re-challenged once a real password for it appears', async function () {
+  // Start fresh: no password set for Admin yet, so this succeeds immediately
+  // with no challenge — the exact free pick the bug report described.
+  programme.rolePasswords.admin = null;
+  userRole = 'visitor';
+  pickRole('admin');
+  assertEqual(userRole, 'admin');
+  assertEqual(verifiedRolePasswordHash, null, 'nothing was actually verified — there was nothing to verify');
+
+  // Simulate what linkFolder()/mergeProgramme() would do: the linked file's
+  // own programme already has a real Admin password set.
+  programme.rolePasswords.admin = await hashRolePassword('the-real-password');
+
+  checkCurrentRolePasswordChallenge();
+  assertEqual(userRole, 'visitor', 'must be downgraded — this session was never actually challenged for the real password');
+  assertEqual(pendingRolePick, 'admin', 'and immediately re-challenged for the same role, via the normal password step');
+  assertEqual(document.getElementById('roleModalPasswordStep').style.display, '', 'the password step must actually be showing');
+});
+
+test('checkCurrentRolePasswordChallenge lets the user back in immediately by typing the now-required password', async function () {
+  programme.rolePasswords.admin = null;
+  userRole = 'visitor';
+  pickRole('admin');
+  const realHash = await hashRolePassword('the-real-password');
+  programme.rolePasswords.admin = realHash;
+  checkCurrentRolePasswordChallenge();
+  assertEqual(userRole, 'visitor');
+
+  document.getElementById('roleModalPasswordInput').value = 'the-real-password';
+  await submitRolePassword();
+  assertEqual(userRole, 'admin', 'the real password reclaims the role normally');
+  assertEqual(verifiedRolePasswordHash, realHash.hash);
+});
+
+test('loadRole/saveRole round-trip both userRole and verifiedRolePasswordHash, so a genuinely unchanged password does not re-challenge across a reload', async function () {
+  const hash = await hashRolePassword('correct-horse');
+  programme.rolePasswords.admin = hash;
+  userRole = 'visitor';
+  pickRole('admin');
+  document.getElementById('roleModalPasswordInput').value = 'correct-horse';
+  await submitRolePassword();
+  assertEqual(userRole, 'admin');
+
+  // Simulate a fresh page load: both in-memory globals reset, then restored
+  // purely from localStorage.
+  userRole = null;
+  verifiedRolePasswordHash = null;
+  loadRole();
+  assertEqual(userRole, 'admin');
+  assertEqual(verifiedRolePasswordHash, hash.hash);
+
+  // The password hasn't actually changed since — must not re-challenge.
+  checkCurrentRolePasswordChallenge();
+  assertEqual(userRole, 'admin');
+});
+
 test('submitRolePassword shows a clear error instead of throwing when crypto.subtle is unavailable (e.g. a non-secure context)', async function () {
   programme.rolePasswords.admin = await hashRolePassword('correct-horse');
   userRole = 'visitor';
