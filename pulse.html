@@ -10753,8 +10753,21 @@ async function linkFolder() {
       // scanAndMergeStrayFiles()'s own comment.
       if (await scanAndMergeStrayFiles(dir)) { normalizeData(); save(); render(); }
       showToast(`${msg} — auto-saving enabled`);
-      closeFileSyncModal();
+      // Must run before closeFileSyncModal(): that call chains straight into
+      // the mandatory backup-folder modal (see its own comment) whenever the
+      // current role still qualifies — and right after linking, "current
+      // role" is still whatever was freely picked before this file's own
+      // rolePasswords were known, so a role this file actually requires a
+      // password for would otherwise still pass that check for one more
+      // tick. Running the challenge first means a downgrade-and-reopen here
+      // lands before the backup-folder check ever runs, so that check
+      // correctly sees the (now-visitor) role and stays closed until the
+      // real password is entered — see checkCurrentRolePasswordChallenge()'s
+      // own comment for the full bug this was fixing (a user-reported case
+      // where the undismissable backup modal opened on top of, and
+      // completely hid, the password step with no way to reach either).
       checkCurrentRolePasswordChallenge();
+      closeFileSyncModal();
       return;
     }
     const legacyRead = await readJsonFile(dir, LEGACY_SYNC_FILE);
@@ -10765,8 +10778,9 @@ async function linkFolder() {
         updateFileSyncUI(); startFileSyncPolling();
         if (await scanAndMergeStrayFiles(dir)) { normalizeData(); save(); render(); }
         showToast(`${msg} — auto-saving enabled`);
-        closeFileSyncModal();
+        // Same ordering fix as the current-format branch above.
         checkCurrentRolePasswordChallenge();
+        closeFileSyncModal();
       } else {
         syncDirHandle = null;
         showToast(`${LEGACY_SYNC_FILE} in that folder isn't a Pulse data file — unlinked`, true);
@@ -10816,8 +10830,10 @@ async function reconnectFolder() {
     updateFileSyncUI(); startFileSyncPolling();
     if (await scanAndMergeStrayFiles(syncDirHandle)) { normalizeData(); save(); render(); }
     showToast(msg);
-    closeFileSyncModal();
+    // Ordering fix — see linkFolder()'s own comment on its identical pair of
+    // calls for why this must run before closeFileSyncModal().
     checkCurrentRolePasswordChallenge();
+    closeFileSyncModal();
   } catch (e) { showToast('Could not reconnect', true); }
 }
 function fadeSwapHTML(el, html) {
