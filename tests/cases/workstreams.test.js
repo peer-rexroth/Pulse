@@ -126,6 +126,33 @@ test('reorderWorkstream moves a workstream to a new position and reassigns conti
   assertDeepEqual(byOrder, ['B', 'C', 'Workstream 1'], 'A should now sit where C was, pushing B and C up');
 });
 
+test('reorderWorkstream stamps updatedAt only on workstreams whose order value actually changed — needed so the reorder itself reaches another already-synced device via mergeWorkstreamFields()\'s newer-updatedAt-wins merge', function () {
+  const a = workstreams[0]; // 'Workstream 1', seeded by resetState()
+  const b = addWorkstream('B');
+  const c = addWorkstream('C');
+  a.updatedAt = 0; b.updatedAt = 0; c.updatedAt = 0;
+  reorderWorkstream(b.id, c.id); // move B to where C was: A stays at index 0, C moves to 1, B moves to 2
+  assertEqual(a.order, 0, 'A stays at the front');
+  assertEqual(a.updatedAt, 0, "A's order never changed — updatedAt must stay untouched");
+  assertTrue(c.updatedAt > 0, "C moved from index 2 to 1 — its order changed, so updatedAt must bump");
+  assertTrue(b.updatedAt > 0, "B moved from index 1 to 2 — its order changed, so updatedAt must bump");
+});
+
+test('mergeWorkstreamFields merges order alongside name/color, so a reorder made elsewhere is actually applied, not just the tombstone/actionLog machinery', function () {
+  const existing = { id: 'ws1', name: 'Alpha', color: 'blue', order: 0, updatedAt: 100, actionLog: [], decisionLog: [] };
+  const incoming = { id: 'ws1', name: 'Alpha', color: 'blue', order: 2, updatedAt: 200, actionLog: [], decisionLog: [] };
+  const changed = mergeWorkstreamFields(existing, incoming, true);
+  assertTrue(changed);
+  assertEqual(existing.order, 2, 'a newer incoming order must be applied, the same as name/color already are');
+});
+
+test('mergeWorkstreamFields does not apply an incoming order that is not actually newer', function () {
+  const existing = { id: 'ws1', name: 'Alpha', color: 'blue', order: 0, updatedAt: 200, actionLog: [], decisionLog: [] };
+  const incoming = { id: 'ws1', name: 'Alpha', color: 'blue', order: 2, updatedAt: 100, actionLog: [], decisionLog: [] };
+  mergeWorkstreamFields(existing, incoming, true);
+  assertEqual(existing.order, 0, 'a stale incoming order must not overwrite the newer local one');
+});
+
 test('reorderWorkstream is blocked below Editor', function () {
   const a = workstreams[0];
   const b = addWorkstream('B');

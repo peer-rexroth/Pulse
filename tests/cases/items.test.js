@@ -933,6 +933,19 @@ test('reorderItem moves an item to a new position and reassigns contiguous order
   assertDeepEqual(byOrder, ['B', 'C', 'A'], 'A should now sit where C was, pushing B and C up');
 });
 
+test('reorderItem stamps updatedAt only on items whose order value actually changed — needed so the reorder itself reaches another already-synced device via mergeData()\'s newer-updatedAt-wins scalar merge', function () {
+  openItemModal(null); fillItemForm({ name: 'A' }); saveItem();
+  openItemModal(null); fillItemForm({ name: 'B' }); saveItem();
+  openItemModal(null); fillItemForm({ name: 'C' }); saveItem();
+  const [a, b, c] = items;
+  a.updatedAt = 0; b.updatedAt = 0; c.updatedAt = 0;
+  reorderItem(b.id, c.id); // move B to where C was: A stays at index 0, C moves to 1, B moves to 2
+  assertEqual(a.order, 0, 'A stays at the front');
+  assertEqual(a.updatedAt, 0, "A's order never changed — updatedAt must stay untouched");
+  assertTrue(c.updatedAt > 0, "C moved from index 2 to 1 — its order changed, so updatedAt must bump");
+  assertTrue(b.updatedAt > 0, "B moved from index 1 to 2 — its order changed, so updatedAt must bump");
+});
+
 test('reorderItem is a no-op across two different workstreams', function () {
   document.getElementById('wsNameInput').value = 'Second WS';
   wsColorChoice = 'teal';

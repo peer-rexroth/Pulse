@@ -6359,7 +6359,22 @@ function reorderItem(fromId, targetId) {
   if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
   const [moved] = wsItems.splice(fromIdx, 1);
   wsItems.splice(toIdx, 0, moved);
-  wsItems.forEach((it, i) => { it.order = i; });
+  // Stamping updatedAt here (only for an item whose order value genuinely
+  // moved, not the whole list unconditionally — the same "don't make an
+  // untouched record look freshly edited" discipline stampChangedMilestones()
+  // already applies) is what makes a reorder actually reach another already-
+  // synced device: mergeData()'s items loop only ever applies an incoming
+  // item's scalar fields (order included) when its updatedAt is strictly
+  // newer than the local copy's — without this, a device that already has
+  // its own untouched copy of the item sees a tied updatedAt, silently
+  // drops the incoming reorder, and its own next write can even clobber the
+  // reorder back to the old order in the shared file. A user-reported gap
+  // ("if i reorder scope items in a workstream, is this stored in the file
+  // so other users also see the same sequence?") — verified live with two
+  // Chromium pages sharing one fake sync folder: before this fix, device 2's
+  // own subsequent write reverted device 1's reorder in the shared file;
+  // after, device 2 picks the new order up on its next poll.
+  wsItems.forEach((it, i) => { if (it.order !== i) { it.order = i; it.updatedAt = Date.now(); } });
   save(); render();
 }
 // Drag-and-drop reordering of workstreams in the shared sidebar — the exact
@@ -6392,7 +6407,10 @@ function reorderWorkstream(fromId, targetId) {
   if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
   const [moved] = workstreams.splice(fromIdx, 1);
   workstreams.splice(toIdx, 0, moved);
-  workstreams.forEach((w, i) => { w.order = i; });
+  // Same reorder-must-sync fix as reorderItem() above, one level up — see
+  // its own comment. Also needs mergeWorkstreamFields() to actually merge
+  // `order` at all (it previously only merged name/color) — see there.
+  workstreams.forEach((w, i) => { if (w.order !== i) { w.order = i; w.updatedAt = Date.now(); } });
   save(); render();
 }
 function deleteItemFromModal() {
@@ -9618,6 +9636,12 @@ function mergeWorkstreamFields(existing, incoming, respectTombstones) {
   if ((incoming.updatedAt || 0) > (existing.updatedAt || 0)) {
     existing.name = incoming.name;
     existing.color = incoming.color;
+    // A later, user-reported addition — order (the sidebar's own
+    // drag-reordered position) was never part of this scalar merge at all,
+    // so a workstream reorder never reached another device regardless of
+    // updatedAt; reorderWorkstream() itself also didn't stamp updatedAt
+    // until the same fix, see its own comment.
+    if (incoming.order !== undefined) existing.order = incoming.order;
     existing.updatedAt = incoming.updatedAt;
     changed = true;
   }
