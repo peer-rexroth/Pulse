@@ -987,6 +987,7 @@
   .color-swatch.selected { border-color: var(--text); }
   .modal-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
   .modal-actions-right { display: flex; gap: 8px; }
+  .modal-actions-left { display: flex; gap: 8px; }
 
   .modal p { font-size: 13px; color: var(--text-dim); line-height: 1.5; margin: 0 0 14px; }
 
@@ -1510,7 +1511,10 @@
       <div class="color-grid" id="wsColorGrid"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-danger" id="wsDeleteBtn" onclick="deleteWorkstreamFromModal()" style="display:none"><i class="fa-solid fa-trash"></i> Delete</button>
+      <div class="modal-actions-left">
+        <button class="btn" id="wsResyncOrderBtn" onclick="resyncWorkstreamOrder()" style="display:none" title="Bumps every item's own sync timestamp (order itself untouched) so this workstream's current order wins the next merge on other devices — a permanent, in-app alternative to re-dragging every item"><i class="fa-solid fa-arrows-rotate"></i> Resync Order</button>
+        <button class="btn btn-danger" id="wsDeleteBtn" onclick="deleteWorkstreamFromModal()" style="display:none"><i class="fa-solid fa-trash"></i> Delete</button>
+      </div>
       <div class="modal-actions-right">
         <button class="btn" onclick="closeWorkstreamModal()">Cancel</button>
         <button class="btn btn-primary" id="wsSaveBtn" onclick="saveWorkstream()">Save</button>
@@ -5261,6 +5265,7 @@ function openWorkstreamModal(id) {
     `<div class="color-swatch ${c === wsColorChoice ? 'selected' : ''}" style="background:var(--ws-${c})" onclick="pickWsColor('${c}')"></div>`
   ).join('');
   document.getElementById('wsDeleteBtn').style.display = (w && hasRole('editor')) ? 'inline-flex' : 'none';
+  document.getElementById('wsResyncOrderBtn').style.display = (w && hasRole('editor')) ? 'inline-flex' : 'none';
   document.getElementById('wsNameInput').disabled = !hasRole('editor');
   document.getElementById('wsSaveBtn').style.display = hasRole('editor') ? '' : 'none';
   document.getElementById('wsModalBg').classList.add('open');
@@ -5296,6 +5301,35 @@ function saveWorkstream() {
   // so nothing behind it is reachable) is what opened this one in the first
   // place — nothing else can trigger openWorkstreamModal() while it's open.
   if (scopeAssignItemId) updateScopeAssignWorkstreamState(savedWs.id);
+}
+// A permanent, in-app alternative to the dev-console one-liner this was
+// first suggested as (bump every item's own updatedAt, order itself
+// untouched) — an explicit user request ("build this"), for the recovery
+// case reorderItem()'s own updatedAt-stamping fix can't retroactively
+// cover on its own: a reorder made *before* that fix shipped never got a
+// fresh timestamp, so it's stuck looking "not newer" to any merge no
+// matter how many other devices have since picked up the fix — see
+// "Manual item order and drag-and-drop reordering" in CLAUDE.md. This
+// button touches nothing but each item's own updatedAt: the order values
+// themselves are already correct in this device's own local state (that's
+// the whole reason to reach for this — the other side is the one that's
+// stale), so there's nothing to compute or reorder here, just a fresh
+// timestamp on every item in this one workstream, so this device's
+// already-correct order reliably wins the next merge everywhere else.
+// Non-destructive (no data changes, only a sync-priority timestamp), so —
+// unlike Delete — this runs directly with no confirm modal, the same
+// "not every action needs one, only genuinely destructive ones do"
+// convention every other confirm-gated flow in this app already follows.
+function resyncWorkstreamOrder() {
+  if (!requireRole('editor')) return;
+  if (!editingWsId) return;
+  const w = wsById(editingWsId);
+  if (!w) return;
+  const wsItems = items.filter(it => it.workstreamId === editingWsId);
+  if (!wsItems.length) { showToast('No items in this workstream to resync'); return; }
+  wsItems.forEach(it => { it.updatedAt = Date.now(); });
+  save(); closeWorkstreamModal(); render();
+  showToast(`Resynced order for ${wsItems.length} item${wsItems.length === 1 ? '' : 's'} in "${w.name}"`);
 }
 // Deleting a workstream no longer cascades to its scope items — an
 // explicit user request ("if i remove a workstream that has scope items,

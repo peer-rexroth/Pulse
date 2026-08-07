@@ -46,6 +46,48 @@ test('editing an existing workstream updates it in place, not a new entry', func
   assertEqual(workstreams[0].color, 'purple');
 });
 
+// resyncWorkstreamOrder() — a permanent, in-app alternative to manually
+// re-dragging every item, offered specifically for a reorder made *before*
+// reorderItem()'s own updatedAt-stamping fix shipped (see "Manual item
+// order and drag-and-drop reordering" in CLAUDE.md): it bumps every item's
+// own updatedAt (order itself untouched) so this device's already-correct
+// local order reliably wins the next merge on another, stale device.
+
+test('resyncWorkstreamOrder bumps updatedAt on every item in the workstream without touching order', function () {
+  const wsId = workstreams[0].id;
+  const a = { id: genId(), workstreamId: wsId, categoryId: categories[0].id, name: 'A', order: 1, status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 0 };
+  const b = { id: genId(), workstreamId: wsId, categoryId: categories[0].id, name: 'B', order: 0, status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 0 };
+  const other = { id: genId(), workstreamId: null, categoryId: categories[0].id, name: 'Unassigned item', order: 0, status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 0 };
+  items.push(a, b, other);
+  editingWsId = wsId;
+  resyncWorkstreamOrder();
+  assertTrue(a.updatedAt > 0, "the workstream's own items must get a fresh updatedAt");
+  assertTrue(b.updatedAt > 0, "the workstream's own items must get a fresh updatedAt");
+  assertEqual(other.updatedAt, 0, "an item in a different workstream (or Unassigned) must not be touched");
+  assertEqual(a.order, 1, 'order itself is left exactly as it was — only the timestamp changes');
+  assertEqual(b.order, 0, 'order itself is left exactly as it was — only the timestamp changes');
+});
+
+test('resyncWorkstreamOrder is blocked below Editor', function () {
+  const wsId = workstreams[0].id;
+  const a = { id: genId(), workstreamId: wsId, categoryId: categories[0].id, name: 'A', order: 0, status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 0 };
+  items.push(a);
+  editingWsId = wsId;
+  userRole = 'reviewer';
+  resyncWorkstreamOrder();
+  assertEqual(a.updatedAt, 0, 'below Editor, nothing should be touched');
+});
+
+test('resyncWorkstreamOrder toggles visibility in the workstream modal — shown for an existing workstream at Editor+, hidden for a new one or below Editor', function () {
+  openWorkstreamModal(workstreams[0].id);
+  assertEqual(document.getElementById('wsResyncOrderBtn').style.display, 'inline-flex', 'an existing workstream at Editor+ shows the button');
+  openWorkstreamModal(null);
+  assertEqual(document.getElementById('wsResyncOrderBtn').style.display, 'none', 'a brand-new workstream has nothing to resync yet');
+  userRole = 'reviewer';
+  openWorkstreamModal(workstreams[0].id);
+  assertEqual(document.getElementById('wsResyncOrderBtn').style.display, 'none', 'below Editor the button is hidden entirely');
+});
+
 // A user-reported request reversed the earlier cascade-delete behavior:
 // deleting a workstream now moves its items to Unassigned instead of
 // deleting them along with it — real work (milestones, tags, dates, review
