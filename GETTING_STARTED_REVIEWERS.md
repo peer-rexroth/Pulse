@@ -14,14 +14,7 @@ Pulse is a local app — there's no server to log into and no account to create.
 
 Pulse is a single app folder — you need the whole thing, not just one file. Ask whoever manages it for a copy (or find it in your shared folder), and put it somewhere on your own machine — your Desktop or Documents folder is fine.
 
-The folder contains a few files, but the two you care about are:
-
-- **`start-pulse.command`** — double-click this to launch Pulse. It starts a small local server and opens the app in Chrome or Edge automatically. **This is the one to use** — it's the only way to get the full experience (installable app, works offline, background syncing).
-- **`stop-pulse.command`** — double-click this when you're done, to shut the local server back down.
-
-The first time you double-click `start-pulse.command`, macOS may warn you it's from an unidentified developer. If that happens, right-click the file, choose **Open**, and confirm — you only need to do this once.
-
-> **Quick check only?** You can also just double-click `pulse.html` directly to open it in a browser tab. That works for a fast look, but you won't get the installable app or background syncing — use `start-pulse.command` for real day-to-day use.
+Open the folder and double-click **`pulse.html`**. It opens straight in your browser — that's it, nothing to install.
 
 Once it opens, you should see Pulse's dashboard — but before anything shows up, there are two setup screens to get through first (below).
 
@@ -48,7 +41,10 @@ That opens the live checklist: every scope item in that workstream, with its mil
 
 - Click the small circle on a milestone's row (or an item's own row, if it has no milestones) to **confirm** it. Confirming an item with several milestones confirms all of them at once — click again to un-confirm.
 - Anything already marked Complete is automatically treated as confirmed — no need to click through work that's already finished.
-- While you're in Review mode, you can also correct a milestone's Due/Actual dates, its status, and an item's IT/Business/Budget tags directly from the checklist — useful if something needs fixing as you go, without having to switch back to Planning.
+- Click the chevron on an item's row to expand it and see its milestones — Due date, Actual date, and Status, one row per milestone.
+  - Click a milestone's **Status** badge to cycle it (Not Started → On Track → At Risk → Off Track → Completed) — a quick way to correct it without opening the full item.
+  - Click a milestone's **Due** date to edit it directly, or the small **+** under **Actual** to record when it actually happened. Both are only editable here, from Review mode — that's specific to the Reviewer role.
+- This is useful for fixing something as you go, without having to switch back to Planning.
 
 Once every item is confirmed, the **Complete review** button lights up — click it to close out the cycle. If you started a review by mistake, **Cancel review** removes it entirely (no history kept, so use Complete instead if there's anything worth recording).
 
