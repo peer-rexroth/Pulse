@@ -3211,6 +3211,7 @@ function render() {
   document.getElementById('dashboardToolbar').style.display = (mode === 'dashboard' && dashboardTab === 'overview') ? '' : 'none';
   document.getElementById('dataMenuImportItem').style.display = hasRole('admin') ? '' : 'none';
   document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
+  updateSyncConflictsUI();
   renderPlanningStatusChips();
   renderJourneysStatusChips();
   renderReviewLogFilterChips();
@@ -10096,7 +10097,12 @@ function renderBackupsModal() {
   `).join('');
 }
 // ---------- Sync conflicts (see mergeData()'s conflicts return + reportSyncConflicts()) ----------
-function openSyncConflictsModal() { renderSyncConflictsModal(); document.getElementById('syncConflictsModalBg').classList.add('open'); }
+// Editor+ only, an explicit user request — the badge/toast/modal are all
+// gated on the same hasRole('editor') check (see updateSyncConflictsUI()/
+// reportSyncConflicts() below); this is the second-layer, defense-in-depth
+// guard behind that, same "never trust the render-time check alone"
+// convention every other role-gated function in this app already follows.
+function openSyncConflictsModal() { if (!requireRole('editor')) return; renderSyncConflictsModal(); document.getElementById('syncConflictsModalBg').classList.add('open'); }
 function closeSyncConflictsModal() { document.getElementById('syncConflictsModalBg').classList.remove('open'); }
 function renderSyncConflictsModal() {
   const el = document.getElementById('syncConflictsList');
@@ -10120,10 +10126,21 @@ function clearSyncConflictLog() {
 // reportSyncConflicts() shows is easy to miss (it's a passing notification,
 // same as any other toast), so this stays up as a persistent, clickable
 // reminder for as long as there's anything unreviewed.
+//
+// Editor+ only — an explicit user request. syncConflictLog itself keeps
+// accumulating regardless of the current role (a conflict can happen while
+// a Visitor/Planner/Reviewer is looking, and shouldn't be silently lost —
+// it's just not worth surfacing to a role that can't act on it), so this is
+// purely a display gate, the same "log everything, gate what's shown"
+// split reportSyncConflicts()'s own toast just below uses. Called
+// unconditionally from render() too (not just reportSyncConflicts()/
+// clearSyncConflictLog()), so switching roles mid-session immediately
+// shows/hides the badge rather than leaving it stale until the next
+// conflict or clear.
 function updateSyncConflictsUI() {
   const el = document.getElementById('syncConflictIndicator');
   if (!el) return;
-  el.innerHTML = syncConflictLog.length
+  el.innerHTML = (hasRole('editor') && syncConflictLog.length)
     ? `<button class="btn btn-sm sync-conflict-badge" onclick="openSyncConflictsModal()" title="Some edits needed automatic conflict resolution"><i class="fa-solid fa-triangle-exclamation"></i> ${syncConflictLog.length} conflict${syncConflictLog.length === 1 ? '' : 's'}</button>`
     : '';
 }
@@ -10271,6 +10288,13 @@ function reportSyncConflicts(conflicts) {
   const now = Date.now();
   syncConflictLog.push(...conflicts.map(c => ({ ...c, at: now })));
   updateSyncConflictsUI();
+  // Editor+ only, matching the badge/modal — a Visitor/Planner/Reviewer
+  // can't act on this (openSyncConflictsModal() is Editor+-gated), so a
+  // toast advertising it would just be a dead-end interruption, the same
+  // "don't prompt a role that has nothing to do here" reasoning
+  // maybeShowBackupFolderOnboarding() already applies elsewhere. The log
+  // entry itself is still recorded above regardless of role.
+  if (!hasRole('editor')) return;
   showToast(
     `${conflicts.length} conflicting edit${conflicts.length === 1 ? '' : 's'} resolved automatically`,
     false, () => openSyncConflictsModal(), 'Review'

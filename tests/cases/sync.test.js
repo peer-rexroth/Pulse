@@ -342,6 +342,50 @@ test('clearSyncConflictLog empties the log', function () {
   assertEqual(syncConflictLog.length, 0);
 });
 
+// Sync conflict info (badge/toast/modal) is Editor+ only — an explicit
+// user request. syncConflictLog itself still accumulates regardless of
+// role (a conflict can happen while a lower role is looking, and
+// shouldn't be silently lost), only the *display* is gated.
+
+test('reportSyncConflicts still logs the conflict below Editor, but shows no toast', function () {
+  syncConflictLog = [];
+  userRole = 'reviewer';
+  document.getElementById('toastUndoBtn').textContent = '';
+  toastUndoAction = null;
+  reportSyncConflicts([{ itemName: 'X', milestoneName: null, note: 'Test conflict' }]);
+  assertEqual(syncConflictLog.length, 1, 'the conflict must still be recorded regardless of role');
+  assertEqual(document.getElementById('toastUndoBtn').textContent, '', 'no "Review" toast should show below Editor');
+});
+
+test('updateSyncConflictsUI hides the badge below Editor even with unreviewed conflicts, and shows it at Editor+', function () {
+  syncConflictLog = [{ itemName: 'X', milestoneName: null, note: 'Test', at: Date.now() }];
+  userRole = 'reviewer';
+  updateSyncConflictsUI();
+  assertEqual(document.getElementById('syncConflictIndicator').innerHTML, '', 'badge must be hidden below Editor');
+  userRole = 'editor';
+  updateSyncConflictsUI();
+  assertTrue(document.getElementById('syncConflictIndicator').innerHTML.indexOf('1 conflict') !== -1, 'badge must show at Editor+');
+});
+
+test('openSyncConflictsModal is blocked below Editor', function () {
+  userRole = 'reviewer';
+  openSyncConflictsModal();
+  assertFalse(document.getElementById('syncConflictsModalBg').classList.contains('open'));
+  userRole = 'editor';
+  openSyncConflictsModal();
+  assertTrue(document.getElementById('syncConflictsModalBg').classList.contains('open'));
+});
+
+test('render() refreshes the sync-conflict badge immediately on a role switch, not just on the next conflict/clear', function () {
+  syncConflictLog = [{ itemName: 'X', milestoneName: null, note: 'Test', at: Date.now() }];
+  userRole = 'editor';
+  render();
+  assertTrue(document.getElementById('syncConflictIndicator').innerHTML.indexOf('1 conflict') !== -1);
+  userRole = 'reviewer';
+  render();
+  assertEqual(document.getElementById('syncConflictIndicator').innerHTML, '', 'switching to a role below Editor must hide the badge right away');
+});
+
 test('normalizeData backfills a missing milestone.updatedAt from the parent item\'s own updatedAt', function () {
   items.push({
     id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'X', owner: '',
