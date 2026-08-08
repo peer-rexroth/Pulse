@@ -111,6 +111,17 @@ test('cancelReviewCycle removes the cycle entirely (not tracked) and frees the w
   assertEqual(reviewCycles.length, 1, 'a new cycle can start once the old one is cancelled');
 });
 
+test('cancelReviewCycle tombstones the cycle id — needed so the cancellation actually reaches another device still working on the exact same cycle (see mergeData()\'s reviewCycles sweep)', function () {
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  const cycleId = cycle.id;
+  cancelReviewCycle(cycleId);
+  confirmModalAction();
+  const tomb = deletedReviewCycleIds.find(x => x.id === cycleId);
+  assertTrue(!!tomb, 'cancelling must record a tombstone, not just remove the local copy');
+  assertTrue(typeof tomb.deletedAt === 'number' && tomb.deletedAt > 0);
+});
+
 test('reviewCyclesForWs returns every cycle (active and completed) for that workstream only', function () {
   document.getElementById('wsNameInput').value = 'Second';
   wsColorChoice = 'teal';

@@ -681,6 +681,85 @@ test('mergeData reports changed:false when a merge genuinely brings in nothing n
   assertFalse(changed, 'an identical incoming copy should not report a change');
 });
 
+// ---------- A cancelled review cycle now sweeps too, the same as items/milestones/actionLog/decisionLog ----------
+// A user-reported gap: "how will the app react if someone started a review
+// and is actively working on it, and a second user cancelled the review?"
+// Before this fix, cancelReviewCycle() spliced the cycle out locally with no
+// tombstone at all, and mergeData()'s reviewCycles loop was purely additive
+// (only ever looked at what was present in incoming data) — so a device
+// still actively working on the exact same cycle never noticed the
+// cancellation, and that device's own next save could resurrect the
+// "cancelled" cycle right back into the shared file. Fixed the same way the
+// other four entity types already were: a real tombstone (deletedReviewCycleIds)
+// plus a sweep in mergeData(), gated by reviewCycleLastTouchedAt() (a review
+// cycle has no single updatedAt, unlike an item, so this reduces over every
+// place activity on a cycle gets timestamped instead).
+
+test('reviewCycleLastTouchedAt reduces over every timestamped field on a cycle, not just startedAt', function () {
+  const cycle = {
+    startedAt: 1000,
+    confirmations: [{ itemId: 'a', confirmed: true, updatedAt: 3000 }],
+    milestoneConfirmations: [{ milestoneId: 'm', confirmed: true, updatedAt: 2000 }],
+    changeLog: [{ id: 'e1', changedAt: 4000 }],
+    minutes: { updatedAt: 2500 },
+    completedAt: null
+  };
+  assertEqual(reviewCycleLastTouchedAt(cycle), 4000, 'the latest of startedAt/confirmations/milestoneConfirmations/changeLog/minutes.updatedAt/completedAt wins');
+});
+
+test('reviewCycleLastTouchedAt falls back to startedAt when nothing else on the cycle has any activity', function () {
+  const cycle = { startedAt: 1000, confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null, completedAt: null };
+  assertEqual(reviewCycleLastTouchedAt(cycle), 1000);
+});
+
+test('mergeData sweeps a locally-existing review cycle once its tombstone merges in, when nothing has touched it since the cancellation', function () {
+  const local = addCycleForMerge({ id: 'stale-cycle', startedAt: 1000 });
+  const { changed } = mergeData({ workstreams: [], items: [], reviewCycles: [], deletedReviewCycleIds: [{ id: 'stale-cycle', deletedAt: 2000 }] });
+  assertTrue(changed);
+  assertEqual(reviewCycles.find(c => c.id === 'stale-cycle'), undefined, 'a cancelled-elsewhere cycle nobody is still working on must be swept locally too');
+});
+
+test('mergeData does NOT sweep a review cycle someone is still actively working on — a confirmation timestamped after the cancellation wins, the same escape hatch items/milestones already have', function () {
+  const local = addCycleForMerge({ id: 'active-cycle', startedAt: 1000,
+    milestoneConfirmations: [{ milestoneId: 'm1', confirmed: true, updatedAt: 5000 }] });
+  mergeData({ workstreams: [], items: [], reviewCycles: [], deletedReviewCycleIds: [{ id: 'active-cycle', deletedAt: 2000 }] });
+  assertTrue(!!reviewCycles.find(c => c.id === 'active-cycle'), 'genuine activity after the cancellation must survive it, exactly like an item edited after its own deletion');
+});
+
+test('mergeData with respectTombstones:false never sweeps a locally-existing review cycle (applyImport merge mode)', function () {
+  addCycleForMerge({ id: 'kept-cycle', startedAt: 1000 });
+  mergeData({ workstreams: [], items: [], reviewCycles: [], deletedReviewCycleIds: [{ id: 'kept-cycle', deletedAt: 9999999999999 }] }, { respectTombstones: false });
+  assertTrue(!!reviewCycles.find(c => c.id === 'kept-cycle'));
+});
+
+test('mergeData refuses to re-add an incoming review cycle that matches a local cancellation tombstone newer than the incoming copy\'s own activity', function () {
+  const wsId = workstreams[0].id;
+  const incoming = { id: 'reappearing-cycle', workstreamId: wsId, startedAt: 1000, completedAt: null, cancelledAt: null,
+    confirmations: [], milestoneConfirmations: [{ milestoneId: 'm', confirmed: true, updatedAt: 1500 }], changeLog: [], minutes: null };
+  const { changed } = mergeData({ workstreams: [], items: [], reviewCycles: [incoming], deletedReviewCycleIds: [{ id: 'reappearing-cycle', deletedAt: 2000 }] });
+  assertFalse(changed);
+  assertEqual(reviewCycles.find(c => c.id === 'reappearing-cycle'), undefined, 'a third party\'s stale incoming copy must not resurrect an already-cancelled cycle');
+});
+
+test('mergeData lets an incoming review cycle back in when its own activity is genuinely newer than a local cancellation tombstone', function () {
+  const wsId = workstreams[0].id;
+  deletedReviewCycleIds.push({ id: 'revived-cycle', deletedAt: 1000 });
+  const incoming = { id: 'revived-cycle', workstreamId: wsId, startedAt: 500, completedAt: null, cancelledAt: null,
+    confirmations: [], milestoneConfirmations: [{ milestoneId: 'm', confirmed: true, updatedAt: 5000 }], changeLog: [], minutes: null };
+  mergeData({ workstreams: [], items: [], reviewCycles: [incoming] });
+  assertTrue(!!reviewCycles.find(c => c.id === 'revived-cycle'), 'activity newer than the tombstone is a genuine edit made elsewhere after the cancellation, not a stale resurrection');
+});
+
+test('the exact reported scenario: Device 2 cancels a review, Device 1 (mid-review) confirms a milestone — the cancellation sticks once Device 1\'s own activity is accounted for as having happened before the cancel', function () {
+  const wsId = workstreams[0].id;
+  // Device 1's own local state: an active cycle, no activity yet.
+  const local = addCycleForMerge({ id: 'shared-cycle', workstreamId: wsId, startedAt: 1000 });
+  // Device 2 cancels at t=2000 — its own incoming data has no confirmations
+  // newer than that, so Device 1's merge (still at t=1000) correctly sweeps it.
+  mergeData({ workstreams: [], items: [], reviewCycles: [], deletedReviewCycleIds: [{ id: 'shared-cycle', deletedAt: 2000 }] });
+  assertEqual(reviewCycles.find(c => c.id === 'shared-cycle'), undefined, 'with no activity since the cancel, Device 1 correctly picks up the cancellation');
+});
+
 // ---------- Duplicate active review cycles get reconciled, not silently orphaned ----------
 // Two people clicking "Start review cycle" for the same workstream before
 // either side had synced the other's write used to leave two distinct

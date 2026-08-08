@@ -2431,6 +2431,22 @@ let deletedMilestoneIds = [];
 // deletedMilestoneIds exists, or a stale incoming copy could resurrect it.
 let deletedActionLogIds = [];
 let deletedDecisionLogIds = [];
+// A review cycle used to be the one entity type with no tombstone at all —
+// every other field-level merge (confirmations, changeLog, minutes,
+// actionLog/decisionLog) is genuinely append-only/frozen-once-set, so
+// nothing ever removes one... except cancelReviewCycle() itself, which
+// splices the cycle out entirely (see "Review mode" in CLAUDE.md — "a
+// cancelled cycle isn't tracked at all"). Without a tombstone, that
+// cancellation never reached a device that was still actively working on
+// the same cycle (mergeData()'s reviewCycles loop is purely additive — it
+// only ever adds/merges what's *present* in incoming data, never notices
+// something locally-known going missing), and that device's own next save
+// could resurrect the "cancelled" cycle right back into the shared file. A
+// user-reported gap ("how will the app react if someone started a review
+// and is actively working on it, and a second user cancelled the
+// review?"), fixed the same way the other four tombstone lists already
+// were this session — see mergeData()'s own reviewCycles sweep below.
+let deletedReviewCycleIds = [];
 let pendingImportData = null;
 let modalTarget = null;
 
@@ -2458,6 +2474,7 @@ function load() {
     deletedMilestoneIds = raw.deletedMilestoneIds || [];
     deletedActionLogIds = raw.deletedActionLogIds || [];
     deletedDecisionLogIds = raw.deletedDecisionLogIds || [];
+    deletedReviewCycleIds = raw.deletedReviewCycleIds || [];
   } else {
     seedDefaults();
   }
@@ -2468,7 +2485,7 @@ function save() {
   const data = {
     programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
     filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
-    deletedActionLogIds, deletedDecisionLogIds
+    deletedActionLogIds, deletedDecisionLogIds, deletedReviewCycleIds
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   queueFileSyncWrite();
@@ -2523,6 +2540,7 @@ function seedDefaults() {
   deletedMilestoneIds = [];
   deletedActionLogIds = [];
   deletedDecisionLogIds = [];
+  deletedReviewCycleIds = [];
 }
 
 // Takes at most one rolling snapshot per calendar day, keeping the last
@@ -2589,11 +2607,13 @@ function normalizeData() {
   if (!Array.isArray(deletedMilestoneIds)) deletedMilestoneIds = [];
   if (!Array.isArray(deletedActionLogIds)) deletedActionLogIds = [];
   if (!Array.isArray(deletedDecisionLogIds)) deletedDecisionLogIds = [];
+  if (!Array.isArray(deletedReviewCycleIds)) deletedReviewCycleIds = [];
   deletedWorkstreamIds = deletedWorkstreamIds.filter(x => x && x.id);
   deletedItemIds = deletedItemIds.filter(x => x && x.id);
   deletedMilestoneIds = deletedMilestoneIds.filter(x => x && x.id);
   deletedActionLogIds = deletedActionLogIds.filter(x => x && x.id);
   deletedDecisionLogIds = deletedDecisionLogIds.filter(x => x && x.id);
+  deletedReviewCycleIds = deletedReviewCycleIds.filter(x => x && x.id);
 
   workstreams.forEach((w, i) => {
     if (!isSafeId(w.id)) w.id = genId();
@@ -6715,6 +6735,12 @@ function completeReviewCycle(cycleId) {
 // already-cancelled cycle saved before this change — from an older
 // pulse-data.json — is still correctly excluded from history and from ever
 // re-activating; nothing new ever sets it again.
+//
+// Tombstoned (deletedReviewCycleIds) since a later fix — see that
+// variable's own comment for the bug this closes: without it, a device
+// still actively working on this exact cycle never learned the
+// cancellation happened at all, and its own next save could resurrect the
+// cycle right back into the shared file.
 function cancelReviewCycle(cycleId) {
   if (!requireRole('reviewer')) return;
   const cycle = reviewCycles.find(c => c.id === cycleId);
@@ -6726,6 +6752,7 @@ function cancelReviewCycle(cycleId) {
     action: () => {
       const idx = reviewCycles.findIndex(c => c.id === cycleId);
       if (idx !== -1) reviewCycles.splice(idx, 1);
+      tombstone(deletedReviewCycleIds, cycleId);
       save(); render();
       showToast('Review cycle cancelled');
     }
@@ -9583,6 +9610,25 @@ function mergeKeyedRecords(existingList, incomingList, keyField, tombstones, res
   });
   return { merged, changed };
 }
+// Unlike an item/workstream, a review cycle has no single top-level
+// updatedAt to compare a tombstone's deletedAt against — every one of its
+// own fields (confirmations/milestoneConfirmations/changeLog/minutes)
+// carries its own timestamp instead (see mergeReviewCycle() just below).
+// This reduces over all of them to answer "how recently was this cycle
+// genuinely touched at all" — the same question an item's own updatedAt
+// answers for free — so the sweep in mergeData() below can tell "nobody's
+// touched this since it was cancelled, let it go" apart from "someone was
+// still actively working on it after the cancellation, that activity wins",
+// the identical escape hatch items'/milestones' own sweeps already have.
+function reviewCycleLastTouchedAt(cycle) {
+  let latest = cycle.startedAt || 0;
+  (cycle.confirmations || []).forEach(c => { if ((c.updatedAt || 0) > latest) latest = c.updatedAt; });
+  (cycle.milestoneConfirmations || []).forEach(c => { if ((c.updatedAt || 0) > latest) latest = c.updatedAt; });
+  (cycle.changeLog || []).forEach(e => { if ((e.changedAt || 0) > latest) latest = e.changedAt; });
+  if (cycle.minutes && (cycle.minutes.updatedAt || 0) > latest) latest = cycle.minutes.updatedAt;
+  if ((cycle.completedAt || 0) > latest) latest = cycle.completedAt;
+  return latest;
+}
 // A review cycle used to merge as one opaque, whole unit — mergeData() would
 // simply skip an incoming cycle whose id was already known locally, so any
 // confirmation/changeLog/minutes edit made concurrently on two different
@@ -9787,6 +9833,11 @@ function mergeData(data, opts) {
     if (!existing) deletedDecisionLogIds.push({ id: dd.id, deletedAt: dd.deletedAt || Date.now() });
     else if ((dd.deletedAt || 0) > existing.deletedAt) existing.deletedAt = dd.deletedAt;
   });
+  (data.deletedReviewCycleIds || []).forEach(dr => {
+    const existing = deletedReviewCycleIds.find(x => x.id === dr.id);
+    if (!existing) deletedReviewCycleIds.push({ id: dr.id, deletedAt: dr.deletedAt || Date.now() });
+    else if ((dr.deletedAt || 0) > existing.deletedAt) existing.deletedAt = dr.deletedAt;
+  });
   let wsOrCategoriesChanged = false;
   (data.workstreams || []).forEach(iw => {
     const existing = workstreams.find(w => w.id === iw.id);
@@ -9812,9 +9863,30 @@ function mergeData(data, opts) {
   // the other half of that same problem: two people starting a review for
   // the same workstream before either side had synced the other's write.
   let cyclesChanged = false;
+  // The same purely-additive gap items/milestones/actionLog/decisionLog all
+  // had (see their own sweep comments) — a locally-known cycle simply
+  // absent from data.reviewCycles (cancelled+tombstoned elsewhere) was never
+  // swept, only ever protected against an incoming copy re-adding it. Uses
+  // reviewCycleLastTouchedAt() rather than a plain updatedAt (a review cycle
+  // has none) as the escape hatch: a cycle genuinely still being worked on
+  // *after* the cancellation (a milestone confirmed, minutes edited) is
+  // treated the same as items'/milestones' own "edited elsewhere after the
+  // deletion" case and survives — only a cycle nobody's touched since the
+  // cancellation actually gets swept.
+  let cyclesSwept = false;
+  if (respectTombstones) {
+    reviewCycles = reviewCycles.filter(c => {
+      const tomb = deletedReviewCycleIds.find(x => x.id === c.id);
+      if (tomb && tomb.deletedAt >= reviewCycleLastTouchedAt(c)) { cyclesSwept = true; return false; }
+      return true;
+    });
+  }
   (data.reviewCycles || []).forEach(rc => {
     const existing = reviewCycles.find(c => c.id === rc.id);
     if (existing) { if (mergeReviewCycle(existing, rc)) cyclesChanged = true; return; }
+    const tomb = deletedReviewCycleIds.find(x => x.id === rc.id);
+    if (respectTombstones && tomb && tomb.deletedAt >= reviewCycleLastTouchedAt(rc)) return; // stays cancelled — the incoming copy is stale
+    if (tomb) untombstone(deletedReviewCycleIds, rc.id); // incoming activity is newer than our cancellation (or tombstones ignored) — let it back in
     reviewCycles.push(rc); cyclesChanged = true;
   });
   if (cyclesChanged) reconcileDuplicateActiveCycles();
@@ -9875,8 +9947,9 @@ function mergeData(data, opts) {
   // items added/edited (see this function's own comment above), never one
   // swept away by the sweep just above, so itemsSwept has to be folded in
   // here explicitly too, the same reason wsOrCategoriesChanged/
-  // cyclesChanged/programmeChanged already are.
-  const changed = added > 0 || updated > 0 || wsOrCategoriesChanged || cyclesChanged || programmeChanged || itemsSwept;
+  // cyclesChanged/programmeChanged already are — and now cyclesSwept too,
+  // for the identical reason on the review-cycle sweep just above.
+  const changed = added > 0 || updated > 0 || wsOrCategoriesChanged || cyclesChanged || programmeChanged || itemsSwept || cyclesSwept;
   return { added, updated, conflicts, changed };
 }
 
@@ -9951,7 +10024,7 @@ function buildIndexPayload() {
     programme, categories,
     workstreams: workstreams.map(w => ({ id: w.id, name: w.name, color: w.color, order: w.order, updatedAt: w.updatedAt })),
     items: items.filter(it => it.workstreamId === null),
-    deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds, deletedActionLogIds, deletedDecisionLogIds
+    deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds, deletedActionLogIds, deletedDecisionLogIds, deletedReviewCycleIds
   };
 }
 // One workstream's own file: its items, its own review cycles, and its own
@@ -9994,7 +10067,7 @@ function buildAllSyncPayloads() {
 // The inverse of the two build functions above: reconstructs the flat
 // {programme, workstreams, items, categories, reviewCycles,
 // deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
-// deletedActionLogIds, deletedDecisionLogIds} shape mergeData()/
+// deletedActionLogIds, deletedDecisionLogIds, deletedReviewCycleIds} shape mergeData()/
 // isFreshLocalState()/replaceFromFileData() already expect from a single
 // linked file — so once the multiple files are read back and recombined
 // into this one shape, every one of those functions runs completely
@@ -10030,7 +10103,8 @@ function recombineSyncData(indexData, wsDataById) {
     deletedItemIds: indexData.deletedItemIds || [],
     deletedMilestoneIds: indexData.deletedMilestoneIds || [],
     deletedActionLogIds: indexData.deletedActionLogIds || [],
-    deletedDecisionLogIds: indexData.deletedDecisionLogIds || []
+    deletedDecisionLogIds: indexData.deletedDecisionLogIds || [],
+    deletedReviewCycleIds: indexData.deletedReviewCycleIds || []
   };
 }
 // Which *name* to hand wsFileName() when reading a workstream's own file —
@@ -10525,7 +10599,7 @@ async function doFileSyncWrite() {
           localStorage.setItem(STORAGE_KEY, JSON.stringify({
             programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
             filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
-            deletedActionLogIds, deletedDecisionLogIds
+            deletedActionLogIds, deletedDecisionLogIds, deletedReviewCycleIds
           }));
           render();
           showToast(added || updated
@@ -10564,7 +10638,7 @@ async function doFileSyncWrite() {
     await writeBackupCopy({
       programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
       filterWorkstreamId, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
-      deletedActionLogIds, deletedDecisionLogIds
+      deletedActionLogIds, deletedDecisionLogIds, deletedReviewCycleIds
     });
   } catch (e) {
     // localStorage remains the authoritative fallback, but a silent failure
