@@ -12,7 +12,7 @@ Pulse is a local app — there's no server to log into and no account to create.
 
 ## Step 1: Get Pulse running on your machine
 
-Pulse is a single app folder — you need the whole thing, not just one file. Ask whoever manages it for a copy (or find it in your shared folder), and put it somewhere on your own machine — your Desktop or Documents folder is fine.
+Pulse is a single app folder — you need the whole thing, not just one file. Put it anywhere on your own machine — your Desktop or Documents folder is fine.
 
 Open the folder and double-click **`pulse.html`**. It opens straight in your browser — that's it, nothing to install.
 
