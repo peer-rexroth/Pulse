@@ -304,32 +304,45 @@ test('Connect and Delete share one .l1-milestone-actions cluster, not two separa
 });
 
 // A user-reported "why is there space next to actions? ... delete it"
-// reversed the earlier attempt at aligning L1-Plan-row/L1-Milestone-row/
-// linked-row Status+Actions all against each other via deliberate blank
-// spacer/alignment columns — those columns are gone now. l1LinkedHeaderHtml()/
-// l1LinkedRowHtml() no longer carry any trailing blank cell at all (Status
-// is the real last column); l1MilestoneHeaderHtml()/l1MilestoneRowsHtml()
-// no longer have a spacer between Status and Actions either — Due/Status
-// still match in width between .l1-milestone-row and .l1-linked-row (the
-// one alignment kept), just with no wasted space anywhere.
+// reversed a prior attempt that reproduced the L1 Plan row's own oversized
+// Actions gap (120px Actions + 116px spacer, borrowed from --item-grid-cols'
+// .journeys-list override, itself sized for Journeys' own 4-icon worst
+// case) on the bespoke L1 Milestone/linked rows too. But a follow-up user
+// report ("now l1 is not aligned again") caught that simply deleting the
+// spacer broke alignment outright, rather than fixing the real bug: the L1
+// Plan row was reusing the wrong, oversized grid to begin with.
+// renderL1Plans() now uses its own dedicated .l1-plans-list override
+// (correctly sized for L1 Plans' own 3-icon Actions column, not Journeys'
+// 4), which shrinks the L1 Plan row's own real Status-to-right-edge
+// distance from 276px down to 106px — small enough that .l1-milestone-row/
+// .l1-linked-row can match it with just a 10px spacer, not a 116px one.
 
-test('l1LinkedHeaderHtml/l1LinkedRowHtml no longer carry any trailing blank cell — Status is the real last column', function () {
+test('l1LinkedHeaderHtml/l1LinkedRowHtml carry two small, deliberately blank trailing cells (a spacer, then an alignment cell) matching .l1-milestone-row\'s own small trailing sequence', function () {
   const headerHtml = l1LinkedHeaderHtml();
-  assertEqual((headerHtml.match(/<span/g) || []).length, 5, 'exactly five real columns, no alignment padding');
+  assertEqual((headerHtml.match(/<span/g) || []).length, 7, 'five real columns plus a spacer plus an alignment cell');
   const item = addItem({ name: 'Deliverable' });
   const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
   item.milestones.push(wm);
   const rowHtml = l1LinkedRowHtml(item, wm);
-  assertEqual((rowHtml.match(/<span/g) || []).length, 5, 'exactly five real columns, no alignment padding');
+  assertEqual((rowHtml.match(/<span/g) || []).length, 7, 'five real columns plus a spacer plus an alignment cell');
+  assertIncludes(rowHtml, '      <span></span>\n      <span></span>\n    </div>', 'both trailing cells are genuinely empty, not hidden actions');
 });
 
-test('l1MilestoneHeaderHtml/l1MilestoneRowsHtml no longer carry a blank spacer between Status and Actions', function () {
+test('l1MilestoneHeaderHtml/l1MilestoneRowsHtml carry a small blank spacer between Status and Actions', function () {
   const p = addL1Plan();
   addL1Milestone(p.id);
   const headerHtml = l1MilestoneHeaderHtml();
-  assertEqual((headerHtml.match(/<span/g) || []).length, 5, 'Chevron/Milestone/Due/Status/Actions, no spacer');
+  assertEqual((headerHtml.match(/<span/g) || []).length, 6, 'Chevron/Milestone/Due/Status/spacer/Actions');
   const rowHtml = l1MilestoneRowsHtml(p);
-  assertNotIncludes(rowHtml, '<span></span>\n        <span class="l1-milestone-actions">', 'no blank spacer sits between Status and the Actions cluster any more');
+  assertIncludes(rowHtml, '<span></span>\n        <span class="l1-milestone-actions">', 'a small spacer cell sits between Status and the Actions cluster');
+});
+
+test('renderL1Plans() uses its own .l1-plans-list container, not the reused .journeys-list', function () {
+  setMode('l1plans');
+  renderL1Plans();
+  const html = document.getElementById('l1PlansBody').innerHTML;
+  assertIncludes(html, 'l1-plans-list');
+  assertNotIncludes(html, 'journeys-list');
 });
 
 test('toggleL1MilestoneExpanded reveals the linked workstream milestone underneath, read-only, and collapses again on a second toggle', function () {

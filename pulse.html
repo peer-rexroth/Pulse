@@ -662,6 +662,34 @@
      step with the shared default's own widening, for "Completed Late" —
      see --item-grid-cols' own comment. */
   .journeys-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 10px 190px 10px 115px 100px 116px 120px; }
+  /* L1 Plans' own top-level rows (renderL1Plans()) used to reuse
+     .journeys-list wholesale — a reasonable-looking shortcut at the time
+     (both pages are flat, workstream-independent lists built on the same
+     itemRowHtml()), but a wrong one: .journeys-list's own widths are tuned
+     for Journeys' own worst case (a Sub Journey row's 4 icons — drag/
+     connect/edit/delete), not an L1 Plan's own, which only ever has 3
+     (drag/edit/delete, same as a plain scope item's row — no Connect icon
+     lives at this level, see "L1 Plans" in CLAUDE.md). Reusing the wider
+     grid meant an L1 Plan's own row carried real, visible dead space
+     (a 120px Actions column with only ~50px of icon content in it, plus a
+     116px always-blank column right before it) that had nothing to do
+     with what this row actually shows — a user-reported "why is there
+     space next to actions?" traced back to exactly this mismatch, once
+     the same oversized gap got mirrored onto the bespoke L1 Milestone/
+     linked-milestone rows below it in a first attempt to align with it.
+     An L1 Plan's row is *also* blank in one more column Journeys' own
+     override never was — Plan-dates (the L1 Plan row shows no due/range
+     value at all any more, see "L1 Plans" in CLAUDE.md) — so its own
+     genuinely-unused-column count is higher than Journeys', not just
+     differently distributed. .l1-plans-list shrinks every column an L1
+     Plan's own row never populates (the original blank, both spacers, the
+     now-blank Plan-dates column, Tags, and the trailing blank before
+     Actions) down to the same minimal 10px .journeys-list already uses
+     for its own always-empty tracks, and — the actual fix — sizes Actions
+     at a snug 56px, the same width the plain, unmodified default
+     --item-grid-cols already established as correctly fitting 3 icons
+     (see that rule's own comment). */
+  .l1-plans-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 10px 10px 10px 10px 100px 10px 56px; }
   .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-dates { color: var(--text-dim); font-size: 12.5px; width: 150px; flex: 0 0 auto; }
   .milestone-count-badge { font-size: 11px; color: var(--text-faint); font-weight: 700; white-space: nowrap; }
@@ -782,28 +810,28 @@
      .milestone-header/.milestone-sub-row have), so the indent is baked
      straight into the base rule rather than needing its own conditional
      indent class.
-     Status is 100px and Actions is a snug 56px, right next to each other
-     with no spacer between them — a user-reported "why is there space
-     next to actions? ... delete it" reversing the previous attempt at
-     this, which had inserted a deliberate blank 116px column between
-     Status and Actions (plus widened Actions itself to 120px) purely to
-     make this row's own Status/Actions land at the exact same x-position
-     as the L1 Plan row's own Status/Actions above it (that row renders
-     under a --item-grid-cols variant whose own Actions track is 120px,
-     with a genuinely pre-existing blank 116px column of its own right
-     before it). That row's own gap is baked into the shared, tightly-tuned
-     --item-grid-cols grid used across Planning/Review/Journeys too, and
-     isn't something this feature can safely remove — but reproducing an
-     identical-looking dead column here, on a row this feature fully
-     controls, just to chase pixel-for-pixel alignment with an already-odd
-     shared-grid quirk, traded a real visual defect (a big empty gap
-     nobody wants to look at) for a cosmetic win nobody asked to keep once
-     they actually saw it. Status/Actions here no longer attempt to align
-     with the L1 Plan row's own — only with .l1-linked-row's, one level
-     further down (see that rule's own comment), which this feature does
-     fully control on both sides. */
+     Status is 100px, a small 10px spacer, then a snug 56px Actions column
+     — this row's alignment story went through three revisions before
+     landing here (see .l1-plans-list's own CSS comment, above, for the
+     full history: a first attempt matched the wrong, oversized shared
+     --item-grid-cols values; a second attempt matched the *right* values
+     but those turned out to be genuinely oversized themselves, for a
+     row shape L1 Plans never actually has; a user-reported "why is there
+     space next to actions?" caught that, and the fix wasn't to give up
+     on alignment — it was to give the L1 Plan row itself a properly
+     tuned grid (.l1-plans-list) instead of the borrowed, too-generous one).
+     With that fixed, the L1 Plan row's own real distance from its Status
+     column to its own right edge shrank from 276px down to 106px — small
+     enough that matching it here needs only a 10px spacer, not a 116px
+     one. The math: gap(10) + spacer(10) + gap(10) + Actions(56) +
+     padding-right(20) = 106, exactly matching .l1-plans-list's own
+     Status→right-edge distance (gap(10) + its own 10px always-blank
+     column + gap(10) + its own 56px Actions + padding-right(20) = 106
+     too) — so this row's Status *does* align with the L1 Plan row's own
+     again, just without reproducing that row's former, oversized gap to
+     get there. */
   .l1-milestone-header, .l1-milestone-row {
-    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 100px 56px;
+    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 100px 10px 56px;
     align-items: center; gap: 10px; padding: 7px 20px 7px 34px; border-bottom: 1px solid var(--border);
   }
   .l1-milestone-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
@@ -853,15 +881,11 @@
      they describe" pattern .l1-milestone-header/milestoneHeaderHtml()
      already establish elsewhere in this app. No real actions on this row
      at all — it's already itself the expanded detail, nothing further to
-     expand or manage here — so, unlike .l1-milestone-row, there's no
-     trailing Actions column reserved here either; Status is simply the
-     last column, flush against the row's own right padding. An earlier
-     version reserved a matching blank column there purely to keep this
-     row's own right edge aligned with the other two levels' — removed
-     per a user-reported "why is there space next to actions? ... delete
-     it" once that reservation turned out to look like exactly what it
-     was: a big, pointless empty gap on a row that never had anything to
-     put there in the first place. */
+     expand or manage here — but it still ends in a small, deliberately
+     blank trailing cell (see below) purely to keep Status aligned with
+     the other two levels, now that alignment can be had for a genuinely
+     small width instead of the large one an earlier attempt needed (see
+     .l1-plans-list's own CSS comment for that full history). */
   .l1-linked-header, .l1-linked-row {
     /* Scope Item is capped at a fixed 140px, not its own equal-share
        minmax(...,1fr) — a user-reported "way too wide" (both it and
@@ -871,12 +895,14 @@
        the only flexible track, so shrinking Scope Item's fixed width
        directly moves Milestone's own start position further left.
        Due (110px) and Status (100px) match .l1-milestone-row's own widths
-       exactly, immediately adjacent with no spacer between them or after
-       Status — so Due and Status line up between this row and
-       .l1-milestone-row one level up, the one alignment this feature
-       still keeps (see that rule's own comment for why matching the L1
-       Plan row's own Status/Actions was abandoned instead). */
-    display: grid; grid-template-columns: 110px 140px minmax(160px,1fr) 110px 100px;
+       exactly, and the same 10px-spacer-then-56px-blank trailing sequence
+       .l1-milestone-row's own Status→Actions distance now uses is
+       reserved here too (56px of it as a genuinely empty cell, since this
+       row has no real action to put there) — so Status lands at the
+       identical x-position across all three nesting levels: this row,
+       .l1-milestone-row one level up, and the L1 Plan row itself, two
+       levels up. */
+    display: grid; grid-template-columns: 110px 140px minmax(160px,1fr) 110px 100px 10px 56px;
     align-items: center; gap: 10px; padding: 6px 20px 6px 64px; border-bottom: 1px solid var(--border);
   }
   .l1-linked-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
@@ -4130,7 +4156,7 @@ function renderL1Plans() {
       <h2><i class="fa-solid fa-bullseye" style="font-size:16px;color:var(--accent)"></i> L1 Plans</h2>
     </div>
     <p style="margin-bottom:16px">Overarching, high-level plans — link a workstream milestone to one of an L1 Plan's own milestones for traceability. Linking never changes an L1 milestone's own status or dates; those stay entirely manual.</p>
-    <div class="ws-section journeys-list">
+    <div class="ws-section l1-plans-list">
       ${rows}
       ${addRow}
     </div>`;
@@ -6788,11 +6814,11 @@ function toggleL1MilestoneExpanded(milestoneId) {
 function l1MilestoneHeaderHtml() {
   // Connect and Delete share one trailing Actions column (see the CSS
   // comment on .l1-milestone-header/.l1-milestone-row) — no header label,
-  // same as the shared item grid's own unlabeled Actions column. No blank
-  // spacer before it any more — see that rule's own comment for why the
-  // earlier attempt at one was removed.
+  // same as the shared item grid's own unlabeled Actions column. The
+  // blank cell right before it is the small alignment spacer described
+  // there — also unlabeled, since it's not a real column either.
   return `<div class="l1-milestone-header">
-      <span></span><span>Milestone</span><span>Due</span><span>Status</span><span></span>
+      <span></span><span>Milestone</span><span>Due</span><span>Status</span><span></span><span></span>
     </div>`;
 }
 // A linked workstream milestone's own read-only row, once its parent L1
@@ -6805,16 +6831,18 @@ function l1MilestoneHeaderHtml() {
 // never editable here (see toggleL1MilestoneExpanded()'s own comment for
 // why: linking/unlinking and any real edits still only ever happen
 // elsewhere — the Connect modal, or the workstream milestone's own row on
-// Planning). l1LinkedHeaderHtml() labels all five columns once, rendered
-// immediately above the first linked row for a given expanded milestone —
-// the same "one header, right above the list it describes" pattern
-// l1MilestoneHeaderHtml() and milestoneHeaderHtml() already use. Neither
-// this nor l1LinkedRowHtml() carries any trailing blank cell any more —
-// see .l1-linked-header/.l1-linked-row's own CSS comment for why the
-// earlier alignment-reservation column was removed.
+// Planning). l1LinkedHeaderHtml() labels all five real columns once,
+// rendered immediately above the first linked row for a given expanded
+// milestone — the same "one header, right above the list it describes"
+// pattern l1MilestoneHeaderHtml() and milestoneHeaderHtml() already use.
+// Both this and l1LinkedRowHtml() end in two small, deliberately blank
+// trailing cells (a spacer, then an alignment cell) — a pure alignment
+// reservation, not real columns with content — matching .l1-milestone-row's
+// own small 10px-spacer-then-56px trailing sequence (see .l1-linked-header/
+// .l1-linked-row's own CSS comment).
 function l1LinkedHeaderHtml() {
   return `<div class="l1-linked-header">
-      <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span>Status</span>
+      <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span>Status</span><span></span><span></span>
     </div>`;
 }
 function l1LinkedRowHtml(item, milestone) {
@@ -6826,6 +6854,8 @@ function l1LinkedRowHtml(item, milestone) {
       <span>${esc(milestone.name)}</span>
       <span>${milestone.dueDate ? esc(fmtDate(milestone.dueDate)) : '—'}</span>
       <span class="status-badge" style="background:var(--stat-${milestone.status}-bg);color:var(--stat-${milestone.status});cursor:default">${esc(statusLabel(milestone.status))}</span>
+      <span></span>
+      <span></span>
     </div>`;
 }
 function l1MilestoneRowsHtml(plan) {
@@ -6869,6 +6899,7 @@ function l1MilestoneRowsHtml(plan) {
         ${nameHtml}
         ${dueHtml}
         ${statusHtml}
+        <span></span>
         ${actionsHtml}
       </div>${linkedRowsHtml}`;
   }).join('');
