@@ -307,34 +307,39 @@ test('Connect and Delete share one .l1-milestone-actions cluster, not two separa
 // reversed a prior attempt that reproduced the L1 Plan row's own oversized
 // Actions gap (120px Actions + 116px spacer, borrowed from --item-grid-cols'
 // .journeys-list override, itself sized for Journeys' own 4-icon worst
-// case) on the bespoke L1 Milestone/linked rows too. But a follow-up user
+// case) on the bespoke L1 Milestone/linked rows too. A follow-up user
 // report ("now l1 is not aligned again") caught that simply deleting the
-// spacer broke alignment outright, rather than fixing the real bug: the L1
-// Plan row was reusing the wrong, oversized grid to begin with.
-// renderL1Plans() now uses its own dedicated .l1-plans-list override
-// (correctly sized for L1 Plans' own 3-icon Actions column, not Journeys'
-// 4), which shrinks the L1 Plan row's own real Status-to-right-edge
-// distance from 276px down to 106px — small enough that .l1-milestone-row/
-// .l1-linked-row can match it with just a 10px spacer, not a 116px one.
+// spacer broke alignment outright — renderL1Plans() then switched to its
+// own dedicated .l1-plans-list override, correctly sized for L1 Plans' own
+// 3-icon Actions column. That pass mistakenly treated --item-grid-cols'
+// 9th value (100px, Tags) as Status and its 10th value (116px, the real
+// Status) as "a blank spacer before Actions" — Status and Actions are
+// actually directly adjacent in the real grid, no blank column between
+// them at all (see "Column layout is a real CSS grid" in CLAUDE.md for the
+// authoritative 11-column list) — which is what led to a spurious 10px
+// spacer being added here too. Fixed: Status is 116px everywhere (not
+// 100px), and there's no spacer anywhere — Status sits directly next to
+// Actions (or the blank alignment cell, on .l1-linked-row) on all three
+// nesting levels, matching the shared grid's own real adjacency.
 
-test('l1LinkedHeaderHtml/l1LinkedRowHtml carry two small, deliberately blank trailing cells (a spacer, then an alignment cell) matching .l1-milestone-row\'s own small trailing sequence', function () {
+test('l1LinkedHeaderHtml/l1LinkedRowHtml carry exactly one small, deliberately blank trailing cell, directly after Status — matching .l1-milestone-row\'s own real Actions width, no spacer', function () {
   const headerHtml = l1LinkedHeaderHtml();
-  assertEqual((headerHtml.match(/<span/g) || []).length, 7, 'five real columns plus a spacer plus an alignment cell');
+  assertEqual((headerHtml.match(/<span/g) || []).length, 6, 'five real columns plus one blank alignment cell');
   const item = addItem({ name: 'Deliverable' });
   const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
   item.milestones.push(wm);
   const rowHtml = l1LinkedRowHtml(item, wm);
-  assertEqual((rowHtml.match(/<span/g) || []).length, 7, 'five real columns plus a spacer plus an alignment cell');
-  assertIncludes(rowHtml, '      <span></span>\n      <span></span>\n    </div>', 'both trailing cells are genuinely empty, not hidden actions');
+  assertEqual((rowHtml.match(/<span/g) || []).length, 6, 'five real columns plus one blank alignment cell');
+  assertIncludes(rowHtml, '      <span></span>\n    </div>', 'the trailing cell is genuinely empty, not a hidden action');
 });
 
-test('l1MilestoneHeaderHtml/l1MilestoneRowsHtml carry a small blank spacer between Status and Actions', function () {
+test('l1MilestoneHeaderHtml/l1MilestoneRowsHtml no longer carry any spacer — Status sits directly adjacent to Actions, matching the shared grid\'s own real adjacency', function () {
   const p = addL1Plan();
   addL1Milestone(p.id);
   const headerHtml = l1MilestoneHeaderHtml();
-  assertEqual((headerHtml.match(/<span/g) || []).length, 6, 'Chevron/Milestone/Due/Status/spacer/Actions');
+  assertEqual((headerHtml.match(/<span/g) || []).length, 5, 'Chevron/Milestone/Due/Status/Actions, no spacer');
   const rowHtml = l1MilestoneRowsHtml(p);
-  assertIncludes(rowHtml, '<span></span>\n        <span class="l1-milestone-actions">', 'a small spacer cell sits between Status and the Actions cluster');
+  assertNotIncludes(rowHtml, '<span></span>\n        <span class="l1-milestone-actions">', 'no spacer cell sits between Status and the Actions cluster');
 });
 
 test('renderL1Plans() uses its own .l1-plans-list container, not the reused .journeys-list', function () {
