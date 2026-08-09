@@ -174,45 +174,38 @@ test('itemRowHtml renders an L1 Plan\'s own milestone rows (name/due/status/link
   assertIncludes(html, 'cycleL1MilestoneStatus');
 });
 
-// ---------- A discrete Due column on the L1 Plan's own row, not a Start->Due range ----------
-// A later, explicit user request ("for l1 column, at add discret Due
-// column. remot start-due range") — every other multi-milestone item shows
-// a computed Start->Due range on its own row (see "Item plan date range
-// roll-up" in CLAUDE.md); an L1 Plan's own row shows just a single Due
-// value instead, display-only — it.startDate is still computed/stored
-// exactly as before, just never rendered here.
+// ---------- No Plan-dates column at all on the L1 Plan's own row ----------
+// A later, explicit user request ("remove due on L1 level"), reversing
+// this row's own brief prior stint showing a single, discrete Due value
+// there (itself a reversal of the original Start->Due range). The column
+// still renders as a real, empty element — never omitted, since an
+// omitted cell would collapse the shared --item-grid-cols column and
+// misalign everything after it (see "Column layout is a real CSS grid" in
+// CLAUDE.md) — it just has nothing in it. it.startDate/dueDate are still
+// computed and stored by the universal "item with milestones" roll-up,
+// completely unrelated to what this row chooses to display.
 
-test('a zero-milestone L1 Plan shows a single, editable Due pill on its own row — no Start field, no range arrow', function () {
+test('an L1 Plan\'s own row shows a bare, empty Plan-dates cell — no Due value, no Start->Due range, no date input at all', function () {
   const p = addL1Plan();
   const html = itemRowHtml(p);
-  assertIncludes(html, `updateItemDateField('${p.id}','dueDate'`);
-  assertNotIncludes(html, `updateItemDateField('${p.id}','startDate'`, 'no Start field for an L1 Plan');
-  assertNotIncludes(html, 'item-dates-arrow', 'no range arrow either');
+  assertNotIncludes(html, 'updateItemDateField', 'no editable date field of any kind on this row');
+  assertNotIncludes(html, 'item-dates-computed', 'no computed date text either');
+  assertNotIncludes(html, 'item-dates-arrow');
 });
 
-test('an L1 Plan with milestones shows its computed Due date alone, read-only — not a "Start -> Due" range', function () {
+test('the empty Plan-dates cell still renders as a real element, not omitted — an omitted cell would collapse the shared grid column', function () {
+  const p = addL1Plan();
+  const html = itemRowHtml(p);
+  assertIncludes(html, '<span></span>');
+});
+
+test('an L1 Plan\'s own dueDate/startDate are still computed from its milestones by the universal roll-up, even though nothing on the row displays them', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   updateL1MilestoneDateField(p.id, m.id, '2026-11-20');
+  assertEqual(p.dueDate, '2026-11-20', 'the universal item roll-up still computes this, unrelated to what the row shows');
   const html = itemRowHtml(p);
-  assertEqual(p.dueDate, '2026-11-20');
-  assertIncludes(html, fmtDate('2026-11-20'));
-  assertNotIncludes(html, '→', 'no range arrow — just the single Due value');
-});
-
-test('an L1 Plan whose milestones have no date yet shows a plain "—" for Due, same empty-state convention as everywhere else', function () {
-  const p = addL1Plan();
-  addL1Milestone(p.id);
-  const html = itemRowHtml(p);
-  assertIncludes(html, '<span class="item-dates-computed" style="color:var(--text-faint)" title="No milestone has a date planned yet">—</span>');
-});
-
-test('editing the Due pill on a zero-milestone L1 Plan\'s own row writes straight into it.dueDate via the existing, shared updateItemDateField()', function () {
-  const p = addL1Plan();
-  userRole = 'editor';
-  updateItemDateField(p.id, 'dueDate', '2026-12-01');
-  assertEqual(p.dueDate, '2026-12-01');
-  assertEqual(p.startDate, null, 'Start is never touched by this row — it stays whatever it already was');
+  assertNotIncludes(html, '2026-11-20', 'but it never appears anywhere on the row itself');
 });
 
 // ---------- Expanding an L1 milestone to reveal its linked workstream milestones ----------

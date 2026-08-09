@@ -4297,34 +4297,24 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
     ? 'Computed from the date range of every connected Sub Journey'
     : 'Computed from the latest milestone (due or actual) date across every connected scope item';
   const journeyRangeEmptyTitle = isJourney ? 'No connected Sub Journeys with a date yet' : 'No connected scope items with a date yet';
-  // An L1 Plan shows a single, discrete Due column here — not the
-  // Start→Due range every other multi-milestone item gets — an explicit
-  // user request ("for l1 column, at add discret Due column. remot
-  // start-due range"), the first step toward this row's own Due lining up
-  // with .l1-milestone-row's/.l1-linked-row's own Due columns one and two
-  // levels down (see those rows' own "align status and due date" comments
-  // above). This is a display-only change: it.startDate is still computed
-  // and stored exactly the way it always was (the universal "item with
+  // An L1 Plan shows nothing at all in the Plan-dates column — an explicit
+  // user request ("remove due on L1 level"), reversing this row's own
+  // brief prior stint showing a single, discrete Due value there. Still a
+  // real, present element (a bare, empty <span></span>), never omitted —
+  // the same "every cell must be a real element, even when empty"
+  // discipline --item-grid-cols itself demands (see "Column layout is a
+  // real CSS grid" in CLAUDE.md); an omitted element here would collapse
+  // this column and misalign everything after it. it.startDate/dueDate are
+  // still computed and stored exactly as always (the universal "item with
   // milestones" roll-up — see "Item plan date range roll-up" in CLAUDE.md
-  // — is completely unrelated to what this row chooses to show), just
-  // never rendered on an L1 Plan's own row. Computed (read-only) once it
-  // has milestones, same as any other item; a genuinely manual, editable
-  // Due-only pill (no Start field at all) for a brand-new, still
-  // zero-milestone plan — updateItemDateField()'s own generic
-  // 'dueDate'-field path already supports being called with no matching
-  // 'startDate' counterpart, so no changes were needed there.
+  // — is unrelated to what this row chooses to show), just never rendered
+  // on an L1 Plan's own row at all any more.
   const planDatesHtml = (isJourney || isSubJourney)
     ? (journeyRange
         ? `<span class="item-dates-computed" title="${journeyRangeTitle}">${fmtDateY(journeyRange.startDate)} → ${fmtDateY(journeyRange.dueDate)}</span>`
         : `<span class="item-dates-computed" style="color:var(--text-faint)" title="${journeyRangeEmptyTitle}">—</span>`)
     : isL1Plan
-    ? (total
-        ? (it.dueDate
-            ? `<span class="item-dates-computed" title="Computed from the latest milestone date (due or actual)">${fmtDate(it.dueDate)}</span>`
-            : `<span class="item-dates-computed" style="color:var(--text-faint)" title="No milestone has a date planned yet">—</span>`)
-        : `<span class="item-dates-inline">
-      ${dateInputHtml(it.dueDate, `title="Due date" ${editable ? `onblur="if(this.value) updateItemDateField('${it.id}','dueDate',this.value); else this.value='${it.dueDate}'"` : 'disabled'}`, '', editable ? `v => updateItemDateField('${it.id}','dueDate',v)` : null)}
-    </span>`)
+    ? `<span></span>`
     : (total || reviewCycle)
     ? (it.startDate || it.dueDate
         ? `<span class="item-dates-computed" title="${total ? 'Computed from the earliest and latest milestone date (due or actual)' : 'Not editable during a review'}">${fmtDateY(it.startDate)} → ${fmtDateY(it.dueDate)}</span>`
