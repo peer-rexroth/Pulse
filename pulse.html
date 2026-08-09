@@ -818,7 +818,14 @@
      further to expand or manage on a row that's already itself the
      expanded detail. */
   .l1-linked-header, .l1-linked-row {
-    display: grid; grid-template-columns: 110px minmax(120px,1fr) minmax(140px,1fr) 100px 120px;
+    /* Scope Item is capped at a fixed 140px, not its own equal-share
+       minmax(...,1fr) — a user-reported "way too wide" (both it and
+       Milestone were 1fr, so they always split the leftover space evenly
+       regardless of either one's actual content) left Milestone's own
+       column pinned further right than it needed to be. Milestone is now
+       the only flexible track, so shrinking Scope Item's fixed width
+       directly moves Milestone's own start position further left. */
+    display: grid; grid-template-columns: 110px 140px minmax(160px,1fr) 100px 120px;
     align-items: center; gap: 10px; padding: 6px 20px 6px 64px; border-bottom: 1px solid var(--border);
   }
   .l1-linked-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
