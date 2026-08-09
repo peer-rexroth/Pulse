@@ -535,7 +535,7 @@ test('toggleL1MilestoneLink(false) clears the link', function () {
   assertEqual(wm.l1MilestoneId, null);
 });
 
-test('linking never changes the L1 milestone\'s own status or dates — pure traceability, no rollup, per the explicit design decision', function () {
+test('linking never changes the L1 milestone\'s own stored status or dates — the displayed status rolls up live instead (see the "L1/L2 status rollup" tests below), but the underlying manual fields are untouched', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   m.status = 'red';
@@ -545,8 +545,102 @@ test('linking never changes the L1 milestone\'s own status or dates — pure tra
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
-  assertEqual(m.status, 'red', 'unchanged by the link');
-  assertEqual(m.dueDate, '2026-01-01', 'unchanged by the link');
+  assertEqual(m.status, 'red', 'the stored field is unchanged by the link — only the displayed/computed value now differs from it');
+  assertEqual(m.dueDate, '2026-01-01', 'dates are still never rolled up, only status');
+});
+
+// ---------- L1/L2 status rollup — a later, explicit user reversal of the ----------
+// original "pure traceability, no rollup" decision ("l1 and l2 should be
+// rolled-up"). An L1 milestone (L2) with at least one linked workstream
+// milestone now shows a computed, read-only status (the same weakest-link
+// reduce every other computed status in this app uses), falling back to
+// its own manual, click-to-cycle status when nothing's linked. An L1
+// Plan's own status (L1) rolls up one level further, from its own
+// milestones' *effective* status (computed-or-manual). Both are computed
+// live at render time, never stored/stamped — the same pattern Journey/
+// Sub Journey's own computeJourneyStatus()/computeSubJourneyStatus()
+// already established, specifically so a linked workstream milestone's
+// status changing anywhere on the Planning board is picked up on the very
+// next render with no special hook needed at the change site itself.
+
+test('computedL1MilestoneStatus returns null when nothing is linked', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  assertEqual(computedL1MilestoneStatus(m.id), null);
+});
+
+test('computedL1MilestoneStatus rolls up the weakest linked workstream milestone\'s own status', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm1 = { id: genId(), name: 'A', dueDate: null, actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm2 = { id: genId(), name: 'B', dueDate: null, actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm1, wm2);
+  assertEqual(computedL1MilestoneStatus(m.id), 'red', 'red is the weakest of green/red, per STATUS_SEVERITY');
+});
+
+test('linking a workstream milestone to an L1 milestone makes its displayed status roll up live', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.status = 'not-started';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  const htmlBefore = l1MilestoneRowsHtml(p);
+  assertIncludes(htmlBefore, statusLabel('not-started'), 'unlinked — shows its own manual status');
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  const htmlAfter = l1MilestoneRowsHtml(p);
+  assertIncludes(htmlAfter, statusLabel('amber'), 'linked — now shows the computed status instead');
+});
+
+test('a linked L1 milestone\'s status badge is read-only, not a clickable cycle button', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  const html = l1MilestoneRowsHtml(p);
+  assertNotIncludes(html, `onclick="cycleL1MilestoneStatus('${p.id}','${m.id}')"`, 'no click-to-cycle handler once the status is computed');
+});
+
+test('cycleL1MilestoneStatus refuses to run against a linked (computed) milestone', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.status = 'not-started';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  cycleL1MilestoneStatus(p.id, m.id);
+  assertEqual(m.status, 'not-started', 'the stored status must not change — this milestone is computed, not manual');
+});
+
+test('computeL1PlanStatus returns null when the plan has no milestones', function () {
+  const p = addL1Plan();
+  assertEqual(computeL1PlanStatus(p.id), null);
+});
+
+test('computeL1PlanStatus rolls up over its own milestones\' effective status — a linked milestone contributes its computed status, an unlinked one contributes its own manual status', function () {
+  const p = addL1Plan();
+  const m1 = addL1Milestone(p.id, 'Linked milestone');
+  const m2 = addL1Milestone(p.id, 'Manual milestone');
+  m1.status = 'not-started';
+  m2.status = 'green';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneId: m1.id };
+  item.milestones.push(wm);
+  assertEqual(computeL1PlanStatus(p.id), 'red', 'the linked milestone\'s own computed (red) status is the weakest, even though its own stored status is not-started');
+});
+
+test('itemRowHtml renders an L1 Plan\'s own status badge from computeL1PlanStatus(), live, not its stored status field', function () {
+  const p = addL1Plan();
+  p.status = 'green'; // stale/irrelevant stored value
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  const html = itemRowHtml(p);
+  assertIncludes(html, statusLabel('red'), 'reflects the live rollup, not the stale stored status');
 });
 
 test('toggleL1MilestoneLink is blocked below Editor', function () {

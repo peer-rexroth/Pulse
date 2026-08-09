@@ -3500,6 +3500,44 @@ function linkedWorkstreamMilestones(l1MilestoneId) {
   });
   return out;
 }
+// An L1 milestone's own status rolls up from its linked workstream
+// milestones — a later, explicit user reversal of this feature's original
+// "pure traceability, no rollup" decision (see "L1 Plans" in CLAUDE.md for
+// the full history of that reversal). The same weakest-link reduce every
+// other computed status in this app uses (STATUS_SEVERITY, via the
+// existing computedStatusFromMilestones()), just over the linked
+// workstream milestones' own already-resolved status values instead of a
+// milestone list belonging to one item. Returns null when nothing's
+// linked — the same "nothing to compute from" convention every other
+// computed-status function in this app already uses — so callers can fall
+// back to the milestone's own manual, hand-set status instead. Computed
+// fresh at read time, never stored back onto the milestone itself (the
+// same "no persisted state, always fresh at render time" instinct
+// Journey/Sub Journey's own computeJourneyStatus()/computeSubJourneyStatus()
+// already established, for the identical reason: a linked workstream
+// milestone's own status can change from any number of different code
+// paths on the Planning board, and hooking every one of them just to keep
+// a cached value in sync would be exactly the fragile, easy-to-miss
+// plumbing that pattern exists to avoid).
+function computedL1MilestoneStatus(l1MilestoneId) {
+  const linked = linkedWorkstreamMilestones(l1MilestoneId);
+  if (!linked.length) return null;
+  return computedStatusFromMilestones(linked.map(l => l.milestone));
+}
+// An L1 Plan's own status is one level further removed, the same
+// two-tier shape computeJourneyStatus() has over computeSubJourneyStatus():
+// it reduces over its own milestones' *effective* status — each one's own
+// computedL1MilestoneStatus() when it has links, falling back to its own
+// manual, hand-set status when it doesn't — never the milestone's raw
+// stored status directly, which would be stale for a linked one. Returns
+// null when the plan has no milestones at all yet, same convention as
+// computedStatusFromMilestones() itself.
+function computeL1PlanStatus(planId) {
+  const plan = items.find(it => it.id === planId && it.itemType === 'l1plan');
+  if (!plan || !plan.milestones.length) return null;
+  const effective = plan.milestones.map(m => ({ ...m, status: computedL1MilestoneStatus(m.id) || m.status }));
+  return computedStatusFromMilestones(effective);
+}
 // A small, read-only chain-link icon appended after a workstream milestone's
 // own name in milestoneRowsHtml() (Planning's board), shown only when it's
 // linked to an L1 milestone — without this, a link would be entirely
@@ -4495,9 +4533,15 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // Journey's status rolls up from its connected scope items directly (see
   // computeSubJourneyStatus()); a Journey's own status is one level further
   // removed, rolling up from its connected Sub Journeys' own status (see
-  // computeJourneyStatus()).
+  // computeJourneyStatus()). An L1 Plan gets the identical live-computed
+  // treatment, one level over its own milestones' own effective status
+  // (see computeL1PlanStatus()) — an explicit later user request
+  // reversing this feature's own original "no rollup" decision (see "L1
+  // Plans" in CLAUDE.md); scopeAssignReady is always false here too, for
+  // the same reason (an L1 Plan's own categoryId is always null).
   const displayStatus = isJourney ? (computeJourneyStatus(it.id) || 'not-started')
     : isSubJourney ? (computeSubJourneyStatus(it.id) || 'not-started')
+    : isL1Plan ? (computeL1PlanStatus(it.id) || 'not-started')
     : it.status;
   // "Completed Late" (see isCompletedLate()'s own comment) for a Sub
   // Journey rolls up the same way computeSubJourneyStatus() itself does —
@@ -6867,11 +6911,24 @@ function l1MilestoneRowsHtml(plan) {
     const dueHtml = dateInputHtml(m.dueDate,
       `title="Due date" ${editable ? `onblur="if(this.value) updateL1MilestoneDateField('${plan.id}','${m.id}',this.value); else this.value='${m.dueDate || ''}'" onchange="if(this.value) updateL1MilestoneDateField('${plan.id}','${m.id}',this.value)"` : 'disabled'}`,
       '', editable ? `v => updateL1MilestoneDateField('${plan.id}','${m.id}',v)` : null);
-    const statusHtml = editable
-      ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleL1MilestoneStatus('${plan.id}','${m.id}')">${esc(statusLabel(m.status))}</button>`
-      : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`;
     const linked = linkedWorkstreamMilestones(m.id);
     const linkedCount = linked.length;
+    // Once linked, status is computed live from the linked workstream
+    // milestones (see computedL1MilestoneStatus()'s own comment for why —
+    // an explicit later user request reversing this feature's original
+    // "no rollup" decision) and rendered read-only, the same "computed
+    // fields aren't manually clickable" treatment Journey/Sub Journey's
+    // own status/tags already get — cycleL1MilestoneStatus() itself
+    // refuses to run against a linked milestone as defense-in-depth (see
+    // its own guard). Unlinked, it's exactly the same manual, click-to-
+    // cycle badge it's always been.
+    const computedStatus = computedL1MilestoneStatus(m.id);
+    const effectiveStatus = computedStatus || m.status;
+    const statusHtml = computedStatus
+      ? `<span class="status-badge" style="background:var(--stat-${effectiveStatus}-bg);color:var(--stat-${effectiveStatus});cursor:default" title="Computed from ${linkedCount} linked workstream milestone${linkedCount === 1 ? '' : 's'}">${esc(statusLabel(effectiveStatus))}</span>`
+      : editable
+      ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleL1MilestoneStatus('${plan.id}','${m.id}')">${esc(statusLabel(m.status))}</button>`
+      : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`;
     const nameHtml = `<span>${esc(m.name)}${linkedCount ? `<span class="l1-milestone-linked-count">${linkedCount} linked</span>` : ''}</span>`;
     // Connect and Delete share one trailing Actions cell now — an explicit
     // user request to align this row's own action column with the L1
@@ -6912,15 +6969,25 @@ function cycleL1MilestoneStatus(planId, milestoneId) {
   if (!plan) return;
   const m = plan.milestones.find(x => x.id === milestoneId);
   if (!m) return;
+  // Refuses outright once this milestone has any linked workstream
+  // milestones — its status is computed live from those (see
+  // computedL1MilestoneStatus()), not manually cycled, the same "computed
+  // fields aren't user-editable" rule Journey/Sub Journey's own status/
+  // tags already enforce. Defense-in-depth behind l1MilestoneRowsHtml()
+  // itself never rendering a clickable button for a linked milestone in
+  // the first place.
+  if (computedL1MilestoneStatus(milestoneId)) return;
   const idx = STATUSES.findIndex(s => s.id === m.status);
   m.status = STATUSES[(idx + 1) % STATUSES.length].id;
   m.updatedAt = Date.now();
-  // Same "recompute the parent's own roll-up immediately, don't wait for
-  // the next normalizeData() pass" discipline cycleMilestoneStatus()
-  // already follows for an ordinary item — an L1 Plan's own status is
-  // computed from its milestones exactly the same generic way any other
-  // item's is (see computedStatusFromMilestones()), completely independent
-  // of the separate "no rollup" rule that only governs the link itself.
+  // Stamps the plan's own stored `status` field too, matching every other
+  // "item with milestones" roll-up in this app — vestigial now that
+  // itemRowHtml() reads computeL1PlanStatus() live for display instead
+  // (an L1 Plan's own status can also depend on a *linked* milestone's own
+  // computed value, which this stored field alone can't reflect — see
+  // that function's own comment), but harmless to keep in sync anyway,
+  // the same "orphaned-but-accurate field" stance this app already takes
+  // for a Journey/Sub Journey's own never-read `status`.
   plan.status = computedStatusFromMilestones(plan.milestones);
   plan.updatedAt = Date.now();
   save(); render();
