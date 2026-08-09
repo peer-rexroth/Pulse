@@ -773,21 +773,39 @@
      always-present column even though most rows have nothing to expand,
      same "every cell in every row must be a real element" discipline
      --item-grid-cols itself follows) / Milestone name / Due / Status /
-     linked-workstream-milestones-count (doubles as the connect button) /
-     Delete. Indented 34px, not the base 14px — the same one-level nesting
-     indent Journeys' own .item-row-indent-1 uses for a Sub Journey nested
-     under its parent Journey — so this list visually reads as nested under
-     its own parent L1 Plan row rather than sitting flush with it. Always
+     Actions (Connect + Delete together, one 56px column — see below).
+     Indented 34px, not the base 14px — the same one-level nesting indent
+     Journeys' own .item-row-indent-1 uses for a Sub Journey nested under
+     its parent Journey — so this list visually reads as nested under its
+     own parent L1 Plan row rather than sitting flush with it. Always
      nested (there's no non-nested use of this class the way
      .milestone-header/.milestone-sub-row have), so the indent is baked
      straight into the base rule rather than needing its own conditional
-     indent class. */
+     indent class.
+     The trailing Actions column is 56px — an explicit user request
+     ("align all action columns (L1 plan, L1 milestone, connected
+     milestones)") to match the shared --item-grid-cols Actions column's
+     own 56px exactly, so an L1 Plan's own row (Drag/Edit/Delete, via
+     itemRowHtml()'s .item-actions), this row's own actions (Connect/
+     Delete, via .l1-milestone-actions below), and .l1-linked-row's own
+     reserved-but-currently-empty action column (see further below) all
+     end at the identical x-position — since every one of these rows
+     shares the same 20px padding-right, a matching trailing column width
+     is what actually makes their right edges line up regardless of
+     nesting depth/indent. */
   .l1-milestone-header, .l1-milestone-row {
-    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 120px 32px 32px;
+    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 120px 56px;
     align-items: center; gap: 10px; padding: 7px 20px 7px 34px; border-bottom: 1px solid var(--border);
   }
   .l1-milestone-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
   .l1-milestone-row { font-size: 12.5px; background: var(--panel-2); }
+  /* Connect + Delete rendered together as one small flex cluster (mirroring
+     .item-actions's own display:flex/gap layout so both look identical),
+     not .item-actions itself — that class's own visibility:hidden-until-
+     .item-row:hover base rule would silently hide these two icons at rest,
+     a real behavior change from how they've always rendered here (always
+     visible when editable, never hover-gated). */
+  .l1-milestone-actions { display: flex; align-items: center; gap: 2px; }
   /* The "N linked"/"Connect" pill button was replaced with a plain
      icon-only .row-icon-btn (same size/treatment as the Delete icon right
      next to it) — a user-reported "too big" — with the actual "how many
@@ -824,10 +842,11 @@
      user request — plus its own header row (.l1-linked-header, labeling
      all five), the same "label the columns once, right above the list
      they describe" pattern .l1-milestone-header/milestoneHeaderHtml()
-     already establish elsewhere in this app. No chevron, "linked" count,
-     or delete column the way .l1-milestone-row has one — there's nothing
-     further to expand or manage on a row that's already itself the
-     expanded detail. */
+     already establish elsewhere in this app. No real actions on this row
+     — it's already itself the expanded detail, nothing further to expand
+     or manage here — but it still ends in a matching, deliberately blank
+     56px column (see below) purely to keep the row's own right edge
+     aligned with the other two levels'. */
   .l1-linked-header, .l1-linked-row {
     /* Scope Item is capped at a fixed 140px, not its own equal-share
        minmax(...,1fr) — a user-reported "way too wide" (both it and
@@ -835,8 +854,15 @@
        regardless of either one's actual content) left Milestone's own
        column pinned further right than it needed to be. Milestone is now
        the only flexible track, so shrinking Scope Item's fixed width
-       directly moves Milestone's own start position further left. */
-    display: grid; grid-template-columns: 110px 140px minmax(160px,1fr) 100px 120px;
+       directly moves Milestone's own start position further left. The
+       trailing 56px column is a deliberate, empty alignment reservation —
+       an explicit user request ("align all action columns (L1 plan, L1
+       milestone, connected milestones)") — matching the identical 56px
+       Actions column both the L1 Plan's own row (--item-grid-cols) and
+       its L1 Milestone row (.l1-milestone-row, above) end with, so all
+       three nesting levels' action zones sit at the same x-position
+       regardless of how deeply indented each one is. */
+    display: grid; grid-template-columns: 110px 140px minmax(160px,1fr) 100px 120px 56px;
     align-items: center; gap: 10px; padding: 6px 20px 6px 64px; border-bottom: 1px solid var(--border);
   }
   .l1-linked-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
@@ -6732,12 +6758,11 @@ function toggleL1MilestoneExpanded(milestoneId) {
   render();
 }
 function l1MilestoneHeaderHtml() {
-  // The Linked column's own header label was dropped once it became a
-  // plain icon-only action button — matching the trailing Delete column
-  // right next to it, which has never had a header label of its own
-  // either, since both are actions, not data, in this row.
+  // Connect and Delete now share one trailing Actions column (see the CSS
+  // comment on .l1-milestone-header/.l1-milestone-row) — no header label,
+  // same as the shared item grid's own unlabeled Actions column.
   return `<div class="l1-milestone-header">
-      <span></span><span>Milestone</span><span>Due</span><span>Status</span><span></span><span></span>
+      <span></span><span>Milestone</span><span>Due</span><span>Status</span><span></span>
     </div>`;
 }
 // A linked workstream milestone's own read-only row, once its parent L1
@@ -6750,13 +6775,19 @@ function l1MilestoneHeaderHtml() {
 // never editable here (see toggleL1MilestoneExpanded()'s own comment for
 // why: linking/unlinking and any real edits still only ever happen
 // elsewhere — the Connect modal, or the workstream milestone's own row on
-// Planning). l1LinkedHeaderHtml() labels all five columns once, rendered
-// immediately above the first linked row for a given expanded milestone —
-// the same "one header, right above the list it describes" pattern
-// l1MilestoneHeaderHtml() and milestoneHeaderHtml() already use.
+// Planning). l1LinkedHeaderHtml() labels all five real columns once,
+// rendered immediately above the first linked row for a given expanded
+// milestone — the same "one header, right above the list it describes"
+// pattern l1MilestoneHeaderHtml() and milestoneHeaderHtml() already use.
+// Both this and l1LinkedRowHtml() end in one extra, deliberately blank
+// trailing cell — a pure alignment reservation, not a real column with
+// content — matching the L1 Plan row's and L1 Milestone row's own 56px
+// Actions column width, so all three nesting levels' action zones share
+// the same right-edge x-position (see "align all action columns" in the
+// CSS comment on .l1-linked-header/.l1-linked-row).
 function l1LinkedHeaderHtml() {
   return `<div class="l1-linked-header">
-      <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span>Status</span>
+      <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span>Status</span><span></span>
     </div>`;
 }
 function l1LinkedRowHtml(item, milestone) {
@@ -6768,6 +6799,7 @@ function l1LinkedRowHtml(item, milestone) {
       <span>${esc(milestone.name)}</span>
       <span>${milestone.dueDate ? esc(fmtDate(milestone.dueDate)) : '—'}</span>
       <span class="status-badge" style="background:var(--stat-${milestone.status}-bg);color:var(--stat-${milestone.status});cursor:default">${esc(statusLabel(milestone.status))}</span>
+      <span></span>
     </div>`;
 }
 function l1MilestoneRowsHtml(plan) {
@@ -6781,17 +6813,19 @@ function l1MilestoneRowsHtml(plan) {
       : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`;
     const linked = linkedWorkstreamMilestones(m.id);
     const linkedCount = linked.length;
-    // A plain icon-only button now, matching Delete's own .row-icon-btn
-    // treatment right next to it — the "how many are linked" information
-    // itself moved to sit beside the milestone's own name below
-    // (nameHtml/.l1-milestone-linked-count), so this icon is purely the
-    // "manage links" action, nothing more.
-    const linkHtml = editable
-      ? `<button class="row-icon-btn${linkedCount ? ' l1-linked' : ''}" onclick="openL1ConnectModal('${plan.id}','${m.id}')" title="Connect workstream milestones to this one"><i class="fa-solid fa-link"></i></button>`
-      : `<span></span>`;
     const nameHtml = `<span>${esc(m.name)}${linkedCount ? `<span class="l1-milestone-linked-count">${linkedCount} linked</span>` : ''}</span>`;
-    const deleteHtml = editable
-      ? `<button class="row-icon-btn" onclick="removeL1Milestone('${plan.id}','${m.id}')" title="Remove milestone"><i class="fa-solid fa-trash"></i></button>`
+    // Connect and Delete share one trailing Actions cell now — an explicit
+    // user request to align this row's own action column with the L1
+    // Plan's own row and the connected-milestone row beneath it (see the
+    // CSS comment on .l1-milestone-header/.l1-milestone-row) — rendered as
+    // a small .l1-milestone-actions flex cluster, the same layout
+    // .item-actions uses elsewhere, minus its hover-to-reveal behavior
+    // (these two have always been plainly visible, not hover-gated).
+    const actionsHtml = editable
+      ? `<span class="l1-milestone-actions">
+          <button class="row-icon-btn${linkedCount ? ' l1-linked' : ''}" onclick="openL1ConnectModal('${plan.id}','${m.id}')" title="Connect workstream milestones to this one"><i class="fa-solid fa-link"></i></button>
+          <button class="row-icon-btn" onclick="removeL1Milestone('${plan.id}','${m.id}')" title="Remove milestone"><i class="fa-solid fa-trash"></i></button>
+        </span>`
       : `<span></span>`;
     // Always a real, present chevron cell — clickable only when there's
     // actually something to expand, same "every cell must be a real
@@ -6809,8 +6843,7 @@ function l1MilestoneRowsHtml(plan) {
         ${nameHtml}
         ${dueHtml}
         ${statusHtml}
-        ${linkHtml}
-        ${deleteHtml}
+        ${actionsHtml}
       </div>${linkedRowsHtml}`;
   }).join('');
 }

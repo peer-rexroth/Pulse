@@ -249,6 +249,37 @@ test('l1MilestoneHeaderHtml no longer labels the connect column — it\'s a plai
   assertNotIncludes(html, '>Linked<');
 });
 
+// ---------- Aligning the action columns across all three nesting levels ----------
+// A later, explicit user request ("align all action columns (L1 plan, L1
+// mielstone, connected mielstones)") — Connect+Delete now share a single
+// 56px .l1-milestone-actions cluster, matching the shared item grid's own
+// 56px Actions column width; the connected/linked milestone row has no
+// real actions of its own but still reserves a matching, blank trailing
+// 56px cell purely so its own right edge lines up with the other two.
+
+test('Connect and Delete share one .l1-milestone-actions cluster, not two separate grid cells', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'l1-milestone-actions');
+  const clusterStart = html.indexOf('l1-milestone-actions');
+  const clusterEnd = html.indexOf('</span>', html.indexOf(`onclick="removeL1Milestone('${p.id}','${m.id}')"`, clusterStart));
+  const cluster = html.slice(clusterStart, clusterEnd);
+  assertIncludes(cluster, 'openL1ConnectModal');
+  assertIncludes(cluster, 'removeL1Milestone');
+});
+
+test('l1LinkedHeaderHtml/l1LinkedRowHtml end in a matching, deliberately blank trailing cell for alignment with the other two nesting levels\' 56px Actions column', function () {
+  const headerHtml = l1LinkedHeaderHtml();
+  assertEqual((headerHtml.match(/<span/g) || []).length, 6, 'five real columns plus one blank alignment cell');
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  const rowHtml = l1LinkedRowHtml(item, wm);
+  assertEqual((rowHtml.match(/<span/g) || []).length, 6, 'five real columns plus one blank alignment cell');
+  assertIncludes(rowHtml, '      <span></span>\n    </div>', 'the trailing cell is genuinely empty, not a hidden action');
+});
+
 test('toggleL1MilestoneExpanded reveals the linked workstream milestone underneath, read-only, and collapses again on a second toggle', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
