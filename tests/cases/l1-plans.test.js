@@ -174,6 +174,47 @@ test('itemRowHtml renders an L1 Plan\'s own milestone rows (name/due/status/link
   assertIncludes(html, 'cycleL1MilestoneStatus');
 });
 
+// ---------- A discrete Due column on the L1 Plan's own row, not a Start->Due range ----------
+// A later, explicit user request ("for l1 column, at add discret Due
+// column. remot start-due range") — every other multi-milestone item shows
+// a computed Start->Due range on its own row (see "Item plan date range
+// roll-up" in CLAUDE.md); an L1 Plan's own row shows just a single Due
+// value instead, display-only — it.startDate is still computed/stored
+// exactly as before, just never rendered here.
+
+test('a zero-milestone L1 Plan shows a single, editable Due pill on its own row — no Start field, no range arrow', function () {
+  const p = addL1Plan();
+  const html = itemRowHtml(p);
+  assertIncludes(html, `updateItemDateField('${p.id}','dueDate'`);
+  assertNotIncludes(html, `updateItemDateField('${p.id}','startDate'`, 'no Start field for an L1 Plan');
+  assertNotIncludes(html, 'item-dates-arrow', 'no range arrow either');
+});
+
+test('an L1 Plan with milestones shows its computed Due date alone, read-only — not a "Start -> Due" range', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  updateL1MilestoneDateField(p.id, m.id, '2026-11-20');
+  const html = itemRowHtml(p);
+  assertEqual(p.dueDate, '2026-11-20');
+  assertIncludes(html, fmtDate('2026-11-20'));
+  assertNotIncludes(html, '→', 'no range arrow — just the single Due value');
+});
+
+test('an L1 Plan whose milestones have no date yet shows a plain "—" for Due, same empty-state convention as everywhere else', function () {
+  const p = addL1Plan();
+  addL1Milestone(p.id);
+  const html = itemRowHtml(p);
+  assertIncludes(html, '<span class="item-dates-computed" style="color:var(--text-faint)" title="No milestone has a date planned yet">—</span>');
+});
+
+test('editing the Due pill on a zero-milestone L1 Plan\'s own row writes straight into it.dueDate via the existing, shared updateItemDateField()', function () {
+  const p = addL1Plan();
+  userRole = 'editor';
+  updateItemDateField(p.id, 'dueDate', '2026-12-01');
+  assertEqual(p.dueDate, '2026-12-01');
+  assertEqual(p.startDate, null, 'Start is never touched by this row — it stays whatever it already was');
+});
+
 // ---------- Expanding an L1 milestone to reveal its linked workstream milestones ----------
 
 test('an L1 milestone with no linked workstream milestones has a dead, non-clickable chevron', function () {
