@@ -194,6 +194,61 @@ test('an L1 milestone with a linked workstream milestone gets a real, clickable 
   assertIncludes(html, `onclick="toggleL1MilestoneExpanded('${m.id}')"`);
 });
 
+// ---------- Connect icon + linked-count badge next to the name ----------
+// A later, explicit user request ("replace the big linking item, with a
+// simple like item (like the delete icon). move the information of how
+// many milestones are linked next to the l1 milestone name") — the pill
+// button showing "N linked"/"Connect" text was replaced with a plain
+// icon-only .row-icon-btn, matching Delete's own treatment right next to
+// it; the "how many are linked" count moved to a small badge right after
+// the milestone's own name instead.
+
+test('the connect action is a plain icon-only button (no "N linked"/"Connect" text), matching Delete\'s own .row-icon-btn treatment', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, `onclick="openL1ConnectModal('${p.id}','${m.id}')"`);
+  assertNotIncludes(html, 'Connect workstream milestones to this one">\n          <i class="fa-solid fa-link"></i> Connect', 'the old text-bearing pill markup must be gone');
+  assertNotIncludes(html, '>Connect<');
+  assertNotIncludes(html, 'l1-milestone-link-btn', 'the old pill class is gone entirely');
+});
+
+test('the connect icon renders below Editor as a bare, empty placeholder — same as Delete\'s own below-Editor treatment', function () {
+  const p = addL1Plan();
+  addL1Milestone(p.id);
+  userRole = 'reviewer';
+  const html = l1MilestoneRowsHtml(p);
+  assertNotIncludes(html, 'openL1ConnectModal');
+});
+
+test('the milestone name shows a small "N linked" badge right next to it once anything is linked, and nothing extra when it isn\'t', function () {
+  const p = addL1Plan();
+  const m1 = addL1Milestone(p.id, 'Unlinked milestone');
+  const m2 = addL1Milestone(p.id, 'Linked milestone');
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m2.id };
+  item.milestones.push(wm);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, `<span>Unlinked milestone</span>`, 'no badge at all when nothing is linked');
+  assertIncludes(html, `Linked milestone<span class="l1-milestone-linked-count">1 linked</span>`);
+});
+
+test('the "N linked" badge reflects the real linked count, not just 0-vs-1', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm1 = { id: genId(), name: 'A', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm2 = { id: genId(), name: 'B', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm1, wm2);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, '<span class="l1-milestone-linked-count">2 linked</span>');
+});
+
+test('l1MilestoneHeaderHtml no longer labels the connect column — it\'s a plain icon action now, same as the unlabeled Delete column beside it', function () {
+  const html = l1MilestoneHeaderHtml();
+  assertNotIncludes(html, '>Linked<');
+});
+
 test('toggleL1MilestoneExpanded reveals the linked workstream milestone underneath, read-only, and collapses again on a second toggle', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);

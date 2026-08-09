@@ -783,17 +783,28 @@
      straight into the base rule rather than needing its own conditional
      indent class. */
   .l1-milestone-header, .l1-milestone-row {
-    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 120px 160px 32px;
+    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 120px 32px 32px;
     align-items: center; gap: 10px; padding: 7px 20px 7px 34px; border-bottom: 1px solid var(--border);
   }
   .l1-milestone-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
   .l1-milestone-row { font-size: 12.5px; background: var(--panel-2); }
-  .l1-milestone-link-btn {
-    display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--panel);
-    border-radius: 20px; padding: 3px 10px; font-size: 11.5px; font-weight: 600; color: var(--text-dim); cursor: pointer;
+  /* The "N linked"/"Connect" pill button was replaced with a plain
+     icon-only .row-icon-btn (same size/treatment as the Delete icon right
+     next to it) — a user-reported "too big" — with the actual "how many
+     workstream milestones are linked" information moved to sit right next
+     to the milestone's own name instead (.l1-milestone-linked-count), so
+     nothing is lost, just relocated to where it reads more naturally. The
+     icon button itself still opens the connect modal; .row-icon-btn.linked
+     (scoped to this one context, not a bare .linked class, to avoid ever
+     colliding with some other .row-icon-btn elsewhere reusing that name)
+     just tints it accent-colored once anything actually is linked, mirroring
+     the same "make an active/non-default state visually distinct" instinct
+     the old pill's own .linked modifier already had. */
+  .row-icon-btn.l1-linked { color: var(--accent); }
+  .l1-milestone-linked-count {
+    display: inline-flex; align-items: center; margin-left: 7px; font-size: 11px; font-weight: 600;
+    color: var(--accent); background: var(--accent-bg); border-radius: 20px; padding: 1px 8px;
   }
-  .l1-milestone-link-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .l1-milestone-link-btn.linked { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
   /* A linked workstream milestone, shown read-only under its L1 milestone
      once expanded (see toggleL1MilestoneExpanded()) — pure display, no
      editing surface here (linking/unlinking is still only ever done via
@@ -6721,8 +6732,12 @@ function toggleL1MilestoneExpanded(milestoneId) {
   render();
 }
 function l1MilestoneHeaderHtml() {
+  // The Linked column's own header label was dropped once it became a
+  // plain icon-only action button — matching the trailing Delete column
+  // right next to it, which has never had a header label of its own
+  // either, since both are actions, not data, in this row.
   return `<div class="l1-milestone-header">
-      <span></span><span>Milestone</span><span>Due</span><span>Status</span><span>Linked</span><span></span>
+      <span></span><span>Milestone</span><span>Due</span><span>Status</span><span></span><span></span>
     </div>`;
 }
 // A linked workstream milestone's own read-only row, once its parent L1
@@ -6766,11 +6781,15 @@ function l1MilestoneRowsHtml(plan) {
       : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`;
     const linked = linkedWorkstreamMilestones(m.id);
     const linkedCount = linked.length;
+    // A plain icon-only button now, matching Delete's own .row-icon-btn
+    // treatment right next to it — the "how many are linked" information
+    // itself moved to sit beside the milestone's own name below
+    // (nameHtml/.l1-milestone-linked-count), so this icon is purely the
+    // "manage links" action, nothing more.
     const linkHtml = editable
-      ? `<button class="l1-milestone-link-btn${linkedCount ? ' linked' : ''}" onclick="openL1ConnectModal('${plan.id}','${m.id}')" title="Connect workstream milestones to this one">
-          <i class="fa-solid fa-link"></i> ${linkedCount ? `${linkedCount} linked` : 'Connect'}
-        </button>`
-      : `<span class="l1-milestone-link-btn${linkedCount ? ' linked' : ''}" style="cursor:default"><i class="fa-solid fa-link"></i> ${linkedCount ? `${linkedCount} linked` : 'None linked'}</span>`;
+      ? `<button class="row-icon-btn${linkedCount ? ' l1-linked' : ''}" onclick="openL1ConnectModal('${plan.id}','${m.id}')" title="Connect workstream milestones to this one"><i class="fa-solid fa-link"></i></button>`
+      : `<span></span>`;
+    const nameHtml = `<span>${esc(m.name)}${linkedCount ? `<span class="l1-milestone-linked-count">${linkedCount} linked</span>` : ''}</span>`;
     const deleteHtml = editable
       ? `<button class="row-icon-btn" onclick="removeL1Milestone('${plan.id}','${m.id}')" title="Remove milestone"><i class="fa-solid fa-trash"></i></button>`
       : `<span></span>`;
@@ -6787,7 +6806,7 @@ function l1MilestoneRowsHtml(plan) {
       : '';
     return `<div class="l1-milestone-row">
         ${chevronHtml}
-        <span>${esc(m.name)}</span>
+        ${nameHtml}
         ${dueHtml}
         ${statusHtml}
         ${linkHtml}
