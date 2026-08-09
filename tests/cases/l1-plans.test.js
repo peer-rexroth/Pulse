@@ -303,24 +303,33 @@ test('Connect and Delete share one .l1-milestone-actions cluster, not two separa
   assertIncludes(cluster, 'removeL1Milestone');
 });
 
-test('l1LinkedHeaderHtml/l1LinkedRowHtml end in two matching, deliberately blank trailing cells (a Status-alignment spacer, then the Actions-alignment cell)', function () {
+// A user-reported "why is there space next to actions? ... delete it"
+// reversed the earlier attempt at aligning L1-Plan-row/L1-Milestone-row/
+// linked-row Status+Actions all against each other via deliberate blank
+// spacer/alignment columns — those columns are gone now. l1LinkedHeaderHtml()/
+// l1LinkedRowHtml() no longer carry any trailing blank cell at all (Status
+// is the real last column); l1MilestoneHeaderHtml()/l1MilestoneRowsHtml()
+// no longer have a spacer between Status and Actions either — Due/Status
+// still match in width between .l1-milestone-row and .l1-linked-row (the
+// one alignment kept), just with no wasted space anywhere.
+
+test('l1LinkedHeaderHtml/l1LinkedRowHtml no longer carry any trailing blank cell — Status is the real last column', function () {
   const headerHtml = l1LinkedHeaderHtml();
-  assertEqual((headerHtml.match(/<span/g) || []).length, 7, 'five real columns plus a Status spacer plus an Actions alignment cell');
+  assertEqual((headerHtml.match(/<span/g) || []).length, 5, 'exactly five real columns, no alignment padding');
   const item = addItem({ name: 'Deliverable' });
   const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
   item.milestones.push(wm);
   const rowHtml = l1LinkedRowHtml(item, wm);
-  assertEqual((rowHtml.match(/<span/g) || []).length, 7, 'five real columns plus a Status spacer plus an Actions alignment cell');
-  assertIncludes(rowHtml, '      <span></span>\n      <span></span>\n    </div>', 'both trailing cells are genuinely empty, not hidden actions');
+  assertEqual((rowHtml.match(/<span/g) || []).length, 5, 'exactly five real columns, no alignment padding');
 });
 
-test('l1MilestoneHeaderHtml/l1MilestoneRowsHtml include a matching blank Status-alignment spacer right before Actions, mirroring l1-linked-row\'s own', function () {
+test('l1MilestoneHeaderHtml/l1MilestoneRowsHtml no longer carry a blank spacer between Status and Actions', function () {
   const p = addL1Plan();
   addL1Milestone(p.id);
   const headerHtml = l1MilestoneHeaderHtml();
-  assertEqual((headerHtml.match(/<span/g) || []).length, 6, 'Chevron/Milestone/Due/Status/spacer/Actions');
+  assertEqual((headerHtml.match(/<span/g) || []).length, 5, 'Chevron/Milestone/Due/Status/Actions, no spacer');
   const rowHtml = l1MilestoneRowsHtml(p);
-  assertIncludes(rowHtml, '<span></span>\n        <span class="l1-milestone-actions">', 'a blank spacer cell sits between Status and the Actions cluster');
+  assertNotIncludes(rowHtml, '<span></span>\n        <span class="l1-milestone-actions">', 'no blank spacer sits between Status and the Actions cluster any more');
 });
 
 test('toggleL1MilestoneExpanded reveals the linked workstream milestone underneath, read-only, and collapses again on a second toggle', function () {
