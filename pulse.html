@@ -799,21 +799,27 @@
      editing surface here (linking/unlinking is still only ever done via
      the "Connect"/"N linked" button's own modal, matching the "pure
      traceability" design this whole feature is built around). Indented
-     54px, one level deeper than the 34px milestone row above it — the same
-     two-level nesting depth Journeys' own .item-row-indent-2 uses for a
-     Sub Journey's connected scope items one level under their own parent
-     row. Its own 5-column layout (Workstream / Scope Item / Milestone /
-     Due / Status) — split into two separate columns rather than one
-     combined "source" cell, an explicit user request — plus its own header
-     row (.l1-linked-header, labeling all five), the same "label the
-     columns once, right above the list they describe" pattern
-     .l1-milestone-header/milestoneHeaderHtml() already establish elsewhere
-     in this app. No chevron, "linked" count, or delete column the way
-     .l1-milestone-row has one — there's nothing further to expand or
-     manage on a row that's already itself the expanded detail. */
+     64px — an explicit user request to align its first column directly
+     under the parent .l1-milestone-row's own Milestone-name column, not
+     just "one level deeper" the way Journeys' own .item-row-indent-2
+     indent is a plain, unaligned fixed value: 64px is that row's own
+     34px padding-left + its 20px chevron column + its 10px column gap,
+     i.e. exactly where its Milestone-name column begins. If
+     .l1-milestone-row's own padding/chevron-width/gap ever change, this
+     value needs to move with them to stay aligned — it's derived from,
+     not independent of, that rule just above. Its own 5-column layout
+     (Workstream / Scope Item / Milestone / Due / Status) — split into two
+     separate columns rather than one combined "source" cell, an explicit
+     user request — plus its own header row (.l1-linked-header, labeling
+     all five), the same "label the columns once, right above the list
+     they describe" pattern .l1-milestone-header/milestoneHeaderHtml()
+     already establish elsewhere in this app. No chevron, "linked" count,
+     or delete column the way .l1-milestone-row has one — there's nothing
+     further to expand or manage on a row that's already itself the
+     expanded detail. */
   .l1-linked-header, .l1-linked-row {
     display: grid; grid-template-columns: 110px minmax(120px,1fr) minmax(140px,1fr) 100px 120px;
-    align-items: center; gap: 10px; padding: 6px 20px 6px 54px; border-bottom: 1px solid var(--border);
+    align-items: center; gap: 10px; padding: 6px 20px 6px 64px; border-bottom: 1px solid var(--border);
   }
   .l1-linked-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
   .l1-linked-row { font-size: 12px; color: var(--text-dim); background: var(--panel); }
