@@ -217,7 +217,7 @@ async function run(argv) {
   editingItemType = 'scope'; journeyConnectItemId = null;
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set(); revealedDueIds = new Set(); revealedActionLogDueIds = new Set(); revealedLogTextFields = new Set();
   unassignedQuickAddOpen = false; journeyQuickAddOpen = false; subJourneyQuickAddOpenFor = null; planningSearchQuery = ''; planningStatusFilters = new Set(); planningDependencyFilter = false;
-  l1PlanQuickAddOpen = false; l1MilestoneQuickAddOpenFor = null; l1ConnectPlanId = null; l1ConnectMilestoneId = null;
+  l1PlanQuickAddOpen = false; l1MilestoneQuickAddOpenFor = null; l1ConnectPlanId = null; l1ConnectMilestoneId = null; expandedL1MilestoneIds = new Set();
   journeysSearchQuery = ''; actionLogSearchQuery = ''; decisionLogSearchQuery = '';
   journeysStatusFilters = new Set(); journeysDependencyFilter = false; actionLogStatusFilters = new Set(); actionLogFlaggedFilter = false; decisionLogFlaggedFilter = false;
   editingCategoryId = null; editingCategoryMilestones = [];

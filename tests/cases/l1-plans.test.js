@@ -174,6 +174,67 @@ test('itemRowHtml renders an L1 Plan\'s own milestone rows (name/due/status/link
   assertIncludes(html, 'cycleL1MilestoneStatus');
 });
 
+// ---------- Expanding an L1 milestone to reveal its linked workstream milestones ----------
+
+test('an L1 milestone with no linked workstream milestones has a dead, non-clickable chevron', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  toggleItemExpanded(p.id);
+  const html = l1MilestoneRowsHtml(p);
+  assertNotIncludes(html, `toggleL1MilestoneExpanded('${m.id}')`);
+});
+
+test('an L1 milestone with a linked workstream milestone gets a real, clickable chevron', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: '2026-09-01', actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, `onclick="toggleL1MilestoneExpanded('${m.id}')"`);
+});
+
+test('toggleL1MilestoneExpanded reveals the linked workstream milestone underneath, read-only, and collapses again on a second toggle', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Finance Deliverable' });
+  const wm = { id: genId(), name: 'Cutover complete', dueDate: '2026-09-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  let html = l1MilestoneRowsHtml(p);
+  assertNotIncludes(html, 'Cutover complete', 'collapsed by default');
+  toggleL1MilestoneExpanded(m.id);
+  html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'l1-linked-row');
+  assertIncludes(html, 'Cutover complete');
+  assertIncludes(html, workstreams[0].name, 'names the source workstream, since a linked list can span several');
+  assertIncludes(html, 'Finance Deliverable', 'names the source scope item too');
+  toggleL1MilestoneExpanded(m.id);
+  html = l1MilestoneRowsHtml(p);
+  assertNotIncludes(html, 'Cutover complete', 'collapses back on a second toggle');
+});
+
+test('l1LinkedRowHtml never renders the linked milestone\'s status/due as an editable control — pure read-only display', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: '2026-09-01', actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  const html = l1LinkedRowHtml(item, wm);
+  assertIncludes(html, 'cursor:default');
+  assertNotIncludes(html, 'onclick', 'no click handler at all on the status badge here');
+  assertNotIncludes(html, '<input', 'no editable date field here either');
+});
+
+test('l1LinkedRowHtml labels a linked milestone from an Unassigned scope item as "Unassigned", not a stale/missing workstream name', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Unassigned deliverable', workstreamId: null });
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  const html = l1LinkedRowHtml(item, wm);
+  assertIncludes(html, 'Unassigned');
+});
+
 // ---------- Status/date roll-up (universal item behavior, not the link) ----------
 
 test('cycleL1MilestoneStatus cycles through STATUSES and recomputes the parent L1 Plan\'s own status — the same universal "item with milestones" roll-up every item gets, unrelated to the link feature\'s own "no rollup" rule', function () {

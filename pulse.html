@@ -768,8 +768,12 @@
      fully separate, fixed grid, not --item-grid-cols: that shared grid is
      already tightly tuned with zero spare room (see the comment above), and
      these rows have no need to visually align with Planning's own, since
-     they live on a completely different page. Milestone name / Due / Status
-     / linked-workstream-milestones-count (doubles as the connect button) /
+     they live on a completely different page. Chevron (expands to reveal
+     any linked workstream milestones, see .l1-linked-row below — a real,
+     always-present column even though most rows have nothing to expand,
+     same "every cell in every row must be a real element" discipline
+     --item-grid-cols itself follows) / Milestone name / Due / Status /
+     linked-workstream-milestones-count (doubles as the connect button) /
      Delete. Indented 34px, not the base 14px — the same one-level nesting
      indent Journeys' own .item-row-indent-1 uses for a Sub Journey nested
      under its parent Journey — so this list visually reads as nested under
@@ -779,7 +783,7 @@
      straight into the base rule rather than needing its own conditional
      indent class. */
   .l1-milestone-header, .l1-milestone-row {
-    display: grid; grid-template-columns: minmax(160px,1fr) 110px 120px 160px 32px;
+    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 120px 160px 32px;
     align-items: center; gap: 10px; padding: 7px 20px 7px 34px; border-bottom: 1px solid var(--border);
   }
   .l1-milestone-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
@@ -790,6 +794,24 @@
   }
   .l1-milestone-link-btn:hover { border-color: var(--accent); color: var(--accent); }
   .l1-milestone-link-btn.linked { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+  /* A linked workstream milestone, shown read-only under its L1 milestone
+     once expanded (see toggleL1MilestoneExpanded()) — pure display, no
+     editing surface here (linking/unlinking is still only ever done via
+     the "Connect"/"N linked" button's own modal, matching the "pure
+     traceability" design this whole feature is built around). Indented
+     54px, one level deeper than the 34px milestone row above it — the same
+     two-level nesting depth Journeys' own .item-row-indent-2 uses for a
+     Sub Journey's connected scope items one level under their own parent
+     row. A separate, smaller 4-column layout (source item / milestone name
+     / due / status) rather than reusing .l1-milestone-row's own 6-column
+     one — there's no chevron, "linked" count, or delete action meaningful
+     on a row that's already itself the expanded detail. */
+  .l1-linked-row {
+    display: grid; grid-template-columns: minmax(140px,1fr) minmax(140px,1fr) 100px 120px;
+    align-items: center; gap: 10px; padding: 6px 20px 6px 54px; border-bottom: 1px solid var(--border);
+    font-size: 12px; color: var(--text-dim); background: var(--panel);
+  }
+  .l1-linked-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* A Sub Journey's own connected scope items are indented (.item-row-
      indent-2, see above) — an expanded one's milestone header/rows need the
      same indent, or they'd render flush-left below an indented parent row,
@@ -6661,9 +6683,46 @@ function saveL1MilestoneQuickAdd() {
 // Not Applicable toggle, or review-confirm column, and there's no need to
 // visually align with Planning's own rows since this renders on a
 // completely separate page.
+//
+// expandedL1MilestoneIds is expandedItemIds's own counterpart, one level
+// deeper — an explicit user request ("if a L1 milestone has linked
+// workstream milestones, show the linked milestone under the L1 milestone
+// (with a chevron to collapse)"): a milestone with at least one linked
+// workstream milestone gets a real, clickable chevron; toggling it reveals
+// those links read-only underneath (see l1LinkedRowHtml() below) — the
+// "Connect"/"N linked" button right next to it is still the only way to
+// actually add/remove a link (opens l1ConnectModalBg), keeping this
+// expand/collapse purely a display affordance, not a second editing
+// surface. Module-level, UI-only, not persisted, reset between tests the
+// same way expandedItemIds already is.
+let expandedL1MilestoneIds = new Set();
+function toggleL1MilestoneExpanded(milestoneId) {
+  if (expandedL1MilestoneIds.has(milestoneId)) expandedL1MilestoneIds.delete(milestoneId);
+  else expandedL1MilestoneIds.add(milestoneId);
+  render();
+}
 function l1MilestoneHeaderHtml() {
   return `<div class="l1-milestone-header">
-      <span>Milestone</span><span>Due</span><span>Status</span><span>Linked</span><span></span>
+      <span></span><span>Milestone</span><span>Due</span><span>Status</span><span>Linked</span><span></span>
+    </div>`;
+}
+// A linked workstream milestone's own read-only row, once its parent L1
+// milestone is expanded — names the source workstream/scope item (an L1
+// milestone's own linked list can span several different workstreams and
+// items at once, so this is the one place that context is worth showing),
+// the milestone's own name, its Due date, and its Status — all plain text/
+// a non-clickable badge, never editable here (see toggleL1MilestoneExpanded()'s
+// own comment for why: linking/unlinking and any real edits still only
+// ever happen elsewhere — the Connect modal, or the workstream milestone's
+// own row on Planning).
+function l1LinkedRowHtml(item, milestone) {
+  const ws = item.workstreamId ? workstreams.find(w => w.id === item.workstreamId) : null;
+  const sourceLabel = `${ws ? ws.name : 'Unassigned'} — ${item.name}`;
+  return `<div class="l1-linked-row" title="${esc(sourceLabel)}">
+      <span class="l1-linked-source">${esc(sourceLabel)}</span>
+      <span>${esc(milestone.name)}</span>
+      <span>${milestone.dueDate ? esc(fmtDate(milestone.dueDate)) : '—'}</span>
+      <span class="status-badge" style="background:var(--stat-${milestone.status}-bg);color:var(--stat-${milestone.status});cursor:default">${esc(statusLabel(milestone.status))}</span>
     </div>`;
 }
 function l1MilestoneRowsHtml(plan) {
@@ -6675,7 +6734,8 @@ function l1MilestoneRowsHtml(plan) {
     const statusHtml = editable
       ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleL1MilestoneStatus('${plan.id}','${m.id}')">${esc(statusLabel(m.status))}</button>`
       : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`;
-    const linkedCount = linkedWorkstreamMilestones(m.id).length;
+    const linked = linkedWorkstreamMilestones(m.id);
+    const linkedCount = linked.length;
     const linkHtml = editable
       ? `<button class="l1-milestone-link-btn${linkedCount ? ' linked' : ''}" onclick="openL1ConnectModal('${plan.id}','${m.id}')" title="Connect workstream milestones to this one">
           <i class="fa-solid fa-link"></i> ${linkedCount ? `${linkedCount} linked` : 'Connect'}
@@ -6684,13 +6744,25 @@ function l1MilestoneRowsHtml(plan) {
     const deleteHtml = editable
       ? `<button class="row-icon-btn" onclick="removeL1Milestone('${plan.id}','${m.id}')" title="Remove milestone"><i class="fa-solid fa-trash"></i></button>`
       : `<span></span>`;
+    // Always a real, present chevron cell — clickable only when there's
+    // actually something to expand, same "every cell must be a real
+    // element, even when inert" discipline this grid already follows for
+    // Delete below Editor.
+    const l1Expanded = expandedL1MilestoneIds.has(m.id);
+    const chevronHtml = linkedCount
+      ? `<span class="item-chevron" onclick="toggleL1MilestoneExpanded('${m.id}')"><i class="fa-solid ${l1Expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
+      : `<span class="item-chevron"></span>`;
+    const linkedRowsHtml = (linkedCount && l1Expanded)
+      ? linked.map(({ item, milestone }) => l1LinkedRowHtml(item, milestone)).join('')
+      : '';
     return `<div class="l1-milestone-row">
+        ${chevronHtml}
         <span>${esc(m.name)}</span>
         ${dueHtml}
         ${statusHtml}
         ${linkHtml}
         ${deleteHtml}
-      </div>`;
+      </div>${linkedRowsHtml}`;
   }).join('');
 }
 function cycleL1MilestoneStatus(planId, milestoneId) {
