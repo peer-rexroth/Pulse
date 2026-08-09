@@ -6,19 +6,9 @@
 
 // ---------- hasRole() / roleLevel() ladder ----------
 
-// ROLES is ['visitor', 'planner', 'reviewer', 'editor', 'admin'] — Reviewer
-// sits below Editor (a user-requested swap from the original order), so an
-// Editor also passes hasRole('reviewer'), but a Reviewer does not pass
-// hasRole('editor'). Planner sits directly above Visitor, not between
-// Reviewer and Editor — an explicit user request ("Create the role
-// Planner... The other access rights should be inherited from visitor").
-// This means Planner is *not* a strict subset of Reviewer's own rights the
-// way every other adjacent pair on this ladder is — see
-// canManageJourneys()'s own tests further down for how Journey/Sub Journey
-// management is actually granted (a separate, non-ladder check), since a
-// plain hasRole('planner') would also (wrongly) hand Reviewer/Editor/Admin
-// nothing new and Planner nothing beyond Visitor, while what's actually
-// wanted is Planner-and-Editor-plus, specifically excluding Reviewer.
+// ROLES is ['visitor', 'reviewer', 'editor', 'admin'] — Reviewer sits below
+// Editor (a user-requested swap from the original order), so an Editor also
+// passes hasRole('reviewer'), but a Reviewer does not pass hasRole('editor').
 test('hasRole treats ROLES as an increasing ladder — a higher role passes every lower check too', function () {
   userRole = 'admin';
   assertTrue(hasRole('visitor'));
@@ -40,38 +30,6 @@ test('hasRole treats ROLES as an increasing ladder — a higher role passes ever
   userRole = 'visitor';
   assertTrue(hasRole('visitor'));
   assertFalse(hasRole('reviewer'));
-});
-
-test('Planner sits directly above Visitor on the ladder — passes hasRole("visitor") but not hasRole("reviewer")/hasRole("editor")/hasRole("admin")', function () {
-  userRole = 'planner';
-  assertTrue(hasRole('visitor'));
-  assertTrue(hasRole('planner'));
-  assertFalse(hasRole('reviewer'), 'Planner must not inherit Reviewer\'s own review-cycle actions');
-  assertFalse(hasRole('editor'));
-  assertFalse(hasRole('admin'));
-});
-
-// ---------- canManageJourneys() / requireJourneyAccess() ----------
-// Journey/Sub Journey management's own access check, deliberately separate
-// from the plain ladder above — see ROLES' own comment. Individual
-// call-site coverage (openItemModal/saveItem/deleteItem/
-// openJourneyQuickAdd/openSubJourneyQuickAdd/openJourneyConnectModal/
-// toggleJourneyConnection/reorderItem for a Journey/Sub Journey) lives in
-// journeys.test.js's own "Planner: Journey/Sub Journey management" section;
-// these two just cover the shared predicate/guard functions themselves.
-
-test('canManageJourneys is true for Planner and Editor+, false for Reviewer and Visitor', function () {
-  ['planner', 'editor', 'admin'].forEach(r => { userRole = r; assertTrue(canManageJourneys(), r); });
-  ['reviewer', 'visitor'].forEach(r => { userRole = r; assertFalse(canManageJourneys(), r); });
-});
-
-test('requireJourneyAccess shows a toast naming Planner/Editor and returns false when blocked; true and silent otherwise', function () {
-  userRole = 'reviewer';
-  assertFalse(requireJourneyAccess());
-  assertIncludes(document.getElementById('toastMsg').textContent, 'Planner');
-
-  userRole = 'planner';
-  assertTrue(requireJourneyAccess());
 });
 
 test('requireRole shows a toast naming the missing role and returns false when the current role falls short; true and silent otherwise', function () {
@@ -291,14 +249,14 @@ test('verifyRolePassword returns false against a null/missing stored value, rath
   assertFalse(await verifyRolePassword('anything', undefined));
 });
 
-test('normalizeData backfills a missing/malformed programme.rolePasswords to {planner:null, reviewer:null, editor:null, admin:null}, resets an invalid per-role entry to null, and leaves a real {salt,hash} alone', async function () {
+test('normalizeData backfills a missing/malformed programme.rolePasswords to {reviewer:null, editor:null, admin:null}, resets an invalid per-role entry to null, and leaves a real {salt,hash} alone', async function () {
   delete programme.rolePasswords;
   normalizeData();
-  assertDeepEqual(programme.rolePasswords, { planner: null, reviewer: null, editor: null, admin: null });
+  assertDeepEqual(programme.rolePasswords, { reviewer: null, editor: null, admin: null });
 
   programme.rolePasswords = 'not an object';
   normalizeData();
-  assertDeepEqual(programme.rolePasswords, { planner: null, reviewer: null, editor: null, admin: null });
+  assertDeepEqual(programme.rolePasswords, { reviewer: null, editor: null, admin: null });
 
   // The old plain-string shape (from before hashing existed) is exactly the
   // kind of malformed per-role entry this should reset, not trust as-is.
@@ -315,23 +273,13 @@ test('normalizeData backfills programme.updatedAt and rolePasswordsUpdatedAt to 
   delete programme.rolePasswordsUpdatedAt;
   normalizeData();
   assertEqual(programme.updatedAt, 0, 'legacy data predating this field must not look freshly edited just because this device loaded it first');
-  assertDeepEqual(programme.rolePasswordsUpdatedAt, { planner: 0, reviewer: 0, editor: 0, admin: 0 });
+  assertDeepEqual(programme.rolePasswordsUpdatedAt, { reviewer: 0, editor: 0, admin: 0 });
 
   programme.updatedAt = 5000;
-  programme.rolePasswordsUpdatedAt = { planner: 0, reviewer: 1234, editor: 0, admin: 0 };
+  programme.rolePasswordsUpdatedAt = { reviewer: 1234, editor: 0, admin: 0 };
   normalizeData();
   assertEqual(programme.updatedAt, 5000, 'a real value must not be reset');
   assertEqual(programme.rolePasswordsUpdatedAt.reviewer, 1234);
-});
-
-test('normalizeData backfills a missing programme.hideJourneys to false, and leaves an existing true alone', function () {
-  delete programme.hideJourneys;
-  normalizeData();
-  assertEqual(programme.hideJourneys, false);
-
-  programme.hideJourneys = true;
-  normalizeData();
-  assertEqual(programme.hideJourneys, true, 'an already-set true must not be reset back to false on a later load');
 });
 
 test('pickRole switches immediately, with no password step, for Visitor regardless of any passwords set', async function () {
@@ -409,7 +357,7 @@ test('setUserRole clears verifiedRolePasswordHash (and its persisted copy) on ev
   await submitRolePassword();
   assertTrue(!!verifiedRolePasswordHash);
 
-  setUserRole('planner');
+  setUserRole('reviewer');
   assertEqual(verifiedRolePasswordHash, null);
   assertEqual(localStorage.getItem(ROLE_VERIFIED_HASH_KEY), null);
 });
@@ -577,62 +525,6 @@ test('rolePasswordsSectionHtml names which roles currently have a password set, 
   assertIncludes(html, 'No passwords set yet');
 });
 
-// ---------- Hide Journeys feature (Admin-only) ----------
-// An explicit user request ("as an admin, allow me to hide the journey
-// feature"). Lives on programme.hideJourneys (see normalizeData()'s own
-// backfill), synced to every device the way rolePasswords already is.
-
-test('featuresSectionHtml (rendered as part of renderAdmin) is admin-only — invisible to every other role', function () {
-  ['visitor', 'planner', 'reviewer', 'editor'].forEach(r => {
-    userRole = r;
-    assertEqual(featuresSectionHtml(), '', `${r} must not see the Features section`);
-  });
-  userRole = 'admin';
-  assertIncludes(featuresSectionHtml(), 'Hide Journeys feature');
-});
-
-test('featuresSectionHtml reflects programme.hideJourneys as the checkbox\'s checked state', function () {
-  userRole = 'admin';
-  programme.hideJourneys = false;
-  assertNotIncludes(featuresSectionHtml(), 'checked');
-  programme.hideJourneys = true;
-  assertIncludes(featuresSectionHtml(), 'checked');
-});
-
-test('toggleHideJourneys is blocked below Admin, and never touches programme.hideJourneys', function () {
-  userRole = 'editor';
-  programme.hideJourneys = false;
-  toggleHideJourneys();
-  assertEqual(programme.hideJourneys, false);
-});
-
-test('toggleHideJourneys flips the flag at Admin, and forces planningTab back to "scope" if it was showing Journeys', function () {
-  userRole = 'admin';
-  programme.hideJourneys = false;
-  mode = 'planning'; planningTab = 'journeys';
-  toggleHideJourneys();
-  assertEqual(programme.hideJourneys, true);
-  assertEqual(planningTab, 'scope', 'must not leave the user stranded on a sub-tab with no button left to reach it');
-});
-
-test('toggleHideJourneys does not touch planningTab when turning the feature back on, or when not currently on the Journeys tab', function () {
-  userRole = 'admin';
-  programme.hideJourneys = true;
-  mode = 'planning'; planningTab = 'scope';
-  toggleHideJourneys(); // turning back on
-  assertEqual(programme.hideJourneys, false);
-  assertEqual(planningTab, 'scope');
-});
-
-test('render hides planningModeToolbar entirely once Journeys is hidden, even while in Planning mode', function () {
-  mode = 'planning'; programme.hideJourneys = false;
-  render();
-  assertEqual(document.getElementById('planningModeToolbar').style.display, '');
-  programme.hideJourneys = true;
-  render();
-  assertEqual(document.getElementById('planningModeToolbar').style.display, 'none');
-});
-
 test('openRolePasswordsModal and saveRolePasswords are both blocked below Admin', async function () {
   userRole = 'editor';
   openRolePasswordsModal();
@@ -645,43 +537,28 @@ test('openRolePasswordsModal and saveRolePasswords are both blocked below Admin'
   assertDeepEqual(programme.rolePasswords.admin, original, 'a sub-Admin role must not be able to change the Admin password');
 });
 
-test('openRolePasswordsModal always opens the four fields (Planner/Reviewer/Editor/Admin) blank (no plain password to pre-fill) with a placeholder naming the current state', async function () {
+test('openRolePasswordsModal always opens the three fields (Reviewer/Editor/Admin) blank (no plain password to pre-fill) with a placeholder naming the current state', async function () {
   userRole = 'admin';
-  programme.rolePasswords = { planner: null, reviewer: await hashRolePassword('r-pass'), editor: null, admin: null };
+  programme.rolePasswords = { reviewer: await hashRolePassword('r-pass'), editor: null, admin: null };
   openRolePasswordsModal();
-  assertEqual(document.getElementById('rolePasswordPlannerInput').value, '');
   assertEqual(document.getElementById('rolePasswordReviewerInput').value, '');
   assertEqual(document.getElementById('rolePasswordEditorInput').value, '');
-  assertIncludes(document.getElementById('rolePasswordPlannerInput').placeholder, 'No password set');
   assertIncludes(document.getElementById('rolePasswordReviewerInput').placeholder, 'Currently set');
   assertIncludes(document.getElementById('rolePasswordEditorInput').placeholder, 'No password set');
-  assertEqual(document.getElementById('rolePasswordPlannerClear').checked, false, 'the Remove checkbox must not carry over from a previous open');
   assertEqual(document.getElementById('rolePasswordReviewerClear').checked, false, 'the Remove checkbox must not carry over from a previous open');
 });
 
-test('saveRolePasswords hashes a non-blank field into that role\'s password (Planner included), and leaves a blank field (Remove unchecked) untouched', async function () {
+test('saveRolePasswords hashes a non-blank field into that role\'s password, and leaves a blank field (Remove unchecked) untouched', async function () {
   userRole = 'admin';
   const oldReviewerHash = await hashRolePassword('old-reviewer-pass');
-  programme.rolePasswords = { planner: null, reviewer: oldReviewerHash, editor: null, admin: null };
+  programme.rolePasswords = { reviewer: oldReviewerHash, editor: null, admin: null };
   openRolePasswordsModal();
   // Reviewer field left blank — its existing password must survive untouched.
-  document.getElementById('rolePasswordPlannerInput').value = '  new-planner-pass  ';
   document.getElementById('rolePasswordEditorInput').value = '  new-editor-pass  ';
   await saveRolePasswords();
   assertDeepEqual(programme.rolePasswords.reviewer, oldReviewerHash, 'a blank field with Remove unchecked must leave the existing password alone');
-  assertTrue(await verifyRolePassword('new-planner-pass', programme.rolePasswords.planner), 'the trimmed Planner value should have been hashed in');
   assertTrue(await verifyRolePassword('new-editor-pass', programme.rolePasswords.editor), 'the trimmed value should have been hashed in');
   assertEqual(document.getElementById('rolePasswordsModalBg').classList.contains('open'), false, 'saving should close the modal');
-});
-
-test('saveRolePasswords clears Planner\'s password when its "Remove" checkbox is checked, same as Reviewer/Editor', async function () {
-  userRole = 'admin';
-  programme.rolePasswords.planner = await hashRolePassword('old-planner-pass');
-  openRolePasswordsModal();
-  document.getElementById('rolePasswordPlannerInput').value = 'ignored-because-removing';
-  document.getElementById('rolePasswordPlannerClear').checked = true;
-  await saveRolePasswords();
-  assertEqual(programme.rolePasswords.planner, null, 'Remove wins outright, even with text also typed in');
 });
 
 test('saveRolePasswords clears a role\'s password when its "Remove" checkbox is checked, regardless of anything typed alongside it', async function () {

@@ -17,11 +17,10 @@ function byId(list) { const m = {}; list.forEach(x => m[x.id] = x); return m; }
 
 // Seeds a second real workstream (workstreams[0] already exists from
 // resetState()) plus one item/one review cycle/one actionLog entry/one
-// decisionLog entry on each of the two real workstreams, one Unassigned
-// scope item, and one Journey + one Sub Journey (both itemType-based,
-// always workstreamId:null) — enough of a spread across "belongs to
-// workstream A", "belongs to workstream B", and "belongs to neither" to
-// exercise the actual partitioning this feature exists to get right.
+// decisionLog entry on each of the two real workstreams, and one Unassigned
+// scope item — enough of a spread across "belongs to workstream A",
+// "belongs to workstream B", and "belongs to neither" to exercise the
+// actual partitioning this feature exists to get right.
 function seedMultiFileFixture() {
   const wsA = workstreams[0];
   const wsB = { id: genId(), name: 'Workstream B', color: 'green', order: 1, updatedAt: Date.now(), actionLog: [], decisionLog: [] };
@@ -32,12 +31,10 @@ function seedMultiFileFixture() {
   wsB.actionLog = [{ id: genId(), text: 'B action', owner: '', dueDate: null, completed: false, completedAt: null, cycleId: 'c', addedAt: Date.now(), flagged: false }];
   wsB.decisionLog = [{ id: genId(), text: 'B decision', cycleId: 'c', addedAt: Date.now(), flagged: false }];
 
-  const itemA = { id: genId(), workstreamId: wsA.id, categoryId: categories[0].id, name: 'Item A', status: 'green', startDate: todayStr(), dueDate: todayStr(), actualDate: null, updatedAt: Date.now(), milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 0, dependency: false, dependencySpoc: null, itemType: 'scope', journeyId: null };
-  const itemB = { id: genId(), workstreamId: wsB.id, categoryId: categories[0].id, name: 'Item B', status: 'green', startDate: todayStr(), dueDate: todayStr(), actualDate: null, updatedAt: Date.now(), milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 0, dependency: false, dependencySpoc: null, itemType: 'scope', journeyId: null };
-  const itemUnassigned = { id: genId(), workstreamId: null, categoryId: pendingCategory().id, name: 'Unassigned Item', status: 'pending', startDate: todayStr(), dueDate: todayStr(), actualDate: null, updatedAt: Date.now(), milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 0, dependency: false, dependencySpoc: null, itemType: 'scope', journeyId: null };
-  const journey = { id: genId(), workstreamId: null, categoryId: null, name: 'A Journey', status: 'not-started', startDate: todayStr(), dueDate: todayStr(), actualDate: null, updatedAt: Date.now(), milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 0, dependency: false, dependencySpoc: null, itemType: 'journey', journeyId: null };
-  const subJourney = { id: genId(), workstreamId: null, categoryId: null, name: 'A Sub Journey', status: 'not-started', startDate: todayStr(), dueDate: todayStr(), actualDate: null, updatedAt: Date.now(), milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 0, dependency: false, dependencySpoc: null, itemType: 'subjourney', journeyId: null, parentJourneyId: journey.id };
-  items.push(itemA, itemB, itemUnassigned, journey, subJourney);
+  const itemA = { id: genId(), workstreamId: wsA.id, categoryId: categories[0].id, name: 'Item A', status: 'green', startDate: todayStr(), dueDate: todayStr(), actualDate: null, updatedAt: Date.now(), milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 0, dependency: false, dependencySpoc: null, itemType: 'scope' };
+  const itemB = { id: genId(), workstreamId: wsB.id, categoryId: categories[0].id, name: 'Item B', status: 'green', startDate: todayStr(), dueDate: todayStr(), actualDate: null, updatedAt: Date.now(), milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 0, dependency: false, dependencySpoc: null, itemType: 'scope' };
+  const itemUnassigned = { id: genId(), workstreamId: null, categoryId: pendingCategory().id, name: 'Unassigned Item', status: 'pending', startDate: todayStr(), dueDate: todayStr(), actualDate: null, updatedAt: Date.now(), milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 0, dependency: false, dependencySpoc: null, itemType: 'scope' };
+  items.push(itemA, itemB, itemUnassigned);
 
   const cycleA = { id: genId(), workstreamId: wsA.id, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null };
   const cycleB = { id: genId(), workstreamId: wsB.id, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [], changeLog: [], minutes: null };
@@ -46,7 +43,7 @@ function seedMultiFileFixture() {
   deletedItemIds.push({ id: genId(), deletedAt: Date.now() });
   deletedMilestoneIds.push({ id: genId(), deletedAt: Date.now() });
 
-  return { wsA, wsB, itemA, itemB, itemUnassigned, journey, subJourney, cycleA, cycleB };
+  return { wsA, wsB, itemA, itemB, itemUnassigned, cycleA, cycleB };
 }
 
 test('wsFileName builds a readable pulse-ws-<slug>-<id-suffix>.json name, not a bare cryptic id', function () {
@@ -103,10 +100,10 @@ test('buildIndexPayload() strips actionLog/decisionLog off each workstream, keep
   assertDeepEqual(Object.keys(w).sort(), ['color', 'id', 'name', 'order', 'updatedAt'].sort());
 });
 
-test('buildIndexPayload() includes only workstreamId:null items — Unassigned scope items and every Journey/Sub Journey', function () {
-  const { itemA, itemB, itemUnassigned, journey, subJourney } = seedMultiFileFixture();
+test('buildIndexPayload() includes only workstreamId:null items — Unassigned scope items', function () {
+  const { itemA, itemB, itemUnassigned } = seedMultiFileFixture();
   const idx = buildIndexPayload();
-  assertDeepEqual(idsOf(idx.items), idsOf([itemUnassigned, journey, subJourney]));
+  assertDeepEqual(idsOf(idx.items), idsOf([itemUnassigned]));
   assertFalse(idx.items.some(it => it.id === itemA.id), 'a real workstream\'s own item must not leak into the index');
   assertFalse(idx.items.some(it => it.id === itemB.id));
 });
@@ -210,7 +207,7 @@ test('recombineSyncData() treats a workstream listed in the index but missing fr
   const recombinedWsById = byId(recombined.workstreams);
   assertDeepEqual(recombinedWsById[wsA.id].actionLog, []);
   assertDeepEqual(recombinedWsById[wsA.id].decisionLog, []);
-  // Only the index-level items (Unassigned/Journeys) survive — every real
+  // Only the index-level items (Unassigned) survive — every real
   // workstream's own items/reviewCycles are gone, since nothing supplied them.
   assertDeepEqual(idsOf(recombined.items), idsOf(indexData.items));
   assertDeepEqual(recombined.reviewCycles, []);
@@ -330,7 +327,7 @@ test('scanAndMergeStrayFiles finds a stray index conflict copy and merges its ch
   const { indexText, wsTexts, wsFileNames } = buildAllSyncPayloads();
   const strayIndexData = JSON.parse(indexText);
   const strayItemId = genId();
-  strayIndexData.items.push({ id: strayItemId, workstreamId: null, categoryId: pendingCategory().id, name: 'Only in the stray index', status: 'pending', startDate: todayStr(), dueDate: todayStr(), actualDate: null, updatedAt: Date.now(), milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 99, dependency: false, dependencySpoc: null, itemType: 'scope', journeyId: null });
+  strayIndexData.items.push({ id: strayItemId, workstreamId: null, categoryId: pendingCategory().id, name: 'Only in the stray index', status: 'pending', startDate: todayStr(), dueDate: todayStr(), actualDate: null, updatedAt: Date.now(), milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 99, dependency: false, dependencySpoc: null, itemType: 'scope' });
   const strayText = JSON.stringify(strayIndexData, null, 2);
   const strayName = SYNC_INDEX_FILE.replace('.json', '-JOHNS-MAC.json');
 

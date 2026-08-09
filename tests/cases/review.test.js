@@ -1555,13 +1555,13 @@ test('renderReview lets a Reviewer (and above) edit each milestone\'s own Due da
   assertIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','actualDate'`, 'Actual must still be editable inline during a review');
 });
 
-test('renderReview still locks Due/Actual/status/tags read-only for a Planner (below Reviewer) during a review', function () {
+test('renderReview still locks Due/Actual/status/tags read-only for a Visitor (below Reviewer) during a review', function () {
   const it = addReviewItemWithMilestones(['A']);
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
   startReviewCycle(workstreams[0].id);
   toggleItemExpanded(it.id);
-  userRole = 'planner';
+  userRole = 'visitor';
   renderReview();
   const html = document.getElementById('main').innerHTML;
   assertNotIncludes(html, `updateMilestoneDateField('${it.id}','${it.milestones[0].id}','dueDate'`, 'Due must stay locked below Reviewer');

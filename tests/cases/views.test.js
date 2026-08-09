@@ -3,7 +3,7 @@ function addItem(overrides) {
     id: genId(), workstreamId: workstreams[0].id,
     name: 'Item', owner: '', notes: '', status: 'green',
     startDate: todayStr(), dueDate: todayStr(), milestones: [],
-    itemType: 'scope', journeyId: null
+    itemType: 'scope'
   }, overrides || {});
   items.push(it);
   return it;
@@ -84,7 +84,7 @@ test('the Unassigned section is filtered too, and omitted entirely (even at Edit
   assertNotIncludes(html, it.name);
 });
 
-test('planningSearchQuery does not affect Review/Dashboard/Journeys — only Planning\'s own status board', function () {
+test('planningSearchQuery does not affect Review/Dashboard — only Planning\'s own status board', function () {
   addItem({ name: 'Migrate billing database' });
   planningSearchQuery = 'nonexistent';
   mode = 'review'; filterWorkstreamId = workstreams[0].id; reviewTab = 'scope';
@@ -203,7 +203,7 @@ test('the Unassigned section is filtered by status too, and omitted entirely whe
   assertNotIncludes(html, 'Unassigned');
 });
 
-test('planningStatusFilters does not affect Review/Dashboard/Journeys — only Planning\'s own status board', function () {
+test('planningStatusFilters does not affect Review/Dashboard — only Planning\'s own status board', function () {
   addItem({ name: 'Migrate billing database', status: 'red' });
   planningStatusFilters.add('amber'); // nothing matches this
   mode = 'review'; filterWorkstreamId = workstreams[0].id; reviewTab = 'scope';
@@ -347,8 +347,8 @@ test('a workstream with no dependency items shows no "Dependencies" sub-section 
 // ---------- Dependencies quick-filter chip ----------
 // An explicit user request ("add External Delivery to the left navigation
 // pane, under 'All Workstreams'") originally added this as a new mode with
-// its own sidebar row (mirroring Journeys' own entry point). A later,
-// separate explicit user request moved it to its own #tabExternal topbar
+// its own sidebar row. A later, separate explicit user request moved it to
+// its own #tabExternal topbar
 // button instead, and made it genuinely respect filterWorkstreamId. A
 // third, separate explicit user request removed the standalone mode
 // entirely — the topbar button, MODES entry, and renderExternalDelivery()
@@ -739,7 +739,7 @@ test('Due is locked to a plain read-only "—" (not a crash) during a review, fo
   });
   const cycle = { id: 'c1', workstreamId: workstreams[0].id, startedAt: Date.now(), completedAt: null, cancelledAt: null, confirmations: [], milestoneConfirmations: [] };
   toggleItemExpanded(it.id);
-  userRole = 'planner';
+  userRole = 'visitor';
   const html = itemRowHtml(it, cycle);
   assertIncludes(html, '>—<');
 });

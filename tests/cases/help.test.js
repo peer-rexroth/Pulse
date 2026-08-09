@@ -26,7 +26,7 @@ test('openAboutModal/closeAboutModal toggle aboutModalBg\'s open class', functio
 // harness's fake getElementById() returns a cached element that starts
 // genuinely empty (see "Tests" in CLAUDE.md) rather than one preloaded from
 // the real page's static HTML, so there's nothing here for a test to read
-// back and assert on. The content itself (Planning/Journeys/Review/
-// Dashboard/Roles/Data & sync sections, no Keyboard Shortcuts section) was
+// back and assert on. The content itself (Planning/Review/Dashboard/Roles/
+// Data & sync sections, no Keyboard Shortcuts section) was
 // verified directly in a real browser instead — see CLAUDE.md's own comment
 // on this modal for what it covers and why.

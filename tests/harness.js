@@ -214,14 +214,14 @@ async function run(argv) {
   // role gating set userRole to a lower tier themselves (see role.test.js).
   userRole = 'admin'; pendingRolePick = null; verifiedRolePasswordHash = null;
   editingWsId = null; wsColorChoice = WS_COLORS[0]; editingItemId = null;
-  editingItemType = 'scope'; journeyConnectItemId = null;
+  editingItemType = 'scope';
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set(); revealedDueIds = new Set(); revealedActionLogDueIds = new Set(); revealedLogTextFields = new Set();
-  unassignedQuickAddOpen = false; journeyQuickAddOpen = false; subJourneyQuickAddOpenFor = null; planningSearchQuery = ''; planningStatusFilters = new Set(); planningDependencyFilter = false;
+  unassignedQuickAddOpen = false; planningSearchQuery = ''; planningStatusFilters = new Set(); planningDependencyFilter = false;
   l1PlanQuickAddOpen = false; l1MilestoneQuickAddOpenFor = null; l1ConnectPlanId = null; l1ConnectMilestoneId = null; expandedL1MilestoneIds = new Set();
-  journeysSearchQuery = ''; actionLogSearchQuery = ''; decisionLogSearchQuery = '';
-  journeysStatusFilters = new Set(); journeysDependencyFilter = false; actionLogStatusFilters = new Set(); actionLogFlaggedFilter = false; decisionLogFlaggedFilter = false;
+  actionLogSearchQuery = ''; decisionLogSearchQuery = '';
+  actionLogStatusFilters = new Set(); actionLogFlaggedFilter = false; decisionLogFlaggedFilter = false;
   editingCategoryId = null; editingCategoryMilestones = [];
-  minutesModalCycleId = null; editingMinutesActionItems = []; reviewTab = 'scope'; planningTab = 'scope'; dashboardTab = 'overview';
+  minutesModalCycleId = null; editingMinutesActionItems = []; reviewTab = 'scope'; dashboardTab = 'overview';
   renamingProgramme = false;
   pendingImportData = null; modalTarget = null; toastUndoAction = null;
   fileHandle = null; lastSyncedSnapshot = null; lastSyncedAt = 0; syncConflictLog = [];

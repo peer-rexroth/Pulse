@@ -2,19 +2,16 @@
 // Overarching, high-level plans that sit above every workstream — an
 // explicit user request ("define overaching, high-level plans ('L1
 // plans'). I would then [want] the option to link the workstream
-// milestones to the L1 milestones"). Not a new top-level data shape, the
-// same reuse-items trick Journeys already established (see "Journeys" in
-// CLAUDE.md): a plain item, itemType:'l1plan', workstreamId/categoryId
-// always null — but, unlike a Journey/Sub Journey, an L1 Plan keeps a real,
-// non-empty, hand-managed `milestones` array (name/dueDate/status, no
-// category/template to seed from). This is what lets it ride the
-// *existing*, unmodified items/milestones sync+tombstone+merge machinery
-// with zero new plumbing.
+// milestones to the L1 milestones"). Not a new top-level data shape — a
+// plain item, itemType:'l1plan', workstreamId/categoryId always null — but
+// it keeps a real, non-empty, hand-managed `milestones` array
+// (name/dueDate/status, no category/template to seed from). This is what
+// lets it ride the *existing*, unmodified items/milestones
+// sync+tombstone+merge machinery with zero new plumbing.
 //
 // The link lives on the *workstream* milestone (m.l1MilestoneId), not the
-// L1 milestone — mirroring how item.journeyId lives on a scope item, not on
-// the Sub Journey it connects to. Many-to-one: a workstream milestone links
-// to at most one L1 milestone at a time. Linking is pure traceability —
+// L1 milestone. Many-to-one: a workstream milestone links to at most one
+// L1 milestone at a time. Linking is pure traceability —
 // confirmed directly with the user — it never computes or changes an L1
 // milestone's own status/dates; those stay entirely manual, exactly like
 // any other milestone.
@@ -557,11 +554,10 @@ test('linking never changes the L1 milestone\'s own stored status or dates — t
 // its own manual, click-to-cycle status when nothing's linked. An L1
 // Plan's own status (L1) rolls up one level further, from its own
 // milestones' *effective* status (computed-or-manual). Both are computed
-// live at render time, never stored/stamped — the same pattern Journey/
-// Sub Journey's own computeJourneyStatus()/computeSubJourneyStatus()
-// already established, specifically so a linked workstream milestone's
-// status changing anywhere on the Planning board is picked up on the very
-// next render with no special hook needed at the change site itself.
+// live at render time, never stored/stamped, specifically so a linked
+// workstream milestone's status changing anywhere on the Planning board is
+// picked up on the very next render with no special hook needed at the
+// change site itself.
 
 test('computedL1MilestoneStatus returns null when nothing is linked', function () {
   const p = addL1Plan();
@@ -669,7 +665,7 @@ test('linkedWorkstreamMilestones returns every workstream milestone linked to a 
   assertEqual(linked[0].milestone.id, wm1.id);
 });
 
-test('renderL1ConnectList excludes a workstream milestone already linked to a *different* L1 milestone, mirroring renderJourneyConnectList\'s own exclusion', function () {
+test('renderL1ConnectList excludes a workstream milestone already linked to a *different* L1 milestone', function () {
   const p = addL1Plan();
   const m1 = addL1Milestone(p.id, 'Milestone 1');
   const m2 = addL1Milestone(p.id, 'Milestone 2');
@@ -762,7 +758,7 @@ test('milestoneRowsHtml appends the linked indicator after a linked milestone\'s
 
 // ---------- normalizeData() backfill ----------
 
-test('normalizeData keeps itemType:"l1plan" and forces categoryId to null, same as Journey/Sub Journey', function () {
+test('normalizeData keeps itemType:"l1plan" and forces categoryId to null', function () {
   items.push({ id: genId(), name: 'Untouched', itemType: 'l1plan', workstreamId: null, categoryId: categories[0].id, milestones: [], updatedAt: Date.now() });
   normalizeData();
   const p = items.find(it => it.name === 'Untouched');
@@ -861,7 +857,7 @@ test('buildIndexPayload includes an L1 Plan and its milestones — workstreamId:
   addL1Milestone(p.id, 'Synced milestone');
   const payload = buildIndexPayload();
   const found = payload.items.find(it => it.id === p.id);
-  assertTrue(!!found, 'an L1 Plan must ride along in the index, same as an Unassigned item or a Journey');
+  assertTrue(!!found, 'an L1 Plan must ride along in the index, same as an Unassigned item');
   assertEqual(found.milestones.length, 1);
   assertEqual(found.milestones[0].name, 'Synced milestone');
 });

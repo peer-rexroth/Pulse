@@ -131,13 +131,13 @@ test('mergeData with respectTombstones:false lets a tombstoned item back in rega
   assertEqual(items.length, 1);
 });
 
-// ---------- Scope items (and Journeys, which are just items with
-// workstreamId:null) now get the same proactive sweep action items got —
-// a user-reported parallel to the same bug. Every test above this point
-// only ever covered the "incoming copy resurrects a deletion" direction;
-// none of them cover a device that already had its own local copy of an
-// item *before* the deletion ever reached it — that copy was never dropped,
-// since the merge loop only ever acted on what was actually incoming.
+// ---------- Scope items now get the same proactive sweep action items
+// got — a user-reported parallel to the same bug. Every test above this
+// point only ever covered the "incoming copy resurrects a deletion"
+// direction; none of them cover a device that already had its own local
+// copy of an item *before* the deletion ever reached it — that copy was
+// never dropped, since the merge loop only ever acted on what was
+// actually incoming.
 
 test('mergeData proactively sweeps a locally-existing item once its tombstone merges in, even though data.items simply omits it', function () {
   const local = { id: 'stale-item', workstreamId: workstreams[0].id, name: 'Deleted elsewhere', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 1000 };
@@ -161,11 +161,11 @@ test('mergeData with respectTombstones:false never sweeps a locally-existing ite
   assertEqual(items.length, 1);
 });
 
-test('mergeData sweeps a locally-existing Journey (itemType:journey, workstreamId:null) the exact same way as an ordinary scope item — no special-casing needed', function () {
-  const journey = { id: 'stale-journey', workstreamId: null, categoryId: null, itemType: 'journey', journeyId: null, name: 'Deleted elsewhere', owner: '', status: 'not-started', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 1000 };
-  items.push(journey);
-  mergeData({ workstreams: [], items: [], deletedItemIds: [{ id: 'stale-journey', deletedAt: 2000 }] });
-  assertEqual(items.length, 0, 'a Journey is just an item under the hood — the sweep works on all of `items` and never needs to know or care about itemType');
+test('mergeData sweeps a locally-existing Unassigned item (workstreamId:null) the exact same way as a workstream-scoped one — no special-casing needed', function () {
+  const unassigned = { id: 'stale-unassigned', workstreamId: null, categoryId: null, itemType: 'scope', name: 'Deleted elsewhere', owner: '', status: 'not-started', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 1000 };
+  items.push(unassigned);
+  mergeData({ workstreams: [], items: [], deletedItemIds: [{ id: 'stale-unassigned', deletedAt: 2000 }] });
+  assertEqual(items.length, 0, 'the sweep works on all of `items` regardless of workstreamId and never needs to know or care about it');
 });
 
 test('the actual fix for the reported bug: a device that already had its own local copy of a scope item drops it once the deleting device\'s tombstone merges in', function () {
@@ -581,7 +581,7 @@ test('chooseBackupFolder is reachable at Editor and Admin (falls through to the 
 });
 
 test('unlinkBackupFolder is blocked below Editor, and leaves an existing backupDirHandle untouched', async function () {
-  userRole = 'planner';
+  userRole = 'visitor';
   backupDirHandle = { name: 'Existing Folder' };
   await unlinkBackupFolder();
   assertEqual(backupDirHandle.name, 'Existing Folder');
@@ -894,15 +894,14 @@ test('mergeData with respectTombstones:false (applyImport merge mode) never swee
 // mergeData() used to never touch data.programme at all — the only path
 // that ever applied an incoming programme object was replaceFromFileData(),
 // gated by isFreshLocalState(), which only ever fires for a genuinely
-// untouched, brand-new install. A role password (or a rename, or a
-// hideJourneys toggle) changed on one device would otherwise never reach a
-// second device that already had any real data of its own — a
-// user-reported bug.
+// untouched, brand-new install. A role password (or a rename) changed on
+// one device would otherwise never reach a second device that already had
+// any real data of its own — a user-reported bug.
 
 test('mergeData merges an incoming programme rename when the incoming updatedAt is newer', function () {
   programme.name = 'Old Name';
   programme.updatedAt = 1000;
-  const { changed } = mergeData({ programme: { name: 'New Name', updatedAt: 2000, hideJourneys: false, rolePasswords: {}, rolePasswordsUpdatedAt: {} }, workstreams: [], items: [] });
+  const { changed } = mergeData({ programme: { name: 'New Name', updatedAt: 2000, rolePasswords: {}, rolePasswordsUpdatedAt: {} }, workstreams: [], items: [] });
   assertTrue(changed);
   assertEqual(programme.name, 'New Name');
   assertEqual(programme.updatedAt, 2000);
@@ -911,30 +910,22 @@ test('mergeData merges an incoming programme rename when the incoming updatedAt 
 test('mergeData does not let a stale incoming programme rename overwrite a newer local one', function () {
   programme.name = 'Fresh Local Name';
   programme.updatedAt = 5000;
-  const { changed } = mergeData({ programme: { name: 'Stale Incoming Name', updatedAt: 1000, hideJourneys: false, rolePasswords: {}, rolePasswordsUpdatedAt: {} }, workstreams: [], items: [] });
+  const { changed } = mergeData({ programme: { name: 'Stale Incoming Name', updatedAt: 1000, rolePasswords: {}, rolePasswordsUpdatedAt: {} }, workstreams: [], items: [] });
   assertFalse(changed);
   assertEqual(programme.name, 'Fresh Local Name');
 });
 
-test('mergeData merges hideJourneys as the same scalar pair as name, sharing one updatedAt', function () {
-  programme.hideJourneys = false;
-  programme.updatedAt = 1000;
-  mergeData({ programme: { name: programme.name, updatedAt: 2000, hideJourneys: true, rolePasswords: {}, rolePasswordsUpdatedAt: {} }, workstreams: [], items: [] });
-  assertEqual(programme.hideJourneys, true);
-});
-
 test('mergeData merges rolePasswords per-role via rolePasswordsUpdatedAt — one role\'s newer change never touches a different role\'s own, independently-set entry', async function () {
   const localEditorHash = await hashRolePassword('local-editor-pass');
-  programme.rolePasswords = { planner: null, reviewer: null, editor: localEditorHash, admin: null };
-  programme.rolePasswordsUpdatedAt = { planner: 0, reviewer: 0, editor: 5000, admin: 0 };
+  programme.rolePasswords = { reviewer: null, editor: localEditorHash, admin: null };
+  programme.rolePasswordsUpdatedAt = { reviewer: 0, editor: 5000, admin: 0 };
 
   const incomingReviewerHash = await hashRolePassword('incoming-reviewer-pass');
   const staleIncomingEditorHash = await hashRolePassword('stale-incoming-editor-pass');
   const { changed } = mergeData({
     programme: {
-      name: programme.name, updatedAt: 0, hideJourneys: false,
-      rolePasswords: { planner: null, reviewer: incomingReviewerHash, editor: staleIncomingEditorHash, admin: null },
-      rolePasswordsUpdatedAt: { planner: 0, reviewer: 3000, editor: 1000, admin: 0 } // reviewer is newer, editor is older than local
+      name: programme.name, updatedAt: 0, rolePasswords: { reviewer: incomingReviewerHash, editor: staleIncomingEditorHash, admin: null },
+      rolePasswordsUpdatedAt: { reviewer: 3000, editor: 1000, admin: 0 } // reviewer is newer, editor is older than local
     },
     workstreams: [], items: []
   });
@@ -946,13 +937,12 @@ test('mergeData merges rolePasswords per-role via rolePasswordsUpdatedAt — one
 });
 
 test('mergeData can merge a role password being cleared (set back to null) via a newer incoming rolePasswordsUpdatedAt', function () {
-  programme.rolePasswords = { planner: null, reviewer: { salt: 'x', hash: 'y' }, editor: null, admin: null };
-  programme.rolePasswordsUpdatedAt = { planner: 0, reviewer: 1000, editor: 0, admin: 0 };
+  programme.rolePasswords = { reviewer: { salt: 'x', hash: 'y' }, editor: null, admin: null };
+  programme.rolePasswordsUpdatedAt = { reviewer: 1000, editor: 0, admin: 0 };
   mergeData({
     programme: {
-      name: programme.name, updatedAt: 0, hideJourneys: false,
-      rolePasswords: { planner: null, reviewer: null, editor: null, admin: null },
-      rolePasswordsUpdatedAt: { planner: 0, reviewer: 2000, editor: 0, admin: 0 }
+      name: programme.name, updatedAt: 0, rolePasswords: { reviewer: null, editor: null, admin: null },
+      rolePasswordsUpdatedAt: { reviewer: 2000, editor: 0, admin: 0 }
     },
     workstreams: [], items: []
   });
@@ -962,9 +952,9 @@ test('mergeData can merge a role password being cleared (set back to null) via a
 test('mergeData reports changed:false when the incoming programme has nothing newer at all', function () {
   programme.name = 'Steady Name';
   programme.updatedAt = 5000;
-  programme.rolePasswords = { planner: null, reviewer: null, editor: null, admin: null };
-  programme.rolePasswordsUpdatedAt = { planner: 0, reviewer: 0, editor: 0, admin: 0 };
-  const { changed } = mergeData({ programme: { name: 'Steady Name', updatedAt: 1000, hideJourneys: false, rolePasswords: {}, rolePasswordsUpdatedAt: {} }, workstreams: [], items: [] });
+  programme.rolePasswords = { reviewer: null, editor: null, admin: null };
+  programme.rolePasswordsUpdatedAt = { reviewer: 0, editor: 0, admin: 0 };
+  const { changed } = mergeData({ programme: { name: 'Steady Name', updatedAt: 1000, rolePasswords: {}, rolePasswordsUpdatedAt: {} }, workstreams: [], items: [] });
   assertFalse(changed);
 });
 
@@ -982,15 +972,14 @@ test('the actual fix for the reported bug: a device with real data of its own (i
   // from here on, once this device has any real data of its own.
   programme.name = 'A Real Programme, Not a Fresh Install';
   assertFalse(isFreshLocalState());
-  programme.rolePasswords = { planner: null, reviewer: null, editor: null, admin: null };
-  programme.rolePasswordsUpdatedAt = { planner: 0, reviewer: 0, editor: 0, admin: 0 };
+  programme.rolePasswords = { reviewer: null, editor: null, admin: null };
+  programme.rolePasswordsUpdatedAt = { reviewer: 0, editor: 0, admin: 0 };
 
   const newHash = await hashRolePassword('set-on-another-device');
   const { changed } = mergeData({
     programme: {
-      name: programme.name, updatedAt: 0, hideJourneys: false,
-      rolePasswords: { planner: null, reviewer: null, editor: newHash, admin: null },
-      rolePasswordsUpdatedAt: { planner: 0, reviewer: 0, editor: Date.now(), admin: 0 }
+      name: programme.name, updatedAt: 0, rolePasswords: { reviewer: null, editor: newHash, admin: null },
+      rolePasswordsUpdatedAt: { reviewer: 0, editor: Date.now(), admin: 0 }
     },
     workstreams: [], items: []
   });

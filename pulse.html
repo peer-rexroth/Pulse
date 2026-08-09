@@ -517,23 +517,18 @@
   .ws-row-drag:hover { color: var(--text); }
   /* "All Workstreams" is a pseudo-row, not a real workstream — its icon
      stays a plain, neutral one (not a colored .ws-dot the way a real
-     workstream row gets), the same shared 8px column every row in the top
-     nav group (Journeys) uses too, so their labels all
-     line up with the real workstream rows below them. */
+     workstream row gets), the same shared 8px column every row uses too,
+     so their labels all line up with the real workstream rows below them. */
   .ws-row-all-icon { width: 8px; flex: 0 0 auto; text-align: center; font-size: 11px; color: var(--text-faint); }
   .ws-row-all.active .ws-row-all-icon { color: var(--accent); }
-  /* A dedicated, full-width divider between the top nav group (Journeys /
-     All Workstreams, in that order — see renderSidebar()) and the real
-     workstream list below it — a user-reported fix: this used to be a
-     border-bottom on whichever row
-     rendered last in the group (.ws-row-all, then later whichever row
-     ended up last as Journeys/External Deliveries joined it), but a
-     .ws-row's own border-radius rounded that border's corners and inset it
-     to the row's own padding, so it read as the bottom edge of one button
-     rather than a real section break — easy to miss entirely. A separate,
-     static element (sitting in the HTML shell, not rebuilt by
-     renderSidebar() and so immune to the group's own row order ever
-     changing again) draws a plain, un-rounded, full-width line instead. */
+  /* A dedicated, full-width divider between "All Workstreams" (see
+     renderSidebar()) and the real workstream list below it — a
+     user-reported fix: this used to be a border-bottom on the row above it,
+     but a .ws-row's own border-radius rounded that border's corners and
+     inset it to the row's own padding, so it read as the bottom edge of one
+     button rather than a real section break — easy to miss entirely. A
+     separate, static element (sitting in the HTML shell, not rebuilt by
+     renderSidebar()) draws a plain, un-rounded, full-width line instead. */
   .sidebar-divider { height: 1px; background: var(--border); margin: 10px 4px 0; }
 
   .main { flex: 1; min-width: 0; overflow: auto; padding: 20px 24px; }
@@ -616,89 +611,24 @@
   }
   .item-row:last-child { border-bottom: none; }
   .item-row:hover { background: var(--panel-2); }
-  /* Visually nests a Sub Journey's own row under its parent Journey, and a
-     Sub Journey's connected scope items one level further under that —
-     an explicit user request ("in journey view, indent subjourney"). Plain
-     extra left padding on top of .item-row's own 14px base, rather than a
-     wrapper element or margin, so the row's own border-bottom still spans
-     the card's full width (a wrapper/margin wouldn't) — the same reasoning
-     already documented for the asymmetric left/right padding above. This
-     deliberately does NOT try to keep columns strictly aligned with an
-     unindented row's own — narrowing the grid's available width per
-     indent level is exactly what signals nesting depth here. */
-  .item-row-indent-1 { padding-left: 34px; }
-  .item-row-indent-2 { padding-left: 54px; }
-  /* A top-level Journey's own row — see itemRowHtml()'s journeyHeaderClass.
-     Mirrors .ws-section-header's own tinted-background/bolder-name
-     treatment, so a Journey visually reads as "a container for what's
-     below it" the same way a workstream's own section header does. */
-  .item-row-journey-header { background: var(--panel-2); padding-top: 12px; padding-bottom: 12px; }
-  .item-row-journey-header .item-name { font-weight: 700; font-size: 14.5px; }
   .item-chevron { text-align: center; color: var(--text-faint); cursor: pointer; }
   .item-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* The Journeys list reuses --item-grid-cols wholesale (same .item-row/
-     .milestone-header/.milestone-sub-row classes itemRowHtml() and
-     milestoneHeaderHtml()/milestoneRowsHtml() already build on — a
-     Journey's connected scope items are just more itemRowHtml() rows,
-     rendered viewOnly) but redefines the custom property itself, scoped to
-     .journeys-list, rather than accepting the Planning-tuned widths as-is —
-     a user-reported bug, confirmed by measuring the real rendered DOM: at
-     anything narrower than roughly 1150px, the Actions column's own 4
-     icons (drag/connect/edit/delete — one more than a plain scope item's
-     row ever has) rendered past the card's own right edge, since
-     .item-actions is a plain flex row with no width cap of its own and
-     .ws-section has no overflow:hidden (see "Status board" in CLAUDE.md) to
-     hide the spillover. Three of the shared grid's own tracks (the old Owner
-     column, and both blank spacers — the original one, plus the newer one
-     inserted between the Milestones badge and Plan-dates) are *always*
-     empty on any row here — neither a Journey nor a plain scope item shows
-     anything in them — so shrinking those three buys back most of the room
-     the wider Actions column needs; the rest (Milestone/Due/Actual/Status)
-     keep their original widths since connected items can still expand
-     their own real milestone checklists underneath. (A fourth always-empty
-     track, the Actual-date placeholder, used to be shrunk here too —
-     removed outright from the shared grid instead, see --item-grid-cols'
-     own comment above.) Status (10th track) was later widened to 116px in
-     step with the shared default's own widening, for "Completed Late" —
-     see --item-grid-cols' own comment. */
-  .journeys-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 10px 190px 10px 115px 100px 116px 120px; }
-  /* L1 Plans' own top-level rows (renderL1Plans()) used to reuse
-     .journeys-list wholesale — a reasonable-looking shortcut at the time
-     (both pages are flat, workstream-independent lists built on the same
-     itemRowHtml()), but a wrong one: .journeys-list's own widths are tuned
-     for Journeys' own worst case (a Sub Journey row's 4 icons — drag/
-     connect/edit/delete), not an L1 Plan's own, which only ever has 3
-     (drag/edit/delete, same as a plain scope item's row — no Connect icon
-     lives at this level, see "L1 Plans" in CLAUDE.md). Reusing the wider
-     grid meant an L1 Plan's own row carried real, visible dead space
-     (a 120px Actions column with only ~50px of icon content in it, plus a
-     116px always-blank column right before it) that had nothing to do
-     with what this row actually shows — a user-reported "why is there
-     space next to actions?" traced back to exactly this mismatch, once
-     the same oversized gap got mirrored onto the bespoke L1 Milestone/
-     linked-milestone rows below it in a first attempt to align with it.
-     An L1 Plan's row is *also* blank in one more column Journeys' own
-     override never was — Plan-dates (the L1 Plan row shows no due/range
-     value at all any more, see "L1 Plans" in CLAUDE.md) — and, unlike
-     Journeys, it never shows real Tags either (see "L1 Plans" below —
-     tagsHtml renders blank for isL1Plan, where a Journey/Sub Journey
-     shows real, computed tag badges there) — so its own
-     genuinely-unused-column count is higher than Journeys', not just
-     differently distributed: Chevron/Name/Milestones-badge/Status/Actions
-     are the only *real* columns an L1 Plan's own row ever populates, out
-     of --item-grid-cols' full 11 (see "Column layout is a real CSS grid"
-     above for the complete, authoritative 11-column list and what each
-     position actually is — Status is the *10th* value, 116px, sitting
-     directly adjacent to Actions with no blank column between them at
-     all; the 9th value, 100px, is Tags, not part of Status/Actions'
-     own neighborhood). .l1-plans-list shrinks every column an L1 Plan's
-     own row never populates (the original blank, both spacers, the
-     now-blank Plan-dates column, the always-blank Milestone-Due column,
-     and Tags) down to the same minimal 10px .journeys-list already uses
-     for its own always-empty tracks, keeps Status at its real 116px, and
-     — the actual fix — sizes Actions at a snug 56px, the same width the
-     plain, unmodified default --item-grid-cols already established as
-     correctly fitting 3 icons (see that rule's own comment). */
+  /* L1 Plans' own top-level rows (renderL1Plans()) redefine
+     --item-grid-cols, scoped to .l1-plans-list, rather than accepting the
+     Planning-tuned widths as-is: an L1 Plan's own row only ever populates 5
+     of --item-grid-cols' full 11 columns (Chevron/Name/Milestones-badge/
+     Status/Actions — see "Column layout is a real CSS grid" above for the
+     complete, authoritative 11-column list and what each position actually
+     is — Status is the *10th* value, 116px, sitting directly adjacent to
+     Actions with no blank column between them at all; the 9th value, 100px,
+     is Tags, which an L1 Plan's own row never shows either, since tagsHtml
+     renders blank for isL1Plan). .l1-plans-list shrinks every column an L1
+     Plan's own row never populates (the original blank, both spacers, the
+     blank Plan-dates column, the always-blank Milestone-Due column, and
+     Tags) down to a minimal 10px, keeps Status at its real 116px, and sizes
+     Actions at a snug 56px, the same width the plain, unmodified default
+     --item-grid-cols already established as correctly fitting an ordinary
+     item row's 3 icons (drag/edit/delete — see that rule's own comment). */
   .l1-plans-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 10px 10px 10px 10px 10px 116px 56px; }
   .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-dates { color: var(--text-dim); font-size: 12.5px; width: 150px; flex: 0 0 auto; }
@@ -812,11 +742,9 @@
      same "every cell in every row must be a real element" discipline
      --item-grid-cols itself follows) / Milestone name / Due / Status /
      Actions (Connect + Delete together, one 56px column — see below).
-     Indented 34px, not the base 14px — the same one-level nesting indent
-     Journeys' own .item-row-indent-1 uses for a Sub Journey nested under
-     its parent Journey — so this list visually reads as nested under its
-     own parent L1 Plan row rather than sitting flush with it. Always
-     nested (there's no non-nested use of this class the way
+     Indented 34px, not the base 14px, so this list visually reads as
+     nested under its own parent L1 Plan row rather than sitting flush with
+     it. Always nested (there's no non-nested use of this class the way
      .milestone-header/.milestone-sub-row have), so the indent is baked
      straight into the base rule rather than needing its own conditional
      indent class.
@@ -872,10 +800,9 @@
      the "Connect"/"N linked" button's own modal, matching the "pure
      traceability" design this whole feature is built around). Indented
      64px — an explicit user request to align its first column directly
-     under the parent .l1-milestone-row's own Milestone-name column, not
-     just "one level deeper" the way Journeys' own .item-row-indent-2
-     indent is a plain, unaligned fixed value: 64px is that row's own
-     34px padding-left + its 20px chevron column + its 10px column gap,
+     under the parent .l1-milestone-row's own Milestone-name column: 64px
+     is that row's own 34px padding-left + its 20px chevron column + its
+     10px column gap,
      i.e. exactly where its Milestone-name column begins. If
      .l1-milestone-row's own padding/chevron-width/gap ever change, this
      value needs to move with them to stay aligned — it's derived from,
@@ -913,19 +840,6 @@
   .l1-linked-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
   .l1-linked-row { font-size: 12px; color: var(--text-dim); background: var(--panel); }
   .l1-linked-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* A Sub Journey's own connected scope items are indented (.item-row-
-     indent-2, see above) — an expanded one's milestone header/rows need the
-     same indent, or they'd render flush-left below an indented parent row,
-     breaking the "everything nests visually" contract the indent exists
-     for — an explicit user request ("indent the milestones and headers in
-     alignment with the Sub journey"). Explicit compound selectors, not just
-     relying on .item-row-indent-1/-2 alone: those rules are defined earlier
-     in this stylesheet (right after .item-row), so .milestone-header's/
-     .milestone-sub-row's own full `padding` shorthand just above — which
-     also sets padding-left, and comes later in source order — would
-     otherwise win the cascade and reset it straight back to the base 14px. */
-  .milestone-header.item-row-indent-1, .milestone-sub-row.item-row-indent-1 { padding-left: 34px; }
-  .milestone-header.item-row-indent-2, .milestone-sub-row.item-row-indent-2 { padding-left: 54px; }
   .milestone-sub-name { font-weight: 600; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* The Not Applicable toggle + Status badge share one cell spanning both
      of the row's trailing tracks (9/11 — the Status and Actions tracks,
@@ -1017,9 +931,12 @@
   .field-row { display: flex; gap: 10px; }
   .field-row .field { flex: 1; }
   .modal-wide { width: 600px; }
-  /* The Journey connect modal's own picker (renderJourneyConnectList()) —
-     one labeled group per workstream (plus Unassigned), each a plain list
-     of checkbox rows. */
+  /* L1 Plans' own "Connect workstream milestones" picker
+     (renderL1ConnectList()) — one labeled group per workstream (plus
+     Unassigned), each a plain list of checkbox rows. Class names predate
+     this app's now-removed Journeys feature, which used to be this
+     picker's own original caller — kept as-is rather than renamed, since
+     L1 Plans' own connect modal still relies on them unchanged. */
   .journey-connect-list { max-height: 50vh; overflow-y: auto; }
   .journey-connect-ws-group { margin-bottom: 12px; }
   .journey-connect-ws-group:last-child { margin-bottom: 0; }
@@ -1534,17 +1451,10 @@
      workstream-scoped at all (see "Categories (Admin mode)" in CLAUDE.md)
      and gets its own separate full-width container instead, reached from
      its own topbar button — a sidebar that filters nothing in that view
-     would just be a dead, misleading control. Journeys lives inside this
-     shell too, but only as Planning's own second sub-tab (planningTab,
-     see the toolbar comment below and "Journeys" in CLAUDE.md) — it isn't
-     a mode of its own any more, and its content still ignores the shared
-     workstream selector entirely once showing (renderJourneys() never
-     reads filterWorkstreamId). -->
+     would just be a dead, misleading control. -->
 <div class="body-row" id="scopedBody">
   <div class="sidebar">
-    <!-- Just "All Workstreams" — Journeys used to sit here too as its own
-         row, back when it was its own mode; it's a Planning sub-tab now
-         (see renderSidebar()'s own comment). -->
+    <!-- Just "All Workstreams". -->
     <div id="topNavList"></div>
     <div class="sidebar-divider"></div>
     <div class="sidebar-label">Workstreams <button class="sidebar-label-add" id="addWsBtn" onclick="openWorkstreamModal()" title="New workstream"><i class="fa-solid fa-plus"></i></button></div>
@@ -1552,26 +1462,11 @@
   </div>
   <div class="sidebar-resizer" onmousedown="startSidebarResize(event)" ondblclick="resetSidebarWidth()" title="Drag to resize — double-click to reset"></div>
   <div class="planning-main">
-    <!-- Planning's own two sub-tabs — Scope Items (the workstream status
-         board, unchanged) and Journeys (formerly its own top-level mode,
-         reached from the sidebar — see renderSidebar()'s own comment and
-         "Journeys" in CLAUDE.md for that history). Same static-toolbar-
-         outside-#main placement and same view-tabs markup Review's own
-         sub-tabs use (#reviewToolbar below), only shown for mode==='planning'
-         (see render()). -->
-    <div class="planning-toolbar" id="planningModeToolbar" style="display:none">
-      <div class="view-tabs">
-        <button class="view-tab" id="tabPlanningScope" onclick="setPlanningTab('scope')"><i class="fa-solid fa-list-check"></i> Scope Items</button>
-        <button class="view-tab" id="tabPlanningJourneys" onclick="setPlanningTab('journeys')"><i class="fa-solid fa-route"></i> Journeys</button>
-      </div>
-    </div>
     <!-- The scope-item search box, plus the quick-filter status chips just
          below it (see renderPlanningStatusChips()/setPlanningStatusFilter()).
-         Only shown for mode==='planning' AND planningTab==='scope' — the
-         Journeys tree has no use for a flat item search/status filter (see
-         planningTab's own comment). Lives in this static toolbar, not inside
-         #main, so a keystroke's own re-render of #main (renderMain()) never
-         steals focus from the search input mid-type — the chips don't
+         Only shown for mode==='planning'. Lives in this static toolbar, not
+         inside #main, so a keystroke's own re-render of #main (renderMain())
+         never steals focus from the search input mid-type — the chips don't
          strictly need that (they're buttons, not a text field), but sit here
          anyway since this is the one static home for "narrows Planning's
          board without navigating away from it" controls. -->
@@ -1582,21 +1477,6 @@
         <button type="button" class="search-clear-btn" id="planningSearchClearBtn" onclick="clearPlanningSearch()" title="Clear search" style="display:none"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="status-filter-chips" id="planningStatusFilterChips"></div>
-    </div>
-    <!-- Journeys' own search box — an explicit user request ("build a search
-         feature for journeys... similar like for planning"), same
-         static-toolbar-outside-#main placement/pattern as
-         #planningSearchToolbar just above, only shown for mode==='planning'
-         AND planningTab==='journeys' (the two search toolbars are mutually
-         exclusive, matching their two mutually-exclusive sub-tabs). See
-         setJourneysSearch()/matchesJourneysSearch(). -->
-    <div class="planning-toolbar" id="journeysSearchToolbar" style="display:none">
-      <div class="search-box">
-        <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="text" id="journeysSearchInput" placeholder="Search Journeys by name..." oninput="setJourneysSearch(this.value)">
-        <button type="button" class="search-clear-btn" id="journeysSearchClearBtn" onclick="clearJourneysSearch()" title="Clear search" style="display:none"><i class="fa-solid fa-xmark"></i></button>
-      </div>
-      <div class="status-filter-chips" id="journeysStatusFilterChips"></div>
     </div>
     <div class="planning-toolbar" id="reviewToolbar" style="display:none">
       <div class="view-tabs">
@@ -1778,27 +1658,11 @@
       <label>Name</label>
       <input type="text" id="itemNameInput" placeholder="e.g. Finalize data schema">
     </div>
-    <!-- Read-only backlink — "From Sub Journey" for a scope item connected
-         to one (see toggleJourneyConnection()), or "From Journey" for a Sub
-         Journey itself, showing its own parent Journey
-         (parentJourneyId) — never editable here, and hidden entirely for
-         any item that isn't linked to one. Label text is set in JS
-         (openItemModal()) since which of the two applies depends on the
-         item being edited. -->
-    <div class="field" id="itemJourneyLinkField" style="display:none">
-      <label id="itemJourneyLinkLabel">From Journey</label>
-      <div class="status-badge" id="itemJourneyLinkBadge" style="background:var(--panel-2);color:var(--text-dim)"></div>
-    </div>
     <div class="field-row">
-      <!-- Hidden entirely (not just disabled) for a Journey — a Journey is
-           never assigned to a workstream at all (see "Journeys" in
-           CLAUDE.md), so the field has nothing meaningful to show. -->
       <div class="field" id="itemWorkstreamField">
         <label>Workstream</label>
         <select id="itemWorkstreamSelect"></select>
       </div>
-      <!-- Hidden entirely for a Journey too — a Journey has no category at
-           all (see "Journeys" in CLAUDE.md). -->
       <div class="field" id="itemCategoryField">
         <label>Category</label>
         <select id="itemCategorySelect" onchange="onItemCategoryChange()"></select>
@@ -1840,9 +1704,6 @@
       <label>Dependency SPOC</label>
       <input type="text" id="itemDependencySpocInput" placeholder="Name of the dependency point of contact">
     </div>
-    <!-- A Journey has no milestone checklist at all (see "Journeys" in
-         CLAUDE.md) — this whole field is hidden outright for one, not left
-         showing an empty editor with nothing to add. -->
     <div class="field" id="itemMilestonesField">
       <label>Milestones</label>
       <div id="milestonesEditor"></div>
@@ -1895,25 +1756,10 @@
   </div>
 </div>
 
-<!-- Journey connect modal — lists every existing scope item (grouped by
-     workstream) with a checkbox toggling whether it belongs to this
-     Journey. See openJourneyConnectModal()/toggleJourneyConnection(). -->
-<div class="modal-bg" id="journeyConnectModalBg">
-  <div class="modal">
-    <h3 id="journeyConnectModalTitle">Connect scope items</h3>
-    <p style="margin-top:0;color:var(--text-dim);font-size:13px">Pick which existing scope items belong to this journey. Its end date is computed from the latest milestone date across everything connected here.</p>
-    <div id="journeyConnectList" class="journey-connect-list"></div>
-    <div class="modal-actions" style="justify-content:flex-end">
-      <button class="btn btn-primary" onclick="closeJourneyConnectModal()">Done</button>
-    </div>
-  </div>
-</div>
-
-<!-- L1 Plan milestone connect — mirrors journeyConnectModalBg one level
-     deeper (candidates are workstream milestones, not whole scope items),
-     with a search box added given the much larger candidate volume
-     (every milestone across every item, not just every item). See "L1
-     Plans" in CLAUDE.md. -->
+<!-- L1 Plan milestone connect — candidates are workstream milestones, with
+     a search box added given the large candidate volume (every milestone
+     across every item, not just every item). See "L1 Plans" in
+     CLAUDE.md. -->
 <div class="modal-bg" id="l1ConnectModalBg">
   <div class="modal modal-wide">
     <h3 id="l1ConnectModalTitle">Connect workstream milestones</h3>
@@ -1962,7 +1808,7 @@
 <div class="modal-bg" id="roleModalBg">
   <div class="modal" style="width:440px">
     <h3 id="roleModalTitle">Choose your role</h3>
-    <p id="roleModalIntro">This is a workflow setting, not a security boundary — Pulse has no accounts or server, so it only guides what's shown/enabled in the UI. The role you pick is saved to this browser only, never written to a shared/synced data file — but Planner/Reviewer/Editor/Admin can each optionally require a password (set by an Admin, under Settings &gt; Role Passwords) to cut down on accidental switches. Only a salted hash of that password is stored in the shared data file, not the password itself — but the check still runs in this page's own code, so it's a soft deterrent, not real access control.</p>
+    <p id="roleModalIntro">This is a workflow setting, not a security boundary — Pulse has no accounts or server, so it only guides what's shown/enabled in the UI. The role you pick is saved to this browser only, never written to a shared/synced data file — but Reviewer/Editor/Admin can each optionally require a password (set by an Admin, under Settings &gt; Role Passwords) to cut down on accidental switches. Only a salted hash of that password is stored in the shared data file, not the password itself — but the check still runs in this page's own code, so it's a soft deterrent, not real access control.</p>
     <div class="theme-options" id="roleOptions"></div>
     <div id="roleModalPasswordStep" style="display:none">
       <p id="roleModalPasswordIntro" style="margin-top:0"></p>
@@ -1984,11 +1830,6 @@
   <div class="modal" style="width:420px">
     <h3>Role Passwords</h3>
     <p>Required to switch into that role from the role picker. Only a salted hash is stored, never the password itself, so these fields always start blank — type a new password to set or change one, and leave it blank to leave that role unchanged.</p>
-    <div class="field">
-      <label>Planner password</label>
-      <input type="text" id="rolePasswordPlannerInput">
-      <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400"><input type="checkbox" id="rolePasswordPlannerClear"> Remove password requirement</label>
-    </div>
     <div class="field">
       <label>Reviewer password</label>
       <input type="text" id="rolePasswordReviewerInput">
@@ -2046,13 +1887,6 @@
       <div class="help-divider"></div>
 
       <div class="help-section">
-        <div class="help-section-title">Journeys</div>
-        <div class="help-row"><i class="fa-solid fa-route"></i><span>A second, overarching view under Planning's own tab — <strong style="color:var(--text)">Journeys</strong> group <strong style="color:var(--text)">Sub Journeys</strong>, which connect to existing scope items across any workstream. Neither level has its own milestones; status, dates, and tags all roll up automatically from whatever's connected.</span></div>
-      </div>
-
-      <div class="help-divider"></div>
-
-      <div class="help-section">
         <div class="help-section-title">Review</div>
         <div class="help-row"><i class="fa-solid fa-clipboard-check"></i><span>Start a <strong style="color:var(--text)">review cycle</strong> for one workstream at a time and confirm each item/milestone as you go — one already marked Complete confirms itself. A cycle can only close once everything in it is confirmed.</span></div>
         <div class="help-row"><i class="fa-solid fa-file-lines"></i><span>Attach <strong style="color:var(--text)">meeting minutes</strong> to a completed cycle — paste or drop a document and it auto-fills Summary, Decisions, Next Steps, and a real Action Items table.</span></div>
@@ -2071,7 +1905,7 @@
 
       <div class="help-section">
         <div class="help-section-title">Roles</div>
-        <div class="help-row"><i class="fa-solid fa-user-shield"></i><span>A soft role ladder — <strong style="color:var(--text)">Visitor → Planner → Reviewer → Editor → Admin</strong> — meant to guide day-to-day workflow on a shared device, not real access control. Switch roles any time from the shield icon; an Admin can optionally require a password per role.</span></div>
+        <div class="help-row"><i class="fa-solid fa-user-shield"></i><span>A soft role ladder — <strong style="color:var(--text)">Visitor → Reviewer → Editor → Admin</strong> — meant to guide day-to-day workflow on a shared device, not real access control. Switch roles any time from the shield icon; an Admin can optionally require a password per role.</span></div>
       </div>
 
       <div class="help-divider"></div>
@@ -2311,9 +2145,6 @@ const DEFAULT_CATEGORIES = [
 const DEFAULT_CATEGORY_MILESTONES = DEFAULT_CATEGORIES[0].milestones;
 const DAY_MS = 86400000;
 const REVIEW_STALE_DAYS = 30;
-// 'journeys' used to be a 5th mode here, reached from its own sidebar row —
-// see setPlanningTab() and "Journeys" in CLAUDE.md for why it's now a sub-tab
-// of Planning instead (planningTab) rather than a mode of its own.
 const MODES = ['planning', 'review', 'dashboard', 'admin', 'l1plans'];
 
 // ---------- Roles (RBAC) ----------
@@ -2326,52 +2157,17 @@ const MODES = ['planning', 'review', 'dashboard', 'admin', 'l1plans'];
 // ROLES is an increasing ladder — each role can do everything the one before
 // it can, plus more (see hasRole()); it is never treated as a set of
 // independent, non-overlapping permissions.
-// Planner sits directly above Visitor, not between Reviewer and Editor — an
-// explicit user request ("create the role Planner... other access rights
-// should be inherited from visitor"). Placing it any higher in the ladder
-// would mean it also inherits Reviewer's review-cycle actions via the plain
-// cumulative hasRole() check below (roleLevel(userRole) >= roleLevel(min)),
-// which the request specifically ruled out — a Planner is Visitor-plus-
-// Journeys, nothing more. This does mean Planner is *not* a strict subset of
-// Reviewer the way every other adjacent pair in this ladder is (Editor is
-// still everything Reviewer can do, plus more; Reviewer is still everything
-// Visitor can do, plus more) — Planner is the one deliberate exception, a
-// sideways capability rather than another rung on the same staircase. See
-// canManageJourneys() below for how Journey access itself is actually
-// granted (a separate, non-ladder check), since the plain ladder alone can't
-// express "Planner and Editor+ can, but Reviewer can't" once Planner sits
-// below Reviewer.
-const ROLES = ['visitor', 'planner', 'reviewer', 'editor', 'admin'];
+const ROLES = ['visitor', 'reviewer', 'editor', 'admin'];
 const ROLE_META = {
   visitor: { label: 'Visitor', icon: 'fa-eye', desc: 'View Planning, Review, and Dashboard — no edits.' },
-  planner: { label: 'Planner', icon: 'fa-route', desc: 'Everything a Visitor can see, plus create/edit Journeys and Sub Journeys, and link/delink scope items to them.' },
   reviewer: { label: 'Reviewer', icon: 'fa-clipboard-check', desc: 'Everything a Visitor can see, plus run review cycles, attach meeting minutes, manage the Action Log, and — while actually inside Review mode — correct a milestone\'s Due/Actual dates, its status, and an item\'s IT/Business/Budget tags.' },
-  editor: { label: 'Editor', icon: 'fa-pen', desc: 'Everything a Reviewer can do, plus create/edit/delete workstreams, scope items, milestones, and categories (including Journeys/Sub Journeys, same as a Planner).' },
+  editor: { label: 'Editor', icon: 'fa-pen', desc: 'Everything a Reviewer can do, plus create/edit/delete workstreams, scope items, milestones, and categories.' },
   admin: { label: 'Admin', icon: 'fa-user-shield', desc: 'Everything an Editor can do, plus import/restore data.' }
 };
 function roleLevel(r) { return ROLES.indexOf(r); }
 // True once the *current* role's level is at or above minRole's — e.g.
 // hasRole('editor') is also true for a reviewer or admin, per the ladder.
-// NOT true for Planner against 'reviewer'/'editor' — Planner's ladder
-// position (directly above Visitor) is deliberately below both, per
-// canManageJourneys()'s own comment above.
 function hasRole(minRole) { return roleLevel(userRole) >= roleLevel(minRole); }
-// Journey/Sub Journey management's own access check — deliberately not a
-// plain hasRole() call. Planner sits below Reviewer/Editor in the ladder
-// (see ROLES' own comment above), so a Planner can create/edit Journeys and
-// link/delink scope items to them, and so can an Editor/Admin (who already
-// could, unchanged, via the plain hasRole('editor') half of this check) —
-// but a Reviewer, despite outranking Planner on the ladder, is deliberately
-// excluded, since Journey management was never asked to fold into Reviewer's
-// own capabilities. Used everywhere a Journey/Sub Journey-specific action
-// would otherwise gate on hasRole('editor')/requireRole('editor') — see
-// "Roles (RBAC)" in CLAUDE.md.
-function canManageJourneys() { return userRole === 'planner' || hasRole('editor'); }
-function requireJourneyAccess() {
-  if (canManageJourneys()) return true;
-  showToast('Planner or Editor role required for this action', true);
-  return false;
-}
 // Defense-in-depth guard for every state-mutating function below (the real,
 // user-facing gate is hiding/disabling the controls themselves in the render
 // functions — see "Role-based UI" in CLAUDE.md) — shows a toast and returns
@@ -2395,10 +2191,10 @@ function requireRole(minRole) {
 // reviewCycle from renderReview(), which only ever runs while mode is
 // already 'review', so the two agree in practice, but gating the actual
 // mutation on mode itself is the real, defense-in-depth boundary, the same
-// "never trust the render-time check alone" stance requireRole() and
-// requireJourneyAccess() already take. Every other edit these two rows still
-// gate (Edit/Delete/drag, the Not Applicable toggle, an item's own manual
-// Plan dates) is untouched — still plain Editor+, in or out of a review.
+// "never trust the render-time check alone" stance requireRole() already
+// takes. Every other edit these two rows still gate (Edit/Delete/drag, the
+// Not Applicable toggle, an item's own manual Plan dates) is untouched —
+// still plain Editor+, in or out of a review.
 function canEditReviewFields() { return hasRole('editor') || (mode === 'review' && hasRole('reviewer')); }
 function requireReviewFieldRole() {
   if (canEditReviewFields()) return true;
@@ -2484,10 +2280,10 @@ let filterWorkstreamId = null;
 let editingWsId = null;
 let wsColorChoice = WS_COLORS[0];
 let editingItemId = null;
-// 'scope' | 'journey' | 'subjourney' — set by openItemModal() for both the
-// new-item and edit-existing-item cases, and read back by saveItem() as the
-// single authoritative source for which of the three the item being saved
-// is (rather than re-deriving it from the disabled Category select's value,
+// 'scope' | 'l1plan' — set by openItemModal() for both the new-item and
+// edit-existing-item cases, and read back by saveItem() as the single
+// authoritative source for which of the two the item being saved is
+// (rather than re-deriving it from the disabled Category select's value,
 // which should already agree but doesn't need to be trusted to).
 let editingItemType = 'scope';
 let editingMilestones = [];
@@ -2530,38 +2326,15 @@ let planningStatusFilters = new Set();
 // renderExternalDelivery()) before an explicit user request folded it into
 // Planning's own quick-filter row instead, alongside the status chips.
 let planningDependencyFilter = false;
-// Journeys' own search box (#journeysSearchInput) — planningSearchQuery's
-// own counterpart for the Journeys sub-tab, an explicit user request
-// ("build a search feature for journeys... similar like for planning").
-// UI-only, not persisted, same lowercased/trimmed-once-on-input convention.
-let journeysSearchQuery = '';
 // Action Log/Decision Log's own search boxes — planningSearchQuery's
-// counterparts for Review's second/third sub-tabs, same explicit user
-// request as journeysSearchQuery above. Kept as two independent variables
-// (rather than one shared query) even though they're read/written through
-// one shared toolbar/input (see #reviewLogSearchToolbar's own comment) —
-// switching from Action Log to Decision Log and back should show each
-// tab's own remembered query, not silently clear or mix the other's.
+// counterparts for Review's second/third sub-tabs, an explicit user
+// request. Kept as two independent variables (rather than one shared
+// query) even though they're read/written through one shared
+// toolbar/input (see #reviewLogSearchToolbar's own comment) — switching
+// from Action Log to Decision Log and back should show each tab's own
+// remembered query, not silently clear or mix the other's.
 let actionLogSearchQuery = '';
 let decisionLogSearchQuery = '';
-// Journeys' own quick-filter status chips — planningStatusFilters' own
-// counterpart, an explicit user request ("add search pills to the newly
-// added searches"). A Set of STATUSES ids, empty = no filter, multi-select
-// from the start (unlike planningStatusFilters, which was originally
-// single-select before becoming multi-select itself — this one never went
-// through that phase). Matched against a top-level Journey's own computed
-// status (computeJourneyStatus(), falling back to 'not-started' the same
-// way every other caller of that function does).
-let journeysStatusFilters = new Set();
-// planningDependencyFilter's own counterpart for the Journeys sub-tab — a
-// later, explicit user request ("add dependencies as search pill for
-// journeys, like in workstreams"). A Journey/Sub Journey has no dependency
-// flag of its own (that field is scope-item-only — see "Dependencies" in
-// CLAUDE.md), so this is checked one level down, the same way
-// journeysAfterWorkstreamFilter() already reaches through Sub Journeys to
-// each one's own connected scope items rather than checking anything on the
-// Journey/Sub Journey objects themselves.
-let journeysDependencyFilter = false;
 // Action Log's own quick-filter chips — two independent groups, not one:
 // an "Open"/"Completed" multi-select pair (planningStatusFilters' own
 // shape, just over the action item's own completed boolean instead of a
@@ -2628,17 +2401,6 @@ function cancelRevealLogTextField(itemId, field) {
 // showing in place of its button — UI-only, not persisted. See
 // unassignedSectionHtml()/openInlineQuickAdd().
 let unassignedQuickAddOpen = false;
-// Journeys' own counterpart — UI-only, not persisted. See
-// renderJourneys()/openJourneyQuickAdd().
-let journeyQuickAddOpen = false;
-// A Sub Journey's own counterpart — the id of whichever Journey currently
-// has its own inline "Add Sub Journey" input open (itemRowHtml()'s
-// subJourneyQuickAddHtml), or null when none does. A single slot, not a Set
-// — only one Journey's quick-add can realistically be open at a time, same
-// as unassignedQuickAddOpen/journeyQuickAddOpen being plain booleans rather
-// than per-row state. UI-only, not persisted. See
-// openSubJourneyQuickAdd()/saveSubJourneyQuickAddItem() below.
-let subJourneyQuickAddOpenFor = null;
 // Same shape one level over, for an L1 Plan's own milestone quick-add (see
 // "L1 Plans" above) — the parent L1 Plan's own id, or null. UI-only, not
 // persisted. See openL1MilestoneQuickAdd()/saveL1MilestoneQuickAdd() below.
@@ -2647,17 +2409,12 @@ let l1MilestoneQuickAddOpenFor = null;
 // history) or 'actionLog' (the workstream-wide action log) — UI-only, not
 // persisted, same as view above but scoped one level deeper.
 let reviewTab = 'scope';
-// Planning's own two sub-tabs — 'scope' (the workstream status board, this
-// mode's original and still-default content) or 'journeys' (the Journey/Sub
-// Journey tree, formerly its own top-level mode — see setPlanningTab()) —
-// UI-only, not persisted, same shape as reviewTab just one mode over.
-let planningTab = 'scope';
 // Dashboard's own two sub-tabs — 'overview' (the RAG/milestone cards,
 // per-workstream summary, Overdue/Upcoming feeds — this mode's original and
 // still-default content) or 'dependencies' (the cross-workstream Dependencies
 // tracker, moved out to its own tab on a later, explicit user request rather
 // than sharing the page with Overview) — UI-only, not persisted, same shape
-// as planningTab/reviewTab.
+// as reviewTab.
 let dashboardTab = 'overview';
 const HISTORY_PAGE_SIZE = 5;
 
@@ -2830,13 +2587,7 @@ function normalizeData() {
     const valid = v === null || (v && typeof v === 'object' && typeof v.salt === 'string' && typeof v.hash === 'string');
     if (!valid) programme.rolePasswords[r] = null;
   });
-  // Admin-only feature toggle (see toggleHideJourneys()/renderAdmin()'s own
-  // "Features" section) — lives on `programme`, not a device-only key like
-  // `userRole`, since an Admin hiding Journeys is a programme-wide
-  // configuration decision meant to sync to every teammate opening the same
-  // linked file, the same reasoning `rolePasswords` above already follows.
-  if (typeof programme.hideJourneys !== 'boolean') programme.hideJourneys = false;
-  // programme.updatedAt (for name/hideJourneys) and rolePasswordsUpdatedAt
+  // programme.updatedAt (for name) and rolePasswordsUpdatedAt
   // (one timestamp per role, independent of whether that role's own entry
   // is currently set or null — see mergeProgramme()'s own comment for why a
   // plain null can't carry a timestamp inline the way a real {salt,hash}
@@ -3031,50 +2782,19 @@ function normalizeData() {
     // silently landing in whichever workstream happens to be first.
     if (it.workstreamId != null && !wsIds.has(it.workstreamId)) it.workstreamId = null;
     if (it.workstreamId === undefined) it.workstreamId = null;
-    // itemType distinguishes a Journey/Sub Journey from a plain scope item
-    // (see "Journeys" below) — 'journey'/'subjourney' are the only other
-    // valid values, and any legacy/hand-edited/unrecognized value falls back
-    // to 'scope', same "unknown value resets to the safe default" treatment
-    // every other enum-like field on an item gets here. Backfilled before
-    // the categoryId repair just below, since that repair needs to know
-    // whether it's dealing with a Journey/Sub Journey (neither has a
-    // category at all — see "Journeys") or a plain item.
-    // 'l1plan' (an L1 Plan — see "L1 Plans" below) is a third valid value
-    // alongside 'journey'/'subjourney', backfilled the same "unknown value
-    // resets to 'scope'" way.
-    if (it.itemType !== 'journey' && it.itemType !== 'subjourney' && it.itemType !== 'l1plan') it.itemType = 'scope';
-    // Neither a Journey, a Sub Journey, nor an L1 Plan has a category —
-    // categoryId stays null for any of the three, never repaired into a real
-    // category the way a plain item's stale/missing categoryId is just below.
-    if (it.itemType === 'journey' || it.itemType === 'subjourney' || it.itemType === 'l1plan') it.categoryId = null;
+    // itemType distinguishes an L1 Plan (see "L1 Plans" below) from a plain
+    // scope item — any legacy/hand-edited/unrecognized value (including a
+    // pre-removal save's own 'journey'/'subjourney') falls back to 'scope',
+    // same "unknown value resets to the safe default" treatment every other
+    // enum-like field on an item gets here. Backfilled before the
+    // categoryId repair just below, since that repair needs to know whether
+    // it's dealing with an L1 Plan (no category at all) or a plain item.
+    if (it.itemType !== 'l1plan') it.itemType = 'scope';
+    // An L1 Plan has no category — categoryId stays null, never repaired
+    // into a real category the way a plain item's stale/missing categoryId
+    // is just below.
+    if (it.itemType === 'l1plan') it.categoryId = null;
     else if (!catIds.has(it.categoryId)) it.categoryId = categories[0].id;
-    // journeyId links a scope item to the Sub Journey it's connected to (see
-    // toggleJourneyConnection() below) — only ever meaningful on a scope
-    // item; a Journey/Sub Journey's own journeyId is always null (a Sub
-    // Journey links *up* to its parent Journey via parentJourneyId instead,
-    // just below — a Journey has nothing above it to link to at all). A
-    // reference to a since-deleted item, or one that's no longer a Sub
-    // Journey, is reset to null rather than left dangling — mirrors the
-    // orphaned-workstreamId treatment just above: a broken link resets to
-    // "none" rather than pointing at something that no longer makes sense.
-    if (it.itemType === 'scope' && it.journeyId != null) {
-      const src = items.find(i => i.id === it.journeyId);
-      if (!src || src.itemType !== 'subjourney') it.journeyId = null;
-    } else {
-      it.journeyId = null;
-    }
-    // parentJourneyId is a Sub Journey's own link up to the top-level
-    // Journey it belongs to (see connectedSubJourneys() below) — only ever
-    // meaningful on a Sub Journey; reset to null for every other item type,
-    // and the same orphaned-reference treatment journeyId gets just above
-    // applies here too (a reference to a since-deleted item, or one that's
-    // no longer a Journey, resets to null rather than staying dangling).
-    if (it.itemType === 'subjourney' && it.parentJourneyId != null) {
-      const src = items.find(i => i.id === it.parentJourneyId);
-      if (!src || src.itemType !== 'journey') it.parentJourneyId = null;
-    } else {
-      it.parentJourneyId = null;
-    }
     if (!it.name) it.name = 'Untitled';
     if (!STATUSES.some(s => s.id === it.status)) it.status = 'not-started';
     if (!it.dueDate) it.dueDate = todayStr();
@@ -3133,7 +2853,7 @@ function normalizeData() {
       // Only ever meaningful on a milestone belonging to a non-L1-Plan item
       // (an L1 Plan's own milestones never link to another L1 Plan); reset
       // to null for that case, and — the same orphaned-reference treatment
-      // journeyId/parentJourneyId already get above — reset to null if it
+      // a stale workstreamId already gets above — reset to null if it
       // points at something that's since been deleted or is no longer a
       // real L1 milestone, rather than left dangling.
       if (it.itemType === 'l1plan') {
@@ -3314,166 +3034,23 @@ function isPendingCategory(categoryId) { const c = categoryById(categoryId); ret
 // picking it still auto-checks the item's own Dependency flag (see
 // onItemCategoryChange()/applyScopeCategory()) even after a rename.
 function isDependencyCategory(categoryId) { const c = categoryById(categoryId); return !!(c && c.dependency); }
-// Every scope item currently linked to the given Sub Journey (item.journeyId
-// — set/cleared by toggleJourneyConnection(), see "Journeys" below), in
-// itemRowHtml()/renderStatusView()'s own manual-order sort. Despite the
-// generic-sounding name, this is now only ever called with a Sub Journey's
-// own id — a scope item connects to a Sub Journey, never directly to a
-// top-level Journey (see "Journeys" below) — kept from before the Sub
-// Journey level existed, when "the Journey" and "the thing a scope item
-// connects to" were the same object.
-function connectedScopeItems(journeyId) {
-  return items.filter(it => it.journeyId === journeyId).sort((a, b) => a.order - b.order);
-}
-// Every Sub Journey belonging to the given top-level Journey
-// (item.parentJourneyId — set only at Sub Journey creation, see
-// saveSubJourneyQuickAddItem() below; never reassigned afterward, so a Sub
-// Journey can't be moved between Journeys), in the same manual-order sort
-// connectedScopeItems() already uses.
-function connectedSubJourneys(journeyId) {
-  return items.filter(it => it.itemType === 'subjourney' && it.parentJourneyId === journeyId).sort((a, b) => a.order - b.order);
-}
-// A Sub Journey has no milestones of its own (see "Journeys" below) — its
-// plan date range is instead derived live, at render time, from every
-// connected scope item's own milestones (or, for a connected item with
-// none, that item's own manual date). Deliberately never persisted onto the
-// Sub Journey's own startDate/dueDate — recomputing fresh here avoids
-// having to hook every place a connected item's dates could change (its own
-// milestone edits, a category-template sync, being connected/disconnected)
-// just to keep a cached value in sync; the same "no persisted state, always
-// fresh at render time" choice Dashboard mode already makes for the same
-// reason. Returns null if nothing connected has a date to contribute.
-function computeSubJourneyDateRange(subJourneyId) {
-  const dates = [];
-  connectedScopeItems(subJourneyId).forEach(it => {
-    if (it.milestones.length) {
-      it.milestones.forEach(m => {
-        if (m.notApplicable) return;
-        if (m.dueDate) dates.push(m.dueDate);
-        if (m.actualDate) dates.push(m.actualDate);
-      });
-    } else {
-      if (it.startDate) dates.push(it.startDate);
-      if (it.dueDate) dates.push(it.dueDate);
-    }
-  });
-  if (!dates.length) return null;
-  dates.sort();
-  return { startDate: dates[0], dueDate: dates[dates.length - 1] };
-}
-// A top-level Journey's own plan date range is one level further removed —
-// computed from every connected Sub Journey's own (already-computed) range,
-// rather than reading connected scope items directly. Same "returns null
-// when there's nothing to contribute" convention.
-function computeJourneyDateRange(journeyId) {
-  const dates = [];
-  connectedSubJourneys(journeyId).forEach(sj => {
-    const r = computeSubJourneyDateRange(sj.id);
-    if (r) { dates.push(r.startDate, r.dueDate); }
-  });
-  if (!dates.length) return null;
-  dates.sort();
-  return { startDate: dates[0], dueDate: dates[dates.length - 1] };
-}
-// A Sub Journey's own status, like its plan date range just above, is
-// computed live at render time from every connected scope item's own status
-// — an explicit user request ("Journey should calculate their status based
-// on the status of the included scope items"), reversing the earlier stance
-// (a plain manual dropdown, since neither level has milestones of its own
-// to roll a status up from) once computing one from connected items' own
-// status was actually asked for. Same weakest-link reduce, same
-// STATUS_SEVERITY order computedStatusFromMilestones() already uses — a Sub
-// Journey with any Red-status scope item connected reads Red overall, the
-// same "one active problem always surfaces" reasoning that function's own
-// comment gives. Deliberately never persisted onto the Sub Journey's own
-// `status` field, for the identical reason computeSubJourneyDateRange()
-// isn't: recomputing fresh here avoids hooking every place a connected
-// item's own status could change (its own milestone edits, being
-// connected/disconnected) just to keep a cached value in sync. Returns null
-// when nothing is connected yet, same null-means-"nothing to compute from"
-// convention as computedStatusFromMilestones()/computeSubJourneyDateRange()
-// — callers fall back to 'not-started', the same neutral default a
-// brand-new item already starts at.
-function computeSubJourneyStatus(subJourneyId) {
-  const connected = connectedScopeItems(subJourneyId);
-  if (!connected.length) return null;
-  return connected.reduce((worst, it) =>
-    STATUS_SEVERITY[it.status] < STATUS_SEVERITY[worst] ? it.status : worst
-  , connected[0].status);
-}
-// A top-level Journey's own status is the same weakest-link reduce one
-// level further up — over every connected Sub Journey's own (already-
-// computed) status, not over scope items directly. A Sub Journey with
-// nothing connected yet contributes 'not-started' (the same neutral
-// fallback every other caller of computeSubJourneyStatus() already applies)
-// rather than being skipped outright, so an empty Sub Journey can still
-// legitimately drag a Journey's overall status down to "nothing started" —
-// consistent with a brand-new item's own default.
-function computeJourneyStatus(journeyId) {
-  const subJourneys = connectedSubJourneys(journeyId);
-  if (!subJourneys.length) return null;
-  return subJourneys.reduce((worst, sj) => {
-    const s = computeSubJourneyStatus(sj.id) || 'not-started';
-    return STATUS_SEVERITY[s] < STATUS_SEVERITY[worst] ? s : worst;
-  }, computeSubJourneyStatus(subJourneys[0].id) || 'not-started');
-}
-// A Journey/Sub Journey's own IT/Business/Budget tags are computed live too
-// — the same "no persisted state, always fresh at render time" treatment
-// Status and Plan dates already get, and for the same reason (avoid hooking
-// every place a connected item's own tag could change just to keep a cached
-// value in sync) — an explicit user request ("journeys should roll-up their
-// IT/Business/Budget from Sub-Journeys. Sub-journeys roll this up from
-// their linked scope items... this should not be editable on journey and
-// sub journey level"). computeSubJourneyTagStatus() is
-// computeSubJourneyStatus()'s own counterpart for a single RAG3 field — the
-// same weakest-link reduce (STATUS_SEVERITY's red/amber/green ordering
-// already covers RAG3 outright, so no separate severity table was needed),
-// over connectedScopeItems(subJourneyId)'s own tag value instead of
-// `status`. Returns null when nothing is connected yet, same convention as
-// every other compute* function here — callers fall back to 'green', the
-// same neutral default a brand-new item's own tag already starts at.
-function computeSubJourneyTagStatus(subJourneyId, field) {
-  const connected = connectedScopeItems(subJourneyId);
-  if (!connected.length) return null;
-  return connected.reduce((worst, it) =>
-    STATUS_SEVERITY[it[field]] < STATUS_SEVERITY[worst] ? it[field] : worst
-  , connected[0][field]);
-}
-// A top-level Journey's own tag is one level further removed — the same
-// weakest-link reduce over every connected Sub Journey's own (already-
-// computed) tag value, mirroring computeJourneyStatus()'s own relationship
-// to computeSubJourneyStatus(). A Sub Journey with nothing connected yet
-// contributes 'green' (its own neutral fallback) rather than being skipped,
-// the same "an empty Sub Journey can still legitimately drag the rollup"
-// reasoning computeJourneyStatus() already uses for 'not-started'.
-function computeJourneyTagStatus(journeyId, field) {
-  const subJourneys = connectedSubJourneys(journeyId);
-  if (!subJourneys.length) return null;
-  return subJourneys.reduce((worst, sj) => {
-    const s = computeSubJourneyTagStatus(sj.id, field) || 'green';
-    return STATUS_SEVERITY[s] < STATUS_SEVERITY[worst] ? s : worst;
-  }, computeSubJourneyTagStatus(subJourneys[0].id, field) || 'green');
-}
 
 // ---------- L1 Plans ----------
-// An L1 Plan is a third itemType alongside 'journey'/'subjourney' — not a
-// separate array, the same "just an item with workstreamId/categoryId
-// forced null" trick Journeys already use (see "Journeys" above), taken one
-// step further: unlike a Journey/Sub Journey (which always keep
-// milestones: [] and compute a rollup from their connections instead), an
-// L1 Plan keeps a real, hand-managed milestones array — it's much closer to
-// an ordinary scope item that simply never gets a workstream/category. That
-// single difference is what lets it ride the *existing*, unmodified
-// items/deletedItemIds/mergeMilestonesArray() sync machinery with zero new
-// plumbing — an L1 Plan and its own milestones are just an item and its own
-// milestones, as far as normalizeData()/mergeData() are concerned.
+// An L1 Plan is a second itemType alongside plain 'scope' items — not a
+// separate array, just an item with workstreamId/categoryId forced null.
+// Unlike an ordinary scope item, it keeps a real, hand-managed milestones
+// array — it's much closer to an ordinary scope item that simply never
+// gets a workstream/category. That single difference is what lets it ride
+// the *existing*, unmodified items/deletedItemIds/mergeMilestonesArray()
+// sync machinery with zero new plumbing — an L1 Plan and its own
+// milestones are just an item and its own milestones, as far as
+// normalizeData()/mergeData() are concerned.
 //
 // An ordinary (workstream) milestone can optionally link to one L1
 // milestone via its own l1MilestoneId field (see normalizeData()'s own
 // backfill above) — deliberately pure traceability, an explicit user
-// decision: linking never computes anything on the L1 milestone side (no
-// rollup of status/dates the way Journeys roll up from their connections);
-// an L1 milestone's own status/dates are always hand-set, same as any other
+// decision: linking never computes anything on the L1 milestone side; an
+// L1 milestone's own status/dates are always hand-set, same as any other
 // milestone, completely independent of what's linked to it.
 function allL1Plans() {
   return items.filter(it => it.itemType === 'l1plan').sort((a, b) => a.order - b.order);
@@ -3490,8 +3067,8 @@ function findL1Milestone(l1MilestoneId) {
 }
 // Every ordinary (non-L1-Plan) milestone currently linked to this one L1
 // milestone — computed on demand, never stored redundantly on the L1
-// milestone itself, the same "derive, don't duplicate" choice
-// connectedScopeItems()/connectedSubJourneys() already make for Journeys.
+// milestone itself, the same "derive, don't duplicate" instinct several
+// other computed values in this app already follow.
 function linkedWorkstreamMilestones(l1MilestoneId) {
   const out = [];
   items.forEach(it => {
@@ -3511,22 +3088,18 @@ function linkedWorkstreamMilestones(l1MilestoneId) {
 // linked — the same "nothing to compute from" convention every other
 // computed-status function in this app already uses — so callers can fall
 // back to the milestone's own manual, hand-set status instead. Computed
-// fresh at read time, never stored back onto the milestone itself (the
-// same "no persisted state, always fresh at render time" instinct
-// Journey/Sub Journey's own computeJourneyStatus()/computeSubJourneyStatus()
-// already established, for the identical reason: a linked workstream
-// milestone's own status can change from any number of different code
-// paths on the Planning board, and hooking every one of them just to keep
-// a cached value in sync would be exactly the fragile, easy-to-miss
-// plumbing that pattern exists to avoid).
+// fresh at read time, never stored back onto the milestone itself — a
+// linked workstream milestone's own status can change from any number of
+// different code paths on the Planning board, and hooking every one of
+// them just to keep a cached value in sync would be exactly the fragile,
+// easy-to-miss plumbing this avoids.
 function computedL1MilestoneStatus(l1MilestoneId) {
   const linked = linkedWorkstreamMilestones(l1MilestoneId);
   if (!linked.length) return null;
   return computedStatusFromMilestones(linked.map(l => l.milestone));
 }
-// An L1 Plan's own status is one level further removed, the same
-// two-tier shape computeJourneyStatus() has over computeSubJourneyStatus():
-// it reduces over its own milestones' *effective* status — each one's own
+// An L1 Plan's own status is one level further removed: it reduces over
+// its own milestones' *effective* status — each one's own
 // computedL1MilestoneStatus() when it has links, falling back to its own
 // manual, hand-set status when it doesn't — never the milestone's raw
 // stored status directly, which would be stale for a linked one. Returns
@@ -3568,25 +3141,11 @@ function l1LinkIndicatorHtml(m) {
 function render() {
   document.getElementById('programmeNameDisplay').textContent = programme.name;
   updateRoleBtn();
-  // 'external' used to be excluded here for the same reason 'journeys' was
-  // (each had its own sidebar row rather than a #tab<Mode> topbar button) —
-  // no longer true of either: 'external' moved to its own #tabExternal
-  // button (see "Dependencies" in CLAUDE.md) and was later removed outright,
-  // and 'journeys' is no longer a mode at all (see planningTab, below) — so
-  // this loop is back to the plain, unfiltered form every mode in MODES
-  // shares.
   MODES.forEach(m => document.getElementById('tab' + m[0].toUpperCase() + m.slice(1)).classList.toggle('active', mode === m));
   document.getElementById('scopedBody').style.display = (mode === 'admin' || mode === 'l1plans') ? 'none' : '';
   document.getElementById('adminBody').style.display = mode === 'admin' ? '' : 'none';
   document.getElementById('l1PlansBody').style.display = mode === 'l1plans' ? '' : 'none';
-  // Hidden outright (not just the Journeys button within it) once an Admin
-  // hides the feature — with only one real destination left (Scope Items),
-  // a tab bar with nothing to switch to/from would just be a pointless,
-  // slightly-broken-looking single button. See toggleHideJourneys()/
-  // featuresSectionHtml() in "Categories (Admin mode)".
-  document.getElementById('planningModeToolbar').style.display = (mode === 'planning' && !programme.hideJourneys) ? '' : 'none';
-  document.getElementById('planningSearchToolbar').style.display = (mode === 'planning' && planningTab === 'scope') ? '' : 'none';
-  document.getElementById('journeysSearchToolbar').style.display = (mode === 'planning' && planningTab === 'journeys') ? '' : 'none';
+  document.getElementById('planningSearchToolbar').style.display = mode === 'planning' ? '' : 'none';
   document.getElementById('reviewToolbar').style.display = mode === 'review' ? '' : 'none';
   // Unconditional (not inside the mode==='review' branch below) for the same
   // reason every other toolbar-visibility line up here is — a user-reported
@@ -3601,12 +3160,9 @@ function render() {
   document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
   updateSyncConflictsUI();
   renderPlanningStatusChips();
-  renderJourneysStatusChips();
   renderReviewLogFilterChips();
   renderSidebar();
   if (mode === 'planning') {
-    document.getElementById('tabPlanningScope').classList.toggle('active', planningTab === 'scope');
-    document.getElementById('tabPlanningJourneys').classList.toggle('active', planningTab === 'journeys');
     renderMain();
   } else if (mode === 'review') {
     const scopeTab = document.getElementById('tabReviewScope');
@@ -3659,36 +3215,15 @@ function render() {
 function setMode(m) {
   mode = m; save(); render();
 }
-// Planning's own Scope Items/Journeys sub-tabs — see planningTab's own
-// declaration comment above. Mirrors setReviewTab() exactly: UI-only,
-// not persisted, no save() call.
-function setPlanningTab(t) { planningTab = t; render(); }
 // Dashboard's own Overview/Dependencies sub-tabs — see dashboardTab's own
-// declaration comment above. Same shape as setPlanningTab()/setReviewTab().
+// declaration comment above. Same shape as setReviewTab().
 function setDashboardTab(t) { dashboardTab = t; render(); }
 
 function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
-  // A workstream row's own "active" state used to be suppressed entirely
-  // while Planning's own Journeys sub-tab was showing (an `inWorkstreamScope`
-  // gate, back when the Journeys tree ignored filterWorkstreamId completely
-  // — a user-reported bug otherwise left the previously-selected row
-  // visually highlighted even though nothing on screen was actually scoped
-  // to it). That's no longer true: a later, explicit user request made the
-  // Journeys sub-tab itself workstream-aware (see journeysForCurrentFilter()
-  // in "Journeys" below) — with one workstream selected, it now narrows down
-  // to just the Journeys reaching into it — so the sidebar's own active
-  // highlight is correct again on both sub-tabs and no longer needs its own
-  // special-case gate; `filterWorkstreamId` alone drives both checks below.
-  // Just "All Workstreams" now — Journeys used to sit right above this as
-  // its own row here (a single ordered top group, above a separator, ahead
-  // of the real workstream list below it), back when it was its own
-  // top-level mode; it moved into Planning as a sub-tab instead (see
-  // planningTab, setPlanningTab(), and "Journeys" in CLAUDE.md), so
-  // #topNavList is back to the one row. The separator line below it is
-  // still a dedicated static element, `.sidebar-divider` (see the static
-  // HTML shell + that class's own CSS comment), kept as-is even with only
-  // one row above it.
+  // #topNavList is just the one "All Workstreams" row. The separator line
+  // below it is a dedicated static element, `.sidebar-divider` (see the
+  // static HTML shell + that class's own CSS comment).
   document.getElementById('topNavList').innerHTML = `
     <div class="ws-row ws-row-all ${filterWorkstreamId === null ? 'active' : ''}" onclick="selectWorkstreamFromSidebar(null)">
       <i class="fa-solid fa-layer-group ws-row-all-icon"></i>
@@ -3740,21 +3275,7 @@ function visibleWorkstreams() {
 }
 
 function renderMain() {
-  // The `!programme.hideJourneys` half is a defensive backstop, not the
-  // primary gate — toggleHideJourneys() already forces planningTab back to
-  // 'scope' the moment the toggle itself fires. This only matters for the
-  // one narrower case that doesn't go through that function at all: an
-  // Admin on a *different*, synced device hides the feature, and the change
-  // arrives here (via mergeData()/a background poll) while this device
-  // happens to already be sitting on the Journeys tab — with no toolbar
-  // button left to click away from it, falling back here is what actually
-  // gets it out of the dead end rather than leaving a hidden feature
-  // silently still rendered.
-  if (planningTab === 'journeys' && !programme.hideJourneys) {
-    renderJourneys();
-  } else {
-    renderStatusView(document.getElementById('main'));
-  }
+  renderStatusView(document.getElementById('main'));
 }
 // A plain case-insensitive substring match against the item's own name —
 // deliberately not milestone names too, keeping this a quick "find one
@@ -3779,63 +3300,6 @@ function clearPlanningSearch() {
   planningSearchQuery = '';
   document.getElementById('planningSearchInput').value = '';
   document.getElementById('planningSearchClearBtn').style.display = 'none';
-  renderMain();
-}
-// setPlanningSearch()'s own counterpart for the Journeys sub-tab — same
-// "lives in a static toolbar outside #main, so a keystroke's own renderMain()
-// never steals focus" reasoning.
-function setJourneysSearch(value) {
-  journeysSearchQuery = (value || '').trim().toLowerCase();
-  document.getElementById('journeysSearchClearBtn').style.display = journeysSearchQuery ? '' : 'none';
-  renderMain();
-}
-function clearJourneysSearch() {
-  journeysSearchQuery = '';
-  document.getElementById('journeysSearchInput').value = '';
-  document.getElementById('journeysSearchClearBtn').style.display = 'none';
-  renderMain();
-}
-// matchesPlanningStatusFilter()'s own counterpart for the Journeys sub-tab
-// — matched against a top-level Journey's own computed status
-// (computeJourneyStatus(), which itself rolls up from every connected Sub
-// Journey — see "Journeys" in CLAUDE.md), not a Sub Journey's or connected
-// scope item's own status; the chips filter which *Journeys* show, the same
-// level journeysForCurrentFilter()'s other two narrowing steps operate at.
-function matchesJourneysStatusFilter(j) {
-  if (!journeysStatusFilters.size) return true;
-  return journeysStatusFilters.has(computeJourneyStatus(j.id) || 'not-started');
-}
-// renderPlanningStatusChips()'s own counterpart — the same 6 STATUSES
-// chips, multi-select from the start (see journeysStatusFilters' own
-// declaration comment), plus the same divider-then-Dependencies-toggle
-// shape Planning's own chip row ends with (see journeysDependencyFilter's
-// own declaration comment for why this was added later).
-function renderJourneysStatusChips() {
-  const el = document.getElementById('journeysStatusFilterChips');
-  if (!el) return;
-  const statusChips = STATUSES.map(s => `<button class="status-filter-chip ${journeysStatusFilters.has(s.id) ? 'active' : ''}" style="--chip-color:var(--stat-${s.id});--chip-bg:var(--stat-${s.id}-bg)" onclick="setJourneysStatusFilter('${s.id}')">${esc(s.label)}</button>`).join('');
-  const dependencyChip = `<button class="status-filter-chip ${journeysDependencyFilter ? 'active' : ''}" style="--chip-color:var(--accent);--chip-bg:var(--accent-bg)" onclick="setJourneysDependencyFilter()"><i class="fa-solid fa-globe"></i> Dependencies</button>`;
-  el.innerHTML = statusChips + '<span class="chip-divider"></span>' + dependencyChip;
-}
-function setJourneysStatusFilter(statusId) {
-  if (journeysStatusFilters.has(statusId)) journeysStatusFilters.delete(statusId);
-  else journeysStatusFilters.add(statusId);
-  renderJourneysStatusChips();
-  renderMain();
-}
-// matchesPlanningDependencyFilter()'s own counterpart, reaching one level
-// down through the hierarchy the same way journeysAfterWorkstreamFilter()
-// already does: a Journey qualifies if any of its Sub Journeys has any
-// connected scope item flagged as a dependency — there's no dependency
-// field on the Journey/Sub Journey objects themselves to check directly.
-function matchesJourneysDependencyFilter(j) {
-  if (!journeysDependencyFilter) return true;
-  return connectedSubJourneys(j.id).some(sj => connectedScopeItems(sj.id).some(it => it.dependency));
-}
-// setPlanningDependencyFilter()'s own counterpart — a plain on/off flip.
-function setJourneysDependencyFilter() {
-  journeysDependencyFilter = !journeysDependencyFilter;
-  renderJourneysStatusChips();
   renderMain();
 }
 // matchesPlanningSearch()'s counterpart for the quick-filter status chips —
@@ -3914,18 +3378,13 @@ function setPlanningDependencyFilter() {
 // and with nothing in it, it's omitted entirely — there both nothing to
 // show and no way to add anything, so an empty "Unassigned" heading would
 // just be clutter.
-// A Journey/Sub Journey also has workstreamId:null (see "Journeys" below —
-// neither is ever assigned to one at all, deliberately, not just awaiting
-// triage the way an Unassigned scope item is) but must never show up here:
-// this bucket is specifically for scope items waiting to be triaged into a
-// real workstream, which isn't what "overarching, no workstream on purpose"
-// means. Journeys/Sub Journeys have their own dedicated view instead
-// (renderJourneys()) — an L1 Plan (itemType 'l1plan', also always
-// workstreamId:null by design — see "L1 Plans" above) is excluded here the
-// identical way, for the identical reason, and has its own dedicated view
-// too (renderL1Plans()).
+// An L1 Plan (itemType 'l1plan', always workstreamId:null by design — see
+// "L1 Plans" above) must never show up here either: this bucket is
+// specifically for scope items waiting to be triaged into a real
+// workstream, which isn't what "overarching, no workstream on purpose"
+// means — an L1 Plan has its own dedicated view instead (renderL1Plans()).
 function unassignedItemsSorted() {
-  return items.filter(it => it.workstreamId == null && it.itemType !== 'journey' && it.itemType !== 'subjourney' && it.itemType !== 'l1plan').sort((a, b) => a.order - b.order);
+  return items.filter(it => it.workstreamId == null && it.itemType !== 'l1plan').sort((a, b) => a.order - b.order);
 }
 function unassignedSectionHtml() {
   // Filtered by Planning's own search box and quick-filter chips (see
@@ -4030,144 +3489,11 @@ function renderStatusView(main) {
   main.innerHTML = unassignedSectionHtml() + sections + noWorkstreamsHint;
 }
 
-// ---------- Journeys ----------
-// A Journey has two levels — Journey and Sub Journey — an explicit user
-// request ("Journey consists of 2 levels. Journey and sub journey. Scope
-// items can only be attached to subjourneys"). Neither is a separate
-// top-level array or data shape — both are plain items (see "Data model" in
-// CLAUDE.md), itemType:'journey' or itemType:'subjourney', so both get the
-// row's Edit/Delete actions and itemRowHtml()'s entire rendering machinery
-// for free. Neither has a category, a workstream, or milestones of its own
-// (an explicit user simplification carried over from the original
-// single-level design) — a scope item only ever connects to a Sub Journey
-// (item.journeyId), never directly to a top-level Journey; a Sub Journey in
-// turn links up to exactly one Journey (item.parentJourneyId, set once at
-// creation — see saveSubJourneyQuickAddItem()). Both levels' own "end date"
-// and status are instead computed live from whatever's connected beneath
-// them — a Sub Journey from its connected scope items directly
-// (computeSubJourneyDateRange()/computeSubJourneyStatus()), a Journey one
-// level further removed, from its connected Sub Journeys' own already-
-// computed values (computeJourneyDateRange()/computeJourneyStatus()).
-// A Journey is never assigned to a workstream at all — an explicit user
-// correction to this feature's first draft ("Journey should not be assigned
-// to workstreams. They are overarching"). So unlike Planning's own status
-// board, this view is a single flat list, not one section per workstream.
-// It used to ignore the shared filterWorkstreamId selector completely — a
-// later, explicit user request changed that: with one specific workstream
-// selected (not "All Workstreams"), the list now narrows to just the
-// Journeys that actually reach into it, via journeysForCurrentFilter()
-// (below) — see that function's own comment for exactly what "reaching
-// into it" means. Journeys used to be its own top-level mode, reached from
-// a dedicated sidebar row, before its own sidebar-less page before that
-// (see "Journeys" in CLAUDE.md for that full history) — it's Planning's
-// second sub-tab now (planningTab, see renderMain()/setPlanningTab()),
-// sitting alongside Planning's own status board ("Scope Items") rather than
-// beside it as a separate mode.
-function allJourneys() {
-  return items.filter(it => it.itemType === 'journey').sort((a, b) => a.order - b.order);
-}
-// The Journeys sub-tab is unfiltered — every Journey in the programme —
-// only while "All Workstreams" is selected. With one specific workstream
-// selected, an explicit user request narrows it down to just the Journeys
-// that actually reach into that workstream: a Journey qualifies if any one
-// of its own connected Sub Journeys has at least one connected scope item
-// whose own workstreamId matches. This is a display-only narrowing, the
-// same "narrows what's listed, never anything about the underlying data"
-// precedent Planning's own search box/status chips already established (see
-// "Status board" in CLAUDE.md) — a Journey/Sub Journey is still never
-// itself assigned to a workstream (see "Journeys" in CLAUDE.md); this just
-// decides which ones are worth showing while looking at one workstream in
-// particular. A Journey with no Sub Journeys at all, or Sub Journeys with
-// nothing connected, is filtered out here the same as one with no matching
-// items — there's genuinely nothing tying it to this workstream to show.
-function journeysAfterWorkstreamFilter() {
-  const journeys = allJourneys();
-  if (!filterWorkstreamId) return journeys;
-  return journeys.filter(j => connectedSubJourneys(j.id).some(sj =>
-    connectedScopeItems(sj.id).some(it => it.workstreamId === filterWorkstreamId)
-  ));
-}
-// A plain case-insensitive substring match against a Journey's own name, OR
-// any one of its Sub Journeys' own names — planningSearchQuery's own
-// counterpart, an explicit user request ("build a search feature for
-// journeys... similar like for planning"). Matches matchesPlanningSearch()'s
-// spirit (a quick "find one thing" tool, not a general query) but reaches
-// one level deeper, since Sub Journeys are a second, equally-named tier in
-// this tree that's just as reasonable to search for directly — deliberately
-// doesn't reach further, into connected scope items' own names, the same
-// "quick find, not exhaustive" scope matchesPlanningSearch() itself draws
-// short of milestone names.
-function matchesJourneysSearch(j) {
-  if (!journeysSearchQuery) return true;
-  if (j.name.toLowerCase().includes(journeysSearchQuery)) return true;
-  return connectedSubJourneys(j.id).some(sj => sj.name.toLowerCase().includes(journeysSearchQuery));
-}
-// The Journeys sub-tab's own full narrowing — workstream filter (see
-// journeysAfterWorkstreamFilter()'s own comment), search, the status chips,
-// then the Dependencies toggle, composed the same way Planning's own search
-// box/status chips/dependency chip all compose with each other (a plain
-// AND). Used by journeysExpandAllIds() so Expand-all only ever acts on
-// what's actually visible under every filter at once.
-function journeysForCurrentFilter() {
-  let journeys = journeysAfterWorkstreamFilter();
-  if (journeysSearchQuery) journeys = journeys.filter(matchesJourneysSearch);
-  if (journeysStatusFilters.size) journeys = journeys.filter(matchesJourneysStatusFilter);
-  if (journeysDependencyFilter) journeys = journeys.filter(matchesJourneysDependencyFilter);
-  return journeys;
-}
-function renderJourneys() {
-  const main = document.getElementById('main');
-  const scopedWs = filterWorkstreamId ? wsById(filterWorkstreamId) : null;
-  // Computed as separate steps (rather than just calling
-  // journeysForCurrentFilter() once) specifically so the empty-state
-  // message below can tell "nothing here at all for this workstream" apart
-  // from "search/filters found nothing among what IS here" — the same
-  // "narrows what's listed, never conflates why it's empty" precedent
-  // Planning's own search box already established.
-  const wsFiltered = journeysAfterWorkstreamFilter();
-  const journeys = journeysForCurrentFilter();
-  const emptyMsg = !wsFiltered.length
-    ? (scopedWs ? `No Journeys with scope items in "${esc(scopedWs.name)}" yet.` : 'No journeys yet.')
-    : (journeysSearchQuery ? `No Journeys match "${esc(journeysSearchQuery)}".` : 'No Journeys match the selected filters.');
-  const rows = journeys.length ? journeys.map(it => itemRowHtml(it)).join('') :
-    `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">${emptyMsg}</div>`;
-  // A name-only inline capture, matching the Unassigned section's own "+
-  // Add item" quick-add exactly (see openInlineQuickAdd()) — an explicit
-  // user request to make the two consistent, replacing the full item modal
-  // this used to open (openItemModal(null,null,'journey')). A Journey has
-  // no workstream/category/milestones to ask for up front anyway (see
-  // "Journeys" in CLAUDE.md), so the modal was never asking for more than a
-  // name here in practice — this just skips opening it at all.
-  const addRow = canManageJourneys()
-    ? (journeyQuickAddOpen
-        ? `<div class="ws-section-add"><input type="text" class="inline-quick-add-input" id="journeyQuickAddInput" placeholder="Journey name" onkeydown="if(event.key==='Enter') saveJourneyQuickAddItem(); if(event.key==='Escape') cancelJourneyQuickAdd();" onblur="saveJourneyQuickAddItem()"></div>`
-        : `<div class="ws-section-add"><button class="btn btn-sm" onclick="openJourneyQuickAdd()"><i class="fa-solid fa-plus"></i> Add Journey</button></div>`)
-    : '';
-  // Same "no real workstream" visual treatment unassignedSectionHtml() uses
-  // for its own header — a transparent dot in place of a workstream color,
-  // since there isn't one here either. The header title itself grows a
-  // " — <workstream name>" suffix while scoped, so the narrower list reads
-  // as deliberate filtering rather than a programme that suddenly has fewer
-  // Journeys — the same "make the scoping visible, not just its effect"
-  // reasoning Planning's own per-workstream section headers already give
-  // for free (their own name/color), which this list has no other room for
-  // since it's a single flat list, not one section per workstream.
-  main.innerHTML = `<div class="ws-section journeys-list">
-      <div class="ws-section-header" style="background:var(--panel-2)">
-        ${journeysExpandAllToggleHtml()}
-        <i class="fa-solid fa-route" style="width:10px;text-align:center;font-size:12px;color:var(--accent)" title="Journeys"></i>
-        <span class="ws-section-title">Journeys${scopedWs ? ` — ${esc(scopedWs.name)}` : ''}</span>
-      </div>
-      ${rows}
-      ${addRow}
-    </div>`;
-}
-
 // ---------- L1 Plans mode ----------
 // Not workstream-scoped at all (see "L1 Plans" in CLAUDE.md) — a single
-// flat list, no per-workstream sections, and (unlike Journeys) no reaction
-// to filterWorkstreamId, since there's no shared sidebar in this mode to
-// read one from in the first place. Reuses itemRowHtml() for each L1 Plan's
+// flat list, no per-workstream sections, and no reaction to
+// filterWorkstreamId, since there's no shared sidebar in this mode to read
+// one from in the first place. Reuses itemRowHtml() for each L1 Plan's
 // own row (chevron/expand, milestone-count badge, computed plan-date
 // range, drag-reorder, Edit/Delete all come along for free — see
 // itemRowHtml()'s own isL1Plan comment) — only the expanded milestone list
@@ -4217,16 +3543,7 @@ function renderL1Plans() {
 // Confirm control is appended. See
 // isItemConfirmedInCycle()/toggleConfirmAllMilestones()/toggleReviewConfirm()
 // above.
-// viewOnly forces every editing affordance off regardless of the current
-// role — used only when rendering a Journey's connected scope items (see
-// isJourney below): those are shown "like a normal item row", per an
-// explicit user request, but strictly for reading, since managing a scope
-// item's own details isn't this list's job (the item's own status badge
-// still opens its full modal to actually edit something, same as it always
-// does). Distinct from reviewCycle's own partial read-only mode (which
-// still leaves Actual dates and the status badge editable) — viewOnly is
-// stricter, and the two are never passed together in practice.
-function itemRowHtml(it, reviewCycle, viewOnly) {
+function itemRowHtml(it, reviewCycle) {
   const total = it.milestones.length;
   // The badge's own X/Y counts only the *applicable* milestones on both
   // sides of the fraction — a milestone marked notApplicable was never
@@ -4240,72 +3557,37 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   const applicableTotal = applicableMilestones.length;
   const done = applicableMilestones.filter(m => m.status === 'complete').length;
   const expanded = expandedItemIds.has(it.id);
-  // Neither a Journey nor a Sub Journey has milestones to expand — a
-  // Journey expands to show its connected Sub Journeys, and a Sub Journey
-  // expands to show its own connected scope items instead (see
-  // connectedSubJourneys()/connectedScopeItems() above). A Sub Journey's
-  // connected items reuse this very function (itemRowHtml(ci, null, true))
-  // for each one — an explicit user request to show them "like a normal
-  // item row" — while a Journey's connected Sub Journeys are real,
-  // fully-interactive rows (itemRowHtml(sj)), not viewOnly, since managing
-  // them (renaming, deleting, connecting scope items to one) is the whole
-  // point of expanding a Journey. Both stay collapsed by default
-  // (expandedItemIds starts empty for them, same as any other item) rather
-  // than auto-expanding the moment their own parent opens. The chevron is
-  // always clickable for either (even with zero connections yet), since
-  // there's no other on-row signal that expanding one does anything.
-  const isJourney = it.itemType === 'journey';
-  const isSubJourney = it.itemType === 'subjourney';
-  // An L1 Plan (see "L1 Plans" above) deliberately needs almost none of the
-  // Journey/Sub Journey special-casing below — unlike those two, it keeps a
-  // real, non-empty milestones array, so `editable`/`expandable`/
-  // `milestoneBadge`/`planDatesHtml` all already do the right thing for it
-  // via their plain "has milestones" fallback path with no changes at all.
-  // Only `subRows` (its own bespoke milestone rows, not the shared
-  // milestoneRowsHtml()/--item-grid-cols grid) and `tagsHtml` (IT/Business/
-  // Budget tags aren't a meaningful concept for a high-level plan) need an
-  // explicit branch for it.
+  // An L1 Plan (see "L1 Plans" above) needs almost none of the special-
+  // casing below — it keeps a real, non-empty milestones array, so
+  // `editable`/`expandable`/`milestoneBadge`/`planDatesHtml` all already do
+  // the right thing for it via their plain "has milestones" fallback path
+  // with no changes at all. Only `subRows` (its own bespoke milestone rows,
+  // not the shared milestoneRowsHtml()/--item-grid-cols grid) and
+  // `tagsHtml` (IT/Business/Budget tags aren't a meaningful concept for a
+  // high-level plan) need an explicit branch for it.
   const isL1Plan = it.itemType === 'l1plan';
-  // The single source of truth every editing affordance below checks,
-  // instead of calling hasRole('editor') directly — folds viewOnly in
-  // alongside the role check so nothing has to be special-cased twice. A
-  // Journey/Sub Journey's own row uses canManageJourneys() instead of the
-  // plain hasRole('editor') an ordinary scope item's row uses — a Planner
-  // can edit these rows (rename, drag-reorder, connect scope items) despite
-  // not otherwise holding Editor-tier access — see canManageJourneys()'s
-  // own comment near ROLES above.
-  const editable = !viewOnly && ((isJourney || isSubJourney) ? canManageJourneys() : hasRole('editor'));
+  const editable = hasRole('editor');
   // Editor+ everywhere, same as `editable` above, except for one specific
   // set of fields (IT/Business/Budget tags here; Due/Actual dates and
   // milestone status in milestoneRowsHtml() below) — those are additionally
   // editable by a Reviewer, but only while actually inside Review mode. See
-  // canEditReviewFields()'s own comment near ROLES above. Never applies to a
-  // Journey/Sub Journey (their tags are always computed, never hand-set —
-  // see "IT/Business/Budget tags" in CLAUDE.md) or a viewOnly row.
-  const reviewFieldsEditable = !viewOnly && !isJourney && !isSubJourney && canEditReviewFields();
-  const subJourneys = isJourney ? connectedSubJourneys(it.id) : [];
-  const connected = isSubJourney ? connectedScopeItems(it.id) : [];
+  // canEditReviewFields()'s own comment near ROLES above.
+  const reviewFieldsEditable = canEditReviewFields();
   // An L1 Plan is always expandable too, even with zero milestones yet —
-  // same reasoning as Journey/Sub Journey just above: with no milestones,
-  // there's no other on-row signal that expanding it does anything, but
-  // it's exactly how the inline "+ Add Milestone" affordance (below) gets
-  // reached for a brand-new plan. Without this, a fresh L1 Plan would be
-  // permanently stuck with a dead, non-clickable chevron and no way to add
-  // its very first milestone at all — a real bug, not just a cosmetic gap.
-  const expandable = total || isJourney || isSubJourney || isL1Plan;
+  // with no milestones, there's no other on-row signal that expanding it
+  // does anything, but it's exactly how the inline "+ Add Milestone"
+  // affordance (below) gets reached for a brand-new plan. Without this, a
+  // fresh L1 Plan would be permanently stuck with a dead, non-clickable
+  // chevron and no way to add its very first milestone at all — a real bug,
+  // not just a cosmetic gap.
+  const expandable = total || isL1Plan;
   const chevron = expandable
     ? `<span class="item-chevron" onclick="toggleItemExpanded('${it.id}')"><i class="fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
     : `<span class="item-chevron"></span>`;
   // Always a real element, never an empty string — an absent grid item would
   // collapse its column and misalign every cell after it for rows that don't
   // have milestones (see "Status board" in CLAUDE.md).
-  const milestoneBadge = `<span class="milestone-count-badge">${
-    isJourney
-      ? (subJourneys.length ? `${subJourneys.length} sub journey${subJourneys.length === 1 ? '' : 's'}` : '')
-      : isSubJourney
-      ? (connected.length ? `${connected.length} scope item${connected.length === 1 ? '' : 's'}` : '')
-      : (applicableTotal ? `${done}/${applicableTotal} milestones` : '')
-  }</span>`;
+  const milestoneBadge = `<span class="milestone-count-badge">${applicableTotal ? `${done}/${applicableTotal} milestones` : ''}</span>`;
   // Plan dates are computed from milestones (earliest/latest due or actual
   // date) whenever any exist, same as status — so they're read-only text
   // here rather than editable inputs; only an item with zero milestones has
@@ -4335,20 +3617,6 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // alongside onblur (same guarded call) on every date input in this app —
   // onblur stays too, since it's still what a completed keyboard edit relies
   // on and what resets an incomplete one (see above).
-  // A Journey/Sub Journey's own plan dates are never stored/manual at all —
-  // always computed live, regardless of reviewCycle (neither ever appears
-  // inside a review to begin with — see "Journeys" in CLAUDE.md — but the
-  // same read-only treatment applies for consistency). A Sub Journey's range
-  // is computed the same way the single-level Journey always was — from
-  // whatever scope items are currently connected to it directly (see
-  // computeSubJourneyDateRange()) — while a Journey's own range is one level
-  // further removed, computed from its connected Sub Journeys' own ranges
-  // (see computeJourneyDateRange()).
-  const journeyRange = isJourney ? computeJourneyDateRange(it.id) : isSubJourney ? computeSubJourneyDateRange(it.id) : null;
-  const journeyRangeTitle = isJourney
-    ? 'Computed from the date range of every connected Sub Journey'
-    : 'Computed from the latest milestone (due or actual) date across every connected scope item';
-  const journeyRangeEmptyTitle = isJourney ? 'No connected Sub Journeys with a date yet' : 'No connected scope items with a date yet';
   // An L1 Plan shows nothing at all in the Plan-dates column — an explicit
   // user request ("remove due on L1 level"), reversing this row's own
   // brief prior stint showing a single, discrete Due value there. Still a
@@ -4361,11 +3629,7 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // milestones" roll-up — see "Item plan date range roll-up" in CLAUDE.md
   // — is unrelated to what this row chooses to show), just never rendered
   // on an L1 Plan's own row at all any more.
-  const planDatesHtml = (isJourney || isSubJourney)
-    ? (journeyRange
-        ? `<span class="item-dates-computed" title="${journeyRangeTitle}">${fmtDateY(journeyRange.startDate)} → ${fmtDateY(journeyRange.dueDate)}</span>`
-        : `<span class="item-dates-computed" style="color:var(--text-faint)" title="${journeyRangeEmptyTitle}">—</span>`)
-    : isL1Plan
+  const planDatesHtml = isL1Plan
     ? `<span></span>`
     : (total || reviewCycle)
     ? (it.startDate || it.dueDate
@@ -4402,26 +3666,15 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // 8 — the same column a milestone row uses for its own Actual date input
   // (see --item-grid-cols) — since tags are item-only and that column is
   // otherwise blank on the item's own row.
-  // A Journey/Sub Journey's own tags are never hand-set/clickable, regardless
-  // of role — they're computed (computeJourneyTagStatus()/
-  // computeSubJourneyTagStatus(), see above), the same read-only treatment
-  // Status and Plan dates already get for these two types. `editable` isn't
-  // enough to gate this alone (it's true for a Planner/Editor on these rows,
-  // for the row's other actions), so isJourney/isSubJourney are checked
-  // explicitly to force the plain, non-clickable <span> either way.
   // An L1 Plan renders no tags at all (a blank placeholder, same "keep the
   // column alive but empty" discipline dependencySpocHtml already uses) —
   // IT/Business/Budget isn't a meaningful concept for a high-level plan, and
-  // unlike Journey/Sub Journey there's nothing to compute a rollup from
-  // either (see "L1 Plans" above: linking is pure traceability, no rollup).
+  // there's nothing to compute a rollup from either (see "L1 Plans" above:
+  // linking is pure traceability, no rollup).
   const tagsHtml = isL1Plan ? `<span class="item-tags"></span>` : `<span class="item-tags">
       ${ITEM_TAG_FIELDS.map(f => {
-        const val = isJourney ? (computeJourneyTagStatus(it.id, f) || 'green')
-          : isSubJourney ? (computeSubJourneyTagStatus(it.id, f) || 'green')
-          : it[f];
-        const title = isJourney ? `${TAG_FIELD_LABELS[f]} (rolled up from connected Sub Journeys)`
-          : isSubJourney ? `${TAG_FIELD_LABELS[f]} (rolled up from connected scope items)`
-          : TAG_FIELD_LABELS[f];
+        const val = it[f];
+        const title = TAG_FIELD_LABELS[f];
         return reviewFieldsEditable
           ? `<button class="tag-badge" style="background:var(--stat-${val}-bg);color:var(--stat-${val})" onclick="cycleItemAttr('${it.id}','${f}')" title="${title}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></button>`
           : `<span class="tag-badge" style="background:var(--stat-${val}-bg);color:var(--stat-${val});cursor:default" title="${title}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></span>`;
@@ -4470,50 +3723,26 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
         </span>`;
     }
   }
-  // A Journey's connected Sub Journeys are real, fully-interactive rows
-  // (itemRowHtml(sj) — not viewOnly), plus a per-Journey "+ Add Sub Journey"
-  // quick-add at the end, the only place one can be created (see the
-  // "Sub Journey quick-add" section below). A Sub Journey's own connected
-  // scope items are shown "like a normal item row" — itemRowHtml() reused
-  // directly, in viewOnly mode, same as the single-level Journey always did
-  // — rather than the milestone header/rows a plain item's own checklist
-  // uses.
-  const subJourneyQuickAddHtml = (isJourney && !viewOnly && editable)
-    ? (subJourneyQuickAddOpenFor === it.id
-        ? `<div class="ws-section-add"><input type="text" class="inline-quick-add-input" id="subJourneyQuickAddInput" placeholder="Sub Journey name" onkeydown="if(event.key==='Enter') saveSubJourneyQuickAddItem(); if(event.key==='Escape') cancelSubJourneyQuickAdd();" onblur="saveSubJourneyQuickAddItem()"></div>`
-        : `<div class="ws-section-add"><button class="btn btn-sm" onclick="openSubJourneyQuickAdd('${it.id}')"><i class="fa-solid fa-plus"></i> Add Sub Journey</button></div>`)
-    : '';
   // An L1 Plan's own milestones have no category/template to seed from —
   // always hand-added, one at a time (see "L1 Plans" above) — so, unlike an
   // ordinary item's checklist (no add-row affordance once saved, per
   // "Milestone checklist" in CLAUDE.md), this one needs a genuine "+ Add
   // milestone" quick-add, always available while expanded and editable.
-  // Mirrors subJourneyQuickAddHtml's own inline-capture shape exactly.
-  const l1AddMilestoneHtml = (isL1Plan && !viewOnly && editable)
+  const l1AddMilestoneHtml = (isL1Plan && editable)
     ? (l1MilestoneQuickAddOpenFor === it.id
         ? `<div class="ws-section-add"><input type="text" class="inline-quick-add-input" id="l1MilestoneQuickAddInput" placeholder="Milestone name" onkeydown="if(event.key==='Enter') saveL1MilestoneQuickAdd(); if(event.key==='Escape') cancelL1MilestoneQuickAdd();" onblur="saveL1MilestoneQuickAdd()"></div>`
         : `<div class="ws-section-add"><button class="btn btn-sm" onclick="openL1MilestoneQuickAdd('${it.id}')"><i class="fa-solid fa-plus"></i> Add Milestone</button></div>`)
     : '';
-  const subRows = !expanded ? '' : isJourney
-    ? (subJourneys.length
-        ? subJourneys.map(sj => itemRowHtml(sj)).join('')
-        : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No Sub Journeys yet.</div>`) + subJourneyQuickAddHtml
-    : isSubJourney
-    ? (connected.length
-        ? connected.map(ci => itemRowHtml(ci, null, true)).join('')
-        : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No scope items connected yet.</div>`)
-    : isL1Plan
+  const subRows = !expanded ? '' : isL1Plan
     ? (total ? l1MilestoneHeaderHtml() + l1MilestoneRowsHtml(it) : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No milestones yet.</div>`) + l1AddMilestoneHtml
-    : (total ? milestoneHeaderHtml(reviewCycle, viewOnly) + milestoneRowsHtml(it, reviewCycle, viewOnly) : '');
+    : (total ? milestoneHeaderHtml(reviewCycle) + milestoneRowsHtml(it, reviewCycle) : '');
   // Drag-and-drop reordering is Planning-only, same gating as Edit/Delete
-  // below — a review is for confirming, not restructuring, and viewOnly
-  // rows (a Sub Journey's own connected items) are never restructured from
-  // here either. Only the grip handle itself is draggable="true" (not the
-  // whole row), so dragging doesn't fight with clicking the tags/status/
-  // actions packed into the rest of the row; the drop target is the whole
-  // row, so dropping anywhere on it (not just precisely on its own handle)
-  // works.
-  const dragAttrs = (reviewCycle || viewOnly) ? '' : ` ondragover="event.preventDefault()" ondrop="dropOnItem(event,'${it.id}')"`;
+  // below — a review is for confirming, not restructuring. Only the grip
+  // handle itself is draggable="true" (not the whole row), so dragging
+  // doesn't fight with clicking the tags/status/actions packed into the
+  // rest of the row; the drop target is the whole row, so dropping
+  // anywhere on it (not just precisely on its own handle) works.
+  const dragAttrs = reviewCycle ? '' : ` ondragover="event.preventDefault()" ondrop="dropOnItem(event,'${it.id}')"`;
   // A quick-added item (see openInlineQuickAdd()) whose sole "Scope item
   // confirmed" milestone has been marked Complete still sits in the reserved
   // Pending category until its real workstream/category is chosen — the
@@ -4525,65 +3754,18 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
   // dismiss/"Later" option any more (an explicit user request), so this is
   // purely a page-reload recovery path, not a "skip for now" one.
   const scopeAssignReady = editable && it.status === 'complete' && isPendingCategory(it.categoryId);
-  // A Journey/Sub Journey's own displayed status is always computed live —
-  // never its own stored `status` field — scopeAssignReady is always false
-  // for either regardless (their categoryId is always null, so
-  // isPendingCategory() never matches), so this only ever changes what the
-  // badge itself shows, not which click target it routes to. A Sub
-  // Journey's status rolls up from its connected scope items directly (see
-  // computeSubJourneyStatus()); a Journey's own status is one level further
-  // removed, rolling up from its connected Sub Journeys' own status (see
-  // computeJourneyStatus()). An L1 Plan gets the identical live-computed
-  // treatment, one level over its own milestones' own effective status
-  // (see computeL1PlanStatus()) — an explicit later user request
-  // reversing this feature's own original "no rollup" decision (see "L1
-  // Plans" in CLAUDE.md); scopeAssignReady is always false here too, for
-  // the same reason (an L1 Plan's own categoryId is always null).
-  const displayStatus = isJourney ? (computeJourneyStatus(it.id) || 'not-started')
-    : isSubJourney ? (computeSubJourneyStatus(it.id) || 'not-started')
-    : isL1Plan ? (computeL1PlanStatus(it.id) || 'not-started')
-    : it.status;
-  // "Completed Late" (see isCompletedLate()'s own comment) for a Sub
-  // Journey rolls up the same way computeSubJourneyStatus() itself does —
-  // from its connected scope items' own already-resolved lateness — rather
-  // than reading a Sub Journey's own (always-empty) milestones/dates. A
-  // Journey goes one level further, checking every scope item under every
-  // one of its connected Sub Journeys — displayStatus can only ever be
-  // 'complete' here if every single one of those is itself 'complete' (see
-  // computeJourneyStatus()'s weakest-link reduce), so there's no need to
-  // re-check each Sub Journey's own rolled-up status here too.
+  // An L1 Plan's own displayed status is always computed live — never its
+  // own stored `status` field — rolling up from its own milestones' own
+  // effective status (see computeL1PlanStatus()); scopeAssignReady is
+  // always false for one, for the same reason it's false everywhere
+  // (an L1 Plan's own categoryId is always null).
+  const displayStatus = isL1Plan ? (computeL1PlanStatus(it.id) || 'not-started') : it.status;
   const displayStatusLabel = displayStatus !== 'complete' ? statusLabel(displayStatus)
-    : (isJourney ? subJourneys.some(sj => connectedScopeItems(sj.id).some(itemIsCompletedLate))
-        : isSubJourney ? connected.some(itemIsCompletedLate)
-        : itemIsCompletedLate(it))
-      ? 'Completed Late' : statusLabel('complete');
+    : itemIsCompletedLate(it) ? 'Completed Late' : statusLabel('complete');
   const statusBadgeHtml = scopeAssignReady
     ? `<button class="status-badge" style="background:var(--stat-${displayStatus}-bg);color:var(--stat-${displayStatus})" onclick="openScopeAssignModal('${it.id}')" title="Scope confirmed — click to assign its real workstream and category">${esc(displayStatusLabel)}</button>`
     : `<button class="status-badge" style="background:var(--stat-${displayStatus}-bg);color:var(--stat-${displayStatus})" onclick="openItemModal('${it.id}')">${esc(displayStatusLabel)}</button>`;
-  // Only a Sub Journey has milestones of its own to (not) trigger anything
-  // from — connecting it to existing scope items is a standing action,
-  // always available via its own icon in .item-actions, right alongside
-  // Edit/Delete, same as the single-level Journey always had. A top-level
-  // Journey never connects directly to scope items any more (see "Journeys"
-  // in CLAUDE.md — that's what the Sub Journey level exists for), so it gets
-  // no connect icon of its own here at all.
-  const connectBtnHtml = isSubJourney
-    ? `<button class="row-icon-btn" onclick="openJourneyConnectModal('${it.id}')" title="Connect scope items"><i class="fa-solid fa-link"></i></button>`
-    : '';
-  // Nests a Sub Journey's own row visually under its parent Journey, and a
-  // Sub Journey's own connected scope items (always rendered viewOnly, and
-  // only ever rendered nested under one — see viewOnly's own comment above)
-  // one level further under that — see .item-row-indent-1/-2's own comment.
-  const indentClass = isSubJourney ? 'item-row-indent-1' : viewOnly ? 'item-row-indent-2' : '';
-  // A top-level Journey's own row gets the same tinted, bolder "this groups
-  // what's below it" treatment .ws-section-header already uses for a
-  // workstream — an explicit user request, part of a visual pass to tell
-  // Journey/Sub Journey/scope item rows apart now that per-row type icons
-  // are gone (see the removed journeyBadgeHtml above). Sub Journey and
-  // connected-scope-item rows deliberately stay plain — only the top-level
-  // container gets the header treatment.
-  const journeyHeaderClass = isJourney ? 'item-row-journey-header' : '';
-  return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''} ${indentClass} ${journeyHeaderClass}"${dragAttrs}>
+  return `<div class="item-row ${confirmedForReview ? 'review-confirmed' : ''}"${dragAttrs}>
       ${chevron}
       <span class="item-name" style="grid-column: 2 / 4">${esc(it.name)}</span>
       ${milestoneBadge}
@@ -4594,10 +3776,9 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
       ${tagsHtml}
       ${statusBadgeHtml}
       ${(reviewCycle || !editable)
-        ? `<span class="item-actions"></span>` // Edit/Delete/drag are hidden during a review, for anyone below Editor, and for a viewOnly row (a Journey's own connected items) — still a real (empty) element for the usual column-collapse reason (see "Status board" in CLAUDE.md).
+        ? `<span class="item-actions"></span>` // Edit/Delete/drag are hidden during a review, and for anyone below Editor — still a real (empty) element for the usual column-collapse reason (see "Status board" in CLAUDE.md).
         : `<span class="item-actions">
         <span class="row-icon-btn drag-handle" draggable="true" ondragstart="dragStartItem(event,'${it.id}')" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
-        ${connectBtnHtml}
         <button class="row-icon-btn" onclick="openItemModal('${it.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
         <button class="row-icon-btn" onclick="deleteItem('${it.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
       </span>`}
@@ -4613,7 +3794,7 @@ function itemRowHtml(it, reviewCycle, viewOnly) {
 // columns right before Status (see --item-grid-cols), not under the item's
 // own Owner/Plan-dates columns — so a milestone's own dates read right next
 // to its own status badge.
-function milestoneHeaderHtml(reviewCycle, viewOnly) {
+function milestoneHeaderHtml(reviewCycle) {
   // Deliberately an invisible icon placeholder, not a visible "Confirm" text
   // label — this row (like every row here) is its own independent CSS Grid
   // instance, and column 2 is the only flexible track (minmax(140px,1.3fr));
@@ -4631,23 +3812,14 @@ function milestoneHeaderHtml(reviewCycle, viewOnly) {
   // track, so the toggle doesn't inherit a full 116px track sized for a
   // text label (see that class's own comment). This header must keep
   // matching whatever the data rows actually use, the same alignment
-  // invariant every other column here already depends on. The "MS Req."
-  // label itself is dropped in viewOnly mode, matching milestoneRowsHtml()'s
-  // own naHtml — there's no toggle to label when nothing here is editable.
+  // invariant every other column here already depends on.
   // One blank <span> per otherwise-unlabeled column (1, 3-7) keeps this
   // row's own auto-placement in step with the data rows below — see
   // --item-grid-cols' own comment for the column-5 spacer this now also
   // has to account for, which is why there are 5 blanks between "Milestone"
   // and "Due", not 4.
-  // viewOnly is only ever true here for a Sub Journey's own connected scope
-  // item (see itemRowHtml()'s subRows) — matches that row's own
-  // item-row-indent-2 (see itemRowHtml()'s indentClass) so an expanded
-  // connected item's milestone header lines up under its own indented row
-  // rather than sticking out flush-left below it, an explicit user request
-  // ("indent the milestones and headers in alignment with the Sub
-  // journey").
-  return `<div class="milestone-header ${viewOnly ? 'item-row-indent-2' : ''}">
-      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span class="milestone-status-cell" style="grid-column:10/12"><span>Status</span><span>${viewOnly ? '' : 'MS Req.'}</span></span>${reviewLabel}
+  return `<div class="milestone-header">
+      <span></span><span>Milestone</span><span></span><span></span><span></span><span></span><span></span><span>Due</span><span>Actual</span><span class="milestone-status-cell" style="grid-column:10/12"><span>Status</span><span>MS Req.</span></span>${reviewLabel}
     </div>`;
 }
 // Emits the same 11 grid cells itemRowHtml() does (chevron|name|blank|
@@ -4670,15 +3842,15 @@ function milestoneHeaderHtml(reviewCycle, viewOnly) {
 // whose milestones already have distinct due dates, which is the common
 // case for anything actually planned out. Due dates are shown as data on
 // each row; they don't dictate the row order.
-function milestoneRowsHtml(it, reviewCycle, viewOnly) {
-  const editable = !viewOnly && hasRole('editor');
+function milestoneRowsHtml(it, reviewCycle) {
+  const editable = hasRole('editor');
   // Due/Actual dates and the status badge are additionally editable by a
   // Reviewer while actually inside Review mode (mode === 'review' — the only
   // context this function is ever called with a reviewCycle in the first
   // place). Everything else here (the Not Applicable toggle) stays Editor+
   // only via `editable` above, unaffected — see canEditReviewFields()'s own
   // comment near ROLES above.
-  const fieldsEditable = !viewOnly && canEditReviewFields();
+  const fieldsEditable = canEditReviewFields();
   return it.milestones.map(m => {
     // Same implicit 12th column as itemRowHtml()'s review cell — only exists
     // when reviewCycle is passed, and is the ONLY way a milestone can be
@@ -4835,12 +4007,7 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // rather than being omitted when off, same "always a real, visible
     // icon, just not clickable below the gating role" convention
     // .review-confirm-toggle already uses. milestoneHeaderHtml()'s own
-    // "Status"/"N/A" labels must keep matching this order and span. In
-    // viewOnly mode the toggle is dropped entirely, not just made inert —
-    // an explicit user request ("MS Req. is not necessary to show") — since
-    // there's nothing here a viewOnly list is ever meant to let anyone
-    // change, unlike the below-the-required-role case, which still shows
-    // the real on/off state for anyone who might later be able to act on it.
+    // "Status"/"N/A" labels must keep matching this order and span.
     // A still-Pending item's one "Scope Item Confirmed" milestone can never
     // be marked Not Applicable — an explicit user request. Marking it N/A
     // would clear its Due/Actual dates and freeze its status badge (see
@@ -4887,11 +4054,11 @@ function milestoneRowsHtml(it, reviewCycle, viewOnly) {
     // styling is untouched either way — it stays tied to the semantic
     // "is this genuinely Not Applicable" state, not to which icon shape
     // happens to represent it.
-    const naHtml = viewOnly ? '' : (naEditable
+    const naHtml = naEditable
       ? `<button class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : ''}" onclick="toggleMilestoneNotApplicable('${it.id}','${m.id}')" title="${m.notApplicable ? 'Mark as applicable again' : 'Mark as not applicable'}"><i class="fa-solid ${m.notApplicable ? 'fa-toggle-off' : 'fa-toggle-on'}"></i></button>`
-      : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-solid ${m.notApplicable ? 'fa-toggle-off' : 'fa-toggle-on'}"></i></span>`);
+      : `<span class="row-icon-btn" style="${m.notApplicable ? 'color:var(--stat-not-started)' : 'opacity:.35'}" title="${m.notApplicable ? 'Not applicable' : ''}"><i class="fa-solid ${m.notApplicable ? 'fa-toggle-off' : 'fa-toggle-on'}"></i></span>`;
     return `
-    <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''} ${viewOnly ? 'item-row-indent-2' : ''}">
+    <div class="milestone-sub-row ${mConfirmed ? 'review-confirmed' : ''}">
       <span class="item-chevron"><i class="fa-solid fa-diamond" style="font-size:8px"></i></span>
       <span class="milestone-sub-name" style="grid-column: 2 / 7; ${m.notApplicable ? 'opacity:.55' : ''}">${esc(m.name)}${l1LinkIndicatorHtml(m)}</span>
       <span></span>
@@ -4924,16 +4091,13 @@ function toggleItemExpanded(id) {
 // milestone items, expanding each one individually via its own chevron
 // gets tedious. Reachable from Planning's own status board
 // (renderStatusView()/unassignedSectionHtml() — see expandAllToggleHtml()
-// below) and, per a later explicit user request, from Journeys mode too
-// (see journeysExpandAllToggleHtml() below) — calls the general render()
-// rather than a narrower renderMain(), since it's no longer safe to assume
-// Planning is the only mode showing when this runs. Takes an explicit list
-// of ids — the section's own *currently displayed* expandable items, i.e.
-// already filtered by search/status/external for Planning, or the current
-// Journey/Sub Journey tree for Journeys — rather than re-deriving them
-// from workstreamId here, so it only ever acts on what's actually visible
-// on screen right now, never a hidden item a filter is currently narrowing
-// out.
+// below) — calls the general render() rather than a narrower renderMain(),
+// since it's no longer safe to assume Planning is the only mode showing
+// when this runs. Takes an explicit list of ids — the section's own
+// *currently displayed* expandable items, i.e. already filtered by
+// search/status/external — rather than re-deriving them from workstreamId
+// here, so it only ever acts on what's actually visible on screen right
+// now, never a hidden item a filter is currently narrowing out.
 function toggleExpandAllForItems(ids) {
   if (!ids.length) return;
   const allExpanded = ids.every(id => expandedItemIds.has(id));
@@ -4966,38 +4130,6 @@ function expandAllToggleHtml(sectionItems) {
   const idsLiteral = expandableIds.map(id => `'${id}'`).join(',');
   return `<button class="row-icon-btn" onclick="toggleExpandAllForItems([${idsLiteral}])" title="${allExpanded ? 'Collapse all' : 'Expand all'}"><i class="fa-solid ${allExpanded ? 'fa-angles-up' : 'fa-angles-down'}"></i></button>`;
 }
-// expandAllToggleHtml()'s own counterpart for Journeys mode — an explicit
-// user request. "Expandable" means something different here: a
-// Journey/Sub Journey is always expandable, even with zero connections
-// (see itemRowHtml()'s own `expandable` check), not "has milestones" —
-// expandAllToggleHtml()'s own filter would find nothing to expand at all,
-// since neither a Journey nor a Sub Journey ever has milestones (see
-// "Journeys" in CLAUDE.md). There are also two nested levels to unfold
-// here (every top-level Journey, plus every one of its own Sub Journeys)
-// rather than Planning's single level of milestone nesting — this stops
-// there deliberately, leaving a Sub Journey's own connected scope items'
-// milestone checklists collapsed, the same "one more click for genuinely
-// deep detail" boundary the rest of this app already draws.
-// Reads journeysForCurrentFilter() rather than allJourneys() directly so
-// this only ever acts on what's actually visible — the same "never touch
-// an item a filter is currently narrowing out" discipline
-// expandAllToggleHtml() itself already follows for Planning's own sections.
-function journeysExpandAllIds() {
-  const ids = [];
-  journeysForCurrentFilter().forEach(j => {
-    ids.push(j.id);
-    connectedSubJourneys(j.id).forEach(sj => ids.push(sj.id));
-  });
-  return ids;
-}
-function journeysExpandAllToggleHtml() {
-  const ids = journeysExpandAllIds();
-  if (!ids.length) return '';
-  const allExpanded = ids.every(id => expandedItemIds.has(id));
-  const idsLiteral = ids.map(id => `'${id}'`).join(',');
-  return `<button class="row-icon-btn" onclick="toggleExpandAllForItems([${idsLiteral}])" title="${allExpanded ? 'Collapse all' : 'Expand all'}"><i class="fa-solid ${allExpanded ? 'fa-angles-up' : 'fa-angles-down'}"></i></button>`;
-}
-
 function revealActualDate(milestoneId) {
   revealedActualIds.add(milestoneId);
   render();
@@ -5346,9 +4478,9 @@ function matchesDecisionLogFlaggedFilter(d) {
 // things worth filtering by (see each state variable's own declaration
 // comment). Action Log gets "Open"/"Completed" (multi-select) plus a
 // divider plus "Flagged"; Decision Log gets just "Flagged". Called
-// unconditionally alongside renderPlanningStatusChips()/
-// renderJourneysStatusChips() in render() — cheap enough not to need a
-// mode/reviewTab check threaded through the call site itself.
+// unconditionally alongside renderPlanningStatusChips() in render() —
+// cheap enough not to need a mode/reviewTab check threaded through the
+// call site itself.
 function renderReviewLogFilterChips() {
   const el = document.getElementById('reviewLogFilterChips');
   if (!el) return;
@@ -5399,18 +4531,10 @@ function setFilterWorkstream(id) {
 // fields together and calls save()/render() once, the same combined-fields
 // pattern setUserRole() already uses for its own "jump to Dashboard, All
 // Workstreams" case (unrelated — that one fires on leaving Admin mode, not
-// on picking a workstream, and still deliberately lands on Dashboard). Also
-// forces planningTab back to 'scope' — picking a workstream (or "All
-// Workstreams") from the sidebar is a request to see that selection's own
-// scope items, so it should land there regardless of which Planning sub-tab
-// was showing beforehand (even though, unlike when this was first written,
-// the Journeys sub-tab now also reacts to the selection — see
-// journeysForCurrentFilter() in "Journeys" below — landing on Scope Items
-// is still the more useful default for a plain workstream-row click).
+// on picking a workstream, and still deliberately lands on Dashboard).
 function selectWorkstreamFromSidebar(id) {
   filterWorkstreamId = id;
   mode = 'planning';
-  planningTab = 'scope';
   save(); render();
 }
 let renamingProgramme = false;
@@ -5602,7 +4726,7 @@ async function verifyRolePassword(password, stored) {
   if (!stored) return false;
   return (await sha256Hex(stored.salt + ':' + password)) === stored.hash;
 }
-// Planner/Reviewer/Editor/Admin can each optionally require a password (set by an
+// Reviewer/Editor/Admin can each optionally require a password (set by an
 // Admin — see saveRolePasswords()) before switching into them; Visitor never
 // does (it's the base, view-only role — nothing to gate), and any role an
 // Admin hasn't set a password for yet (programme.rolePasswords[role] ===
@@ -5973,51 +5097,35 @@ function onItemCategoryChange() {
 function onItemDependencyChange() {
   document.getElementById('itemDependencySpocField').style.display = document.getElementById('itemDependencyInput').checked ? '' : 'none';
 }
-// presetItemType ('journey', 'subjourney', or omitted/anything else for a
-// plain scope item) only ever matters for a brand-new item — id, when
-// given, always wins, since an existing item's own itemType is never up for
-// negotiation here (see editingItemType's own comment). In practice neither
-// a Journey nor a Sub Journey is ever created through this modal at all any
-// more (both are quick-add only — see saveJourneyQuickAddItem()/
-// saveSubJourneyQuickAddItem()), so presetItemType only ever matters for
-// this function's own generic new-item code path, kept correct rather than
-// assumed dead.
+// presetItemType ('l1plan', or omitted/anything else for a plain scope
+// item) only ever matters for a brand-new item — id, when given, always
+// wins, since an existing item's own itemType is never up for negotiation
+// here (see editingItemType's own comment).
 function openItemModal(id, presetWorkstreamId, presetItemType) {
   editingItemId = id || null;
   const it = id ? items.find(i => i.id === id) : null;
-  const editingType = it ? it.itemType : (presetItemType === 'journey' || presetItemType === 'subjourney' || presetItemType === 'l1plan' ? presetItemType : 'scope');
+  const editingType = it ? it.itemType : (presetItemType === 'l1plan' ? presetItemType : 'scope');
   editingItemType = editingType;
-  const isJourneyLike = editingType === 'journey' || editingType === 'subjourney';
   // An L1 Plan (see "L1 Plans" above) is never created through this modal
   // (openL1PlanQuickAdd()/saveL1PlanQuickAdd() is the only way, inline on
   // the L1 Plans page itself) — this modal is reachable for one only via
-  // Edit, for renaming/deleting. Deliberately a separate flag from
-  // isJourneyLike, not folded into it: it drives the same "hide Workstream/
-  // Category/Milestones" field-visibility decisions below, but NOT the
-  // Journey/Sub Journey-specific canManageJourneys() role tier further
-  // down — an L1 Plan uses this app's standard hasRole('editor') tier, the
-  // plain `editable` fallback already gives it for free.
+  // Edit, for renaming/deleting.
   const isL1Plan = editingType === 'l1plan';
-  const typeLabel = editingType === 'journey' ? 'Journey' : editingType === 'subjourney' ? 'Sub Journey' : editingType === 'l1plan' ? 'L1 Plan' : 'item';
+  const typeLabel = editingType === 'l1plan' ? 'L1 Plan' : 'item';
   // Computed once, up front, so both the field-visibility pass just below
   // and the Category-select lock further down (see its own comment) share
   // one definition — a still-Pending item's data, not who's looking at it.
   const stillPending = !!(it && isPendingCategory(it.categoryId));
   document.getElementById('itemModalTitle').textContent = it ? `Edit ${typeLabel}` : `New ${typeLabel}`;
   populateStatusSelect();
-  // Neither a Journey nor a Sub Journey has a workstream, a category, or
-  // milestones at all — an explicit user simplification ("do not add
-  // milestones to it... you can remove the Journey category completely"),
-  // carried over unchanged to the Sub Journey level. All three fields are
-  // hidden outright for either, not left unpopulated/disabled/empty. An L1
-  // Plan gets the identical treatment for Workstream/Category (neither is
-  // meaningful — see "L1 Plans" above) — but its milestones stay managed
-  // entirely on the L1 Plans page itself (inline add/edit/delete/link),
-  // never through this modal's own editor, so itemMilestonesField hides for
-  // it the same way, just for a different underlying reason.
-  document.getElementById('itemWorkstreamField').style.display = (isJourneyLike || isL1Plan) ? 'none' : '';
-  document.getElementById('itemCategoryField').style.display = (isJourneyLike || isL1Plan) ? 'none' : '';
-  document.getElementById('itemMilestonesField').style.display = (isJourneyLike || isL1Plan) ? 'none' : '';
+  // An L1 Plan has no workstream or category (neither is meaningful — see
+  // "L1 Plans" above) — both fields are hidden outright, not left
+  // unpopulated/disabled/empty. Its milestones stay managed entirely on
+  // the L1 Plans page itself (inline add/edit/delete/link), never through
+  // this modal's own editor, so itemMilestonesField hides for it too.
+  document.getElementById('itemWorkstreamField').style.display = isL1Plan ? 'none' : '';
+  document.getElementById('itemCategoryField').style.display = isL1Plan ? 'none' : '';
+  document.getElementById('itemMilestonesField').style.display = isL1Plan ? 'none' : '';
   // Actual completion date and Dependency are hidden outright for a
   // still-Pending item — an explicit user request. Neither is meaningful
   // yet: the item hasn't been scope-assigned to a real workstream/category
@@ -6029,23 +5137,7 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   document.getElementById('itemDependencyField').style.display = stillPending ? 'none' : '';
   populateWorkstreamSelect(it ? it.workstreamId : (presetWorkstreamId || (workstreams[0] && workstreams[0].id)), undefined, !!(it && it.workstreamId == null));
   const defaultCategoryId = categories[0].id;
-  if (!isJourneyLike) populateCategorySelect(it ? it.categoryId : defaultCategoryId);
-  // A scope item connected to a Sub Journey (see toggleJourneyConnection())
-  // carries a read-only backlink to it, and a Sub Journey itself carries the
-  // same kind of read-only backlink up to its own parent Journey
-  // (parentJourneyId, set once at creation — see
-  // saveSubJourneyQuickAddItem()) — shown here, never editable, since
-  // neither link is something this modal is meant to change (the connect
-  // modal is the only thing that ever sets a scope item's journeyId; a Sub
-  // Journey's parentJourneyId is never reassigned at all once created).
-  const sourceJourney = it && it.itemType === 'scope' && it.journeyId ? items.find(i => i.id === it.journeyId)
-    : it && it.itemType === 'subjourney' && it.parentJourneyId ? items.find(i => i.id === it.parentJourneyId)
-    : null;
-  document.getElementById('itemJourneyLinkField').style.display = sourceJourney ? '' : 'none';
-  if (sourceJourney) {
-    document.getElementById('itemJourneyLinkLabel').textContent = it.itemType === 'subjourney' ? 'From Journey' : 'From Sub Journey';
-    document.getElementById('itemJourneyLinkBadge').textContent = sourceJourney.name;
-  }
+  populateCategorySelect(it ? it.categoryId : defaultCategoryId);
   document.getElementById('itemNameInput').value = it ? it.name : '';
   document.getElementById('itemStartInput').value = it ? it.startDate : todayStr();
   document.getElementById('itemDueInput').value = it ? it.dueDate : todayStr();
@@ -6060,7 +5152,7 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   // hand-edited file) — the checkbox driving that toggle is itself hidden
   // here, so nothing should be able to show this field regardless.
   if (stillPending) document.getElementById('itemDependencySpocField').style.display = 'none';
-  editingMilestones = isJourneyLike ? [] : it
+  editingMilestones = it
     ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable }))
     : milestonesForCategory(defaultCategoryId, document.getElementById('itemDueInput').value);
   renderMilestonesEditor();
@@ -6068,10 +5160,8 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   // just not to change or save anything. Disabling every field (rather than
   // omitting the modal entirely) is what makes "view only" actually mean you
   // can still read everything, same spirit as Plan dates/tags/status on the
-  // row itself. A Journey/Sub Journey uses canManageJourneys() instead of the
-  // plain hasRole('editor') an ordinary item uses — see itemRowHtml()'s own
-  // editable and canManageJourneys()'s comment near ROLES above.
-  const editable = isJourneyLike ? canManageJourneys() : hasRole('editor');
+  // row itself.
+  const editable = hasRole('editor');
   document.getElementById('itemDeleteBtn').style.display = (it && editable) ? 'inline-flex' : 'none';
   ['itemNameInput', 'itemStartInput', 'itemDueInput', 'itemActualInput', 'itemWorkstreamSelect', 'itemCategorySelect', 'itemStatusSelect', 'itemDependencyInput', 'itemDependencySpocInput'].forEach(id => {
     document.getElementById(id).disabled = !editable;
@@ -6210,21 +5300,8 @@ function toggleEditingMilestoneNotApplicable(idx) {
 // reads itemDueInput's value as a newly re-seeded milestone's default due date.
 function updateItemStatusFieldMode() {
   const hasMilestones = editingMilestones.length > 0;
-  // A Journey/Sub Journey's Status field, like its Plan dates just below,
-  // switches to the same read-only computed badge — an explicit user
-  // request ("Journey should calculate their status based on the status of
-  // the included scope items"), reversing the earlier "stays a plain manual
-  // dropdown" stance now that computing one from connected items was
-  // actually asked for, and carried over unchanged to the Sub Journey level
-  // once it was added. See computeJourneyStatus()'s/
-  // computeSubJourneyStatus()'s own comments for why neither is ever
-  // persisted onto its own `status` field either, mirroring
-  // computeJourneyDateRange()/computeSubJourneyDateRange() exactly.
-  const isJourney = editingItemType === 'journey';
-  const isSubJourney = editingItemType === 'subjourney';
-  const showComputedStatus = hasMilestones || isJourney || isSubJourney;
-  document.getElementById('itemStatusSelect').style.display = showComputedStatus ? 'none' : '';
-  document.getElementById('itemStatusComputed').style.display = showComputedStatus ? '' : 'none';
+  document.getElementById('itemStatusSelect').style.display = hasMilestones ? 'none' : '';
+  document.getElementById('itemStatusComputed').style.display = hasMilestones ? '' : 'none';
   if (hasMilestones) {
     const computed = computedStatusFromMilestones(editingMilestones);
     // Same computed "Completed Late" override as everywhere else (see
@@ -6236,34 +5313,9 @@ function updateItemStatusFieldMode() {
     badge.textContent = late ? 'Completed Late' : statusLabel(computed);
     badge.style.background = `var(--stat-${computed}-bg)`;
     badge.style.color = `var(--stat-${computed})`;
-  } else if (isJourney || isSubJourney) {
-    // A brand-new, not-yet-saved Journey/Sub Journey has no id to look up
-    // connections by, so it always shows the neutral "Not Started" fallback
-    // until it's actually saved — same convention computeJourneyStatus()'s/
-    // computeSubJourneyStatus()'s own null return already establishes for
-    // the "nothing connected yet" case.
-    const computed = editingItemId
-      ? ((isJourney ? computeJourneyStatus(editingItemId) : computeSubJourneyStatus(editingItemId)) || 'not-started')
-      : 'not-started';
-    const late = computed === 'complete' && editingItemId && (isJourney
-      ? connectedSubJourneys(editingItemId).some(sj => connectedScopeItems(sj.id).some(itemIsCompletedLate))
-      : connectedScopeItems(editingItemId).some(itemIsCompletedLate));
-    const badge = document.getElementById('itemStatusComputedBadge');
-    badge.textContent = late ? 'Completed Late' : statusLabel(computed);
-    badge.style.background = `var(--stat-${computed}-bg)`;
-    badge.style.color = `var(--stat-${computed})`;
   }
-  // Plan dates are still always computed for a Journey/Sub Journey too — a
-  // Sub Journey's from its own connectedScopeItems()'s aggregated
-  // milestones (computeSubJourneyDateRange()), a Journey's one level
-  // further removed, from its connected Sub Journeys' own ranges
-  // (computeJourneyDateRange()) — not editingMilestones either way.
-  const journeyRange = (editingItemId && (isJourney || isSubJourney))
-    ? (isJourney ? computeJourneyDateRange(editingItemId) : computeSubJourneyDateRange(editingItemId))
-    : null;
-  const showComputedDates = hasMilestones || isJourney || isSubJourney;
-  document.getElementById('itemDatesManual').style.display = showComputedDates ? 'none' : '';
-  document.getElementById('itemDatesComputed').style.display = showComputedDates ? '' : 'none';
+  document.getElementById('itemDatesManual').style.display = hasMilestones ? 'none' : '';
+  document.getElementById('itemDatesComputed').style.display = hasMilestones ? '' : 'none';
   if (hasMilestones) {
     // A null range (every milestone Pending or Not Applicable) must clear
     // the badge/hidden inputs to a real "nothing planned" state, not leave
@@ -6278,13 +5330,6 @@ function updateItemStatusFieldMode() {
     document.getElementById('itemStartInput').value = range ? range.startDate : '';
     document.getElementById('itemDueInput').value = range ? range.dueDate : '';
     document.getElementById('itemDatesComputedNote').textContent = 'Computed from the earliest and latest milestone date (due or actual)';
-  } else if (isJourney || isSubJourney) {
-    document.getElementById('itemDatesComputedBadge').textContent = journeyRange
-      ? `${fmtDateY(journeyRange.startDate)} → ${fmtDateY(journeyRange.dueDate)}`
-      : (isJourney ? 'No connected Sub Journeys yet' : 'No connected scope items yet');
-    document.getElementById('itemDatesComputedNote').textContent = isJourney
-      ? 'Computed from the date range of every connected Sub Journey'
-      : 'Computed from the latest milestone (due or actual) date across every connected scope item';
   }
 }
 function removeMilestoneRow(idx) {
@@ -6301,11 +5346,7 @@ function saveItem() {
   // Captured before closeItemModal() (below) resets editingItemType back to
   // 'scope' for the next time the modal opens.
   const savingType = editingItemType;
-  const savingJourneyLike = savingType === 'journey' || savingType === 'subjourney';
-  // A Journey/Sub Journey save is gated on canManageJourneys() (Planner or
-  // Editor+) instead of the plain requireRole('editor') an ordinary item
-  // save needs — see canManageJourneys()'s own comment near ROLES above.
-  if (!(savingJourneyLike ? requireJourneyAccess() : requireRole('editor'))) return;
+  if (!requireRole('editor')) return;
   const name = document.getElementById('itemNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
   // A still-Pending item's workstream is likewise forced to stay whatever it
@@ -6319,18 +5360,12 @@ function saveItem() {
   // populateWorkstreamSelect()) — every other option is a real workstream's
   // id, always non-empty, so this only ever converts that one sentinel back
   // to the same null every other Unassigned check in the app compares against.
-  // A Journey/Sub Journey is forced to null regardless of the (hidden)
-  // select's value — neither is ever assigned to a workstream at all (see
-  // openItemModal()'s own comment on itemWorkstreamField).
-  const workstreamId = savingJourneyLike ? null : (stillPendingOnSave ? editingItemForSave.workstreamId : (document.getElementById('itemWorkstreamSelect').value || null));
-  // Neither a Journey nor a Sub Journey has a category at all — forced to
-  // null regardless of the (hidden) select's value, same "never assigned"
-  // treatment workstreamId gets just above. A still-Pending item's category
-  // is likewise forced to stay whatever it already is, regardless of the
-  // (disabled, but defense-in-depth here too — see openItemModal()'s own
-  // comment) select's value — only applyScopeCategory() is allowed to move
-  // an item out of Pending.
-  const categoryId = savingJourneyLike ? null : (stillPendingOnSave ? editingItemForSave.categoryId : document.getElementById('itemCategorySelect').value);
+  const workstreamId = stillPendingOnSave ? editingItemForSave.workstreamId : (document.getElementById('itemWorkstreamSelect').value || null);
+  // A still-Pending item's category is forced to stay whatever it already
+  // is, regardless of the (disabled, but defense-in-depth here too — see
+  // openItemModal()'s own comment) select's value — only
+  // applyScopeCategory() is allowed to move an item out of Pending.
+  const categoryId = stillPendingOnSave ? editingItemForSave.categoryId : document.getElementById('itemCategorySelect').value;
   const manualDueDate = document.getElementById('itemDueInput').value || todayStr();
   const manualStartDate = document.getElementById('itemStartInput').value || manualDueDate;
   const actualDate = document.getElementById('itemActualInput').value || null;
@@ -6357,7 +5392,7 @@ function saveItem() {
   // Add milestone" button was removed for an existing item's checklist (see
   // "Milestone checklist" in CLAUDE.md) and onItemCategoryChange()
   // deliberately no-ops once an item exists.
-  const zeroMilestoneCategorySwitch = !!(editingItemId && !savingJourneyLike && !stillPendingOnSave
+  const zeroMilestoneCategorySwitch = !!(editingItemId && !stillPendingOnSave
     && editingItemForSave.categoryId !== categoryId && !editingItemForSave.milestones.length);
   const milestones = zeroMilestoneCategorySwitch
     ? milestonesForCategory(categoryId, editingItemForSave.dueDate)
@@ -6377,18 +5412,8 @@ function saveItem() {
   // computed from them — the Status <select> and Start/Due <input>s are only
   // read, and only shown, when there are none to compute from. See
   // "Milestone checklist" / "Item status roll-up" in CLAUDE.md for why
-  // neither has a manual override once milestones exist. A Journey/Sub
-  // Journey's own Status <select> is hidden/computed the same way (see
-  // updateItemStatusFieldMode()) — its stored `status` field is never
-  // actually displayed anywhere (computeJourneyStatus()/
-  // computeSubJourneyStatus() is what itemRowHtml()/the modal read instead),
-  // so this just leaves whatever it already was (or 'not-started' for a
-  // brand-new one) rather than reading a select the user never had a chance
-  // to change, mirroring how a Journey/Sub Journey's own stored
-  // startDate/dueDate are likewise written but never displayed.
-  const status = savingJourneyLike
-    ? (editingItemForSave ? editingItemForSave.status : 'not-started')
-    : (milestones.length ? computedStatusFromMilestones(milestones) : document.getElementById('itemStatusSelect').value);
+  // neither has a manual override once milestones exist.
+  const status = milestones.length ? computedStatusFromMilestones(milestones) : document.getElementById('itemStatusSelect').value;
   // Manual Start/Due only ever apply to a genuinely zero-milestone item — an
   // item that DOES have milestones but nothing computable among them
   // (everything Pending or Not Applicable) must end up with null dates, not
@@ -6400,7 +5425,7 @@ function saveItem() {
   const startDate = milestones.length ? (range ? range.startDate : null) : manualStartDate;
   const dueDate = milestones.length ? (range ? range.dueDate : null) : manualDueDate;
   const data = { workstreamId, categoryId, name, status, startDate, dueDate, actualDate, milestones, dependency, dependencySpoc, updatedAt: Date.now() };
-  // Switching an existing (non-Pending, non-Journey) item's category away
+  // Switching an existing (non-Pending) item's category away
   // from whatever it already was is destructive whenever it currently has
   // real milestones — an explicit user request ("if I change the category
   // of a scope item which had already a category, with its respective
@@ -6419,7 +5444,7 @@ function saveItem() {
   // with zero milestones has nothing to lose, so it already silently picked
   // up the new category's template above instead (no confirm needed) — see
   // `zeroMilestoneCategorySwitch`'s own comment.
-  if (editingItemId && !savingJourneyLike && !stillPendingOnSave && editingItemForSave.categoryId !== categoryId && editingItemForSave.milestones.length) {
+  if (editingItemId && !stillPendingOnSave && editingItemForSave.categoryId !== categoryId && editingItemForSave.milestones.length) {
     const newCat = categoryById(categoryId);
     const freshMilestones = milestonesForCategory(categoryId, editingItemForSave.dueDate);
     // freshMilestones come straight from milestonesForCategory(), which
@@ -6488,19 +5513,13 @@ function saveItem() {
     // to sort it — everything after that is only ever touched by dragging
     // (see reorderItem()). itemType is the same shape again: fixed at
     // creation from editingItemType, never part of `data`, so re-saving an
-    // existing item (Journey, Sub Journey, or scope) through this modal can
-    // never flip its type. journeyId stays null here — a scope item only
-    // ever gets one via toggleJourneyConnection(), never through this
-    // modal. parentJourneyId likewise stays null — in practice a brand-new
-    // Sub Journey is never created through this modal at all (see
-    // saveSubJourneyQuickAddItem(), the only path that ever sets one), so
-    // there's no source to read it from here even defensively.
+    // existing item through this modal can never flip its type.
     const order = items.filter(i => i.workstreamId === workstreamId).length;
-    savedItem = Object.assign({ id: genId(), itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', itemType: savingJourneyLike ? savingType : 'scope', journeyId: null, parentJourneyId: null, order }, data);
+    savedItem = Object.assign({ id: genId(), itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', itemType: 'scope', order }, data);
     items.push(savedItem);
   }
   save(); closeItemModal(); render();
-  showToast(savingType === 'journey' ? 'Journey saved' : savingType === 'subjourney' ? 'Sub Journey saved' : 'Item saved');
+  showToast('Item saved');
   // Covers the (rarer) path where a Pending item's milestone is flipped to
   // Complete via this full modal's dropdown rather than the board's inline
   // cycleMilestoneStatus() — same trigger, same guard against re-firing.
@@ -6541,14 +5560,12 @@ function cancelInlineQuickAdd() {
 // input a second time), so the guard below is load-bearing, not defensive
 // dead code: whichever call runs first flips the flag and does the real
 // work; the second sees it already closed and returns immediately.
-// itemType/journeyId are stamped explicitly here (rather than left for
+// itemType is stamped explicitly here (rather than left for
 // normalizeData()'s own backfill to fill in on the next load) — a
-// user-reported bug traced this omission to a freshly quick-added item
-// being invisible in the Journey "Connect scope items" picker
-// (renderJourneyConnectList()'s candidates filter checks itemType ===
-// 'scope' rather than the more defensive !== 'journey' every other
-// itemType check in this file uses) for the rest of that session, since
-// nothing re-runs normalizeData() between saves.
+// user-reported bug traced a missing stamp here to a freshly quick-added
+// item being invisible in a connect-modal picker's own itemType-filtered
+// candidates list for the rest of that session, since nothing re-runs
+// normalizeData() between saves.
 function saveInlineQuickAddItem() {
   if (!unassignedQuickAddOpen) return;
   unassignedQuickAddOpen = false;
@@ -6566,7 +5583,7 @@ function saveInlineQuickAddItem() {
   const range = computedDateRangeFromMilestones(milestones);
   const order = items.filter(i => i.workstreamId == null).length;
   items.push({
-    id: genId(), workstreamId: null, categoryId: cat.id, name, itemType: 'scope', journeyId: null,
+    id: genId(), workstreamId: null, categoryId: cat.id, name, itemType: 'scope',
     status: computedStatusFromMilestones(milestones), actualDate: null,
     startDate: range ? range.startDate : null, dueDate: range ? range.dueDate : null,
     milestones, itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
@@ -6677,108 +5694,12 @@ function applyScopeCategory(itemId, workstreamId, categoryId) {
   showToast('Category assigned');
 }
 
-// ---------- Journey quick-add ----------
-// Mirrors openInlineQuickAdd()/cancelInlineQuickAdd()/saveInlineQuickAddItem()
-// (the Unassigned section's own name-only inline capture) exactly, down to
-// the double-fire guard against onblur re-triggering after Enter/Escape
-// already handled the same keystroke — an explicit user request to make the
-// two consistent, replacing the full item modal renderJourneys()'s own
-// "+ Add Journey" button used to open. A Journey genuinely has nothing else
-// worth asking for up front (no workstream, no category, no milestones —
-// see "Journeys" in CLAUDE.md), so the modal was never doing more here than
-// collecting a name; this just skips opening it.
-function openJourneyQuickAdd() {
-  if (!requireJourneyAccess()) return;
-  journeyQuickAddOpen = true;
-  render();
-  document.getElementById('journeyQuickAddInput')?.focus();
-}
-function cancelJourneyQuickAdd() {
-  journeyQuickAddOpen = false;
-  render();
-}
-// Builds the same shape saveItem()'s own Journey-creation branch does
-// (itemType:'journey', workstreamId/categoryId forced null, no milestones,
-// default green tags, 'not-started' status — see saveItem()'s own comment
-// on why itStatus/businessStatus/budgetStatus/itemType/order are never part
-// of the shared `data` object) — order is computed the same
-// `items.filter(i => i.workstreamId === null).length` way saveItem() does
-// for a Journey too, so a Journey created here sits at the same relative
-// position a modal-created one would have.
-function saveJourneyQuickAddItem() {
-  if (!journeyQuickAddOpen) return;
-  journeyQuickAddOpen = false;
-  const name = (document.getElementById('journeyQuickAddInput').value || '').trim();
-  if (!name) { render(); return; } // blurring/Enter with nothing typed just closes it, no error
-  const today = todayStr();
-  const order = items.filter(i => i.workstreamId === null).length;
-  items.push({
-    id: genId(), workstreamId: null, categoryId: null, name,
-    status: 'not-started', startDate: today, dueDate: today, actualDate: null,
-    milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
-    itemType: 'journey', journeyId: null,
-    dependency: false, dependencySpoc: null,
-    order, updatedAt: Date.now()
-  });
-  save(); render();
-  showToast('Journey added');
-}
-
-// ---------- Sub Journey quick-add ----------
-// A Sub Journey's own counterpart to the Journey quick-add just above — the
-// only way one is ever created (there's no "+ Add Sub Journey" path through
-// the full item modal the way a brand-new scope item never has one either —
-// see "Quick-add scope items" in CLAUDE.md). Scoped per-parent-Journey via
-// subJourneyQuickAddOpenFor (the Journey's own id, or null) rather than a
-// plain boolean, since the input itself lives nested inside whichever
-// Journey's own row is expanded (itemRowHtml()'s subJourneyQuickAddHtml) —
-// unlike journeyQuickAddOpen, which only ever has one possible place to
-// render (renderJourneys()'s own single flat list).
-function openSubJourneyQuickAdd(journeyId) {
-  if (!requireJourneyAccess()) return;
-  subJourneyQuickAddOpenFor = journeyId;
-  render();
-  document.getElementById('subJourneyQuickAddInput')?.focus();
-}
-function cancelSubJourneyQuickAdd() {
-  subJourneyQuickAddOpenFor = null;
-  render();
-}
-// Builds the same shape saveJourneyQuickAddItem() does for a top-level
-// Journey (itemType forced, workstreamId/categoryId forced null, no
-// milestones, default green tags, 'not-started' status), plus its own
-// parentJourneyId linking it up to the Journey it was created under —
-// journeyId stays null here, same as it always does at creation for every
-// item type; a scope item is the only thing that ever gets one, and only
-// via toggleJourneyConnection(), never at creation.
-function saveSubJourneyQuickAddItem() {
-  const journeyId = subJourneyQuickAddOpenFor;
-  if (!journeyId) return;
-  subJourneyQuickAddOpenFor = null;
-  const name = (document.getElementById('subJourneyQuickAddInput').value || '').trim();
-  if (!name) { render(); return; } // blurring/Enter with nothing typed just closes it, no error
-  const today = todayStr();
-  const order = items.filter(i => i.workstreamId === null).length;
-  items.push({
-    id: genId(), workstreamId: null, categoryId: null, name,
-    status: 'not-started', startDate: today, dueDate: today, actualDate: null,
-    milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
-    itemType: 'subjourney', journeyId: null, parentJourneyId: journeyId,
-    dependency: false, dependencySpoc: null,
-    order, updatedAt: Date.now()
-  });
-  save(); render();
-  showToast('Sub Journey added');
-}
-
 // ---------- L1 Plan quick-add ----------
-// A name-only inline capture, the identical shape saveJourneyQuickAddItem()
-// above already uses — an L1 Plan has nothing else worth asking for up
-// front either (no workstream/category, and its milestones are always
-// hand-added afterward — see "L1 Plans" above). Editor+ throughout, not
-// requireJourneyAccess() — L1 Plans use this app's standard "restructure
-// the plan" tier, the same one workstreams/scope items/categories already
-// sit at, not the Planner-inclusive tier Journeys carve out for themselves.
+// A name-only inline capture — an L1 Plan has nothing else worth asking for
+// up front (no workstream/category, and its milestones are always
+// hand-added afterward — see "L1 Plans" above). Editor+ throughout, the
+// same "restructure the plan" tier workstreams/scope items/categories
+// already sit at.
 let l1PlanQuickAddOpen = false;
 function openL1PlanQuickAdd() {
   if (!requireRole('editor')) return;
@@ -6801,7 +5722,7 @@ function saveL1PlanQuickAdd() {
     id: genId(), workstreamId: null, categoryId: null, name,
     status: 'not-started', startDate: null, dueDate: null, actualDate: null,
     milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
-    itemType: 'l1plan', journeyId: null,
+    itemType: 'l1plan',
     dependency: false, dependencySpoc: null,
     order, updatedAt: Date.now()
   });
@@ -6810,8 +5731,10 @@ function saveL1PlanQuickAdd() {
 }
 // An L1 Plan's own milestones have no template to seed from — always
 // hand-added, one at a time, from the inline "+ Add milestone" affordance
-// itemRowHtml() renders for it (l1AddMilestoneHtml). Mirrors the Sub
-// Journey quick-add's own per-parent-id open-state shape exactly.
+// itemRowHtml() renders for it (l1AddMilestoneHtml). Scoped per-parent-plan
+// via l1MilestoneQuickAddOpenFor (the plan's own id, or null) rather than a
+// plain boolean, since the input itself lives nested inside whichever
+// plan's own row is expanded.
 function openL1MilestoneQuickAdd(planId) {
   if (!requireRole('editor')) return;
   l1MilestoneQuickAddOpenFor = planId;
@@ -6916,12 +5839,10 @@ function l1MilestoneRowsHtml(plan) {
     // Once linked, status is computed live from the linked workstream
     // milestones (see computedL1MilestoneStatus()'s own comment for why —
     // an explicit later user request reversing this feature's original
-    // "no rollup" decision) and rendered read-only, the same "computed
-    // fields aren't manually clickable" treatment Journey/Sub Journey's
-    // own status/tags already get — cycleL1MilestoneStatus() itself
-    // refuses to run against a linked milestone as defense-in-depth (see
-    // its own guard). Unlinked, it's exactly the same manual, click-to-
-    // cycle badge it's always been.
+    // "no rollup" decision) and rendered read-only, not manually
+    // clickable — cycleL1MilestoneStatus() itself refuses to run against a
+    // linked milestone as defense-in-depth (see its own guard). Unlinked,
+    // it's exactly the same manual, click-to-cycle badge it's always been.
     const computedStatus = computedL1MilestoneStatus(m.id);
     const effectiveStatus = computedStatus || m.status;
     const statusHtml = computedStatus
@@ -6971,11 +5892,9 @@ function cycleL1MilestoneStatus(planId, milestoneId) {
   if (!m) return;
   // Refuses outright once this milestone has any linked workstream
   // milestones — its status is computed live from those (see
-  // computedL1MilestoneStatus()), not manually cycled, the same "computed
-  // fields aren't user-editable" rule Journey/Sub Journey's own status/
-  // tags already enforce. Defense-in-depth behind l1MilestoneRowsHtml()
-  // itself never rendering a clickable button for a linked milestone in
-  // the first place.
+  // computedL1MilestoneStatus()), not manually cycled. Defense-in-depth
+  // behind l1MilestoneRowsHtml() itself never rendering a clickable button
+  // for a linked milestone in the first place.
   if (computedL1MilestoneStatus(milestoneId)) return;
   const idx = STATUSES.findIndex(s => s.id === m.status);
   m.status = STATUSES[(idx + 1) % STATUSES.length].id;
@@ -6985,9 +5904,7 @@ function cycleL1MilestoneStatus(planId, milestoneId) {
   // itemRowHtml() reads computeL1PlanStatus() live for display instead
   // (an L1 Plan's own status can also depend on a *linked* milestone's own
   // computed value, which this stored field alone can't reflect — see
-  // that function's own comment), but harmless to keep in sync anyway,
-  // the same "orphaned-but-accurate field" stance this app already takes
-  // for a Journey/Sub Journey's own never-read `status`.
+  // that function's own comment), but harmless to keep in sync anyway.
   plan.status = computedStatusFromMilestones(plan.milestones);
   plan.updatedAt = Date.now();
   save(); render();
@@ -7033,100 +5950,13 @@ function removeL1Milestone(planId, milestoneId) {
   save(); render();
 }
 
-// ---------- Journey connect ----------
-// A Sub Journey (the only level a scope item ever connects to — see
-// "Journeys" in CLAUDE.md) has no milestones and nothing of its own to
-// trigger a modal from — connecting it to existing scope items is a plain,
-// standing action instead, reached via its own row's link icon
-// (itemRowHtml()'s connectBtnHtml, rendered only for a Sub Journey since a
-// top-level Journey no longer connects to scope items directly). Unlike the
-// item modal's own "detached working copy, committed on Save" editors, this
-// one writes straight to `items` the moment a checkbox is toggled — there's
-// no natural "row" to stage here (the list itself is just every existing
-// scope item), and each toggle is trivially reversible by unchecking again,
-// so there's nothing a deferred commit would actually protect against.
-// Names here (journeyConnectItemId, openJourneyConnectModal(), ...) predate
-// the Sub Journey level and still say "journey" throughout, but every one
-// of them now only ever operates on a Sub Journey's own id, never a
-// top-level Journey's — kept as-is rather than renamed wholesale, the same
-// "internal name doesn't need to track a display-only relabel" precedent
-// Admin/Settings mode already sets (see "Categories (Admin mode)" in
-// CLAUDE.md).
-let journeyConnectItemId = null;
-function openJourneyConnectModal(subJourneyId) {
-  if (!requireJourneyAccess()) return;
-  const subJourney = items.find(i => i.id === subJourneyId);
-  if (!subJourney) return;
-  journeyConnectItemId = subJourneyId;
-  document.getElementById('journeyConnectModalTitle').textContent = `Connect scope items to Sub Journey "${subJourney.name}"`;
-  renderJourneyConnectList();
-  document.getElementById('journeyConnectModalBg').classList.add('open');
-}
-function closeJourneyConnectModal() {
-  document.getElementById('journeyConnectModalBg').classList.remove('open');
-  journeyConnectItemId = null;
-}
-// Grouped by workstream (plus Unassigned), the same visual structure
-// Planning's own status board uses, so the picker reads familiarly rather
-// than as an undifferentiated flat list. A scope item already claimed by a
-// *different* Sub Journey is left off entirely — connecting it here would
-// silently steal it from wherever it already belongs. The candidates check
-// excludes both `itemType === 'journey'` and `'subjourney'`, rather than
-// checking `=== 'scope'` — a user-reported bug (some available scope items
-// weren't showing up here) traced to the stricter `=== 'scope'` check
-// excluding any item whose `itemType` hasn't been backfilled yet (only
-// normalizeData(), run on load/merge/import, ever does that — see "Data
-// integrity" in CLAUDE.md), most visibly a scope item quick-added via
-// openInlineQuickAdd() earlier in the same session. Every other itemType
-// check in this file already uses the same defensive `!==` form
-// (unassignedItemsSorted(), buildScopeItemsSheet()) for exactly this
-// reason.
-function renderJourneyConnectList() {
-  const subJourneyId = journeyConnectItemId;
-  const candidates = items.filter(it => it.itemType !== 'journey' && it.itemType !== 'subjourney' && it.itemType !== 'l1plan' && (it.journeyId == null || it.journeyId === subJourneyId));
-  if (!candidates.length) {
-    document.getElementById('journeyConnectList').innerHTML = `<p style="color:var(--text-faint);font-size:13px;margin:0">No available scope items yet.</p>`;
-    return;
-  }
-  const groups = workstreams.map(w => ({ id: w.id, name: w.name }));
-  groups.push({ id: null, name: 'Unassigned' });
-  const sections = groups.map(g => {
-    const wsItems = candidates.filter(it => it.workstreamId === g.id);
-    if (!wsItems.length) return '';
-    return `<div class="journey-connect-ws-group">
-        <div class="journey-connect-ws-label">${esc(g.name)}</div>
-        ${wsItems.map(it => `
-          <label class="journey-connect-row">
-            <input type="checkbox" ${it.journeyId === subJourneyId ? 'checked' : ''} onchange="toggleJourneyConnection('${it.id}', this.checked)">
-            <span>${esc(it.name)}</span>
-          </label>`).join('')}
-      </div>`;
-  }).join('');
-  document.getElementById('journeyConnectList').innerHTML = sections;
-}
-function toggleJourneyConnection(itemId, checked) {
-  if (!requireJourneyAccess()) return;
-  if (!journeyConnectItemId) return;
-  const it = items.find(i => i.id === itemId);
-  if (!it) return;
-  it.journeyId = checked ? journeyConnectItemId : null;
-  it.updatedAt = Date.now();
-  save(); render();
-  // render() only redraws the Journeys/Planning views underneath — this
-  // modal's own list is redrawn separately so the checkbox states (and, if
-  // a different Journey's item just got excluded, the candidate list
-  // itself) stay current while the modal is still open.
-  renderJourneyConnectList();
-}
-
 // ---------- L1 Plan connect ----------
-// journeyConnectModalBg's own counterpart, one level deeper — candidates
-// are individual milestones, not whole scope items, and (given the much
-// larger candidate volume — every milestone across every item, not just
-// every item) with a plain text search added to narrow the list. Like
-// toggleJourneyConnection(), this writes straight to `items` the moment a
-// checkbox changes — no detached working copy, no explicit Save — each
-// toggle is trivially reversible by unchecking again.
+// Candidates are individual milestones, not whole scope items, and (given
+// the much larger candidate volume — every milestone across every item, not
+// just every item) with a plain text search added to narrow the list. This
+// writes straight to `items` the moment a checkbox changes — no detached
+// working copy, no explicit Save — each toggle is trivially reversible by
+// unchecking again.
 let l1ConnectPlanId = null;
 let l1ConnectMilestoneId = null;
 function openL1ConnectModal(planId, milestoneId) {
@@ -7146,16 +5976,11 @@ function closeL1ConnectModal() {
   l1ConnectMilestoneId = null;
 }
 // Grouped by workstream (plus Unassigned), then by scope item within each —
-// a milestone alone doesn't say which item it belongs to, unlike
-// renderJourneyConnectList()'s own single-level grouping. A milestone
-// already claimed by a *different* L1 milestone is excluded entirely, the
-// same "connecting it here would silently steal it from wherever it
-// already belongs" reasoning that function's own exclusion already
-// documents. An L1 Plan's own milestones never appear as candidates (an L1
-// milestone doesn't link to another L1 milestone) — Journeys/Sub Journeys
-// never contribute anything here either, simply because neither ever has
-// real milestones to begin with (see "Journeys" above), so no explicit
-// exclusion is needed for those two the way it is for itemType:'l1plan'.
+// a milestone alone doesn't say which item it belongs to. A milestone
+// already claimed by a *different* L1 milestone is excluded entirely —
+// connecting it here would silently steal it from wherever it already
+// belongs. An L1 Plan's own milestones never appear as candidates (an L1
+// milestone doesn't link to another L1 milestone).
 function renderL1ConnectList() {
   const milestoneId = l1ConnectMilestoneId;
   if (!milestoneId) return;
@@ -7238,14 +6063,7 @@ function reorderItem(fromId, targetId) {
   const dragged = items.find(i => i.id === fromId);
   const target = items.find(i => i.id === targetId);
   if (!dragged || !target) return;
-  // Dragging a Journey/Sub Journey row is gated on canManageJourneys()
-  // (Planner or Editor+) instead of the plain requireRole('editor') dragging
-  // an ordinary item needs — see canManageJourneys()'s own comment near
-  // ROLES above. The dragged item's own type decides which check applies;
-  // it and the drop target always share a type in practice, since a drag
-  // is already scoped to one .journeys-list or one Planning section.
-  const isJourneyLike = dragged.itemType === 'journey' || dragged.itemType === 'subjourney';
-  if (!(isJourneyLike ? requireJourneyAccess() : requireRole('editor'))) return;
+  if (!requireRole('editor')) return;
   if (dragged.workstreamId !== target.workstreamId) return;
   const wsItems = items.filter(i => i.workstreamId === dragged.workstreamId).sort((a, b) => a.order - b.order);
   const fromIdx = wsItems.findIndex(i => i.id === fromId);
@@ -7323,11 +6141,7 @@ function deleteItemFromModal() {
 function deleteItem(id) {
   const it = items.find(i => i.id === id);
   if (!it) return;
-  // A Journey/Sub Journey delete is gated on canManageJourneys() (Planner or
-  // Editor+) instead of the plain requireRole('editor') an ordinary item
-  // delete needs — see canManageJourneys()'s own comment near ROLES above.
-  const isJourneyLike = it.itemType === 'journey' || it.itemType === 'subjourney';
-  if (!(isJourneyLike ? requireJourneyAccess() : requireRole('editor'))) return;
+  if (!requireRole('editor')) return;
   openConfirmModal({
     title: `Delete "${it.name}"?`,
     body: 'You can undo this from the toast right after deleting.',
@@ -9420,42 +8234,7 @@ function renderAdmin() {
           </div>`;
       }).join('')}
     </div>
-    ${featuresSectionHtml()}
     ${rolePasswordsSectionHtml()}`;
-}
-// Admin-only — an explicit user request ("as an admin, allow me to hide
-// the journey feature"). Unlike Role Passwords just below (which needs a
-// real modal, since it edits sensitive hashed values across a multi-field
-// form that re-rendering mid-type would otherwise wipe out), a single
-// boolean with nothing sensitive in it is safe to edit with a plain
-// checkbox living directly in this section — its checked state is fully
-// re-derivable from `programme.hideJourneys` on every render, so there's no
-// in-progress input to lose the way a live text field would have.
-function featuresSectionHtml() {
-  if (!hasRole('admin')) return '';
-  return `
-    <div class="admin-header" style="margin-top:24px">
-      <h2>Features</h2>
-    </div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-      <input type="checkbox" ${programme.hideJourneys ? 'checked' : ''} onchange="toggleHideJourneys()">
-      Hide Journeys feature
-    </label>
-    <p style="margin-top:4px;color:var(--text-faint);font-size:12px">Removes the Journeys sub-tab from Planning for everyone. Existing Journey/Sub Journey data is kept, not deleted — turn this back off to see it again.</p>`;
-}
-// Forces planningTab back to 'scope' when hiding while it's currently
-// showing — otherwise an Admin hiding the tab out from under themselves
-// (or a teammate whose synced copy picks up the change) would be left on a
-// sub-tab with no button left to reach it, since setPlanningTab('journeys')
-// is now unreachable through the UI. Never reversed the other direction —
-// turning the feature back on doesn't need to force anyone *onto*
-// Journeys, only ever needs to guarantee no one gets stranded *on* it.
-function toggleHideJourneys() {
-  if (!requireRole('admin')) return;
-  programme.hideJourneys = !programme.hideJourneys;
-  programme.updatedAt = Date.now();
-  if (programme.hideJourneys && mode === 'planning' && planningTab === 'journeys') planningTab = 'scope';
-  save(); render();
 }
 // Admin-only (both to view and to manage) — a Reviewer/Editor able to see
 // *which* roles are password-protected, even without the passwords
@@ -9477,7 +8256,7 @@ function rolePasswordsSectionHtml() {
       <h2>Role Passwords</h2>
       <button class="btn btn-primary" onclick="openRolePasswordsModal()"><i class="fa-solid fa-key"></i> Manage</button>
     </div>
-    <p style="margin-bottom:16px">Optional per-role password required to switch into Planner, Reviewer, Editor, or Admin from the role picker. ${set.length ? `Currently set for: ${set.map(r => esc(ROLE_META[r].label)).join(', ')}.` : 'No passwords set yet — anyone can switch to any role.'}</p>`;
+    <p style="margin-bottom:16px">Optional per-role password required to switch into Reviewer, Editor, or Admin from the role picker. ${set.length ? `Currently set for: ${set.map(r => esc(ROLE_META[r].label)).join(', ')}.` : 'No passwords set yet — anyone can switch to any role.'}</p>`;
 }
 // Plain text inputs, not type="password" — this is an Admin setting the
 // values (not someone else entering one to unlock a role, which does mask
@@ -9488,14 +8267,13 @@ function rolePasswordsSectionHtml() {
 // one set; the placeholder says which state it's actually in instead.
 function openRolePasswordsModal() {
   if (!requireRole('admin')) return;
-  ['planner', 'reviewer', 'editor', 'admin'].forEach(role => {
+  ['reviewer', 'editor', 'admin'].forEach(role => {
     const input = document.getElementById(`rolePassword${role[0].toUpperCase()}${role.slice(1)}Input`);
     input.value = '';
     input.placeholder = programme.rolePasswords[role] ? 'Currently set — type a new password to change it' : 'No password set — type one to require it';
   });
   // Admin has no clear checkbox at all (see saveRolePasswords()) — nothing
   // to reset here for it.
-  document.getElementById('rolePasswordPlannerClear').checked = false;
   document.getElementById('rolePasswordReviewerClear').checked = false;
   document.getElementById('rolePasswordEditorClear').checked = false;
   document.getElementById('rolePasswordsModalBg').classList.add('open');
@@ -9503,7 +8281,7 @@ function openRolePasswordsModal() {
 function closeRolePasswordsModal() {
   document.getElementById('rolePasswordsModalBg').classList.remove('open');
 }
-// Planner/Reviewer/Editor can be freely turned on and off: the "Remove" checkbox
+// Reviewer/Editor can be freely turned on and off: the "Remove" checkbox
 // wins outright (drops the password requirement back to null, regardless
 // of anything typed alongside it), a non-blank field hashes and replaces
 // the password, and a blank field with "Remove" unchecked leaves the
@@ -9541,7 +8319,6 @@ async function saveRolePasswords() {
       programme.rolePasswordsUpdatedAt[role] = Date.now();
     }
   }
-  await applyOne('planner', 'rolePasswordPlannerInput', 'rolePasswordPlannerClear');
   await applyOne('reviewer', 'rolePasswordReviewerInput', 'rolePasswordReviewerClear');
   await applyOne('editor', 'rolePasswordEditorInput', 'rolePasswordEditorClear');
   await applyOne('admin', 'rolePasswordAdminInput', null);
@@ -9875,14 +8652,13 @@ function buildScopeItemsSheet(wb) {
   // own manual order, same as the status board.
   const sections = [{ id: null, name: 'Unassigned' }, ...workstreams.slice().sort((a, b) => a.order - b.order)];
   sections.forEach(w => {
-    // A Journey/Sub Journey/L1 Plan also has workstreamId:null (see
-    // "Journeys"/"L1 Plans" above), but none of the three is ever a scope
-    // item — excluded here the same way unassignedItemsSorted() excludes
-    // all three from the Unassigned bucket on Planning's own board. Since
+    // An L1 Plan also has workstreamId:null (see "L1 Plans" above), but it's
+    // never a scope item — excluded here the same way unassignedItemsSorted()
+    // excludes it from the Unassigned bucket on Planning's own board. Since
     // w.id is null for the synthetic "Unassigned" section itself, this one
     // filter line covers both that case and every real workstream's own
     // section.
-    const wItems = items.filter(it => it.workstreamId === w.id && it.itemType !== 'journey' && it.itemType !== 'subjourney' && it.itemType !== 'l1plan').sort((a, b) => a.order - b.order);
+    const wItems = items.filter(it => it.workstreamId === w.id && it.itemType !== 'l1plan').sort((a, b) => a.order - b.order);
     wItems.forEach(it => {
       const cat = categoryById(it.categoryId);
       const row = sheet.addRow({
@@ -10425,8 +9201,7 @@ function mergeMilestonesArray(existingList, incomingList, respectTombstones) {
 // The identical fix was extended to mergeMilestonesArray() (an item's own
 // milestones) and mergeData()'s own items pass right after this was
 // diagnosed — same purely-additive gap, same fix shape, once it turned out
-// to affect scope items (and Journeys/Sub Journeys, which are just items
-// with workstreamId:null) too, not only Action Log/Decision Log.
+// to affect scope items too, not only Action Log/Decision Log.
 function mergeKeyedRecords(existingList, incomingList, keyField, tombstones, respectTombstones) {
   let changed = false;
   let merged = existingList.map(r => ({ ...r }));
@@ -10577,17 +9352,9 @@ function mergeWorkstreamFields(existing, incoming, respectTombstones) {
 // isFreshLocalState() — which only ever fires for a genuinely untouched,
 // brand-new install (see that function's own comment). Once a device has
 // any real data of its own, an incoming programme change — a role password
-// set on a different device, a rename, a hideJourneys toggle — was simply
-// never applied through the ordinary link/reconnect/poll/write-time merge
-// cycle at all, so it stayed permanently stuck at whatever this device's
-// own copy already had.
-//
-// name/hideJourneys are plain scalars sharing one `updatedAt`, the same
-// "one scalar pair, newer overall updatedAt wins for both together"
-// coarser treatment mergeWorkstreamFields() already gives a workstream's
-// own name/color — programme.name changes rarely, and hideJourneys is a
-// single admin-only toggle, so genuinely concurrent edits to either are
-// not worth a finer-grained merge of their own.
+// set on a different device, a rename — was simply never applied through
+// the ordinary link/reconnect/poll/write-time merge cycle at all, so it
+// stayed permanently stuck at whatever this device's own copy already had.
 //
 // rolePasswords gets real per-role granularity instead, via a companion
 // `rolePasswordsUpdatedAt` map (one timestamp per role, independent of
@@ -10607,7 +9374,6 @@ function mergeProgramme(existing, incoming) {
   let changed = false;
   if ((incoming.updatedAt || 0) > (existing.updatedAt || 0)) {
     if (incoming.name !== undefined) existing.name = incoming.name;
-    if (typeof incoming.hideJourneys === 'boolean') existing.hideJourneys = incoming.hideJourneys;
     existing.updatedAt = incoming.updatedAt;
     changed = true;
   }
@@ -10735,11 +9501,9 @@ function mergeData(data, opts) {
   let added = 0, updated = 0;
   // The same purely-additive gap mergeKeyedRecords()/mergeMilestonesArray()
   // had (see their own comments) — an item already known locally that's
-  // simply absent from data.items (deleted+tombstoned elsewhere — including
-  // a Journey/Sub Journey, which is just an item with workstreamId:null,
-  // not a structurally distinct concept the merge logic knows about) was
-  // never swept, only ever protected against being re-added by a stale
-  // incoming copy. Runs globally, not just against whatever this call's
+  // simply absent from data.items (deleted+tombstoned elsewhere) was never
+  // swept, only ever protected against being re-added by a stale incoming
+  // copy. Runs globally, not just against whatever this call's
   // own data.items happens to cover — safe regardless of how partial that
   // set is (e.g. scanAndMergeStrayFiles()'s own single-workstream-scoped
   // wrapped merge), since it only ever removes an item whose own tombstone
@@ -10839,11 +9603,9 @@ function slugify(name) {
 // "File System Access API sync" in CLAUDE.md).
 function wsFileName(id, name) { return `pulse-ws-${slugify(name)}-${id.slice(-6)}.json`; }
 // The index file: programme-wide/structural data plus anything that doesn't
-// belong to exactly one workstream — Unassigned scope items and every
-// Journey/Sub Journey (itemType 'journey'/'subjourney', always
-// workstreamId:null by design — see "Journeys" in CLAUDE.md), since neither
-// is owned by a single workstream file. workstreams here is metadata only
-// (id/name/color/order/updatedAt) — actionLog/decisionLog live in each
+// belong to exactly one workstream — Unassigned scope items, since none of
+// them are owned by a single workstream file. workstreams here is metadata
+// only (id/name/color/order/updatedAt) — actionLog/decisionLog live in each
 // workstream's own file instead (see buildWorkstreamPayload()), so a
 // meeting-minutes edit on one workstream never touches this file. All four
 // tombstone lists stay here too, not split per-workstream — see CLAUDE.md
@@ -11045,7 +9807,7 @@ function clearSyncConflictLog() {
 //
 // Editor+ only — an explicit user request. syncConflictLog itself keeps
 // accumulating regardless of the current role (a conflict can happen while
-// a Visitor/Planner/Reviewer is looking, and shouldn't be silently lost —
+// a Visitor/Reviewer is looking, and shouldn't be silently lost —
 // it's just not worth surfacing to a role that can't act on it), so this is
 // purely a display gate, the same "log everything, gate what's shown"
 // split reportSyncConflicts()'s own toast just below uses. Called
@@ -11204,7 +9966,7 @@ function reportSyncConflicts(conflicts) {
   const now = Date.now();
   syncConflictLog.push(...conflicts.map(c => ({ ...c, at: now })));
   updateSyncConflictsUI();
-  // Editor+ only, matching the badge/modal — a Visitor/Planner/Reviewer
+  // Editor+ only, matching the badge/modal — a Visitor/Reviewer
   // can't act on this (openSyncConflictsModal() is Editor+-gated), so a
   // toast advertising it would just be a dead-end interruption, the same
   // "don't prompt a role that has nothing to do here" reasoning
@@ -12024,7 +10786,7 @@ function closeFileSyncModal() {
 // daily backups aren't supported at all (matches updateBackupSyncUI()'s own
 // gating), a folder's already chosen, or — an explicit user request,
 // matching chooseBackupFolder()'s own Editor+ gate — the current role can't
-// act on it anyway; prompting a Visitor/Planner/Reviewer to pick a folder
+// act on it anyway; prompting a Visitor/Reviewer to pick a folder
 // they have no permission to actually set would just be a dead-end modal.
 // This one role check is also what makes the modal it opens (see
 // backupFolderModalBg's own HTML comment) safely mandatory for exactly
@@ -12067,7 +10829,6 @@ document.addEventListener('click', (e) => {
 document.getElementById('wsModalBg').addEventListener('click', (e) => { if (e.target.id === 'wsModalBg') closeWorkstreamModal(); });
 document.getElementById('itemModalBg').addEventListener('click', (e) => { if (e.target.id === 'itemModalBg') closeItemModal(); });
 document.getElementById('categoryModalBg').addEventListener('click', (e) => { if (e.target.id === 'categoryModalBg') closeCategoryModal(); });
-document.getElementById('journeyConnectModalBg').addEventListener('click', (e) => { if (e.target.id === 'journeyConnectModalBg') closeJourneyConnectModal(); });
 document.getElementById('l1ConnectModalBg').addEventListener('click', (e) => { if (e.target.id === 'l1ConnectModalBg') closeL1ConnectModal(); });
 document.getElementById('minutesModalBg').addEventListener('click', (e) => { if (e.target.id === 'minutesModalBg') closeMinutesModal(); });
 document.getElementById('confirmModalBg').addEventListener('click', (e) => { if (e.target.id === 'confirmModalBg') closeConfirmModal(); });
@@ -12086,7 +10847,7 @@ document.getElementById('helpModalBg').addEventListener('click', (e) => { if (e.
 document.getElementById('aboutModalBg').addEventListener('click', (e) => { if (e.target.id === 'aboutModalBg') closeAboutModal(); });
 document.getElementById('rolePasswordsModalBg').addEventListener('click', (e) => { if (e.target.id === 'rolePasswordsModalBg') closeRolePasswordsModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeJourneyConnectModal(); closeL1ConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeL1ConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
 });
 
 // A user-reported bug on some Chrome/Safari + macOS combinations: a modal's
