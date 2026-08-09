@@ -782,33 +782,44 @@
      .milestone-header/.milestone-sub-row have), so the indent is baked
      straight into the base rule rather than needing its own conditional
      indent class.
-     The trailing Actions column is 56px — an explicit user request
-     ("align all action columns (L1 plan, L1 milestone, connected
-     milestones)") to match the shared --item-grid-cols Actions column's
-     own 56px exactly, so an L1 Plan's own row (Drag/Edit/Delete, via
-     itemRowHtml()'s .item-actions), this row's own actions (Connect/
-     Delete, via .l1-milestone-actions below), and .l1-linked-row's own
-     reserved-but-currently-empty action column (see further below) all
-     end at the identical x-position — since every one of these rows
-     shares the same 20px padding-right, a matching trailing column width
-     is what actually makes their right edges line up regardless of
-     nesting depth/indent.
+     Status is 100px and the trailing Actions column is 120px — an
+     explicit user request ("align all action columns (L1 plan, L1
+     milestone, connected milestones)", then a follow-up "actions are
+     still ot aligned, also status of l1" once the first attempt turned
+     out wrong). The first attempt matched these two against the *default*
+     --item-grid-cols values (Status 100px, Actions 56px) — but an L1
+     Plan's own row actually renders inside renderL1Plans()'s own
+     `<div class="ws-section journeys-list">` wrapper, which overrides
+     --item-grid-cols to a *different* set of widths for its own Actions
+     column specifically (120px, not 56px — see the .journeys-list rule
+     itself, and "Column layout is a real CSS grid" in CLAUDE.md for why
+     Journeys needed its own override in the first place). Status's own
+     100px width happens to be identical in both the default and the
+     .journeys-list override, so that part was never actually the problem;
+     Actions was. Both are now matched against the real, live values an L1
+     Plan's own row actually renders with, not the wrong shared default.
+     itemRowHtml()'s .item-actions (Drag/Edit/Delete, on the L1 Plan's own
+     row), this row's own actions (Connect/Delete, via .l1-milestone-actions
+     below), and .l1-linked-row's own reserved-but-currently-empty action
+     column (see further below) now all end at the identical x-position —
+     since every one of these rows shares the same 20px padding-right, a
+     matching trailing column width is what actually makes their right
+     edges line up regardless of nesting depth/indent.
      There's also a plain, blank 116px spacer between Status and Actions —
-     a later, explicit user request ("align status and due date across
-     all 3 levels"), matching the shared --item-grid-cols grid's own,
-     already-present blank 116px column in that exact spot (the one
-     between its own Status and Actions tracks). Since this row's own
-     Milestone-name column is the only flexible (minmax(...,1fr)) track,
-     everything after it is fixed-width — which means Status's distance
-     from the row's own right edge is a plain, window-size-independent sum
-     of fixed columns/gaps/padding, not something that drifts as the
-     window resizes. Matching that sum (Status width + gap + spacer width
-     + gap + Actions width + padding-right) to the shared grid's own
-     equivalent sum is what actually makes Status land at the same
-     x-position as the L1 Plan row's own Status column above it, without
-     ever touching that shared, tightly-tuned grid itself. */
+     matching the .journeys-list grid's own, already-present blank 116px
+     column in that exact spot (the one between its own Status and Actions
+     tracks). Since this row's own Milestone-name column is the only
+     flexible (minmax(...,1fr)) track, everything after it is fixed-width
+     — which means Status's distance from the row's own right edge is a
+     plain, window-size-independent sum of fixed columns/gaps/padding, not
+     something that drifts as the window resizes. Matching that sum
+     (Status width + gap + spacer width + gap + Actions width +
+     padding-right) to the .journeys-list grid's own equivalent sum is
+     what actually makes Status land at the same x-position as the L1
+     Plan row's own Status column above it, without ever touching that
+     shared, tightly-tuned grid itself. */
   .l1-milestone-header, .l1-milestone-row {
-    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 120px 116px 56px;
+    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 100px 116px 120px;
     align-items: center; gap: 10px; padding: 7px 20px 7px 34px; border-bottom: 1px solid var(--border);
   }
   .l1-milestone-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
@@ -868,32 +879,29 @@
        regardless of either one's actual content) left Milestone's own
        column pinned further right than it needed to be. Milestone is now
        the only flexible track, so shrinking Scope Item's fixed width
-       directly moves Milestone's own start position further left. The
-       trailing 56px column is a deliberate, empty alignment reservation —
-       an explicit user request ("align all action columns (L1 plan, L1
-       milestone, connected milestones)") — matching the identical 56px
-       Actions column both the L1 Plan's own row (--item-grid-cols) and
-       its L1 Milestone row (.l1-milestone-row, above) end with, so all
-       three nesting levels' action zones sit at the same x-position
-       regardless of how deeply indented each one is.
-       Due is 110px (bumped from 100px) and there's a matching blank 116px
-       spacer right after Status — a later, explicit user request ("align
-       status and due date across all 3 levels"): with the same trailing
-       sequence (Status width, gap, 116px spacer, gap, 56px Actions,
-       padding-right) as .l1-milestone-row's own now uses, and the
-       identical Status/Due widths (120px/110px) as that row too, Status
-       and Due both land at the exact same x-position on this row as they
-       do one level up on .l1-milestone-row — and, since the L1 Plan row's
-       own Status column also lands there (see .l1-milestone-row's own
-       comment, above, for the derivation), all three nesting levels'
-       Status columns line up. Due itself only aligns between this row and
-       .l1-milestone-row, not the L1 Plan row one level further up — that
-       row shows a computed Start→Due plan-date *range* in a completely
-       different position, not a single Due column, so there's no
-       equivalent field of its own to align against without restructuring
-       the shared --item-grid-cols grid used by every row across Planning/
-       Review/Journeys, well beyond this feature's own scope. */
-    display: grid; grid-template-columns: 110px 140px minmax(160px,1fr) 110px 120px 116px 56px;
+       directly moves Milestone's own start position further left.
+       The trailing 120px column is a deliberate, empty alignment
+       reservation, matching the identical 120px Actions column both the
+       L1 Plan's own row and its L1 Milestone row (.l1-milestone-row,
+       above) end with — see that rule's own comment for why 120px, not
+       56px, is the real value an L1 Plan's own row renders with
+       (renderL1Plans()'s own .journeys-list wrapper overrides
+       --item-grid-cols' Actions track specifically).
+       Due is 110px (matching .l1-milestone-row's own) and Status is 100px
+       (matching the real value both the default and .journeys-list
+       overrides of --item-grid-cols agree on) — a matching blank 116px
+       spacer sits right after Status too. With the identical trailing
+       sequence (Status 100px, gap, 116px spacer, gap, 120px Actions,
+       padding-right) as .l1-milestone-row's own, Status lands at the
+       same x-position on this row as it does one level up — and, since
+       the L1 Plan row's own Status column also lands there (see
+       .l1-milestone-row's own comment for the derivation), all three
+       nesting levels' Status columns line up. Due itself only aligns
+       between this row and .l1-milestone-row, not the L1 Plan row one
+       level further up — that row's own Plan-dates column is a bare,
+       empty placeholder now (see "L1 Plans" in CLAUDE.md), so there's
+       nothing there to align a Due column against at all. */
+    display: grid; grid-template-columns: 110px 140px minmax(160px,1fr) 110px 100px 116px 120px;
     align-items: center; gap: 10px; padding: 6px 20px 6px 64px; border-bottom: 1px solid var(--border);
   }
   .l1-linked-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
