@@ -802,15 +802,21 @@
      54px, one level deeper than the 34px milestone row above it — the same
      two-level nesting depth Journeys' own .item-row-indent-2 uses for a
      Sub Journey's connected scope items one level under their own parent
-     row. A separate, smaller 4-column layout (source item / milestone name
-     / due / status) rather than reusing .l1-milestone-row's own 6-column
-     one — there's no chevron, "linked" count, or delete action meaningful
-     on a row that's already itself the expanded detail. */
-  .l1-linked-row {
-    display: grid; grid-template-columns: minmax(140px,1fr) minmax(140px,1fr) 100px 120px;
+     row. Its own 5-column layout (Workstream / Scope Item / Milestone /
+     Due / Status) — split into two separate columns rather than one
+     combined "source" cell, an explicit user request — plus its own header
+     row (.l1-linked-header, labeling all five), the same "label the
+     columns once, right above the list they describe" pattern
+     .l1-milestone-header/milestoneHeaderHtml() already establish elsewhere
+     in this app. No chevron, "linked" count, or delete column the way
+     .l1-milestone-row has one — there's nothing further to expand or
+     manage on a row that's already itself the expanded detail. */
+  .l1-linked-header, .l1-linked-row {
+    display: grid; grid-template-columns: 110px minmax(120px,1fr) minmax(140px,1fr) 100px 120px;
     align-items: center; gap: 10px; padding: 6px 20px 6px 54px; border-bottom: 1px solid var(--border);
-    font-size: 12px; color: var(--text-dim); background: var(--panel);
   }
+  .l1-linked-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
+  .l1-linked-row { font-size: 12px; color: var(--text-dim); background: var(--panel); }
   .l1-linked-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* A Sub Journey's own connected scope items are indented (.item-row-
      indent-2, see above) — an expanded one's milestone header/rows need the
@@ -6707,19 +6713,30 @@ function l1MilestoneHeaderHtml() {
     </div>`;
 }
 // A linked workstream milestone's own read-only row, once its parent L1
-// milestone is expanded — names the source workstream/scope item (an L1
-// milestone's own linked list can span several different workstreams and
-// items at once, so this is the one place that context is worth showing),
-// the milestone's own name, its Due date, and its Status — all plain text/
-// a non-clickable badge, never editable here (see toggleL1MilestoneExpanded()'s
-// own comment for why: linking/unlinking and any real edits still only
-// ever happen elsewhere — the Connect modal, or the workstream milestone's
-// own row on Planning).
+// milestone is expanded — names the source Workstream and Scope Item in
+// their own separate columns (an L1 milestone's own linked list can span
+// several different workstreams and items at once, so this is the one
+// place that context is worth showing; split into two columns rather than
+// one combined cell, an explicit user request), the milestone's own name,
+// its Due date, and its Status — all plain text/a non-clickable badge,
+// never editable here (see toggleL1MilestoneExpanded()'s own comment for
+// why: linking/unlinking and any real edits still only ever happen
+// elsewhere — the Connect modal, or the workstream milestone's own row on
+// Planning). l1LinkedHeaderHtml() labels all five columns once, rendered
+// immediately above the first linked row for a given expanded milestone —
+// the same "one header, right above the list it describes" pattern
+// l1MilestoneHeaderHtml() and milestoneHeaderHtml() already use.
+function l1LinkedHeaderHtml() {
+  return `<div class="l1-linked-header">
+      <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span>Status</span>
+    </div>`;
+}
 function l1LinkedRowHtml(item, milestone) {
   const ws = item.workstreamId ? workstreams.find(w => w.id === item.workstreamId) : null;
-  const sourceLabel = `${ws ? ws.name : 'Unassigned'} — ${item.name}`;
-  return `<div class="l1-linked-row" title="${esc(sourceLabel)}">
-      <span class="l1-linked-source">${esc(sourceLabel)}</span>
+  const wsLabel = ws ? ws.name : 'Unassigned';
+  return `<div class="l1-linked-row" title="${esc(wsLabel)} — ${esc(item.name)}">
+      <span class="l1-linked-source">${esc(wsLabel)}</span>
+      <span class="l1-linked-source">${esc(item.name)}</span>
       <span>${esc(milestone.name)}</span>
       <span>${milestone.dueDate ? esc(fmtDate(milestone.dueDate)) : '—'}</span>
       <span class="status-badge" style="background:var(--stat-${milestone.status}-bg);color:var(--stat-${milestone.status});cursor:default">${esc(statusLabel(milestone.status))}</span>
@@ -6753,7 +6770,7 @@ function l1MilestoneRowsHtml(plan) {
       ? `<span class="item-chevron" onclick="toggleL1MilestoneExpanded('${m.id}')"><i class="fa-solid ${l1Expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
       : `<span class="item-chevron"></span>`;
     const linkedRowsHtml = (linkedCount && l1Expanded)
-      ? linked.map(({ item, milestone }) => l1LinkedRowHtml(item, milestone)).join('')
+      ? l1LinkedHeaderHtml() + linked.map(({ item, milestone }) => l1LinkedRowHtml(item, milestone)).join('')
       : '';
     return `<div class="l1-milestone-row">
         ${chevronHtml}

@@ -225,6 +225,38 @@ test('l1LinkedRowHtml never renders the linked milestone\'s status/due as an edi
   assertNotIncludes(html, '<input', 'no editable date field here either');
 });
 
+test('l1LinkedRowHtml renders Workstream and Scope Item as two separate cells, not one combined "source" cell', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Finance Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  const html = l1LinkedRowHtml(item, wm);
+  const matches = html.match(/<span class="l1-linked-source">/g) || [];
+  assertEqual(matches.length, 2, 'Workstream and Scope Item each get their own l1-linked-source span');
+  assertIncludes(html, `<span class="l1-linked-source">${workstreams[0].name}</span>`);
+  assertIncludes(html, `<span class="l1-linked-source">Finance Deliverable</span>`);
+});
+
+test('l1LinkedHeaderHtml labels all five columns: Workstream, Scope Item, Milestone, Due, Status', function () {
+  const html = l1LinkedHeaderHtml();
+  assertIncludes(html, 'l1-linked-header');
+  ['Workstream', 'Scope Item', 'Milestone', 'Due', 'Status'].forEach(label => assertIncludes(html, `<span>${label}</span>`));
+});
+
+test('l1MilestoneRowsHtml renders the linked-milestone header row once expanded, and omits it while collapsed', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  let html = l1MilestoneRowsHtml(p);
+  assertNotIncludes(html, 'l1-linked-header', 'collapsed by default — no header shown yet');
+  toggleL1MilestoneExpanded(m.id);
+  html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'l1-linked-header');
+});
+
 test('l1LinkedRowHtml labels a linked milestone from an Unassigned scope item as "Unassigned", not a stale/missing workstream name', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
