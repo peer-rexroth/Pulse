@@ -2125,7 +2125,7 @@ const THEME_SCHEMES = [
 // see seedDefaults()/normalizeData(). New categories created afterward
 // define their own milestone template from scratch; this only matters at
 // that one seeding moment, not as a live default used elsewhere. Content
-// (names, milestone lists, order) comes from Milestone_Lookup_Table.xlsx —
+// (names, milestone lists, order) comes from LookupTable_Milestones.xlsx —
 // an explicit request to replace the prior single made-up "Development"
 // template with this real one.
 const DEFAULT_CATEGORIES = [
@@ -3524,7 +3524,6 @@ function renderL1Plans() {
       ${l1PlansExpandAllToggleHtml()}
       <h2><i class="fa-solid fa-bullseye" style="font-size:16px;color:var(--accent)"></i> L1 Plans</h2>
     </div>
-    <p style="margin-bottom:16px">Overarching, high-level plans — link a workstream milestone to one of an L1 Plan's own milestones for traceability. Linking never changes an L1 milestone's own status or dates; those stay entirely manual.</p>
     <div class="ws-section l1-plans-list">
       ${rows}
       ${addRow}
