@@ -50,12 +50,30 @@ async function run(argv) {
   // Deliberately loose: every element supports every property/method any
   // code path touches, so tests never crash on a missing mock — the
   // assertions are what should catch real bugs, not the harness.
+  // A plain {} style object supports direct property assignment
+  // (el.style.display = 'none', used throughout this app) but not the
+  // separate setProperty()/getPropertyValue()/removeProperty() trio real
+  // CSSStyleDeclaration also exposes — needed for --sidebar-width (see
+  // applySidebarWidth()/onSidebarResizeMove() in pulse.html), which reads
+  // and writes a CSS custom property rather than a plain style field.
+  // Backed by its own internal map, kept deliberately separate from
+  // whatever plain properties (display, opacity, ...) get assigned
+  // directly onto the same object — matching how a real browser also
+  // never surfaces a custom property back as element.style.customPropName.
+  function makeFakeStyle() {
+    const props = {};
+    return {
+      setProperty(name, value) { props[name] = value; },
+      getPropertyValue(name) { return props[name] || ''; },
+      removeProperty(name) { const v = props[name] || ''; delete props[name]; return v; }
+    };
+  }
   function makeFakeElement() {
     const classSet = new Set();
     const attrs = {};
     return {
       innerHTML: '', textContent: '', value: '', className: '',
-      style: {}, dataset: {}, disabled: false, checked: false,
+      style: makeFakeStyle(), dataset: {}, disabled: false, checked: false,
       tabIndex: 0, offsetParent: {},
       classList: {
         add() { for (const c of arguments) classSet.add(c); },
@@ -189,7 +207,7 @@ async function run(argv) {
   // convenience, so the harness adds one back here rather than touching
   // every individual test.
   workstreams.push({ id: genId(), name: 'Workstream 1', color: 'blue', order: 0 });
-  mode = 'planning'; theme = 'light'; colorScheme = 'standard'; filterWorkstreamId = null;
+  mode = 'planning'; theme = 'light'; colorScheme = 'standard'; filterWorkstreamId = null; sidebarWidth = 220;
   // Default to the top of the role ladder so every existing test — written
   // before RBAC existed, and testing functionality rather than permissions —
   // keeps exercising full behavior unimpeded. Tests that specifically cover
