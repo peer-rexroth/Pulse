@@ -269,15 +269,24 @@ test('Connect and Delete share one .l1-milestone-actions cluster, not two separa
   assertIncludes(cluster, 'removeL1Milestone');
 });
 
-test('l1LinkedHeaderHtml/l1LinkedRowHtml end in a matching, deliberately blank trailing cell for alignment with the other two nesting levels\' 56px Actions column', function () {
+test('l1LinkedHeaderHtml/l1LinkedRowHtml end in two matching, deliberately blank trailing cells (a Status-alignment spacer, then the Actions-alignment cell)', function () {
   const headerHtml = l1LinkedHeaderHtml();
-  assertEqual((headerHtml.match(/<span/g) || []).length, 6, 'five real columns plus one blank alignment cell');
+  assertEqual((headerHtml.match(/<span/g) || []).length, 7, 'five real columns plus a Status spacer plus an Actions alignment cell');
   const item = addItem({ name: 'Deliverable' });
   const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
   item.milestones.push(wm);
   const rowHtml = l1LinkedRowHtml(item, wm);
-  assertEqual((rowHtml.match(/<span/g) || []).length, 6, 'five real columns plus one blank alignment cell');
-  assertIncludes(rowHtml, '      <span></span>\n    </div>', 'the trailing cell is genuinely empty, not a hidden action');
+  assertEqual((rowHtml.match(/<span/g) || []).length, 7, 'five real columns plus a Status spacer plus an Actions alignment cell');
+  assertIncludes(rowHtml, '      <span></span>\n      <span></span>\n    </div>', 'both trailing cells are genuinely empty, not hidden actions');
+});
+
+test('l1MilestoneHeaderHtml/l1MilestoneRowsHtml include a matching blank Status-alignment spacer right before Actions, mirroring l1-linked-row\'s own', function () {
+  const p = addL1Plan();
+  addL1Milestone(p.id);
+  const headerHtml = l1MilestoneHeaderHtml();
+  assertEqual((headerHtml.match(/<span/g) || []).length, 6, 'Chevron/Milestone/Due/Status/spacer/Actions');
+  const rowHtml = l1MilestoneRowsHtml(p);
+  assertIncludes(rowHtml, '<span></span>\n        <span class="l1-milestone-actions">', 'a blank spacer cell sits between Status and the Actions cluster');
 });
 
 test('toggleL1MilestoneExpanded reveals the linked workstream milestone underneath, read-only, and collapses again on a second toggle', function () {

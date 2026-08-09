@@ -792,9 +792,23 @@
      end at the identical x-position — since every one of these rows
      shares the same 20px padding-right, a matching trailing column width
      is what actually makes their right edges line up regardless of
-     nesting depth/indent. */
+     nesting depth/indent.
+     There's also a plain, blank 116px spacer between Status and Actions —
+     a later, explicit user request ("align status and due date across
+     all 3 levels"), matching the shared --item-grid-cols grid's own,
+     already-present blank 116px column in that exact spot (the one
+     between its own Status and Actions tracks). Since this row's own
+     Milestone-name column is the only flexible (minmax(...,1fr)) track,
+     everything after it is fixed-width — which means Status's distance
+     from the row's own right edge is a plain, window-size-independent sum
+     of fixed columns/gaps/padding, not something that drifts as the
+     window resizes. Matching that sum (Status width + gap + spacer width
+     + gap + Actions width + padding-right) to the shared grid's own
+     equivalent sum is what actually makes Status land at the same
+     x-position as the L1 Plan row's own Status column above it, without
+     ever touching that shared, tightly-tuned grid itself. */
   .l1-milestone-header, .l1-milestone-row {
-    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 120px 56px;
+    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 120px 116px 56px;
     align-items: center; gap: 10px; padding: 7px 20px 7px 34px; border-bottom: 1px solid var(--border);
   }
   .l1-milestone-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
@@ -861,8 +875,25 @@
        Actions column both the L1 Plan's own row (--item-grid-cols) and
        its L1 Milestone row (.l1-milestone-row, above) end with, so all
        three nesting levels' action zones sit at the same x-position
-       regardless of how deeply indented each one is. */
-    display: grid; grid-template-columns: 110px 140px minmax(160px,1fr) 100px 120px 56px;
+       regardless of how deeply indented each one is.
+       Due is 110px (bumped from 100px) and there's a matching blank 116px
+       spacer right after Status — a later, explicit user request ("align
+       status and due date across all 3 levels"): with the same trailing
+       sequence (Status width, gap, 116px spacer, gap, 56px Actions,
+       padding-right) as .l1-milestone-row's own now uses, and the
+       identical Status/Due widths (120px/110px) as that row too, Status
+       and Due both land at the exact same x-position on this row as they
+       do one level up on .l1-milestone-row — and, since the L1 Plan row's
+       own Status column also lands there (see .l1-milestone-row's own
+       comment, above, for the derivation), all three nesting levels'
+       Status columns line up. Due itself only aligns between this row and
+       .l1-milestone-row, not the L1 Plan row one level further up — that
+       row shows a computed Start→Due plan-date *range* in a completely
+       different position, not a single Due column, so there's no
+       equivalent field of its own to align against without restructuring
+       the shared --item-grid-cols grid used by every row across Planning/
+       Review/Journeys, well beyond this feature's own scope. */
+    display: grid; grid-template-columns: 110px 140px minmax(160px,1fr) 110px 120px 116px 56px;
     align-items: center; gap: 10px; padding: 6px 20px 6px 64px; border-bottom: 1px solid var(--border);
   }
   .l1-linked-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
@@ -6760,9 +6791,11 @@ function toggleL1MilestoneExpanded(milestoneId) {
 function l1MilestoneHeaderHtml() {
   // Connect and Delete now share one trailing Actions column (see the CSS
   // comment on .l1-milestone-header/.l1-milestone-row) — no header label,
-  // same as the shared item grid's own unlabeled Actions column.
+  // same as the shared item grid's own unlabeled Actions column. The extra
+  // blank cell right after Status is the alignment spacer described there
+  // — also unlabeled, since it's not a real column either.
   return `<div class="l1-milestone-header">
-      <span></span><span>Milestone</span><span>Due</span><span>Status</span><span></span>
+      <span></span><span>Milestone</span><span>Due</span><span>Status</span><span></span><span></span>
     </div>`;
 }
 // A linked workstream milestone's own read-only row, once its parent L1
@@ -6786,8 +6819,11 @@ function l1MilestoneHeaderHtml() {
 // the same right-edge x-position (see "align all action columns" in the
 // CSS comment on .l1-linked-header/.l1-linked-row).
 function l1LinkedHeaderHtml() {
+  // The extra blank cell right before the trailing alignment cell is the
+  // Status-alignment spacer described in .l1-linked-header/.l1-linked-row's
+  // own CSS comment — matches .l1-milestone-header's identical spacer.
   return `<div class="l1-linked-header">
-      <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span>Status</span><span></span>
+      <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span>Status</span><span></span><span></span>
     </div>`;
 }
 function l1LinkedRowHtml(item, milestone) {
@@ -6799,6 +6835,7 @@ function l1LinkedRowHtml(item, milestone) {
       <span>${esc(milestone.name)}</span>
       <span>${milestone.dueDate ? esc(fmtDate(milestone.dueDate)) : '—'}</span>
       <span class="status-badge" style="background:var(--stat-${milestone.status}-bg);color:var(--stat-${milestone.status});cursor:default">${esc(statusLabel(milestone.status))}</span>
+      <span></span>
       <span></span>
     </div>`;
 }
@@ -6843,6 +6880,7 @@ function l1MilestoneRowsHtml(plan) {
         ${nameHtml}
         ${dueHtml}
         ${statusHtml}
+        <span></span>
         ${actionsHtml}
       </div>${linkedRowsHtml}`;
   }).join('');
