@@ -628,8 +628,33 @@
      Tags) down to a minimal 10px, keeps Status at its real 116px, and sizes
      Actions at a snug 56px, the same width the plain, unmodified default
      --item-grid-cols already established as correctly fitting an ordinary
-     item row's 3 icons (drag/edit/delete — see that rule's own comment). */
-  .l1-plans-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 10px 10px 10px 10px 10px 116px 56px; }
+     item row's 3 icons (drag/edit/delete — see that rule's own comment).
+     The one exception is the blank column immediately after the
+     Milestones-badge (the 5th value, --item-grid-cols' own "spacer between
+     Milestones and Plan-dates") — widened from the minimal 10px to 50px, an
+     explicit user request to align the badge with .l1-milestone-row's own
+     Due column directly beneath it once a plan is expanded. Same technique
+     as the Due/Actual alignment work above and .l1-milestone-row's own Due
+     column (see that rule's own comment): with Name the row's one flexible
+     (1.3fr) track, a fixed-width column's x-position is governed entirely
+     by what sits between it and the row's right edge, so widening this one
+     blank column by 40px — rather than touching Name, or anything at or
+     after Status/Actions, whose own alignment with .l1-milestone-row's
+     Status/Actions is already correct and must stay untouched — shifts only
+     the badge itself 40px left. The math: the badge's own left edge sits
+     (badge-width 90 + everything after it: gap+10+gap+10+gap+10+gap+10+
+     gap+10+gap+116(Status)+gap+56(Actions)+padding-right 20 = 312) = 402px
+     from the row's right edge before this change; .l1-milestone-row's own
+     Due column sits (Due-width 110 + gap+110(Actual)+gap+116(Status)+
+     gap+56(Actions)+padding-right 20 = 332) = 442px from ITS row's right
+     edge. Both rows share the same width (one nests directly under the
+     other), so aligning the two left edges means closing exactly that
+     40px gap (442-402) — done by adding 40px of fixed content after the
+     badge, which is exactly what widening this one spacer by 40px does
+     (312 -> 352, so 352+90 = 442, matching Due's own 442 exactly). Verified
+     both by this algebra and by live getBoundingClientRect() measurement in
+     a real browser. */
+  .l1-plans-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 50px 10px 10px 10px 10px 116px 56px; }
   .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-dates { color: var(--text-dim); font-size: 12.5px; width: 150px; flex: 0 0 auto; }
   .milestone-count-badge { font-size: 11px; color: var(--text-faint); font-weight: 700; white-space: nowrap; }
