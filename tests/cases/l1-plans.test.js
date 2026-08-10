@@ -888,3 +888,90 @@ test('a tombstoned L1 milestone sweeps correctly via the existing, unmodified me
   const merged = items.find(it => it.id === p.id);
   assertEqual(merged.milestones.length, 0, 'the tombstone must win — a stale incoming copy should not resurrect the deleted L1 milestone');
 });
+
+// ---------- L1 Plan import/export ----------
+// A formatted .xlsx round-trip dedicated to L1 Plans (an explicit user
+// request), matching a real template the user already tracked these by hand
+// in (L1 Plan / Stream / Milestone / Target Date / Reporting Level — Stream
+// is read but never stored, since Pulse has no equivalent concept).
+// importL1PlansFromExcel()/buildL1PlansSheet() themselves need a real
+// ExcelJS.Workbook, never loaded inside this zero-dependency JXA harness —
+// same reason exportToExcelReport()'s own tests (sync.test.js) only exercise
+// its ExcelJS-missing guard. Everything genuinely testable without ExcelJS
+// itself is covered here: the plain date-conversion helper, the shared
+// plan/milestone factories the import path reuses, and the guard.
+
+test('excelCellToIsoDate converts a real Date via its UTC fields, matching excelDateCell()\'s own Date.UTC(...) write', function () {
+  assertEqual(excelCellToIsoDate(new Date(Date.UTC(2027, 2, 31))), '2027-03-31');
+});
+
+test('excelCellToIsoDate falls back to parsing a plain string cell', function () {
+  assertEqual(excelCellToIsoDate('2027-03-31'), '2027-03-31');
+});
+
+test('excelCellToIsoDate returns null for blank, unparseable, or bare-number cells rather than guessing', function () {
+  assertEqual(excelCellToIsoDate(null), null);
+  assertEqual(excelCellToIsoDate(undefined), null);
+  assertEqual(excelCellToIsoDate(''), null);
+  assertEqual(excelCellToIsoDate('not a date'), null);
+  assertEqual(excelCellToIsoDate(46112), null, 'a bare number is never treated as a raw Excel serial');
+});
+
+test('makeL1Plan builds the exact same shape saveL1PlanQuickAdd() already pushes', function () {
+  const plan = makeL1Plan('Factory-built plan');
+  assertEqual(plan.itemType, 'l1plan');
+  assertEqual(plan.name, 'Factory-built plan');
+  assertEqual(plan.workstreamId, null);
+  assertEqual(plan.categoryId, null);
+  assertDeepEqual(plan.milestones, []);
+});
+
+test('makeL1Milestone defaults dueDate/reportingLevel to null when omitted, and sets them when given', function () {
+  const bare = makeL1Milestone('Bare milestone');
+  assertEqual(bare.dueDate, null);
+  assertEqual(bare.reportingLevel, null);
+  assertEqual(bare.l1MilestoneId, null, 'an L1 milestone never links to another L1 milestone');
+  const full = makeL1Milestone('Full milestone', '2027-03-31', 'Programme');
+  assertEqual(full.dueDate, '2027-03-31');
+  assertEqual(full.reportingLevel, 'Programme');
+});
+
+test('normalizeData backfills a missing reportingLevel on an L1 Plan\'s own milestone to null, and forces it null on an ordinary item\'s', function () {
+  const p = addL1Plan('RL plan');
+  const m = addL1Milestone(p.id, 'RL milestone');
+  delete m.reportingLevel;
+  const it = addItem({ name: 'Ordinary', milestones: [{ id: genId(), name: 'X', dueDate: todayStr(), status: 'not-started', actualDate: null, reportingLevel: 'Programme' }] });
+  normalizeData();
+  assertEqual(items.find(i => i.id === p.id).milestones[0].reportingLevel, null);
+  assertEqual(items.find(i => i.id === it.id).milestones[0].reportingLevel, null, 'reportingLevel is never a real concept on an ordinary item\'s milestone');
+});
+
+test('l1MilestoneRowsHtml renders a Reporting Level badge next to the name when set, and omits it when not', function () {
+  const p = addL1Plan('Badge plan');
+  const withLevel = addL1Milestone(p.id, 'Has a level');
+  withLevel.reportingLevel = 'Programme';
+  addL1Milestone(p.id, 'No level set');
+  const html = l1MilestoneRowsHtml(items.find(i => i.id === p.id));
+  assertIncludes(html, 'l1-milestone-reporting-level');
+  assertIncludes(html, 'Programme');
+  const count = (html.match(/l1-milestone-reporting-level/g) || []).length;
+  assertEqual(count, 1, 'only the milestone that actually has a reportingLevel should render the badge');
+});
+
+test('importL1PlansFromExcel/exportL1PlansToExcel show a clear toast instead of throwing when ExcelJS hasn\'t loaded', async function () {
+  assertEqual(typeof globalThis.ExcelJS, 'undefined', 'this harness never loads the real library');
+  await importL1PlansFromExcel({});
+  assertIncludes(document.getElementById('toastMsg').textContent, 'Excel import needs an internet connection');
+  await exportL1PlansToExcel();
+  assertIncludes(document.getElementById('toastMsg').textContent, 'Excel export needs an internet connection');
+});
+
+test('triggerL1PlanImport is blocked below Editor', function () {
+  userRole = 'reviewer';
+  // requireRole() itself shows the "role required" toast — just confirm it
+  // doesn't get anywhere near opening the file picker (nothing to assert on
+  // the click itself in this harness, but a below-Editor call must return
+  // before ever touching document.getElementById('l1PlanImportFileInput')).
+  triggerL1PlanImport();
+  assertIncludes(document.getElementById('toastMsg').textContent, 'role or higher required');
+});

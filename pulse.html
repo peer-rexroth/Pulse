@@ -794,6 +794,14 @@
     display: inline-flex; align-items: center; margin-left: 7px; font-size: 11px; font-weight: 600;
     color: var(--accent); background: var(--accent-bg); border-radius: 20px; padding: 1px 8px;
   }
+  /* Reporting Level (see "L1 Plan import/export" in CLAUDE.md) — a plain,
+     neutral badge (not the accent color .l1-milestone-linked-count uses),
+     since it's just informational, not an active/on state — same visual
+     tier as the Pending category's "Reserved" badge elsewhere in this app. */
+  .l1-milestone-reporting-level {
+    display: inline-flex; align-items: center; margin-left: 7px; font-size: 11px; font-weight: 600;
+    color: var(--text-dim); background: var(--panel-2); border-radius: 20px; padding: 1px 8px;
+  }
   /* A linked workstream milestone, shown read-only under its L1 milestone
      once expanded (see toggleL1MilestoneExpanded()) — pure display, no
      editing surface here (linking/unlinking is still only ever done via
@@ -1439,6 +1447,7 @@
   <button class="btn btn-sm" id="tabL1plans" onclick="setMode('l1plans')" title="High-level plans, overarching across every workstream"><i class="fa-solid fa-bullseye"></i> L1 Plans</button>
   <button class="btn btn-sm" id="tabAdmin" onclick="setMode('admin')"><i class="fa-solid fa-sliders"></i> Settings</button>
   <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileImport(event)">
+  <input type="file" id="l1PlanImportFileInput" accept=".xlsx" style="display:none" onchange="handleL1PlanImportFile(event)">
   <button class="icon-btn" id="roleBtn" onclick="openRoleModal()" title="Switch role"><i class="fa-solid" id="roleBtnIcon"></i></button>
   <button class="icon-btn" onclick="openThemeModal()" title="Color scheme"><i class="fa-solid fa-palette"></i></button>
   <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-circle-half-stroke"></i></button>
@@ -2863,6 +2872,15 @@ function normalizeData() {
       } else if (!findL1Milestone(m.l1MilestoneId)) {
         m.l1MilestoneId = null;
       }
+      // reportingLevel (see "L1 Plan import/export" in CLAUDE.md) is the
+      // mirror image of l1MilestoneId just above — only ever meaningful on
+      // an L1 Plan's own milestone (set by importing a file that provides
+      // one), never on an ordinary item's.
+      if (it.itemType === 'l1plan') {
+        if (typeof m.reportingLevel !== 'string') m.reportingLevel = null;
+      } else {
+        m.reportingLevel = null;
+      }
     });
     // Enforce the "weakest milestone wins" status and the earliest/latest
     // plan-date-range invariants on every load/merge/import too, not just at
@@ -3523,6 +3541,8 @@ function renderL1Plans() {
     <div class="admin-header">
       ${l1PlansExpandAllToggleHtml()}
       <h2><i class="fa-solid fa-bullseye" style="font-size:16px;color:var(--accent)"></i> L1 Plans</h2>
+      ${hasRole('editor') ? `<button class="btn btn-sm" onclick="triggerL1PlanImport()" title="Import L1 Plans from an .xlsx file"><i class="fa-solid fa-file-import"></i> Import</button>` : ''}
+      <button class="btn btn-sm" onclick="exportL1PlansToExcel()" title="Export L1 Plans to an .xlsx file"><i class="fa-solid fa-file-export"></i> Export</button>
     </div>
     <div class="ws-section l1-plans-list">
       ${rows}
@@ -5710,21 +5730,25 @@ function cancelL1PlanQuickAdd() {
   l1PlanQuickAddOpen = false;
   render();
 }
-function saveL1PlanQuickAdd() {
-  if (!l1PlanQuickAddOpen) return;
-  l1PlanQuickAddOpen = false;
-  const name = (document.getElementById('l1PlanQuickAddInput').value || '').trim();
-  if (!name) { render(); return; } // blurring/Enter with nothing typed just closes it, no error
-  const today = todayStr();
-  const order = allL1Plans().length;
-  items.push({
+// Shared by saveL1PlanQuickAdd() and importL1PlansFromExcel() (see "L1 Plan
+// import/export" below) — the exact shape a fresh L1 Plan needs, so both
+// creation paths can never drift apart from each other.
+function makeL1Plan(name) {
+  return {
     id: genId(), workstreamId: null, categoryId: null, name,
     status: 'not-started', startDate: null, dueDate: null, actualDate: null,
     milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green',
     itemType: 'l1plan',
     dependency: false, dependencySpoc: null,
-    order, updatedAt: Date.now()
-  });
+    order: allL1Plans().length, updatedAt: Date.now()
+  };
+}
+function saveL1PlanQuickAdd() {
+  if (!l1PlanQuickAddOpen) return;
+  l1PlanQuickAddOpen = false;
+  const name = (document.getElementById('l1PlanQuickAddInput').value || '').trim();
+  if (!name) { render(); return; } // blurring/Enter with nothing typed just closes it, no error
+  items.push(makeL1Plan(name));
   save(); render();
   showToast('L1 Plan added');
 }
@@ -5744,6 +5768,18 @@ function cancelL1MilestoneQuickAdd() {
   l1MilestoneQuickAddOpenFor = null;
   render();
 }
+// Shared by saveL1MilestoneQuickAdd() and importL1PlansFromExcel() — see
+// makeL1Plan()'s own comment just above for why this exists as a factory.
+// reportingLevel (see "L1 Plan import/export" below) is the one field with
+// no hand-add path of its own — a milestone added here always starts null,
+// only ever set by importing a file that provides one.
+function makeL1Milestone(name, dueDate, reportingLevel) {
+  return {
+    id: genId(), name, dueDate: dueDate || null, actualDate: null, status: 'not-started',
+    notApplicable: false, l1MilestoneId: null, reportingLevel: reportingLevel || null,
+    updatedAt: Date.now()
+  };
+}
 function saveL1MilestoneQuickAdd() {
   const planId = l1MilestoneQuickAddOpenFor;
   if (!planId) return;
@@ -5752,7 +5788,7 @@ function saveL1MilestoneQuickAdd() {
   if (!name) { render(); return; }
   const plan = items.find(it => it.id === planId && it.itemType === 'l1plan');
   if (!plan) return;
-  plan.milestones.push({ id: genId(), name, dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: Date.now() });
+  plan.milestones.push(makeL1Milestone(name));
   plan.updatedAt = Date.now();
   save(); render();
 }
@@ -5849,7 +5885,7 @@ function l1MilestoneRowsHtml(plan) {
       : editable
       ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleL1MilestoneStatus('${plan.id}','${m.id}')">${esc(statusLabel(m.status))}</button>`
       : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`;
-    const nameHtml = `<span>${esc(m.name)}${linkedCount ? `<span class="l1-milestone-linked-count">${linkedCount} linked</span>` : ''}</span>`;
+    const nameHtml = `<span>${esc(m.name)}${linkedCount ? `<span class="l1-milestone-linked-count">${linkedCount} linked</span>` : ''}${m.reportingLevel ? `<span class="l1-milestone-reporting-level" title="Reporting Level">${esc(m.reportingLevel)}</span>` : ''}</span>`;
     // Connect and Delete share one trailing Actions cell now — an explicit
     // user request to align this row's own action column with the L1
     // Plan's own row and the connected-milestone row beneath it (see the
@@ -8745,6 +8781,177 @@ async function exportToExcelReport() {
 // slugify-the-programme-name-or-fall-back-to-"Pulse" logic.
 function programmeFileSlug() {
   return (programme.name || 'Pulse').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'Pulse';
+}
+
+// ---------- L1 Plan import/export (an explicit user request) — a formatted
+// .xlsx round-trip dedicated to L1 Plans specifically, distinct from the
+// full-programme Excel report above: the column shape (L1 Plan / Stream /
+// Milestone / Target Date / Reporting Level) matches a template the user
+// already had in real-world use (ImportTemplate_L1Plan.xlsx) for tracking
+// these by hand before this feature existed, so importing it is a genuine
+// migration path, not just a generic data dump. Stream is read from the
+// file (so a mis-column-count file doesn't silently misalign) but never
+// stored anywhere — Pulse has no equivalent concept — and is exported back
+// out as an always-blank column purely to keep the round-trip shape
+// identical to the source template. ----------
+function buildL1PlansSheet(wb) {
+  const sheet = wb.addWorksheet('L1 Plans', { views: [{ state: 'frozen', ySplit: 1 }] });
+  sheet.columns = [
+    { header: 'L1 Plan', key: 'plan', width: 30 },
+    { header: 'Stream', key: 'stream', width: 16 },
+    { header: 'Milestone', key: 'milestone', width: 46 },
+    { header: 'Target Date', key: 'date', width: 14 },
+    { header: 'Reporting Level', key: 'level', width: 18 }
+  ];
+  excelStyleHeaderRow(sheet.getRow(1));
+  sheet.autoFilter = { from: 'A1', to: 'E1' };
+  allL1Plans().forEach(plan => {
+    // A plan with no milestones yet still gets one row — otherwise it's
+    // silently absent from the file entirely, which would read as "this
+    // plan doesn't exist" to anyone opening the export.
+    if (!plan.milestones.length) {
+      sheet.addRow({ plan: plan.name });
+      return;
+    }
+    plan.milestones.forEach(m => {
+      const row = sheet.addRow({ plan: plan.name, milestone: m.name, level: m.reportingLevel || '' });
+      excelDateCell(row, 'date', m.dueDate);
+    });
+  });
+}
+async function exportL1PlansToExcel() {
+  if (typeof ExcelJS === 'undefined') { showToast('Excel export needs an internet connection the first time (loading the export library) — check your connection and try again', true); return; }
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Pulse';
+  wb.created = new Date();
+  buildL1PlansSheet(wb);
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `L1-Plans-${programmeFileSlug()}-${todayStr()}.xlsx`;
+  a.click(); URL.revokeObjectURL(url);
+}
+function triggerL1PlanImport() {
+  if (!requireRole('editor')) return;
+  document.getElementById('l1PlanImportFileInput').click();
+}
+// The inverse of excelDateCell()'s own Date.UTC(...) write (see its
+// comment) — ExcelJS hands back a genuine JS Date for a date-formatted
+// cell, built from the serial number via the same UTC-epoch math Excel
+// itself uses (a serial number has no timezone of its own to begin with).
+// Reading it back via UTC getters (not local ones) is what makes the round
+// trip exact regardless of the importing browser's own timezone — the
+// identical reasoning as the export side, just mirrored. A plain string
+// cell (someone typed "31.03.2027" as text, not a real date) falls back to
+// a best-effort native Date parse; if that still fails, returns null rather
+// than guessing — an empty Target Date is always safer than a wrong one. A
+// bare number is deliberately never treated as a raw Excel serial (that
+// would need its own from-epoch conversion, not `new Date(number)`, which
+// reads a number as milliseconds-since-1970 instead and would silently
+// produce a nonsense date) — in practice ExcelJS always hands back a real
+// Date for a genuinely date-formatted cell, so this path is only ever an
+// actually-non-date cell, which should read as "no date", not a guess.
+function excelCellToIsoDate(val) {
+  let d;
+  if (val instanceof Date) d = val;
+  else if (typeof val === 'string' && val.trim()) d = new Date(val);
+  else return null;
+  if (isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+// Import proper: groups the sheet's rows by "L1 Plan" name, matching an
+// existing plan (and, within it, an existing milestone) by exact name —
+// confirmed with the user up front, alongside the two behaviors below.
+// A brand-new plan/milestone is created outright from the row. An existing
+// milestone is updated *in place* (same id) rather than replaced — the
+// explicit reason this matters: a workstream milestone can link to an L1
+// milestone by its id (m.l1MilestoneId, see "L1 Plans" in CLAUDE.md), and
+// there's deliberately no reverse-reference to fix up if that id ever
+// changed, so replacing the milestone object outright on a re-import would
+// silently orphan every link pointing at it. Target Date/Reporting Level
+// are each only overwritten when the file actually provides a non-blank
+// value for that row — a blank cell leaves whatever the milestone already
+// had untouched rather than destructively clearing it, since a gap in a
+// hand-maintained tracking sheet is far more likely than an intentional
+// "erase this" instruction.
+async function importL1PlansFromExcel(file) {
+  if (!requireRole('editor')) return;
+  if (typeof ExcelJS === 'undefined') { showToast('Excel import needs an internet connection the first time (loading the import library) — check your connection and try again', true); return; }
+  const wb = new ExcelJS.Workbook();
+  try {
+    await wb.xlsx.load(await file.arrayBuffer());
+  } catch (e) {
+    showToast('Could not read that file — is it a valid .xlsx?', true);
+    return;
+  }
+  const sheet = wb.worksheets[0];
+  if (!sheet) { showToast('That file has no sheets to import', true); return; }
+  const colIndex = {};
+  sheet.getRow(1).eachCell((cell, colNumber) => { colIndex[String(cell.value || '').trim().toLowerCase()] = colNumber; });
+  const planCol = colIndex['l1 plan'];
+  const milestoneCol = colIndex['milestone'];
+  const dateCol = colIndex['target date'];
+  const levelCol = colIndex['reporting level'];
+  if (!planCol || !milestoneCol) {
+    showToast('That file needs an "L1 Plan" column and a "Milestone" column', true);
+    return;
+  }
+  let plansCreated = 0, milestonesCreated = 0, milestonesUpdated = 0, rowsSkipped = 0;
+  const touchedPlanIds = new Set();
+  for (let r = 2; r <= sheet.rowCount; r++) {
+    const row = sheet.getRow(r);
+    const planName = String(row.getCell(planCol).value || '').trim();
+    const milestoneName = String(row.getCell(milestoneCol).value || '').trim();
+    if (!planName || !milestoneName) { rowsSkipped++; continue; }
+    const dueDate = dateCol ? excelCellToIsoDate(row.getCell(dateCol).value) : null;
+    const reportingLevel = levelCol ? (String(row.getCell(levelCol).value || '').trim() || null) : null;
+
+    let plan = items.find(it => it.itemType === 'l1plan' && it.name === planName);
+    if (!plan) { plan = makeL1Plan(planName); items.push(plan); plansCreated++; }
+    touchedPlanIds.add(plan.id);
+
+    const milestone = plan.milestones.find(m => m.name === milestoneName);
+    if (milestone) {
+      if (dueDate) milestone.dueDate = dueDate;
+      if (reportingLevel) milestone.reportingLevel = reportingLevel;
+      milestone.updatedAt = Date.now();
+      milestonesUpdated++;
+    } else {
+      plan.milestones.push(makeL1Milestone(milestoneName, dueDate, reportingLevel));
+      milestonesCreated++;
+    }
+    plan.updatedAt = Date.now();
+  }
+  // Recompute each touched plan's own status/date-range roll-up — the same
+  // recompute saveL1MilestoneQuickAdd()/removeL1Milestone() already do
+  // after any change to a plan's milestones.
+  touchedPlanIds.forEach(planId => {
+    const plan = items.find(it => it.id === planId);
+    plan.status = computedStatusFromMilestones(plan.milestones);
+    const range = computedDateRangeFromMilestones(plan.milestones);
+    if (range) { plan.startDate = range.startDate; plan.dueDate = range.dueDate; }
+  });
+  save(); render();
+  if (!plansCreated && !milestonesCreated && !milestonesUpdated) {
+    showToast(rowsSkipped ? 'Nothing imported — every row was missing an L1 Plan or Milestone name' : 'Nothing to import — that file has no data rows', true);
+    return;
+  }
+  const parts = [];
+  if (plansCreated) parts.push(`${plansCreated} new L1 Plan${plansCreated === 1 ? '' : 's'}`);
+  if (milestonesCreated) parts.push(`${milestonesCreated} new milestone${milestonesCreated === 1 ? '' : 's'}`);
+  if (milestonesUpdated) parts.push(`${milestonesUpdated} milestone${milestonesUpdated === 1 ? '' : 's'} updated`);
+  if (rowsSkipped) parts.push(`${rowsSkipped} row${rowsSkipped === 1 ? '' : 's'} skipped`);
+  showToast(`Imported: ${parts.join(', ')}`);
+}
+function handleL1PlanImportFile(event) {
+  const file = event.target.files[0];
+  event.target.value = ''; // allow re-selecting the same file next time
+  if (!file) return;
+  importL1PlansFromExcel(file);
 }
 
 // ---------- Export Dashboard as an Executive Summary (PDF/PNG) — an
