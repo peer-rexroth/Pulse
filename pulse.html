@@ -976,12 +976,30 @@
      this app's now-removed Journeys feature, which used to be this
      picker's own original caller — kept as-is rather than renamed, since
      L1 Plans' own connect modal still relies on them unchanged. */
-  .journey-connect-list { max-height: 50vh; overflow-y: auto; }
-  .journey-connect-ws-group { margin-bottom: 12px; }
-  .journey-connect-ws-group:last-child { margin-bottom: 0; }
-  .journey-connect-ws-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); margin-bottom: 4px; }
-  .journey-connect-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; font-size: 13px; cursor: pointer; border-radius: 6px; }
-  .journey-connect-row:hover { background: var(--panel-2); }
+  .l1-connect-list { max-height: 50vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+  /* A real 5-column table (Workstream / Scope Item / Milestone / Due /
+     Checkbox) — an explicit user request replacing the original grouped
+     layout (one heading per workstream, a bold sub-heading per scope item,
+     then a plain name-only row per milestone, no Due shown at all). Widths
+     roughly mirror l1LinkedRowHtml()'s own Workstream/Scope Item columns
+     one page over, loosened slightly (130px/150px vs 110px/140px) since
+     this modal has real room to spare and no cross-row alignment
+     constraint with anything else to respect. Due is narrower (90px) than
+     elsewhere in this app since it only ever needs to fit a short date, not
+     also double as an editable pill. */
+  .l1-connect-header, .l1-connect-row {
+    display: grid; grid-template-columns: 130px 150px minmax(160px,1fr) 90px 32px;
+    align-items: center; gap: 10px; padding: 7px 10px; border-bottom: 1px solid var(--border);
+  }
+  .l1-connect-header {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--text-faint); background: var(--panel-2); position: sticky; top: 0;
+  }
+  .l1-connect-row { font-size: 13px; color: var(--text); cursor: pointer; }
+  .l1-connect-row:last-child { border-bottom: none; }
+  .l1-connect-row:hover { background: var(--panel-2); }
+  .l1-connect-row input[type="checkbox"] { cursor: pointer; }
+  .l1-connect-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Color scheme picker modal — ported from mytasks (see THEME_SCHEMES). */
   .theme-options { display: flex; flex-direction: column; gap: 10px; }
@@ -1798,17 +1816,19 @@
 
 <!-- L1 Plan milestone connect — candidates are workstream milestones, with
      a search box added given the large candidate volume (every milestone
-     across every item, not just every item). See "L1 Plans" in
-     CLAUDE.md. -->
+     across every item, not just every item), listed as a flat 5-column
+     table (Workstream / Scope Item / Milestone / Due / Checkbox) — an
+     explicit user request replacing the original grouped layout. See "L1
+     Plans" in CLAUDE.md. -->
 <div class="modal-bg" id="l1ConnectModalBg">
-  <div class="modal modal-wide">
+  <div class="modal modal-wide" style="width:760px">
     <h3 id="l1ConnectModalTitle">Connect workstream milestones</h3>
-    <p style="margin-top:0;color:var(--text-dim);font-size:13px">Pick which workstream milestones feed into this L1 milestone. Purely for traceability — linking never changes this milestone's own status or dates.</p>
+    <p style="margin-top:0;color:var(--text-dim);font-size:13px">Pick which workstream milestones feed into this L1 milestone. Its Status rolls up from these once linked; the linked milestones' own Due/Actual are never changed by linking.</p>
     <div class="search-box" style="max-width:none;margin-bottom:10px">
       <i class="fa-solid fa-magnifying-glass"></i>
       <input type="text" id="l1ConnectSearchInput" placeholder="Search by milestone or scope item name..." oninput="renderL1ConnectList()">
     </div>
-    <div id="l1ConnectList" class="journey-connect-list"></div>
+    <div id="l1ConnectList" class="l1-connect-list"></div>
     <div class="modal-actions" style="justify-content:flex-end">
       <button class="btn btn-primary" onclick="closeL1ConnectModal()">Done</button>
     </div>
@@ -6114,12 +6134,34 @@ function closeL1ConnectModal() {
   l1ConnectPlanId = null;
   l1ConnectMilestoneId = null;
 }
-// Grouped by workstream (plus Unassigned), then by scope item within each —
-// a milestone alone doesn't say which item it belongs to. A milestone
-// already claimed by a *different* L1 milestone is excluded entirely —
-// connecting it here would silently steal it from wherever it already
-// belongs. An L1 Plan's own milestones never appear as candidates (an L1
-// milestone doesn't link to another L1 milestone).
+// A flat 5-column table (Workstream / Scope Item / Milestone / Due /
+// Checkbox) — an explicit user request replacing the original layout (one
+// heading per workstream, a bold sub-heading per scope item, then a plain
+// name-only row per milestone with no Due shown at all). Rows are sorted by
+// workstream display order (Unassigned last, matching every other
+// Unassigned-last convention in this app), then by scope item name within
+// each, so related milestones still read together even without the old
+// grouping's visual headers. A milestone already claimed by a *different*
+// L1 milestone is excluded entirely — connecting it here would silently
+// steal it from wherever it already belongs. An L1 Plan's own milestones
+// never appear as candidates (an L1 milestone doesn't link to another L1
+// milestone).
+function l1ConnectHeaderHtml() {
+  return `<div class="l1-connect-header">
+      <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span></span>
+    </div>`;
+}
+function l1ConnectRowHtml(item, milestone, checked) {
+  const ws = item.workstreamId ? workstreams.find(w => w.id === item.workstreamId) : null;
+  const wsLabel = ws ? ws.name : 'Unassigned';
+  return `<label class="l1-connect-row" title="${esc(wsLabel)} — ${esc(item.name)}">
+      <span class="l1-connect-source">${esc(wsLabel)}</span>
+      <span class="l1-connect-source">${esc(item.name)}</span>
+      <span>${esc(milestone.name)}</span>
+      <span>${milestone.dueDate ? esc(fmtDate(milestone.dueDate)) : '—'}</span>
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleL1MilestoneLink('${item.id}','${milestone.id}', this.checked)">
+    </label>`;
+}
 function renderL1ConnectList() {
   const milestoneId = l1ConnectMilestoneId;
   if (!milestoneId) return;
@@ -6134,32 +6176,17 @@ function renderL1ConnectList() {
     });
   });
   if (!candidates.length) {
-    document.getElementById('l1ConnectList').innerHTML = `<p style="color:var(--text-faint);font-size:13px;margin:0">No matching workstream milestones.</p>`;
+    document.getElementById('l1ConnectList').innerHTML = `<p style="color:var(--text-faint);font-size:13px;margin:0;padding:10px">No matching workstream milestones.</p>`;
     return;
   }
-  const groups = workstreams.map(w => ({ id: w.id, name: w.name }));
-  groups.push({ id: null, name: 'Unassigned' });
-  const sections = groups.map(g => {
-    const wsCandidates = candidates.filter(c => c.item.workstreamId === g.id);
-    if (!wsCandidates.length) return '';
-    const byItem = [];
-    const byItemIndex = {};
-    wsCandidates.forEach(c => {
-      if (!(c.item.id in byItemIndex)) { byItemIndex[c.item.id] = byItem.length; byItem.push({ item: c.item, milestones: [] }); }
-      byItem[byItemIndex[c.item.id]].milestones.push(c.milestone);
-    });
-    return `<div class="journey-connect-ws-group">
-        <div class="journey-connect-ws-label">${esc(g.name)}</div>
-        ${byItem.map(({ item, milestones }) => `
-          <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin:6px 0 2px">${esc(item.name)}</div>
-          ${milestones.map(m => `
-            <label class="journey-connect-row">
-              <input type="checkbox" ${m.l1MilestoneId === milestoneId ? 'checked' : ''} onchange="toggleL1MilestoneLink('${item.id}','${m.id}', this.checked)">
-              <span>${esc(m.name)}</span>
-            </label>`).join('')}`).join('')}
-      </div>`;
-  }).join('');
-  document.getElementById('l1ConnectList').innerHTML = sections;
+  const wsOrder = new Map(workstreams.slice().sort((a, b) => a.order - b.order).map((w, i) => [w.id, i]));
+  candidates.sort((a, b) => {
+    const orderA = a.item.workstreamId == null ? Infinity : (wsOrder.get(a.item.workstreamId) ?? Infinity);
+    const orderB = b.item.workstreamId == null ? Infinity : (wsOrder.get(b.item.workstreamId) ?? Infinity);
+    return orderA !== orderB ? orderA - orderB : a.item.name.localeCompare(b.item.name);
+  });
+  document.getElementById('l1ConnectList').innerHTML = l1ConnectHeaderHtml() +
+    candidates.map(({ item, milestone }) => l1ConnectRowHtml(item, milestone, milestone.l1MilestoneId === milestoneId)).join('');
 }
 function toggleL1MilestoneLink(itemId, milestoneId, checked) {
   if (!requireRole('editor')) return;

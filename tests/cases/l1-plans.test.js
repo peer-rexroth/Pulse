@@ -899,6 +899,83 @@ test('renderL1ConnectList\'s search box narrows candidates by milestone or scope
   assertNotIncludes(html, 'Unrelated step');
 });
 
+// ---------- The connect list as a flat 5-column table — an explicit user ----------
+// request replacing the original grouped layout (one heading per
+// workstream, a bold sub-heading per scope item, a plain name-only row per
+// milestone with no Due shown at all).
+
+test('l1ConnectHeaderHtml labels all five columns: Workstream, Scope Item, Milestone, Due, and a blank checkbox column', function () {
+  const html = l1ConnectHeaderHtml();
+  assertIncludes(html, 'l1-connect-header');
+  ['Workstream', 'Scope Item', 'Milestone', 'Due'].forEach(label => assertIncludes(html, `<span>${label}</span>`));
+});
+
+test('renderL1ConnectList shows each candidate\'s Workstream, Scope Item, and Due date as real columns, not just the milestone name', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const w2 = { id: genId(), name: 'Data Platform', color: 'teal', order: 1 };
+  workstreams.push(w2);
+  const item = addItem({ name: 'Warehouse migration', workstreamId: w2.id });
+  const wm = { id: genId(), name: 'Cutover complete', dueDate: '2027-04-01', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  const html = document.getElementById('l1ConnectList').innerHTML;
+  assertIncludes(html, 'Data Platform', 'the candidate\'s own workstream name');
+  assertIncludes(html, 'Warehouse migration', 'the candidate\'s own scope item name');
+  assertIncludes(html, fmtDate('2027-04-01'), 'the candidate\'s own Due date');
+});
+
+test('renderL1ConnectList shows an em dash for a candidate with no Due date set', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'No date yet', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  assertIncludes(document.getElementById('l1ConnectList').innerHTML, '—');
+});
+
+test('renderL1ConnectList labels a candidate from an Unassigned scope item as "Unassigned", not a stale/missing workstream name', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Orphan item', workstreamId: null });
+  const wm = { id: genId(), name: 'Some milestone', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  assertIncludes(document.getElementById('l1ConnectList').innerHTML, 'Unassigned');
+});
+
+test('renderL1ConnectList sorts candidates by workstream display order, Unassigned last, then by scope item name within each', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const wsB = { id: genId(), name: 'B Stream', color: 'teal', order: 1 };
+  workstreams.push(wsB); // workstreams[0] ('Workstream 1', order 0) already exists from resetState()
+  const itemInB = addItem({ name: 'In B', workstreamId: wsB.id });
+  const itemZ = addItem({ name: 'Z in first stream', workstreamId: workstreams[0].id });
+  const itemA = addItem({ name: 'A in first stream', workstreamId: workstreams[0].id });
+  const itemUnassigned = addItem({ name: 'Unassigned item', workstreamId: null });
+  [itemInB, itemZ, itemA, itemUnassigned].forEach(it => {
+    it.milestones.push({ id: genId(), name: `${it.name} milestone`, dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null });
+  });
+  openL1ConnectModal(p.id, m.id);
+  const html = document.getElementById('l1ConnectList').innerHTML;
+  const idxA = html.indexOf('A in first stream');
+  const idxZ = html.indexOf('Z in first stream');
+  const idxB = html.indexOf('In B');
+  const idxUnassigned = html.indexOf('Unassigned item');
+  assertTrue(idxA < idxZ, 'within the first workstream, A sorts before Z by name');
+  assertTrue(idxZ < idxB, 'workstreams[0] (order 0) sorts before B Stream (order 1)');
+  assertTrue(idxB < idxUnassigned, 'Unassigned always sorts last, regardless of name');
+});
+
+test('l1ConnectRowHtml renders the whole row as one clickable label wrapping the checkbox, not just the checkbox itself', function () {
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const html = l1ConnectRowHtml(item, wm, false);
+  assertIncludes(html, '<label class="l1-connect-row"');
+  assertIncludes(html, '<input type="checkbox"');
+});
+
 test('closeL1ConnectModal clears the module-level connect state', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
