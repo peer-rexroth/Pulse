@@ -763,9 +763,29 @@
      .l1-plans-list's own real widths and adjacency, this row's own
      Status→right-edge distance (gap(10) + Actions(56) + padding-right(20)
      = 86) now matches .l1-plans-list's own identical distance exactly, no
-     spacer column needed anywhere. */
+     spacer column needed anywhere.
+     A genuine, deliberate 110px blank column now sits right after Due,
+     before Status — an explicit user request ("align the due date of the
+     l1 milestone with the due date of the linked milestones"). Because a
+     CSS grid's one flexible (1fr) track always absorbs the *entire*
+     remaining width, any column's absolute x-position is governed purely
+     by whatever sits between it and the row's right edge, never by what's
+     before the flexible column — so this blank column, sitting *after*
+     Due, shifts Due itself 120px left (its own 110px plus the one new
+     10px gap) without moving Status/Actions at all, since nothing changed
+     between them and the right edge. 110px is exactly .l1-linked-row's
+     own Actual column width one level down: this row has no Actual
+     concept of its own (the L1 milestone shows one computed effective
+     Due, never a separate Actual — see computedL1MilestoneDate() in
+     CLAUDE.md), but reserving the identical width in the identical
+     position is what makes Due land at the same x-position as
+     .l1-linked-row's own Due, one level below. A happy side effect,
+     verified by the same math: Status/Actions stay exactly where they
+     already were, so this row's own alignment with .l1-plans-list (one
+     level *up*, which has no Due column to align at all) is completely
+     undisturbed by this change. */
   .l1-milestone-header, .l1-milestone-row {
-    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 116px 56px;
+    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 110px 116px 56px;
     align-items: center; gap: 10px; padding: 7px 20px 7px 34px; border-bottom: 1px solid var(--border);
   }
   .l1-milestone-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
@@ -5856,11 +5876,14 @@ function toggleL1MilestoneExpanded(milestoneId) {
 function l1MilestoneHeaderHtml() {
   // Connect and Delete share one trailing Actions column (see the CSS
   // comment on .l1-milestone-header/.l1-milestone-row) — no header label,
-  // same as the shared item grid's own unlabeled Actions column. No blank
-  // spacer before it — Status sits directly adjacent to Actions here, the
-  // same real adjacency the shared item grid itself has.
+  // same as the shared item grid's own unlabeled Actions column. Status
+  // still sits directly adjacent to Actions — the blank cell right after
+  // Due is a genuine reserved-width alignment column (see the CSS comment
+  // on .l1-milestone-header/.l1-milestone-row for why), not a resurrection
+  // of the old mistaken pre-Status spacer this row's history already
+  // fixed once.
   return `<div class="l1-milestone-header">
-      <span></span><span>Milestone</span><span>Due</span><span>Status</span><span></span>
+      <span></span><span>Milestone</span><span>Due</span><span></span><span>Status</span><span></span>
     </div>`;
 }
 // A linked workstream milestone's own read-only row, once its parent L1
@@ -5961,6 +5984,7 @@ function l1MilestoneRowsHtml(plan) {
         ${chevronHtml}
         ${nameHtml}
         ${dueHtml}
+        <span></span>
         ${statusHtml}
         ${actionsHtml}
       </div>${linkedRowsHtml}`;

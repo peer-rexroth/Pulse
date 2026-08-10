@@ -330,13 +330,39 @@ test('l1LinkedHeaderHtml/l1LinkedRowHtml carry exactly one small, deliberately b
   assertIncludes(rowHtml, '      <span></span>\n    </div>', 'the trailing cell is genuinely empty, not a hidden action');
 });
 
-test('l1MilestoneHeaderHtml/l1MilestoneRowsHtml no longer carry any spacer — Status sits directly adjacent to Actions, matching the shared grid\'s own real adjacency', function () {
+test('l1MilestoneHeaderHtml/l1MilestoneRowsHtml carry no spacer between Status and Actions — Status still sits directly adjacent to Actions, matching the shared grid\'s own real adjacency', function () {
   const p = addL1Plan();
   addL1Milestone(p.id);
   const headerHtml = l1MilestoneHeaderHtml();
-  assertEqual((headerHtml.match(/<span/g) || []).length, 5, 'Chevron/Milestone/Due/Status/Actions, no spacer');
+  assertEqual((headerHtml.match(/<span/g) || []).length, 6, 'Chevron/Milestone/Due/[reserved alignment cell]/Status/Actions');
   const rowHtml = l1MilestoneRowsHtml(p);
   assertNotIncludes(rowHtml, '<span></span>\n        <span class="l1-milestone-actions">', 'no spacer cell sits between Status and the Actions cluster');
+});
+
+// A deliberate, later addition: a real 110px reserved column between Due
+// and Status — an explicit user request ("align the due date of the l1
+// milestone with the due date of the linked milestones"). Unlike the
+// earlier, mistaken pre-Status spacer this row's own alignment history
+// already removed once (see the test just above and the CSS comment on
+// .l1-milestone-header/.l1-milestone-row), this one sits in a genuinely
+// different position (after Due, not after Status) and exists for a real,
+// verified reason: it's what makes Due land at the same x-position as
+// .l1-linked-row's own Due one level down, without disturbing
+// Status/Actions' own alignment with .l1-plans-list one level up.
+
+test('l1MilestoneHeaderHtml/l1MilestoneRowsHtml reserve a blank column between Due and Status, matching .l1-linked-row\'s own Actual column width', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const headerHtml = l1MilestoneHeaderHtml();
+  assertIncludes(headerHtml, '<span></span><span>Milestone</span><span>Due</span><span></span><span>Status</span><span></span>');
+  const rowHtml = l1MilestoneRowsHtml(p);
+  // The reserved cell is the plain <span></span> immediately after dueHtml's
+  // own closing tag and before statusHtml's status-badge markup.
+  const dueIdx = rowHtml.indexOf('title="Due date"');
+  const statusIdx = rowHtml.indexOf('class="status-badge"');
+  assertTrue(dueIdx > -1 && statusIdx > dueIdx, 'sanity check on ordering');
+  const between = rowHtml.slice(dueIdx, statusIdx);
+  assertIncludes(between, '<span></span>', 'a blank reserved cell sits between Due and Status');
 });
 
 test('renderL1Plans() uses its own .l1-plans-list container, not the reused .journeys-list', function () {
