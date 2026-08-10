@@ -2723,7 +2723,7 @@ test('milestoneHeaderHtml\'s Confirm column is an (invisible) icon placeholder, 
   renderReview();
   const html = document.getElementById('main').innerHTML;
   const headerRow = html.slice(html.indexOf('milestone-header'), html.indexOf('milestone-header') + 500);
-  assertIncludes(headerRow, 'grid-column:12', 'the header row must place something at the same trailing column the data rows\' implicit toggle column uses');
+  assertIncludes(headerRow, 'grid-column:13', 'the header row must place something at the same trailing column the data rows\' implicit toggle column uses');
   assertIncludes(headerRow, 'visibility:hidden', 'the placeholder should reserve space without actually being visible');
   assertNotIncludes(headerRow, '>Confirm<', 'a visible text label here is wider than the data rows\' icon and would reintroduce the misalignment');
 });

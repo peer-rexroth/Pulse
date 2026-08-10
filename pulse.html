@@ -77,17 +77,33 @@
        for "Off Track"/"Not Started" and wasn't enough for the new one
        without wrapping. See .milestone-status-cell's own comment for the
        matching widening of its internal first column. */
-    --item-grid-cols: 20px minmax(140px,1.3fr) 160px 90px 20px 190px 20px 115px 100px 116px 56px;
+    /* 12th track (10px, blank) — an explicit user request for a small
+       spacing column after Actions (11) in Planning, or after the Review
+       confirm toggle in Review mode. Review's own toggle isn't part of
+       --item-grid-cols at all (it's placed via an explicit grid-column:13
+       on the review-only cell — see itemRowHtml()/milestoneRowsHtml()'s
+       own reviewCellHtml, moved from :12 to :13 to make room for this new
+       real column sitting between it and Actions), so this one new blank
+       track is enough to satisfy both cases: in Planning, it's simply the
+       last column, trailing after Actions; in Review, the toggle's own
+       implicit 13th column still lands right after it. No DOM element
+       needs to occupy it in Planning — a trailing, item-less grid track
+       still reserves its own width in the row's total layout even with
+       nothing explicitly placed there, unlike a *skipped middle* column
+       (which auto-placement would fill by shifting a later item left into
+       it — see "Column layout is a real CSS grid" in CLAUDE.md for why
+       every *other* column in this grid must stay a real element). */
+    --item-grid-cols: 20px minmax(140px,1.3fr) 160px 90px 20px 190px 20px 115px 100px 116px 56px 10px;
     /* Companion to --item-grid-cols above — the row's own minimum total
        width (chevron + name's own 140px flexible *minimum*, never its
        max-content, which varies per row's own text length + every fixed
-       column + 10px gaps between all 11 columns + the row's own 34px
-       horizontal padding: 20+140+160+90+20+190+20+115+100+116+56 = 1027,
-       +100 (10 gaps) +34 (padding) = 1161. See .item-row's own CSS comment
+       column + 10px gaps between all 12 columns + the row's own 34px
+       horizontal padding: 20+140+160+90+20+190+20+115+100+116+56+10 = 1037,
+       +110 (11 gaps) +34 (padding) = 1181. See .item-row's own CSS comment
        for why this exists at all and why it must be an exact number, not
        max-content/min-content. .l1-plans-list overrides this alongside its
        own --item-grid-cols override, the same paired-override pattern. */
-    --item-row-min-width: 1161px;
+    --item-row-min-width: 1181px;
 
     /* Left sidebar's own resizable width — a plain per-device UI
        preference (see sidebarWidth in the script below), structural like
@@ -728,9 +744,13 @@
      a real browser. */
   /* --item-row-min-width recomputed for this override's own narrower
      column set (same paired-constant requirement --item-row-min-width's
-     own root-level comment documents): 20+140+10+90+50+10+10+10+10+116+56
-     = 522, +100 (10 gaps) +34 (padding) = 656. */
-  .l1-plans-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 50px 10px 10px 10px 10px 116px 56px; --item-row-min-width: 656px; }
+     own root-level comment documents), including the new 12th trailing
+     spacer column (see --item-grid-cols' own root-level comment for why it
+     exists — L1 Plans never shows the Review confirm toggle, so only the
+     spacer itself matters here, not any :12->13 renumbering):
+     20+140+10+90+50+10+10+10+10+116+56+10 = 532, +110 (11 gaps) +34
+     (padding) = 676. */
+  .l1-plans-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 50px 10px 10px 10px 10px 116px 56px 10px; --item-row-min-width: 676px; }
   .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-dates { color: var(--text-dim); font-size: 12.5px; width: 150px; flex: 0 0 auto; }
   .milestone-count-badge { font-size: 11px; color: var(--text-faint); font-weight: 700; white-space: nowrap; }
@@ -1342,6 +1362,29 @@
      one, so the card's border/background always wrap what's visible instead
      of an overflowing row spilling out past its own frame). */
   .review-checklist { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; overflow-x: auto; }
+  /* Overrides --item-row-min-width's own base value (1181px) for exactly
+     the rows that pick up the review-only confirm toggle (see that
+     variable's own CSS comment, and the toggle's own :13 grid-column) —
+     found live while verifying the new trailing 12th column above: the
+     toggle sits in an *implicit* 13th track, sized to its own content
+     (~27px for the item-level toggle, the widest of the three variants
+     this selector covers), which the base min-width has no way to know
+     about since it's computed purely from --item-grid-cols' own 12
+     explicit tracks. Without this, the exact same "row's own box narrower
+     than its true content, background/border cut off partway" bug this
+     whole min-width mechanism was built to fix (see .item-row's own CSS
+     comment) would simply recur for this one extra column, only in Review
+     mode. 1198px measured directly via a live browser (the item-level
+     toggle's own rendered right edge, relative to its row's own left
+     edge — the largest of the three row types this selector covers;
+     milestone-header's hidden placeholder and milestone-sub-row's own
+     toggle both measured slightly less, 1195/1194px, so 1198px covers
+     all three with nothing to spare). Two classes, one specificity level
+     above the plain .item-row/.milestone-header/.milestone-sub-row rules
+     alone, so this correctly wins only inside .review-checklist — an
+     ordinary Planning/L1-Plans row (no confirm toggle at all) keeps the
+     base 1181px, unaffected. */
+  .review-checklist .item-row, .review-checklist .milestone-header, .review-checklist .milestone-sub-row { min-width: 1198px; }
   .item-row.review-confirmed, .milestone-sub-row.review-confirmed { background: var(--stat-green-bg); }
   /* Icon-only confirm toggle — no button box, just the icon itself changes
      from an outline circle (unconfirmed) to a filled green circle-check
@@ -4153,10 +4196,13 @@ function itemRowHtml(it, reviewCycle) {
           : `<span class="tag-badge" style="background:var(--stat-${val}-bg);color:var(--stat-${val});cursor:default" title="${title}"><i class="fa-solid ${TAG_FIELD_ICONS[f]}"></i></span>`;
       }).join('')}
     </span>`;
-  // Review-only trailing cell — an implicit 12th grid column (explicit
-  // grid-column:12), deliberately outside --item-grid-cols so Planning's own
-  // layout is completely untouched; it only ever exists when reviewCycle is
-  // passed. An item with milestones can only ever be confirmed by confirming
+  // Review-only trailing cell — an implicit 13th grid column (explicit
+  // grid-column:13, moved from :12 once a real, always-present 12th column
+  // — a blank trailing spacer, an explicit user request — was added to
+  // --item-grid-cols itself; see that variable's own CSS comment),
+  // deliberately outside --item-grid-cols so Planning's own layout is
+  // completely untouched; it only ever exists when reviewCycle is passed.
+  // An item with milestones can only ever be confirmed by confirming
   // every one of them (isItemConfirmedInCycle()), so its button confirms/
   // unconfirms all of them at once rather than setting an independent flag;
   // a zero-milestone item still confirms directly via toggleReviewConfirm(),
@@ -4176,7 +4222,7 @@ function itemRowHtml(it, reviewCycle) {
     // — clicking it when everything's already auto-confirmed is a harmless
     // no-op, not worth a second inert-rendering branch here.
     if (!total && it.status === 'complete') {
-      reviewCellHtml = `<span class="review-confirm-toggle item-level confirmed" style="grid-column:12" title="Complete — no review needed"><i class="fa-solid fa-circle-check"></i></span>`;
+      reviewCellHtml = `<span class="review-confirm-toggle item-level confirmed" style="grid-column:13" title="Complete — no review needed"><i class="fa-solid fa-circle-check"></i></span>`;
     } else {
       const onClickAttr = total
         ? `toggleConfirmAllMilestones('${reviewCycle.id}','${it.id}')`
@@ -4188,10 +4234,10 @@ function itemRowHtml(it, reviewCycle) {
       // not toggle it — so this renders as an inert span, not an omitted cell,
       // when the role is below Reviewer (see toggleReviewConfirm()'s own guard).
       reviewCellHtml = hasRole('reviewer')
-        ? `<button class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:12" onclick="${onClickAttr}" title="${titleAttr}">
+        ? `<button class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:13" onclick="${onClickAttr}" title="${titleAttr}">
           <i class="fa-${confirmedForReview ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
         </button>`
-        : `<span class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:12" title="${titleAttr}">
+        : `<span class="review-confirm-toggle item-level ${confirmedForReview ? 'confirmed' : ''}" style="grid-column:13" title="${titleAttr}">
           <i class="fa-${confirmedForReview ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
         </span>`;
     }
@@ -4278,7 +4324,7 @@ function milestoneHeaderHtml(reviewCycle) {
   // below (reported via screenshot). Matching the row's real icon+class,
   // hidden, is the same fix already applied to the Action Log's own header
   // for the identical reason — see actionLogHtml() in CLAUDE.md.
-  const reviewLabel = reviewCycle ? `<span class="review-confirm-toggle" style="grid-column:12;visibility:hidden"><i class="fa-solid fa-circle-check"></i></span>` : '';
+  const reviewLabel = reviewCycle ? `<span class="review-confirm-toggle" style="grid-column:13;visibility:hidden"><i class="fa-solid fa-circle-check"></i></span>` : '';
   // "Status" then "N/A" share one flex cell spanning columns 10/12 (both
   // trailing tracks, 116px + 56px) — matching milestoneRowsHtml()'s own
   // .milestone-status-cell exactly, rather than each claiming a whole
@@ -4346,7 +4392,7 @@ function milestoneRowsHtml(it, reviewCycle) {
       // on the same row, which read as a stale/broken icon rather than two
       // cells agreeing with each other.
       if (m.notApplicable) {
-        reviewCellHtml = `<span class="review-confirm-toggle" style="grid-column:12" title="Not applicable — excluded from this review"><i class="fa-solid fa-toggle-off" style="opacity:.4"></i></span>`;
+        reviewCellHtml = `<span class="review-confirm-toggle" style="grid-column:13" title="Not applicable — excluded from this review"><i class="fa-solid fa-toggle-off" style="opacity:.4"></i></span>`;
       } else if (m.status === 'complete') {
         // A Complete milestone auto-confirms — an explicit user request
         // ("mark completed task as reviewed, no need to review them
@@ -4356,16 +4402,16 @@ function milestoneRowsHtml(it, reviewCycle) {
         // already gets, not the "click to unconfirm" affordance a
         // manually-confirmed still-open milestone shows.
         mConfirmed = true;
-        reviewCellHtml = `<span class="review-confirm-toggle confirmed" style="grid-column:12" title="Complete — no review needed"><i class="fa-solid fa-circle-check"></i></span>`;
+        reviewCellHtml = `<span class="review-confirm-toggle confirmed" style="grid-column:13" title="Complete — no review needed"><i class="fa-solid fa-circle-check"></i></span>`;
       } else {
         mConfirmed = isMilestoneConfirmedInCycle(reviewCycle, m);
         // See itemRowHtml()'s own reviewCellHtml comment: below Reviewer, this
         // renders as an inert span (visible, not togglable), not an omitted cell.
         reviewCellHtml = hasRole('reviewer')
-          ? `<button class="review-confirm-toggle ${mConfirmed ? 'confirmed' : ''}" style="grid-column:12" onclick="toggleMilestoneConfirm('${reviewCycle.id}','${m.id}')" title="${mConfirmed ? 'Confirmed — click to unconfirm' : 'Confirm this milestone'}">
+          ? `<button class="review-confirm-toggle ${mConfirmed ? 'confirmed' : ''}" style="grid-column:13" onclick="toggleMilestoneConfirm('${reviewCycle.id}','${m.id}')" title="${mConfirmed ? 'Confirmed — click to unconfirm' : 'Confirm this milestone'}">
             <i class="fa-${mConfirmed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
           </button>`
-          : `<span class="review-confirm-toggle ${mConfirmed ? 'confirmed' : ''}" style="grid-column:12" title="${mConfirmed ? 'Confirmed' : 'Not confirmed'}">
+          : `<span class="review-confirm-toggle ${mConfirmed ? 'confirmed' : ''}" style="grid-column:13" title="${mConfirmed ? 'Confirmed' : 'Not confirmed'}">
             <i class="fa-${mConfirmed ? 'solid fa-circle-check' : 'regular fa-circle'}"></i>
           </span>`;
       }
