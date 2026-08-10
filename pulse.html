@@ -1419,6 +1419,7 @@
     <button class="view-tab" id="tabDashboard" onclick="setMode('dashboard')"><i class="fa-solid fa-gauge-high"></i> Dashboard</button>
     <button class="view-tab" id="tabReview" onclick="setMode('review')"><i class="fa-solid fa-clipboard-check"></i> Review</button>
   </div>
+  <button class="btn btn-sm" id="tabL1plans" onclick="setMode('l1plans')" title="High-level plans, overarching across every workstream"><i class="fa-solid fa-bullseye"></i> L1 Plans</button>
   <div class="topbar-spacer"></div>
   <span id="syncConflictIndicator"></span>
   <span id="fileSyncIndicator"></span>
@@ -1444,7 +1445,6 @@
       </div>
     </div>
   </div>
-  <button class="btn btn-sm" id="tabL1plans" onclick="setMode('l1plans')" title="High-level plans, overarching across every workstream"><i class="fa-solid fa-bullseye"></i> L1 Plans</button>
   <button class="btn btn-sm" id="tabAdmin" onclick="setMode('admin')"><i class="fa-solid fa-sliders"></i> Settings</button>
   <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileImport(event)">
   <input type="file" id="l1PlanImportFileInput" accept=".xlsx" style="display:none" onchange="handleL1PlanImportFile(event)">
