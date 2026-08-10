@@ -78,6 +78,16 @@
        without wrapping. See .milestone-status-cell's own comment for the
        matching widening of its internal first column. */
     --item-grid-cols: 20px minmax(140px,1.3fr) 160px 90px 20px 190px 20px 115px 100px 116px 56px;
+    /* Companion to --item-grid-cols above — the row's own minimum total
+       width (chevron + name's own 140px flexible *minimum*, never its
+       max-content, which varies per row's own text length + every fixed
+       column + 10px gaps between all 11 columns + the row's own 34px
+       horizontal padding: 20+140+160+90+20+190+20+115+100+116+56 = 1027,
+       +100 (10 gaps) +34 (padding) = 1161. See .item-row's own CSS comment
+       for why this exists at all and why it must be an exact number, not
+       max-content/min-content. .l1-plans-list overrides this alongside its
+       own --item-grid-cols override, the same paired-override pattern. */
+    --item-row-min-width: 1161px;
 
     /* Left sidebar's own resizable width — a plain per-device UI
        preference (see sidebarWidth in the script below), structural like
@@ -641,6 +651,35 @@
        complete toggle beyond it) otherwise reads as uncomfortably flush
        against the card's own right edge, a user-reported visual issue. */
     display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px; padding: 9px 20px 9px 14px; border-bottom: 1px solid var(--border);
+    /* min-width: var(--item-row-min-width) — a user-reported follow-up to
+       .ws-section-rows' own scoped-scroll fix (see that class's own CSS
+       comment): once .ws-section-rows became a scroll container, a row's
+       own border-box (a plain block with width:auto) sized to the
+       CONTAINER's *visible* width, not this row's true minimum content
+       width — its grid tracks still rendered at their full fixed sizes
+       (CSS Grid explicitly allows a container's tracks to overflow a
+       narrower box), so the row's own background/border-bottom, which are
+       painted only across the row's own border-box, stopped at that
+       visible width instead of covering the row's true (wider) content.
+       Scrolled past that point, a row with little content past that x
+       position (a milestone whose short name doesn't reach that far,
+       exactly the case that surfaced this) showed a genuinely blank,
+       unstyled gap — no background tint, no border-bottom line — reading
+       as the table having "lost its lines and formatting" once scrolled,
+       even though every cell's content was still correctly positioned
+       underneath. min-width forces the row's own box to match its true
+       content width regardless of scroll position, so background/border
+       always cover the row's full scrollable extent. Deliberately an exact
+       px value, not width/min-width:max-content: max-content would size
+       the flexible name column to THIS row's own text length, so two rows
+       with different-length names would resolve to two different total
+       widths — silently reintroducing the exact column-misalignment bug
+       this whole shared-grid architecture exists to prevent (see "Column
+       layout is a real CSS grid" in CLAUDE.md). --item-row-min-width is
+       computed once from --item-grid-cols' own fixed tracks and the name
+       column's *minimum* (140px, never its content-based maximum), so
+       every row in a section always resolves to the identical width. */
+    min-width: var(--item-row-min-width);
   }
   .item-row:last-child { border-bottom: none; }
   .item-row:hover { background: var(--panel-2); }
@@ -687,7 +726,11 @@
      (312 -> 352, so 352+90 = 442, matching Due's own 442 exactly). Verified
      both by this algebra and by live getBoundingClientRect() measurement in
      a real browser. */
-  .l1-plans-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 50px 10px 10px 10px 10px 116px 56px; }
+  /* --item-row-min-width recomputed for this override's own narrower
+     column set (same paired-constant requirement --item-row-min-width's
+     own root-level comment documents): 20+140+10+90+50+10+10+10+10+116+56
+     = 522, +100 (10 gaps) +34 (padding) = 656. */
+  .l1-plans-list { --item-grid-cols: 20px minmax(140px,1.3fr) 10px 90px 50px 10px 10px 10px 10px 116px 56px; --item-row-min-width: 656px; }
   .item-owner { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-dates { color: var(--text-dim); font-size: 12.5px; width: 150px; flex: 0 0 auto; }
   .milestone-count-badge { font-size: 11px; color: var(--text-faint); font-weight: 700; white-space: nowrap; }
@@ -781,14 +824,24 @@
      milestoneHeaderHtml()) — scoped to that one item, not a page-wide
      header, since only 4 of the 11 shared columns mean anything for a
      milestone. */
+  /* min-width: var(--item-row-min-width) on both — see .item-row's own CSS
+     comment for the full reasoning; this is the exact bug that surfaced it
+     in the first place, since .milestone-sub-row's own background is what
+     visibly "disappeared" once scrolled (a short milestone name doesn't
+     reach nearly as far into its own wide Name span as an item's own
+     tags/dates/status content does, so the missing background/border was
+     most obvious here, even though .item-row had the identical underlying
+     bug). */
   .milestone-header {
     display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px;
     padding: 5px 20px 5px 14px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
     color: var(--text-faint); background: var(--panel-2); border-bottom: 1px solid var(--border);
+    min-width: var(--item-row-min-width);
   }
   .milestone-sub-row {
     display: grid; grid-template-columns: var(--item-grid-cols); align-items: center; gap: 10px; padding: 7px 20px 7px 14px; border-bottom: 1px solid var(--border);
     font-size: 12.5px; background: var(--panel-2);
+    min-width: var(--item-row-min-width);
   }
   /* An L1 Plan's own milestone rows (see "L1 Plans" above) — deliberately a
      fully separate, fixed grid, not --item-grid-cols: that shared grid is
@@ -842,9 +895,18 @@
      this row's own alignment with .l1-plans-list (one level *up*, which
      has no Due/Actual column to align at all) remains completely
      undisturbed. */
+  /* min-width: same fix and reasoning as .item-row's own CSS comment
+     (search "a user-reported follow-up" above) — this row also sits inside
+     a scroll container (.ws-section-rows, since it's nested under a plan's
+     own .l1-plans-list row) and needs its box to cover its own true
+     content width, not just what's currently visible, or its background/
+     border-bottom would vanish once scrolled the same way .milestone-sub-
+     row's did. Computed from this rule's own columns: 20+160+110+110+116+
+     56 = 572, +50 (5 gaps) +54 (34+20 padding) = 676. */
   .l1-milestone-header, .l1-milestone-row {
     display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 110px 116px 56px;
     align-items: center; gap: 10px; padding: 7px 20px 7px 34px; border-bottom: 1px solid var(--border);
+    min-width: 676px;
   }
   .l1-milestone-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
   .l1-milestone-row { font-size: 12.5px; background: var(--panel-2); }
@@ -933,6 +995,11 @@
        genuinely new column without moving something. */
     display: grid; grid-template-columns: 110px 140px minmax(160px,1fr) 110px 110px 116px 56px;
     align-items: center; gap: 10px; padding: 6px 20px 6px 64px; border-bottom: 1px solid var(--border);
+    /* min-width: same fix/reasoning as .item-row's own CSS comment — this
+       row sits inside the same .ws-section-rows scroll container, two
+       levels deep. 110+140+160+110+110+116+56 = 802, +60 (6 gaps) +84
+       (64+20 padding) = 946. */
+    min-width: 946px;
   }
   .l1-linked-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
   .l1-linked-row { font-size: 12px; color: var(--text-dim); background: var(--panel); }
@@ -1392,17 +1459,29 @@
      user-reported bug, screenshot-confirmed) — every column from Source
      onward shifted one slot right accordingly (see actionLogRowHtml()'s
      own grid-column:N+off values). */
+  /* min-width overrides .item-row's own default (--item-row-min-width,
+     1161px — wrong here, this grid is a full override with a different
+     true content width) — same specificity, later in the cascade, so this
+     wins for any element carrying both classes. Same fix/reasoning as
+     .item-row's own CSS comment: this row sits inside .action-log-list,
+     which is itself a scroll container. 28+100+90+20+80+90+90+40+40 = 578
+     (fixed, excl. flex) + 220 (flex min) = 798, +90 (9 gaps) +34 (.item-row's
+     own 14+20 padding, inherited) = 922. */
   .action-log-row, .action-log-header {
     grid-template-columns: 28px minmax(220px,1fr) 100px 90px 20px 80px 90px 90px 40px 40px;
+    min-width: 922px;
   }
   /* The "All Workstreams" Action Log (see allWorkstreamsActionLogHtml())
      inserts one extra Workstream column right after Action Item — every
      other column shifts one slot right accordingly (see
      actionLogRowHtml()'s showWs param). Action Item loses some of its own
      flexible width to make room, same tradeoff --item-grid-cols itself
-     makes for its own name column. */
+     makes for its own name column. min-width recomputed the same way:
+     28+130+100+90+20+80+90+90+40+40 = 708 +160 (flex min) = 868, +100
+     (10 gaps) +34 (padding) = 1002. */
   .action-log-row.with-ws, .action-log-header.with-ws {
     grid-template-columns: 28px minmax(160px,1fr) 130px 100px 90px 20px 80px 90px 90px 40px 40px;
+    min-width: 1002px;
   }
   .action-log-ws { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Decision Log (Review's third tab) — Action Log's counterpart for the
@@ -1412,11 +1491,19 @@
      grid-template-columns: a decision has no owner/due date/completed state
      of its own, so there's no Owner/Due Date/Closed/confirm-toggle column
      here — just Decision / Source / Logged / Delete. */
+  /* min-width overrides .item-row's own default the same way Action Log's
+     own rule does just above — see that rule's own comment for the full
+     reasoning. 28+90+90+40 = 248 (fixed) +260 (flex min) = 508, +40
+     (4 gaps) +34 (padding) = 582. */
   .decision-log-row, .decision-log-header {
     grid-template-columns: 28px minmax(260px,1fr) 90px 90px 40px;
+    min-width: 582px;
   }
+  /* with-ws recomputed the same way: 28+130+90+90+40 = 378 +220 (flex min)
+     = 598, +50 (5 gaps) +34 (padding) = 682. */
   .decision-log-row.with-ws, .decision-log-header.with-ws {
     grid-template-columns: 28px minmax(220px,1fr) 130px 90px 90px 40px;
+    min-width: 682px;
   }
   /* The priority flag toggle itself — plain icon, no background, colored
      only while on. The clickable (Reviewer+) row variant additionally gets
@@ -1476,7 +1563,11 @@
      column width, which requires a fixed value, not auto" lesson Action
      Log's own header row already had to learn (see .action-log-row's CSS
      comment) applied here from the start. */
-  .dash-dep-header, .dash-dep-row { display: grid; grid-template-columns: minmax(160px,1fr) 150px 150px 90px 110px; gap: 10px; align-items: center; }
+  /* min-width — same fix/reasoning as .item-row's own CSS comment
+     (CATEGORY-LIST is itself a scroll container — see that class's own
+     comment). 150+150+90+110 = 500 (fixed) +160 (flex min) = 660, +40
+     (4 gaps) +28 (14+14 padding) = 728. */
+  .dash-dep-header, .dash-dep-row { display: grid; grid-template-columns: minmax(160px,1fr) 150px 150px 90px 110px; gap: 10px; align-items: center; min-width: 728px; }
   .dash-dep-header { padding: 8px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); border-bottom: 1px solid var(--border); }
   .dash-dep-row { padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
   .dash-dep-row:last-child { border-bottom: none; }
@@ -1486,7 +1577,9 @@
      reasoning .dash-dep-header/.dash-dep-row already established just above,
      applied here since this table needs 5 columns of its own (Plan/Status/
      Milestones/Linked/Standalone), not .dash-ws-row's simpler flex shape. */
-  .l1-dash-plan-header, .l1-dash-plan-row { display: grid; grid-template-columns: minmax(160px,1fr) 120px 100px 100px 100px; gap: 10px; align-items: center; }
+  /* min-width — same fix/reasoning. 120+100+100+100 = 420 (fixed) +160
+     (flex min) = 580, +40 (4 gaps) +28 (padding) = 648. */
+  .l1-dash-plan-header, .l1-dash-plan-row { display: grid; grid-template-columns: minmax(160px,1fr) 120px 100px 100px 100px; gap: 10px; align-items: center; min-width: 648px; }
   .l1-dash-plan-header { padding: 8px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); border-bottom: 1px solid var(--border); }
   .l1-dash-plan-row { padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
   .l1-dash-plan-row:last-child { border-bottom: none; }
