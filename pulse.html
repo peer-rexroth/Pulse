@@ -6083,30 +6083,80 @@ function updateL1MilestoneDateField(planId, milestoneId, value) {
   plan.updatedAt = Date.now();
   save(); render();
 }
+// Confirm-modal-then-undo-toast — an explicit user request ("add a delete
+// modal l1 plans and l1 milestones, asking for confirmation, like deleting
+// milestones"), matching the exact same shape every other destructive
+// delete in this app already uses (deleteItem(), deleteWorkstreamFromModal(),
+// deleteCategoryFromModal()): a confirm modal naming any real side effects,
+// then an undo callback on the toast that reverses everything the delete
+// itself did, not just the splice. An L1 Plan's own deletion already goes
+// through this same path for free — it's a plain items row, so its Delete
+// button already calls the shared deleteItem(), unrelated to this function.
 function removeL1Milestone(planId, milestoneId) {
   if (!requireRole('editor')) return;
   const plan = items.find(i => i.id === planId && i.itemType === 'l1plan');
   if (!plan) return;
   const idx = plan.milestones.findIndex(m => m.id === milestoneId);
   if (idx === -1) return;
-  plan.milestones.splice(idx, 1);
-  tombstone(deletedMilestoneIds, milestoneId);
-  // Any workstream milestone linked to the one just removed loses that link
-  // immediately, rather than waiting for the next normalizeData() pass
-  // (load/merge/import) to self-heal it — the same "clean up dependent
-  // references right away, don't leave it to eventual self-heal" discipline
-  // this app already applies elsewhere (e.g. a deleted category's items).
-  linkedWorkstreamMilestones(milestoneId).forEach(({ item, milestone }) => {
-    milestone.l1MilestoneId = null;
-    milestone.updatedAt = Date.now();
-    item.updatedAt = Date.now();
+  const milestone = plan.milestones[idx];
+  // Snapshotted before the action runs — this is what the confirm body
+  // names and what undo later re-links, since the actual splice/unlink
+  // below only happens once the user confirms.
+  const links = linkedWorkstreamMilestones(milestoneId);
+  const body = (links.length
+    ? `It will be unlinked from ${links.length} connected workstream milestone${links.length === 1 ? '' : 's'}. `
+    : '') + 'You can undo this from the toast right after deleting.';
+  openConfirmModal({
+    title: `Delete "${milestone.name}"?`,
+    body,
+    action: () => {
+      const removeIdx = plan.milestones.findIndex(m => m.id === milestoneId);
+      if (removeIdx === -1) return;
+      const [removed] = plan.milestones.splice(removeIdx, 1);
+      tombstone(deletedMilestoneIds, milestoneId);
+      // Any workstream milestone linked to the one just removed loses that
+      // link immediately, rather than waiting for the next normalizeData()
+      // pass (load/merge/import) to self-heal it — the same "clean up
+      // dependent references right away, don't leave it to eventual
+      // self-heal" discipline this app already applies elsewhere (e.g. a
+      // deleted category's items). linkedIds is captured by id, not by
+      // object reference, purely so undo below can re-find each one fresh
+      // rather than trusting a closed-over reference could still be valid.
+      const linkedIds = links.map(({ item, milestone: wm }) => ({ itemId: item.id, milestoneId: wm.id }));
+      links.forEach(({ item, milestone: wm }) => {
+        wm.l1MilestoneId = null;
+        wm.updatedAt = Date.now();
+        item.updatedAt = Date.now();
+      });
+      plan.status = computedStatusFromMilestones(plan.milestones);
+      const range = computedDateRangeFromMilestones(plan.milestones);
+      plan.startDate = range ? range.startDate : null;
+      plan.dueDate = range ? range.dueDate : null;
+      plan.updatedAt = Date.now();
+      save(); render();
+      showToast('Milestone deleted', false, () => {
+        untombstone(deletedMilestoneIds, milestoneId);
+        plan.milestones.splice(removeIdx, 0, removed);
+        // Only re-links a workstream milestone that's *still* unlinked —
+        // the same care deleteWorkstreamFromModal()'s own undo already
+        // takes for its moved items — so undo can't clobber an
+        // independent link someone made to something else during the
+        // undo window.
+        linkedIds.forEach(({ itemId, milestoneId: wmId }) => {
+          const it = items.find(i => i.id === itemId);
+          const wm = it && it.milestones.find(m => m.id === wmId);
+          if (wm && wm.l1MilestoneId == null) { wm.l1MilestoneId = milestoneId; wm.updatedAt = Date.now(); }
+        });
+        plan.status = computedStatusFromMilestones(plan.milestones);
+        const range2 = computedDateRangeFromMilestones(plan.milestones);
+        plan.startDate = range2 ? range2.startDate : null;
+        plan.dueDate = range2 ? range2.dueDate : null;
+        plan.updatedAt = Date.now();
+        save(); render();
+        showToast('Milestone restored');
+      });
+    }
   });
-  plan.status = computedStatusFromMilestones(plan.milestones);
-  const range = computedDateRangeFromMilestones(plan.milestones);
-  plan.startDate = range ? range.startDate : null;
-  plan.dueDate = range ? range.dueDate : null;
-  plan.updatedAt = Date.now();
-  save(); render();
 }
 
 // ---------- L1 Plan connect ----------

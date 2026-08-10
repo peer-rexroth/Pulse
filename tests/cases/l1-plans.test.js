@@ -495,10 +495,27 @@ test('updateL1MilestoneDateField is blocked below Editor', function () {
 
 // ---------- Removing an L1 milestone ----------
 
+// removeL1Milestone() now opens a confirm modal first — an explicit user
+// request ("add a delete modal l1 plans and l1 milestones, asking for
+// confirmation, like deleting milestones") — matching every other
+// destructive delete in this app (deleteItem(), deleteWorkstreamFromModal(),
+// deleteCategoryFromModal()). Every test below that actually expects the
+// deletion to happen now calls confirmModalAction() to confirm it, the same
+// way those other deletes' own tests already do.
+
+test('removeL1Milestone opens a confirm modal rather than deleting outright', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  removeL1Milestone(p.id, m.id);
+  assertEqual(p.milestones.length, 1, 'nothing should be removed until the confirm modal is actually confirmed');
+  assertTrue(!!modalTarget, 'a confirm modal should be armed');
+});
+
 test('removeL1Milestone tombstones the milestone via deletedMilestoneIds, same as an ordinary item\'s milestone removal', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   removeL1Milestone(p.id, m.id);
+  confirmModalAction();
   assertEqual(p.milestones.length, 0);
   assertTrue(deletedMilestoneIds.some(t => t.id === m.id));
 });
@@ -511,6 +528,7 @@ test('removeL1Milestone clears l1MilestoneId on every workstream milestone that 
   item.milestones.push(wm);
   assertEqual(linkedWorkstreamMilestones(m.id).length, 1);
   removeL1Milestone(p.id, m.id);
+  confirmModalAction();
   assertEqual(wm.l1MilestoneId, null, 'the link is cleaned up immediately, not left to the next normalizeData() self-heal');
 });
 
@@ -521,10 +539,27 @@ test('removeL1Milestone recomputes the parent L1 Plan\'s own status/date-range a
   updateL1MilestoneDateField(p.id, m1.id, '2026-09-01');
   cycleL1MilestoneStatus(p.id, m1.id); // not-started -> next status
   removeL1Milestone(p.id, m1.id);
+  confirmModalAction();
   assertEqual(p.status, computedStatusFromMilestones(p.milestones));
   const range = computedDateRangeFromMilestones(p.milestones);
   assertEqual(p.startDate, range ? range.startDate : null);
   assertEqual(p.dueDate, range ? range.dueDate : null);
+});
+
+test('removeL1Milestone undoes cleanly — restores the milestone and re-links whatever it had unlinked', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: Date.now(), l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  removeL1Milestone(p.id, m.id);
+  confirmModalAction();
+  assertEqual(p.milestones.length, 0);
+  assertEqual(wm.l1MilestoneId, null);
+  triggerToastUndo();
+  assertEqual(p.milestones.length, 1);
+  assertEqual(p.milestones[0].id, m.id);
+  assertEqual(wm.l1MilestoneId, m.id, 'the link this delete itself removed should come back too');
 });
 
 test('removeL1Milestone is blocked below Editor', function () {
@@ -533,6 +568,7 @@ test('removeL1Milestone is blocked below Editor', function () {
   userRole = 'reviewer';
   removeL1Milestone(p.id, m.id);
   assertEqual(p.milestones.length, 1);
+  assertFalse(!!modalTarget, 'the confirm modal itself must never open below Editor');
 });
 
 // ---------- Linking a workstream milestone to an L1 milestone ----------
@@ -1150,6 +1186,7 @@ test('a tombstoned L1 milestone sweeps correctly via the existing, unmodified me
   const m = addL1Milestone(p.id, 'To be deleted elsewhere');
   lastSyncedAt = Date.now() - 1000;
   removeL1Milestone(p.id, m.id);
+  confirmModalAction();
   const tomb = deletedMilestoneIds.find(t => t.id === m.id);
   assertTrue(!!tomb);
   // Simulate an incoming copy of this same L1 Plan that still has the
