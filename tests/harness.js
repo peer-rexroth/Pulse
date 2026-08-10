@@ -221,7 +221,7 @@ async function run(argv) {
   actionLogSearchQuery = ''; decisionLogSearchQuery = '';
   actionLogStatusFilters = new Set(); actionLogFlaggedFilter = false; decisionLogFlaggedFilter = false;
   editingCategoryId = null; editingCategoryMilestones = [];
-  minutesModalCycleId = null; editingMinutesActionItems = []; reviewTab = 'scope'; dashboardTab = 'overview';
+  minutesModalCycleId = null; editingMinutesActionItems = []; reviewTab = 'scope'; dashboardTab = 'overview'; l1PlansTab = 'plans';
   renamingProgramme = false;
   pendingImportData = null; modalTarget = null; toastUndoAction = null;
   fileHandle = null; lastSyncedSnapshot = null; lastSyncedAt = 0; syncConflictLog = [];

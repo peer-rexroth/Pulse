@@ -1396,6 +1396,13 @@
   .attention-tag { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; flex: 0 0 auto; }
   .attention-tag.overdue { background: var(--stat-red-bg); color: var(--stat-red); }
   .attention-tag.upcoming { background: var(--stat-amber-bg); color: var(--stat-amber); }
+  /* The L1 Plans Dashboard's own Delayed list (renderL1PlansDashboardHtml())
+     reuses .attention-row wholesale — same red as .overdue (this is exactly
+     the same "later than its own Due" signal, just surfaced as a list
+     rather than only visible by expanding a row), a distinct modifier
+     purely so the displayed label ("Delayed") doesn't misleadingly say
+     "Overdue" for something that's often already finished, just late. */
+  .attention-tag.delayed { background: var(--stat-red-bg); color: var(--stat-red); }
   /* Dashboard's own Dependencies tracker (renderDashboard()'s dependencyHtml)
      — needs more columns than .attention-row's simple 3-part shape (tag/
      name/date), so it's a real grid with pinned widths rather than flex or
@@ -1408,6 +1415,16 @@
   .dash-dep-row { padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
   .dash-dep-row:last-child { border-bottom: none; }
   .dash-dep-ws, .dash-dep-spoc { color: var(--text-faint); font-size: 12px; }
+  /* The L1 Plans Dashboard's own per-plan rollup table (renderL1PlansDashboardHtml()'s
+     l1PlanRollupRows()) — the exact same "real grid, pinned widths, not auto"
+     reasoning .dash-dep-header/.dash-dep-row already established just above,
+     applied here since this table needs 5 columns of its own (Plan/Status/
+     Milestones/Linked/Standalone), not .dash-ws-row's simpler flex shape. */
+  .l1-dash-plan-header, .l1-dash-plan-row { display: grid; grid-template-columns: minmax(160px,1fr) 120px 100px 100px 100px; gap: 10px; align-items: center; }
+  .l1-dash-plan-header { padding: 8px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); border-bottom: 1px solid var(--border); }
+  .l1-dash-plan-row { padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .l1-dash-plan-row:last-child { border-bottom: none; }
+  .l1-dash-plan-count { color: var(--text-faint); font-size: 12px; }
 
   /* Dashboard's own toolbar (Export Exec Summary) — a right-aligned single
      row, unlike Planning's search box / Review's sub-tabs, both of which
@@ -2476,6 +2493,18 @@ let reviewTab = 'scope';
 // than sharing the page with Overview) — UI-only, not persisted, same shape
 // as reviewTab.
 let dashboardTab = 'overview';
+// L1 Plans' own sub-tab — 'plans' (the management list, the original and
+// still-default content) or 'dashboard' (a status breakdown + Delayed list
+// across every L1 Plan — see l1PlansTab's own render function) — the exact
+// same "grew a second view, moved it to a sub-tab rather than a new
+// top-level topbar button or the main Dashboard" reasoning dashboardTab's
+// own Overview/Dependencies split already established, chosen deliberately
+// over those alternatives (an L1 Dashboard button would crowd an already
+// full topbar; folding it into the main Dashboard would mix that page's
+// workstream-scoped assumptions with L1 Plans' deliberately
+// not-workstream-scoped ones). UI-only, not persisted, same shape as
+// dashboardTab/reviewTab.
+let l1PlansTab = 'plans';
 const HISTORY_PAGE_SIZE = 5;
 
 // Deletion tombstones: {id, deletedAt}[] — records "this id used to exist and
@@ -3197,6 +3226,14 @@ function computedL1MilestoneActualDate(l1MilestoneId) {
   if (!dates.length) return null;
   return dates.sort().pop(); // ISO 'YYYY-MM-DD' strings sort correctly as plain strings; last = latest
 }
+// Takes the already-computed rollup rather than recomputing it, since every
+// real call site needs the value itself for display too — factored out
+// purely so l1MilestoneRowsHtml()'s own coloring and the L1 Plans
+// Dashboard's Delayed list (l1DelayedEntries()) share one definition of
+// "late" instead of drifting apart.
+function isL1MilestoneActualLate(m, computedActual) {
+  return !!(computedActual && m.dueDate && computedActual > m.dueDate);
+}
 // An L1 Plan's own status is one level further removed: it reduces over
 // its own milestones' *effective* status — each one's own
 // computedL1MilestoneStatus() when it has links, falling back to its own
@@ -3317,6 +3354,7 @@ function setMode(m) {
 // Dashboard's own Overview/Dependencies sub-tabs — see dashboardTab's own
 // declaration comment above. Same shape as setReviewTab().
 function setDashboardTab(t) { dashboardTab = t; render(); }
+function setL1PlansTab(t) { l1PlansTab = t; render(); }
 
 function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
@@ -3608,8 +3646,167 @@ function l1PlansExpandAllToggleHtml() {
   const idsLiteral = ids.map(id => `'${id}'`).join(',');
   return `<button class="row-icon-btn" onclick="toggleExpandAllForItems([${idsLiteral}])" title="${allExpanded ? 'Collapse all' : 'Expand all'}"><i class="fa-solid ${allExpanded ? 'fa-angles-up' : 'fa-angles-down'}"></i></button>`;
 }
+// Every place this app's own delayed-color coding (see "L1 Plans" in
+// CLAUDE.md) can fire, flattened into one sortable-by-date list — an
+// explicit user request for the L1 Plans Dashboard sub-tab, since today
+// each of these is only visible by expanding the right plan and milestone
+// by hand. Two distinct kinds of entry, reusing the exact same comparisons
+// l1MilestoneRowsHtml()/l1LinkedRowHtml() already make per-row: an L1
+// milestone's own rolled-up Actual later than its own manual Due
+// (isL1MilestoneActualLate()), and an attached workstream milestone whose
+// own Due or Actual is later than its parent L1 milestone's manual Due
+// (isWorkstreamMilestoneLate()) — the latter skipped entirely when the L1
+// milestone has no manual Due set at all, the same "nothing to compare
+// against" guard those functions already apply. Sorted oldest-offending
+// first (plain ISO string sort), the same "earliest still needs attention
+// first" ordering the main Dashboard's own Overdue feed already uses.
+function l1DelayedEntries() {
+  const out = [];
+  allL1Plans().forEach(plan => {
+    plan.milestones.forEach(m => {
+      const computedActual = computedL1MilestoneActualDate(m.id);
+      if (isL1MilestoneActualLate(m, computedActual)) {
+        out.push({ label: `${plan.name} — ${m.name}`, date: computedActual, planId: plan.id, milestoneId: m.id });
+      }
+      if (!m.dueDate) return;
+      linkedWorkstreamMilestones(m.id).forEach(({ item, milestone: wm }) => {
+        const { dueLate, actualLate } = isWorkstreamMilestoneLate(wm, m.dueDate);
+        if (dueLate || actualLate) {
+          out.push({
+            label: `${plan.name} — ${m.name}: ${item.name} — ${wm.name}`,
+            date: actualLate ? wm.actualDate : wm.dueDate,
+            planId: plan.id, milestoneId: m.id
+          });
+        }
+      });
+    });
+  });
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+// A Delayed row's own click target — jumps to the Plans tab with the
+// relevant plan/milestone expanded, mirroring the main Dashboard's own
+// Overdue/Upcoming rows (openItemModal() on click). Sets membership
+// directly (not toggleItemExpanded()/toggleL1MilestoneExpanded(), which
+// would risk *collapsing* an already-expanded one) — the intent here is
+// always "make sure this is visible," never "toggle."
+function openL1MilestoneFromDashboard(planId, milestoneId) {
+  setMode('l1plans');
+  l1PlansTab = 'plans';
+  expandedItemIds.add(planId);
+  expandedL1MilestoneIds.add(milestoneId);
+  render();
+}
+// A per-plan row's own click target — mirrors openL1MilestoneFromDashboard()
+// exactly, minus the milestone-level expand, since a plan-level row has no
+// single milestone to jump to.
+function openL1PlanFromDashboard(planId) {
+  setMode('l1plans');
+  l1PlansTab = 'plans';
+  expandedItemIds.add(planId);
+  render();
+}
+// The L1 Plans Dashboard's own per-plan rollup table — an explicit user
+// request ("Per-plan rollup table... status, milestone count, how many are
+// linked vs still standalone"), the third of the originally-proposed
+// dashboard ideas (features 1+2, status breakdown and Delayed, shipped
+// first — see this function's own header comment below). "Linked" reuses
+// linkedWorkstreamMilestones(m.id).length > 0 — the exact same predicate
+// l1LinkIndicatorHtml()/the connect-modal's own candidate-exclusion already
+// use to mean "this L1 milestone has at least one workstream milestone
+// pointed at it" — so a milestone counts as linked here under the identical
+// definition it does everywhere else in this feature, not a redefinition.
+function l1PlanRollupRows() {
+  return allL1Plans().map(p => {
+    const total = p.milestones.length;
+    const linked = p.milestones.filter(m => linkedWorkstreamMilestones(m.id).length > 0).length;
+    return { plan: p, status: computeL1PlanStatus(p.id) || 'not-started', total, linked, standalone: total - linked };
+  });
+}
+// The L1 Plans Dashboard sub-tab itself — an explicit user request, three of
+// several proposed sections confirmed directly with the user as the most
+// load-bearing to build, in two passes ("features 1+2" first, then the
+// per-plan rollup table as a follow-up): a status breakdown (the exact same
+// dash-grid/dash-bar/dash-legend markup the main Dashboard's own Item
+// Status card already uses, just counting computeL1PlanStatus() across
+// every L1 Plan instead of item.status across every scope item), a
+// per-plan rollup table (l1PlanRollupRows(), mirroring the main Dashboard's
+// own "Per-workstream summary" .dash-ws-row list in placement — right below
+// the top cards — but needing a real grid, not .dash-ws-row's simpler flex
+// shape, since it has more to show per row), and the Delayed list below
+// that (rendered through .attention-row, the same shape the main
+// Dashboard's Overdue/Upcoming feeds already use, with its own
+// .attention-tag.delayed color — see that class's own CSS comment for why
+// it's a distinct modifier from .overdue rather than reusing it outright).
+function renderL1PlansDashboardHtml() {
+  const plans = allL1Plans();
+  const statusCounts = {}; STATUSES.forEach(s => statusCounts[s.id] = 0);
+  plans.forEach(p => { statusCounts[computeL1PlanStatus(p.id) || 'not-started']++; });
+  const bar = STATUSES.map(s => {
+    const pct = plans.length ? (statusCounts[s.id] / plans.length * 100) : 0;
+    return pct > 0 ? `<div class="dash-bar-seg" style="width:${pct}%;background:var(--stat-${s.id})"></div>` : '';
+  }).join('');
+  const legend = STATUSES.map(s => `<div class="dash-legend-item"><span class="dash-legend-dot" style="background:var(--stat-${s.id})"></span>${statusCounts[s.id]} ${esc(s.label)}</div>`).join('');
+  const rollup = l1PlanRollupRows();
+  const rollupHtml = rollup.length
+    ? `<div class="l1-dash-plan-header">
+          <span>Plan</span><span>Status</span><span>Milestones</span><span>Linked</span><span>Standalone</span>
+        </div>` + rollup.map(r => `<div class="l1-dash-plan-row attention-row-link" onclick="openL1PlanFromDashboard('${r.plan.id}')" title="Open this L1 Plan">
+            <span class="item-name">${esc(r.plan.name)}</span>
+            <span class="status-badge" style="background:var(--stat-${r.status}-bg);color:var(--stat-${r.status});cursor:default">${esc(statusLabel(r.status))}</span>
+            <span class="l1-dash-plan-count">${r.total} milestone${r.total === 1 ? '' : 's'}</span>
+            <span class="l1-dash-plan-count">${r.linked} linked</span>
+            <span class="l1-dash-plan-count">${r.standalone} standalone</span>
+          </div>`).join('')
+    : `<div class="attention-empty">No L1 Plans yet.</div>`;
+  const delayed = l1DelayedEntries();
+  const delayedHtml = delayed.length
+    ? delayed.map(e => `<div class="attention-row attention-row-link" onclick="openL1MilestoneFromDashboard('${e.planId}','${e.milestoneId}')" title="Open this L1 milestone">
+          <span class="attention-tag delayed">Delayed</span>
+          <span class="item-name">${esc(e.label)}</span>
+          <span class="item-dates">${fmtDate(e.date)}</span>
+        </div>`).join('')
+    : `<div class="attention-empty">Nothing delayed.</div>`;
+  return `
+    <div class="dash-grid" style="grid-template-columns: 1fr 1fr">
+      <div class="dash-card">
+        <div class="dash-card-title">L1 Plan Status</div>
+        <div class="dash-big-stat">${plans.length}</div>
+        <div class="dash-sub-stat">total L1 Plan${plans.length === 1 ? '' : 's'}</div>
+        <div class="dash-bar" style="margin-top:12px">${bar}</div>
+        <div class="dash-legend">${legend}</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">Delayed</div>
+        <div class="dash-big-stat">${delayed.length}</div>
+        <div class="dash-sub-stat">milestone${delayed.length === 1 ? '' : 's'} later than their own Due</div>
+      </div>
+    </div>
+    <div class="section-label">Per-plan summary</div>
+    <div class="category-list" style="margin-bottom:20px">${rollupHtml}</div>
+    <div class="section-label">Delayed</div>
+    <div class="category-list">${delayedHtml}</div>`;
+}
+// Plans/Dashboard sub-tabs — the exact same "grew a second view" split
+// dashboardTab's own Overview/Dependencies already established (see
+// l1PlansTab's own declaration comment), just rendered inline as part of
+// this function's own output rather than a separate static toolbar outside
+// #main the way Dashboard's is: renderL1Plans() already fully rebuilds
+// #l1PlansBody from scratch on every call (no search bar or second toolbar
+// to coordinate with), so there's nothing a persistent, separately-toggled
+// element would buy here. Import/Export/expand-all only show on the Plans
+// tab — managing the list isn't a meaningful action on the Dashboard tab —
+// mirroring how the main Dashboard's own Export-Exec-Summary toolbar is
+// scoped to its Overview tab alone.
 function renderL1Plans() {
   const el = document.getElementById('l1PlansBody');
+  const subTabsHtml = `<div class="view-tabs" style="margin-bottom:16px">
+      <button class="view-tab ${l1PlansTab === 'plans' ? 'active' : ''}" onclick="setL1PlansTab('plans')"><i class="fa-solid fa-list"></i> Plans</button>
+      <button class="view-tab ${l1PlansTab === 'dashboard' ? 'active' : ''}" onclick="setL1PlansTab('dashboard')"><i class="fa-solid fa-gauge-high"></i> Dashboard</button>
+    </div>`;
+  if (l1PlansTab === 'dashboard') {
+    el.innerHTML = subTabsHtml + renderL1PlansDashboardHtml();
+    return;
+  }
   const plans = allL1Plans();
   const rows = plans.length ? plans.map(p => itemRowHtml(p)).join('') :
     `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No L1 Plans yet.</div>`;
@@ -3618,7 +3815,7 @@ function renderL1Plans() {
         ? `<div class="ws-section-add"><input type="text" class="inline-quick-add-input" id="l1PlanQuickAddInput" placeholder="L1 Plan name" onkeydown="if(event.key==='Enter') saveL1PlanQuickAdd(); if(event.key==='Escape') cancelL1PlanQuickAdd();" onblur="saveL1PlanQuickAdd()"></div>`
         : `<div class="ws-section-add"><button class="btn btn-sm" onclick="openL1PlanQuickAdd()"><i class="fa-solid fa-plus"></i> Add L1 Plan</button></div>`)
     : '';
-  el.innerHTML = `
+  el.innerHTML = subTabsHtml + `
     <div class="admin-header">
       ${l1PlansExpandAllToggleHtml()}
       <h2><i class="fa-solid fa-bullseye" style="font-size:16px;color:var(--accent)"></i> L1 Plans</h2>
@@ -5946,12 +6143,20 @@ function l1LinkedHeaderHtml() {
 // even after linking makes it read-only for display — see "linking never
 // changes the L1 milestone's own stored... dueDate" above) is what makes
 // this a real, non-vacuous check for both Due and Actual. Null (never set)
-// means nothing to compare against, so nothing is ever flagged.
+// means nothing to compare against, so nothing is ever flagged. Factored
+// out once the L1 Plans Dashboard's own Delayed list (l1DelayedEntries())
+// needed the exact same comparison across every linked milestone, not just
+// one row's worth.
+function isWorkstreamMilestoneLate(milestone, l1DueDate) {
+  return {
+    dueLate: !!(l1DueDate && milestone.dueDate && milestone.dueDate > l1DueDate),
+    actualLate: !!(l1DueDate && milestone.actualDate && milestone.actualDate > l1DueDate)
+  };
+}
 function l1LinkedRowHtml(item, milestone, l1DueDate) {
   const ws = item.workstreamId ? workstreams.find(w => w.id === item.workstreamId) : null;
   const wsLabel = ws ? ws.name : 'Unassigned';
-  const dueLate = !!(l1DueDate && milestone.dueDate && milestone.dueDate > l1DueDate);
-  const actualLate = !!(l1DueDate && milestone.actualDate && milestone.actualDate > l1DueDate);
+  const { dueLate, actualLate } = isWorkstreamMilestoneLate(milestone, l1DueDate);
   return `<div class="l1-linked-row" title="${esc(wsLabel)} — ${esc(item.name)}">
       <span class="l1-linked-source">${esc(wsLabel)}</span>
       <span class="l1-linked-source">${esc(item.name)}</span>
@@ -5986,7 +6191,7 @@ function l1MilestoneRowsHtml(plan) {
     // never a rollup — see above) — an explicit user request extending
     // that same convention up to L1 level.
     const computedActual = computedL1MilestoneActualDate(m.id);
-    const l1ActualLate = !!(computedActual && m.dueDate && computedActual > m.dueDate);
+    const l1ActualLate = isL1MilestoneActualLate(m, computedActual);
     const actualHtml = computedActual
       ? `<span class="item-dates-computed" ${l1ActualLate ? 'style="color:var(--stat-red)"' : ''} title="${l1ActualLate ? 'Finished after this milestone\'s own Due — ' : ''}Computed from ${linkedCount} linked workstream milestone${linkedCount === 1 ? '' : 's'}">${fmtDate(computedActual)}</span>`
       : `<span></span>`;

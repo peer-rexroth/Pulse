@@ -1284,3 +1284,243 @@ test('triggerL1PlanImport is blocked below Editor', function () {
   triggerL1PlanImport();
   assertIncludes(document.getElementById('toastMsg').textContent, 'role or higher required');
 });
+
+// ---------- L1 Plans Dashboard sub-tab — an explicit user request, placed ----------
+// as a sub-tab within L1 Plans itself (mirroring Dashboard mode's own
+// Overview/Dependencies split) rather than a new top-level topbar button or
+// folded into the main, workstream-scoped Dashboard. Two pieces confirmed
+// directly with the user as the most load-bearing to build first: a status
+// breakdown across every L1 Plan's own rolled-up status, and a flat
+// Delayed list surfacing every place this app's own delayed-color coding
+// is currently firing.
+
+test('l1PlansTab defaults to "plans", and renderL1Plans() always renders the Plans/Dashboard sub-tab pill', function () {
+  setMode('l1plans');
+  renderL1Plans();
+  const html = document.getElementById('l1PlansBody').innerHTML;
+  assertIncludes(html, 'setL1PlansTab(\'plans\')');
+  assertIncludes(html, 'setL1PlansTab(\'dashboard\')');
+  assertIncludes(html, 'No L1 Plans yet.', 'defaults to the Plans tab\'s own content');
+});
+
+test('setL1PlansTab switches which tab is active and which content renders', function () {
+  const p = addL1Plan('Only plan');
+  setMode('l1plans');
+  setL1PlansTab('dashboard');
+  assertEqual(l1PlansTab, 'dashboard');
+  let html = document.getElementById('l1PlansBody').innerHTML;
+  assertIncludes(html, 'view-tab active');
+  assertIncludes(html, 'L1 Plan Status');
+  assertNotIncludes(html, 'l1-plans-list', 'the Plans tab\'s own list container should not render on the Dashboard tab');
+  setL1PlansTab('plans');
+  assertEqual(l1PlansTab, 'plans');
+  html = document.getElementById('l1PlansBody').innerHTML;
+  assertIncludes(html, 'l1-plans-list');
+  assertIncludes(html, esc('Only plan'));
+});
+
+test('Import/Export only render on the Plans tab, not the Dashboard tab', function () {
+  setMode('l1plans');
+  setL1PlansTab('plans');
+  assertIncludes(document.getElementById('l1PlansBody').innerHTML, 'triggerL1PlanImport');
+  setL1PlansTab('dashboard');
+  assertNotIncludes(document.getElementById('l1PlansBody').innerHTML, 'triggerL1PlanImport');
+  assertNotIncludes(document.getElementById('l1PlansBody').innerHTML, 'exportL1PlansToExcel');
+});
+
+test('isWorkstreamMilestoneLate returns false for both when there is nothing to compare against (no L1 due date)', function () {
+  const wm = { id: genId(), name: 'X', dueDate: '2030-01-01', actualDate: '2030-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  assertDeepEqual(isWorkstreamMilestoneLate(wm, null), { dueLate: false, actualLate: false });
+});
+
+test('isWorkstreamMilestoneLate flags Due and Actual independently against the given L1 due date', function () {
+  const l1Due = '2027-06-01';
+  assertDeepEqual(isWorkstreamMilestoneLate({ dueDate: '2027-08-01', actualDate: null }, l1Due), { dueLate: true, actualLate: false });
+  assertDeepEqual(isWorkstreamMilestoneLate({ dueDate: '2027-05-01', actualDate: '2027-08-01' }, l1Due), { dueLate: false, actualLate: true });
+  assertDeepEqual(isWorkstreamMilestoneLate({ dueDate: '2027-05-01', actualDate: '2027-05-15' }, l1Due), { dueLate: false, actualLate: false });
+});
+
+test('isL1MilestoneActualLate is false when there\'s no computed Actual, or no manual Due to compare against', function () {
+  assertFalse(isL1MilestoneActualLate({ dueDate: '2027-01-01' }, null));
+  assertFalse(isL1MilestoneActualLate({ dueDate: null }, '2027-01-01'));
+});
+
+test('l1DelayedEntries includes an L1 milestone whose own rolled-up Actual is later than its own manual Due', function () {
+  const p = addL1Plan('Call Money');
+  const m = addL1Milestone(p.id, 'Initiation');
+  m.dueDate = '2027-05-15';
+  const item = addItem({ name: 'Deliverable' });
+  // Finishing after the L1's own Due (05-15) makes wm itself the attached
+  // half of this signal too (its own actualDate is also past m.dueDate) —
+  // both entries are correct and expected here, not a duplicate.
+  const wm = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  const entries = l1DelayedEntries();
+  assertEqual(entries.length, 2, 'the L1\'s own rolled-up-Actual entry, plus the attached milestone\'s own Actual also being past the L1 Due');
+  const l1Entry = entries.find(e => e.label === 'Call Money — Initiation');
+  assertTrue(!!l1Entry, 'the L1 milestone\'s own entry should be present');
+  assertEqual(l1Entry.date, '2027-06-01');
+  assertEqual(l1Entry.planId, p.id);
+  assertEqual(l1Entry.milestoneId, m.id);
+});
+
+test('l1DelayedEntries includes an attached milestone whose Due or Actual is later than the L1 milestone\'s own manual Due', function () {
+  const p = addL1Plan('Call Money');
+  const m = addL1Milestone(p.id, 'Initiation');
+  m.dueDate = '2027-06-01';
+  const item = addItem({ name: 'Ledger migration' });
+  const wm = { id: genId(), name: 'Slipping', dueDate: '2027-08-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  const entries = l1DelayedEntries();
+  assertEqual(entries.length, 1);
+  assertEqual(entries[0].label, 'Call Money — Initiation: Ledger migration — Slipping');
+  assertEqual(entries[0].date, '2027-08-01');
+});
+
+test('l1DelayedEntries skips attached milestones entirely when the L1 milestone has no manual Due set', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id); // dueDate stays null
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Whatever', dueDate: '2030-01-01', actualDate: '2030-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  assertEqual(l1DelayedEntries().length, 0);
+});
+
+test('l1DelayedEntries never flags a notApplicable attached milestone — its dates are already cleared, the same as everywhere else in this app', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-01-01';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Skipped', dueDate: null, actualDate: null, status: 'not-started', notApplicable: true, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  assertEqual(l1DelayedEntries().length, 0);
+});
+
+test('l1DelayedEntries sorts entries oldest-offending first', function () {
+  const p = addL1Plan();
+  const m1 = addL1Milestone(p.id, 'Later one');
+  m1.dueDate = '2027-01-01';
+  const m2 = addL1Milestone(p.id, 'Earlier one');
+  m2.dueDate = '2027-01-01';
+  const item = addItem({ name: 'Deliverable' });
+  const wm1 = { id: genId(), name: 'A', dueDate: '2027-09-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: m1.id };
+  const wm2 = { id: genId(), name: 'B', dueDate: '2027-03-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: m2.id };
+  item.milestones.push(wm1, wm2);
+  const entries = l1DelayedEntries();
+  assertEqual(entries.length, 2);
+  assertIncludes(entries[0].label, 'Earlier one', 'the March date sorts before the September one');
+  assertIncludes(entries[1].label, 'Later one');
+});
+
+test('renderL1PlansDashboardHtml shows a status breakdown counting computeL1PlanStatus() across every L1 Plan', function () {
+  const p1 = addL1Plan('On track plan');
+  const m1 = addL1Milestone(p1.id);
+  m1.status = 'green';
+  const p2 = addL1Plan('At risk plan');
+  const m2 = addL1Milestone(p2.id);
+  m2.status = 'red';
+  const html = renderL1PlansDashboardHtml();
+  assertIncludes(html, 'L1 Plan Status');
+  assertIncludes(html, '>2<', 'two total L1 Plans');
+  assertIncludes(html, `1 ${esc(statusLabel('green'))}`);
+  assertIncludes(html, `1 ${esc(statusLabel('red'))}`);
+});
+
+test('renderL1PlansDashboardHtml shows "Nothing delayed." when there are no delayed entries', function () {
+  addL1Plan();
+  assertIncludes(renderL1PlansDashboardHtml(), 'Nothing delayed.');
+});
+
+test('renderL1PlansDashboardHtml renders a clickable Delayed row wired to openL1MilestoneFromDashboard', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-05-15';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  const html = renderL1PlansDashboardHtml();
+  assertIncludes(html, `onclick="openL1MilestoneFromDashboard('${p.id}','${m.id}')"`);
+  assertIncludes(html, 'attention-tag delayed');
+  assertIncludes(html, '>Delayed<');
+});
+
+test('openL1MilestoneFromDashboard switches to L1 Plans mode, the Plans tab, and expands the plan and milestone', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  setMode('planning');
+  setL1PlansTab('dashboard');
+  openL1MilestoneFromDashboard(p.id, m.id);
+  assertEqual(mode, 'l1plans');
+  assertEqual(l1PlansTab, 'plans');
+  assertTrue(expandedItemIds.has(p.id));
+  assertTrue(expandedL1MilestoneIds.has(m.id));
+});
+
+test('l1PlanRollupRows counts each plan\'s own status, total milestones, and how many are linked vs standalone', function () {
+  const p = addL1Plan('Call Money');
+  const m1 = addL1Milestone(p.id, 'Linked one');
+  m1.status = 'green';
+  const m2 = addL1Milestone(p.id, 'Standalone one');
+  m2.status = 'amber';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Attached', dueDate: '2027-01-01', actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m1.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  const rows = l1PlanRollupRows();
+  assertEqual(rows.length, 1);
+  const row = rows[0];
+  assertEqual(row.plan.id, p.id);
+  assertEqual(row.total, 2);
+  assertEqual(row.linked, 1, 'm1 has a linked workstream milestone');
+  assertEqual(row.standalone, 1, 'm2 has none');
+  // m1 is linked, so its status rolls up from the (green) attached
+  // milestone rather than reading its own manual 'green' value directly —
+  // either way this plan's computed status should be 'green' here, not the
+  // vestigial vacuous default.
+  assertEqual(row.status, computeL1PlanStatus(p.id));
+});
+
+test('l1PlanRollupRows reports zero linked/standalone correctly for a plan with no milestones at all', function () {
+  const p = addL1Plan('Empty plan');
+  const rows = l1PlanRollupRows();
+  assertEqual(rows.length, 1);
+  assertEqual(rows[0].total, 0);
+  assertEqual(rows[0].linked, 0);
+  assertEqual(rows[0].standalone, 0);
+  assertEqual(rows[0].status, 'not-started');
+});
+
+test('renderL1PlansDashboardHtml renders a Per-plan summary table with a clickable row per plan', function () {
+  const p = addL1Plan('Call Money');
+  const m = addL1Milestone(p.id, 'Initiation');
+  m.status = 'red';
+  const html = renderL1PlansDashboardHtml();
+  assertIncludes(html, 'Per-plan summary');
+  assertIncludes(html, `onclick="openL1PlanFromDashboard('${p.id}')"`);
+  assertIncludes(html, esc('Call Money'));
+  assertIncludes(html, '1 milestone');
+  assertIncludes(html, '0 linked');
+  assertIncludes(html, '1 standalone');
+  assertIncludes(html, esc(statusLabel('red')));
+});
+
+test('renderL1PlansDashboardHtml shows "No L1 Plans yet." in the Per-plan summary when there are none', function () {
+  assertIncludes(renderL1PlansDashboardHtml(), 'No L1 Plans yet.');
+});
+
+test('openL1PlanFromDashboard switches to L1 Plans mode, the Plans tab, and expands the plan (no milestone expand)', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  setMode('planning');
+  setL1PlansTab('dashboard');
+  openL1PlanFromDashboard(p.id);
+  assertEqual(mode, 'l1plans');
+  assertEqual(l1PlansTab, 'plans');
+  assertTrue(expandedItemIds.has(p.id));
+  assertFalse(expandedL1MilestoneIds.has(m.id));
+});
