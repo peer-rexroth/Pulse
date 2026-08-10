@@ -764,26 +764,26 @@
      Status→right-edge distance (gap(10) + Actions(56) + padding-right(20)
      = 86) now matches .l1-plans-list's own identical distance exactly, no
      spacer column needed anywhere.
-     A genuine, deliberate 110px blank column now sits right after Due,
-     before Status — an explicit user request ("align the due date of the
-     l1 milestone with the due date of the linked milestones"). Because a
-     CSS grid's one flexible (1fr) track always absorbs the *entire*
-     remaining width, any column's absolute x-position is governed purely
-     by whatever sits between it and the row's right edge, never by what's
-     before the flexible column — so this blank column, sitting *after*
-     Due, shifts Due itself 120px left (its own 110px plus the one new
-     10px gap) without moving Status/Actions at all, since nothing changed
-     between them and the right edge. 110px is exactly .l1-linked-row's
-     own Actual column width one level down: this row has no Actual
-     concept of its own (the L1 milestone shows one computed effective
-     Due, never a separate Actual — see computedL1MilestoneDate() in
-     CLAUDE.md), but reserving the identical width in the identical
-     position is what makes Due land at the same x-position as
-     .l1-linked-row's own Due, one level below. A happy side effect,
-     verified by the same math: Status/Actions stay exactly where they
-     already were, so this row's own alignment with .l1-plans-list (one
-     level *up*, which has no Due column to align at all) is completely
-     undisturbed by this change. */
+     A 110px column sits right after Due, before Status — originally added
+     as a genuinely blank alignment reservation (an explicit user request,
+     "align the due date of the l1 milestone with the due date of the
+     linked milestones"): because a CSS grid's one flexible (1fr) track
+     always absorbs the *entire* remaining width, any column's absolute
+     x-position is governed purely by whatever sits between it and the
+     row's right edge, never by what's before the flexible column — so
+     reserving 110px there shifts Due itself 120px left (its own 110px plus
+     the one new 10px gap) without moving Status/Actions at all, since
+     nothing changed between them and the right edge. 110px was chosen to
+     exactly match .l1-linked-row's own Actual column width one level down.
+     **A later, explicit user request gave this column real content** —
+     the L1 milestone's own rolled-up Actual date (see
+     computedL1MilestoneActualDate() in CLAUDE.md) — so the width was
+     already exactly right for what it needed to hold; only
+     l1MilestoneHeaderHtml()/l1MilestoneRowsHtml() changed, not this rule.
+     Status/Actions stay exactly where they already were either way, so
+     this row's own alignment with .l1-plans-list (one level *up*, which
+     has no Due/Actual column to align at all) remains completely
+     undisturbed. */
   .l1-milestone-header, .l1-milestone-row {
     display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 110px 116px 56px;
     align-items: center; gap: 10px; padding: 7px 20px 7px 34px; border-bottom: 1px solid var(--border);
@@ -863,12 +863,16 @@
        .l1-milestone-row one level up, and the L1 Plan row itself, two
        levels up. Actual (110px, matching Due) sits between Due and
        Status — a later, explicit user addition (show the linked scope
-       item's own Actual date here, alongside Due) that only exists at
-       *this* one nesting level (a linked workstream milestone's own real
-       Actual date, not the L1 milestone's own computed rollup one level
-       up — see computedL1MilestoneDate()), so it necessarily pushes
-       Status further right here than at the other two levels — there was
-       no way to add a genuinely new column without moving something. */
+       item's own Actual date here, alongside Due). This is the linked
+       workstream milestone's own real Actual date, a genuinely different
+       value from the L1 milestone's own rolled-up Actual one level up
+       (see computedL1MilestoneActualDate()) — the two just happen to
+       share a column position and width by design, not by coincidence
+       (see .l1-milestone-header/.l1-milestone-row's own CSS comment).
+       Adding this column here necessarily pushes Status further right on
+       *this* row than on .l1-plans-list two levels up (which has no
+       Due/Actual of its own to align at all) — there was no way to add a
+       genuinely new column without moving something. */
     display: grid; grid-template-columns: 110px 140px minmax(160px,1fr) 110px 110px 116px 56px;
     align-items: center; gap: 10px; padding: 6px 20px 6px 64px; border-bottom: 1px solid var(--border);
   }
@@ -3143,31 +3147,33 @@ function computedL1MilestoneStatus(l1MilestoneId) {
   if (!linked.length) return null;
   return computedStatusFromMilestones(linked.map(l => l.milestone));
 }
-// The L1 milestone's own effective date rolls up the same way — a later,
-// explicit user request extending the identical "the link now matters, not
-// just for traceability" reversal to dates too, which this feature's
-// original design had deliberately kept out of scope (see "L1 Plans" in
-// CLAUDE.md). "Latest", not earliest, in both branches: a higher-level
-// milestone genuinely can't be considered hit before every one of its
-// linked pieces is, so it's only as done/on-track as its slowest linked
-// dependency. Once every linked milestone (excluding notApplicable, the
-// same exclusion computedStatusFromMilestones() itself already applies) is
-// Complete *and* has a real actualDate, the effective date becomes the
-// latest of those actual dates — genuinely finished, on the date the last
-// piece actually finished. Otherwise it's the latest of their Due dates —
-// still forecast, driven by whichever linked piece is furthest out. Mixed
-// completion (some done, some not) still uses Due for everything, not a mix
-// of Actual-for-the-done-ones/Due-for-the-rest — the whole group has to
-// finish before this is a real "done on X" date, not just the ones that
-// happen to be done first. Returns null when nothing's linked (or nothing
-// linked has any date to compute from at all), the same "nothing to
-// compute from" convention computedL1MilestoneStatus() already uses, so
-// callers fall back to the milestone's own manual dueDate instead.
-function computedL1MilestoneDate(l1MilestoneId) {
+// Due is deliberately NOT rolled up, unlike Status just above — a later,
+// explicit user reversal of a brief earlier attempt at exactly that
+// (computedL1MilestoneDueDate(), which did roll Due up the same way Status
+// does): "l1 milestones should have its own due date, not rolled up. this
+// is defined (or imported)." An L1 milestone's own dueDate is always its
+// own real, independent target — hand-typed into its pill or set by
+// importL1PlansFromExcel()'s "Target Date" column — exactly like it was
+// before any rollup existed, regardless of link state. This is also what
+// makes it a meaningful, non-vacuous comparison basis for the
+// attached-milestone delayed-color check below (l1LinkedRowHtml's
+// l1DueDate) and for computedL1MilestoneActualDate()'s own delayed-color
+// comparison just below: a genuinely independent value, never derived from
+// the exact linked milestones being compared against it.
+//
+// Actual, by contrast, is roll-up-only — "Actual date should not be able
+// to set, only rolled up" — the latest actualDate among whichever linked,
+// non-notApplicable milestones (the same exclusion
+// computedStatusFromMilestones() already applies) happen to have one *so
+// far*. Progressive, not gated on every linked milestone being Complete
+// first (an explicit user choice: this should read as "the most recent
+// real progress so far," not stay blank until the entire group finishes).
+// Returns null when nothing's linked yet, or nothing linked has finished
+// yet — there is no manual fallback to return instead, since there's
+// nothing to fall back to (see l1MilestoneRowsHtml()'s own actualHtml).
+function computedL1MilestoneActualDate(l1MilestoneId) {
   const linked = linkedWorkstreamMilestones(l1MilestoneId).map(l => l.milestone).filter(m => !m.notApplicable);
-  if (!linked.length) return null;
-  const allComplete = linked.every(m => m.status === 'complete' && m.actualDate);
-  const dates = linked.map(m => allComplete ? m.actualDate : m.dueDate).filter(Boolean);
+  const dates = linked.map(m => m.actualDate).filter(Boolean);
   if (!dates.length) return null;
   return dates.sort().pop(); // ISO 'YYYY-MM-DD' strings sort correctly as plain strings; last = latest
 }
@@ -5877,13 +5883,15 @@ function l1MilestoneHeaderHtml() {
   // Connect and Delete share one trailing Actions column (see the CSS
   // comment on .l1-milestone-header/.l1-milestone-row) — no header label,
   // same as the shared item grid's own unlabeled Actions column. Status
-  // still sits directly adjacent to Actions — the blank cell right after
-  // Due is a genuine reserved-width alignment column (see the CSS comment
-  // on .l1-milestone-header/.l1-milestone-row for why), not a resurrection
-  // of the old mistaken pre-Status spacer this row's history already
-  // fixed once.
+  // still sits directly adjacent to Actions. The column right after Due —
+  // originally a genuine blank reserved-width alignment cell (see the CSS
+  // comment on .l1-milestone-header/.l1-milestone-row) — is now real,
+  // labeled content: Actual (a later, explicit user request; the width was
+  // already exactly right, since it was sized to match .l1-linked-row's own
+  // Actual column one level down for alignment purposes before there was
+  // any real content to put there).
   return `<div class="l1-milestone-header">
-      <span></span><span>Milestone</span><span>Due</span><span></span><span>Status</span><span></span>
+      <span></span><span>Milestone</span><span>Due</span><span>Actual</span><span>Status</span><span></span>
     </div>`;
 }
 // A linked workstream milestone's own read-only row, once its parent L1
@@ -5909,15 +5917,27 @@ function l1LinkedHeaderHtml() {
       <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span>Actual</span><span>Status</span><span></span>
     </div>`;
 }
-function l1LinkedRowHtml(item, milestone) {
+// l1DueDate is the *parent L1 milestone's own manually-set* dueDate (not
+// its rolled-up/displayed one) — an explicit user decision, confirmed
+// directly, for why: the rolled-up Due is by definition the latest Due
+// among these exact linked milestones, so no individual one could ever be
+// "past" it (only Actual meaningfully could) — comparing against the
+// milestone's own independent, hand-set target (still there and untouched
+// even after linking makes it read-only for display — see "linking never
+// changes the L1 milestone's own stored... dueDate" above) is what makes
+// this a real, non-vacuous check for both Due and Actual. Null (never set)
+// means nothing to compare against, so nothing is ever flagged.
+function l1LinkedRowHtml(item, milestone, l1DueDate) {
   const ws = item.workstreamId ? workstreams.find(w => w.id === item.workstreamId) : null;
   const wsLabel = ws ? ws.name : 'Unassigned';
+  const dueLate = !!(l1DueDate && milestone.dueDate && milestone.dueDate > l1DueDate);
+  const actualLate = !!(l1DueDate && milestone.actualDate && milestone.actualDate > l1DueDate);
   return `<div class="l1-linked-row" title="${esc(wsLabel)} — ${esc(item.name)}">
       <span class="l1-linked-source">${esc(wsLabel)}</span>
       <span class="l1-linked-source">${esc(item.name)}</span>
       <span>${esc(milestone.name)}</span>
-      <span>${milestone.dueDate ? esc(fmtDate(milestone.dueDate)) : '—'}</span>
-      <span>${milestone.actualDate ? esc(fmtDate(milestone.actualDate)) : '—'}</span>
+      <span ${dueLate ? `style="color:var(--stat-red)" title="Past the L1 milestone's own due date"` : ''}>${milestone.dueDate ? esc(fmtDate(milestone.dueDate)) : '—'}</span>
+      <span ${actualLate ? `style="color:var(--stat-red)" title="Past the L1 milestone's own due date"` : ''}>${milestone.actualDate ? esc(fmtDate(milestone.actualDate)) : '—'}</span>
       <span class="status-badge" style="background:var(--stat-${milestone.status}-bg);color:var(--stat-${milestone.status});cursor:default">${esc(statusLabel(milestone.status))}</span>
       <span></span>
     </div>`;
@@ -5927,20 +5947,29 @@ function l1MilestoneRowsHtml(plan) {
   return plan.milestones.map(m => {
     const linked = linkedWorkstreamMilestones(m.id);
     const linkedCount = linked.length;
-    // Once linked, Due is computed live from the linked workstream
-    // milestones (see computedL1MilestoneDate()'s own comment for why — the
-    // same later, explicit user reversal that already applies to Status,
-    // just extended to dates) and rendered read-only, exactly mirroring
-    // statusHtml's own computed-vs-manual split just below —
-    // updateL1MilestoneDateField() itself refuses to run against a linked
-    // milestone as defense-in-depth. Unlinked, it's the same manually
-    // editable pill it's always been.
-    const computedDate = computedL1MilestoneDate(m.id);
-    const dueHtml = computedDate
-      ? `<span class="item-dates-computed" title="Computed from ${linkedCount} linked workstream milestone${linkedCount === 1 ? '' : 's'}">${fmtDate(computedDate)}</span>`
-      : dateInputHtml(m.dueDate,
-          `title="Due date" ${editable ? `onblur="if(this.value) updateL1MilestoneDateField('${plan.id}','${m.id}',this.value); else this.value='${m.dueDate || ''}'" onchange="if(this.value) updateL1MilestoneDateField('${plan.id}','${m.id}',this.value)"` : 'disabled'}`,
-          '', editable ? `v => updateL1MilestoneDateField('${plan.id}','${m.id}',v)` : null);
+    // Due is always the milestone's own manual/imported value, linked or
+    // not — an explicit user reversal of a brief earlier attempt at rolling
+    // it up the same way Status does (see computedL1MilestoneActualDate()'s
+    // own comment for the full history). Never disabled purely for being
+    // linked — updateL1MilestoneDateField() has no link-based guard either.
+    const dueHtml = dateInputHtml(m.dueDate,
+      `title="Due date" ${editable ? `onblur="if(this.value) updateL1MilestoneDateField('${plan.id}','${m.id}',this.value); else this.value='${m.dueDate || ''}'" onchange="if(this.value) updateL1MilestoneDateField('${plan.id}','${m.id}',this.value)"` : 'disabled'}`,
+      '', editable ? `v => updateL1MilestoneDateField('${plan.id}','${m.id}',v)` : null);
+    // Actual has no hand-set path at all — an L1 milestone's own
+    // actualDate is never directly editable anywhere (there's no input for
+    // it, mirroring reportingLevel's own "import/computed only, no UI to
+    // hand-set it" treatment above) — so this is always either the
+    // rolled-up value or a genuinely blank placeholder, never a pill.
+    // Colored red exactly like the status board's own actualLate treatment
+    // (see "Delayed-milestone color coding" in CLAUDE.md) whenever it's
+    // later than the milestone's own real, independent Due (m.dueDate,
+    // never a rollup — see above) — an explicit user request extending
+    // that same convention up to L1 level.
+    const computedActual = computedL1MilestoneActualDate(m.id);
+    const l1ActualLate = !!(computedActual && m.dueDate && computedActual > m.dueDate);
+    const actualHtml = computedActual
+      ? `<span class="item-dates-computed" ${l1ActualLate ? 'style="color:var(--stat-red)"' : ''} title="${l1ActualLate ? 'Finished after this milestone\'s own Due — ' : ''}Computed from ${linkedCount} linked workstream milestone${linkedCount === 1 ? '' : 's'}">${fmtDate(computedActual)}</span>`
+      : `<span></span>`;
     // Once linked, status is computed live from the linked workstream
     // milestones (see computedL1MilestoneStatus()'s own comment for why —
     // an explicit later user request reversing this feature's original
@@ -5978,13 +6007,13 @@ function l1MilestoneRowsHtml(plan) {
       ? `<span class="item-chevron" onclick="toggleL1MilestoneExpanded('${m.id}')"><i class="fa-solid ${l1Expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
       : `<span class="item-chevron"></span>`;
     const linkedRowsHtml = (linkedCount && l1Expanded)
-      ? l1LinkedHeaderHtml() + linked.map(({ item, milestone }) => l1LinkedRowHtml(item, milestone)).join('')
+      ? l1LinkedHeaderHtml() + linked.map(({ item, milestone }) => l1LinkedRowHtml(item, milestone, m.dueDate)).join('')
       : '';
     return `<div class="l1-milestone-row">
         ${chevronHtml}
         ${nameHtml}
         ${dueHtml}
-        <span></span>
+        ${actualHtml}
         ${statusHtml}
         ${actionsHtml}
       </div>${linkedRowsHtml}`;
@@ -6021,13 +6050,10 @@ function updateL1MilestoneDateField(planId, milestoneId, value) {
   if (!plan) return;
   const m = plan.milestones.find(x => x.id === milestoneId);
   if (!m) return;
-  // Refuses outright once this milestone has any linked workstream
-  // milestones — its Due is computed live from those (see
-  // computedL1MilestoneDate()), not manually set. Defense-in-depth behind
-  // l1MilestoneRowsHtml() itself never rendering an editable pill for a
-  // linked milestone in the first place — mirrors cycleL1MilestoneStatus()'s
-  // own guard just above.
-  if (computedL1MilestoneDate(milestoneId)) return;
+  // Unlike cycleL1MilestoneStatus() just above, no link-based guard here at
+  // all — Due is always the milestone's own manual/imported value,
+  // regardless of link state (an explicit user reversal of a brief earlier
+  // rollup attempt — see computedL1MilestoneActualDate()'s own comment).
   if (value === m.dueDate) return; // a focus+blur with no real edit shouldn't persist anything
   m.dueDate = value || null;
   m.updatedAt = Date.now();

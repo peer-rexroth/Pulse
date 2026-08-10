@@ -339,30 +339,32 @@ test('l1MilestoneHeaderHtml/l1MilestoneRowsHtml carry no spacer between Status a
   assertNotIncludes(rowHtml, '<span></span>\n        <span class="l1-milestone-actions">', 'no spacer cell sits between Status and the Actions cluster');
 });
 
-// A deliberate, later addition: a real 110px reserved column between Due
-// and Status — an explicit user request ("align the due date of the l1
-// milestone with the due date of the linked milestones"). Unlike the
-// earlier, mistaken pre-Status spacer this row's own alignment history
-// already removed once (see the test just above and the CSS comment on
-// .l1-milestone-header/.l1-milestone-row), this one sits in a genuinely
-// different position (after Due, not after Status) and exists for a real,
-// verified reason: it's what makes Due land at the same x-position as
-// .l1-linked-row's own Due one level down, without disturbing
+// A 110px column between Due and Status — an explicit user request ("align
+// the due date of the l1 milestone with the due date of the linked
+// milestones"), originally a genuinely blank alignment reservation, since
+// given real content by a later request ("also show the actual date...").
+// Unlike the earlier, mistaken pre-Status spacer this row's own alignment
+// history already removed once (see the two tests just above and the CSS
+// comment on .l1-milestone-header/.l1-milestone-row), this one sits in a
+// genuinely different position (after Due, not after Status) and exists for
+// a real, verified reason: it's what makes Due land at the same x-position
+// as .l1-linked-row's own Due one level down, without disturbing
 // Status/Actions' own alignment with .l1-plans-list one level up.
 
-test('l1MilestoneHeaderHtml/l1MilestoneRowsHtml reserve a blank column between Due and Status, matching .l1-linked-row\'s own Actual column width', function () {
+test('l1MilestoneHeaderHtml labels the column between Due and Status as Actual', function () {
+  const headerHtml = l1MilestoneHeaderHtml();
+  assertIncludes(headerHtml, '<span></span><span>Milestone</span><span>Due</span><span>Actual</span><span>Status</span><span></span>');
+});
+
+test('l1MilestoneRowsHtml renders the Actual cell between Due and Status, blank when nothing to show', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
-  const headerHtml = l1MilestoneHeaderHtml();
-  assertIncludes(headerHtml, '<span></span><span>Milestone</span><span>Due</span><span></span><span>Status</span><span></span>');
   const rowHtml = l1MilestoneRowsHtml(p);
-  // The reserved cell is the plain <span></span> immediately after dueHtml's
-  // own closing tag and before statusHtml's status-badge markup.
   const dueIdx = rowHtml.indexOf('title="Due date"');
-  const statusIdx = rowHtml.indexOf('class="status-badge"');
+  const statusIdx = rowHtml.indexOf('cycleL1MilestoneStatus');
   assertTrue(dueIdx > -1 && statusIdx > dueIdx, 'sanity check on ordering');
   const between = rowHtml.slice(dueIdx, statusIdx);
-  assertIncludes(between, '<span></span>', 'a blank reserved cell sits between Due and Status');
+  assertIncludes(between, '<span></span>', 'a genuinely blank cell — this milestone has nothing linked, so there\'s no rolled-up Actual to show');
 });
 
 test('renderL1Plans() uses its own .l1-plans-list container, not the reused .journeys-list', function () {
@@ -665,62 +667,54 @@ test('itemRowHtml renders an L1 Plan\'s own status badge from computeL1PlanStatu
   assertIncludes(html, statusLabel('red'), 'reflects the live rollup, not the stale stored status');
 });
 
-// ---------- L1/L2 date rollup — a later, explicit user request extending ----------
-// the same "the link now matters" reversal (see "L1/L2 status rollup" just
-// above) from status to dates too. An L1 milestone with at least one linked
-// workstream milestone now shows a computed, read-only Due (the latest Due
-// among its linked milestones, or — once every one of them is genuinely
-// Complete with a real actualDate — the latest of those actualDates
-// instead), falling back to its own manual, editable Due when nothing's
-// linked. Computed live at render time, never stored, exactly like status.
+// ---------- L1 milestone Due (manual/imported only) and Actual (roll-up ----------
+// only) — a later, explicit user reversal of a brief earlier attempt at
+// rolling Due up the same way Status does ("l1 milestones should have its
+// own due date, not rolled up. this is defined (or imported). Actual date
+// should not be able to set, only rolled up"). Due is now, and was always
+// meant to stay, a genuinely independent value — hand-typed or set by
+// importL1PlansFromExcel()'s "Target Date" column — regardless of link
+// state; this is also what makes it a meaningful comparison basis for the
+// delayed-color checks below, both at this level and for attached
+// milestones (a value derived FROM the exact linked milestones being
+// checked against it could never fail the check). Actual, by contrast, has
+// no manual path at all — computedL1MilestoneActualDate() is the only
+// source, the latest actualDate among whichever linked, non-notApplicable
+// milestones have finished *so far* (progressive, not gated on the whole
+// group finishing first — a further, later explicit request: "also show
+// the actual date... on L1 milestone level").
 
-test('computedL1MilestoneDate returns null when nothing is linked', function () {
+test('computedL1MilestoneActualDate returns null when nothing is linked, or nothing linked has finished yet', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
-  assertEqual(computedL1MilestoneDate(m.id), null);
+  assertEqual(computedL1MilestoneActualDate(m.id), null);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Still open', dueDate: '2027-03-31', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  assertEqual(computedL1MilestoneActualDate(m.id), null);
 });
 
-test('computedL1MilestoneDate uses the latest Due among linked milestones while any are still open', function () {
+test('computedL1MilestoneActualDate is progressive — the latest actualDate among whichever linked milestones have finished so far, not gated on the whole group', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm1 = { id: genId(), name: 'A', dueDate: '2027-03-31', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
-  const wm2 = { id: genId(), name: 'B', dueDate: '2027-06-30', actualDate: null, status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
-  item.milestones.push(wm1, wm2);
-  assertEqual(computedL1MilestoneDate(m.id), '2027-06-30', 'latest Due wins — the milestone genuinely can\'t be hit before the slowest linked piece, and not everything is Complete yet');
-});
-
-test('computedL1MilestoneDate switches to the latest Actual only once every linked milestone is Complete with a real actualDate', function () {
-  const p = addL1Plan();
-  const m = addL1Milestone(p.id);
-  const item = addItem({ name: 'Deliverable' });
-  const wm1 = { id: genId(), name: 'A', dueDate: '2027-03-31', actualDate: '2027-03-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
-  const wm2 = { id: genId(), name: 'B', dueDate: '2027-06-30', actualDate: '2027-07-05', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
-  item.milestones.push(wm1, wm2);
-  assertEqual(computedL1MilestoneDate(m.id), '2027-07-05', 'once everything is Complete, the latest actualDate wins, not the latest dueDate');
-});
-
-test('computedL1MilestoneDate falls back to Due for every linked milestone when completion is mixed — never a mix of Actual-for-done/Due-for-open', function () {
-  const p = addL1Plan();
-  const m = addL1Milestone(p.id);
-  const item = addItem({ name: 'Deliverable' });
-  const wm1 = { id: genId(), name: 'Done early', dueDate: '2027-01-31', actualDate: '2027-01-10', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm1 = { id: genId(), name: 'Done', dueDate: '2027-01-31', actualDate: '2027-01-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
   const wm2 = { id: genId(), name: 'Still open', dueDate: '2027-06-30', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
   item.milestones.push(wm1, wm2);
-  assertEqual(computedL1MilestoneDate(m.id), '2027-06-30', 'the whole group isn\'t done yet, so this is still a forecast — the latest Due, not wm1\'s own actualDate');
+  assertEqual(computedL1MilestoneActualDate(m.id), '2027-01-20', 'shows the one real actualDate so far, even though the group isn\'t fully done');
 });
 
-test('computedL1MilestoneDate excludes a notApplicable linked milestone entirely, same as computedL1MilestoneStatus already does', function () {
+test('computedL1MilestoneActualDate excludes a notApplicable linked milestone entirely', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm1 = { id: genId(), name: 'Real', dueDate: '2027-03-31', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
-  const wm2 = { id: genId(), name: 'Skipped', dueDate: '2027-12-31', actualDate: null, status: 'not-started', notApplicable: true, updatedAt: 0, l1MilestoneId: m.id };
+  const wm1 = { id: genId(), name: 'Real', dueDate: '2027-01-31', actualDate: '2027-01-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm2 = { id: genId(), name: 'Skipped', dueDate: '2027-12-31', actualDate: '2027-12-31', status: 'complete', notApplicable: true, updatedAt: 0, l1MilestoneId: m.id };
   item.milestones.push(wm1, wm2);
-  assertEqual(computedL1MilestoneDate(m.id), '2027-03-31', 'the notApplicable milestone\'s far-later Due must not win');
+  assertEqual(computedL1MilestoneActualDate(m.id), '2027-01-20', 'the notApplicable milestone\'s own actualDate must not win');
 });
 
-test('linking a workstream milestone to an L1 milestone makes its displayed Due roll up live, as read-only computed text', function () {
+test('linking a workstream milestone to an L1 milestone leaves its own Due exactly as manually editable as before — an explicit user reversal of a brief earlier rollup attempt', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   m.dueDate = '2026-01-01';
@@ -728,15 +722,52 @@ test('linking a workstream milestone to an L1 milestone makes its displayed Due 
   const wm = { id: genId(), name: 'Ship it', dueDate: '2027-05-15', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
   item.milestones.push(wm);
   const htmlBefore = l1MilestoneRowsHtml(p);
-  assertIncludes(htmlBefore, 'inline-date-input', 'unlinked — still the manually editable pill');
+  assertIncludes(htmlBefore, 'inline-date-input', 'unlinked — the manually editable pill');
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
   const htmlAfter = l1MilestoneRowsHtml(p);
-  assertIncludes(htmlAfter, 'item-dates-computed', 'linked — now the same read-only computed span statusHtml already uses');
-  assertIncludes(htmlAfter, fmtDate('2027-05-15'), 'shows the linked milestone\'s own Due, not the stale manual one');
+  assertIncludes(htmlAfter, 'inline-date-input', 'still linked — Due stays the same manually editable pill, never swapped for a computed span');
+  assertIncludes(htmlAfter, 'value="2026-01-01"', 'still shows its own manual value, not the linked milestone\'s Due');
 });
 
-test('updateL1MilestoneDateField refuses to run against a linked (computed) milestone', function () {
+test('l1MilestoneRowsHtml shows the L1 milestone\'s own rolled-up Actual once a linked milestone has finished, blank otherwise', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: '2027-05-15', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  assertNotIncludes(l1MilestoneRowsHtml(p), fmtDate('2027-05-20'), 'nothing to show yet — the linked milestone hasn\'t finished');
+  wm.status = 'complete'; wm.actualDate = '2027-05-20';
+  assertIncludes(l1MilestoneRowsHtml(p), fmtDate('2027-05-20'), 'now shows the rolled-up Actual');
+});
+
+test('l1MilestoneRowsHtml colors the L1 milestone\'s own rolled-up Actual red when it lands after its own manually-set Due', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-05-15';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'color:var(--stat-red)', 'the rolled-up Actual (2027-06-01) is later than this milestone\'s own manual Due (2027-05-15)');
+});
+
+test('l1MilestoneRowsHtml never colors the rolled-up Actual when the L1 milestone has no manual Due to compare against', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Finished', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  assertNotIncludes(l1MilestoneRowsHtml(p), 'color:var(--stat-red)');
+});
+
+test('updateL1MilestoneDateField works normally on a linked milestone too — an explicit user reversal, Due is never computed/refused regardless of link state', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   m.dueDate = '2026-01-01';
@@ -744,7 +775,7 @@ test('updateL1MilestoneDateField refuses to run against a linked (computed) mile
   const wm = { id: genId(), name: 'Ship it', dueDate: '2027-05-15', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
   item.milestones.push(wm);
   updateL1MilestoneDateField(p.id, m.id, '2030-01-01');
-  assertEqual(m.dueDate, '2026-01-01', 'the stored dueDate must not change — this milestone is computed, not manual');
+  assertEqual(m.dueDate, '2030-01-01', 'the manual dueDate must update normally — linking never blocks it');
 });
 
 test('l1LinkedRowHtml renders the linked milestone\'s Actual date, or an em dash placeholder when unset', function () {
@@ -753,6 +784,54 @@ test('l1LinkedRowHtml renders the linked milestone\'s Actual date, or an em dash
   const noActual = { id: genId(), name: 'Open', dueDate: '2027-01-01', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
   assertIncludes(l1LinkedRowHtml(item, withActual), fmtDate('2027-01-05'));
   assertIncludes(l1LinkedRowHtml(item, noActual), '—');
+});
+
+// ---------- Attached-milestone delayed color coding — a later, explicit ----------
+// user request ("colorcode if due date and actual date [of attached
+// milestones] are past L1 milestone due date"), confirmed directly: the
+// comparison basis is the L1 milestone's own *manually-set* dueDate (`m.dueDate`,
+// still there and untouched even once linking makes it read-only for
+// display — see "linking never changes the L1 milestone's own stored...
+// dueDate" above), not its rolled-up/displayed Due. The rolled-up Due is by
+// definition the latest Due among these exact linked milestones, so no
+// individual one could ever be "past" it — only the independent, hand-set
+// target makes this a real, non-vacuous check for both Due and Actual.
+
+test('l1LinkedRowHtml colors a linked milestone\'s Due red when past the L1 milestone\'s own manually-set due date', function () {
+  const item = addItem({ name: 'Deliverable' });
+  const late = { id: genId(), name: 'Slipping', dueDate: '2027-08-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const onTrack = { id: genId(), name: 'On track', dueDate: '2027-05-01', actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const l1Due = '2027-06-01';
+  assertIncludes(l1LinkedRowHtml(item, late, l1Due), 'color:var(--stat-red)');
+  assertNotIncludes(l1LinkedRowHtml(item, onTrack, l1Due), 'color:var(--stat-red)');
+});
+
+test('l1LinkedRowHtml colors a linked milestone\'s Actual red when past the L1 milestone\'s own manually-set due date', function () {
+  const item = addItem({ name: 'Deliverable' });
+  const finishedLate = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-08-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const finishedOnTime = { id: genId(), name: 'Finished on time', dueDate: '2027-05-01', actualDate: '2027-04-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const l1Due = '2027-06-01';
+  assertIncludes(l1LinkedRowHtml(item, finishedLate, l1Due), 'color:var(--stat-red)');
+  assertNotIncludes(l1LinkedRowHtml(item, finishedOnTime, l1Due), 'color:var(--stat-red)');
+});
+
+test('l1LinkedRowHtml never colors Due/Actual when the L1 milestone has no manually-set due date to compare against', function () {
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Whatever', dueDate: '2030-01-01', actualDate: '2030-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  assertNotIncludes(l1LinkedRowHtml(item, wm, null), 'color:var(--stat-red)');
+});
+
+test('l1MilestoneRowsHtml passes the L1 milestone\'s own manual dueDate through to its expanded linked rows for the delayed-color comparison', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-06-01';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Slipping', dueDate: '2027-08-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  toggleL1MilestoneExpanded(m.id);
+  assertIncludes(l1MilestoneRowsHtml(p), 'color:var(--stat-red)');
 });
 
 test('toggleL1MilestoneLink is blocked below Editor', function () {
