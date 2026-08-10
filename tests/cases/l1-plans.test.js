@@ -321,12 +321,12 @@ test('Connect and Delete share one .l1-milestone-actions cluster, not two separa
 
 test('l1LinkedHeaderHtml/l1LinkedRowHtml carry exactly one small, deliberately blank trailing cell, directly after Status — matching .l1-milestone-row\'s own real Actions width, no spacer', function () {
   const headerHtml = l1LinkedHeaderHtml();
-  assertEqual((headerHtml.match(/<span/g) || []).length, 6, 'five real columns plus one blank alignment cell');
+  assertEqual((headerHtml.match(/<span/g) || []).length, 7, 'six real columns (Workstream/Scope Item/Milestone/Due/Actual/Status) plus one blank alignment cell');
   const item = addItem({ name: 'Deliverable' });
   const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
   item.milestones.push(wm);
   const rowHtml = l1LinkedRowHtml(item, wm);
-  assertEqual((rowHtml.match(/<span/g) || []).length, 6, 'five real columns plus one blank alignment cell');
+  assertEqual((rowHtml.match(/<span/g) || []).length, 7, 'six real columns plus one blank alignment cell');
   assertIncludes(rowHtml, '      <span></span>\n    </div>', 'the trailing cell is genuinely empty, not a hidden action');
 });
 
@@ -391,10 +391,10 @@ test('l1LinkedRowHtml renders Workstream and Scope Item as two separate cells, n
   assertIncludes(html, `<span class="l1-linked-source">Finance Deliverable</span>`);
 });
 
-test('l1LinkedHeaderHtml labels all five columns: Workstream, Scope Item, Milestone, Due, Status', function () {
+test('l1LinkedHeaderHtml labels all six columns: Workstream, Scope Item, Milestone, Due, Actual, Status', function () {
   const html = l1LinkedHeaderHtml();
   assertIncludes(html, 'l1-linked-header');
-  ['Workstream', 'Scope Item', 'Milestone', 'Due', 'Status'].forEach(label => assertIncludes(html, `<span>${label}</span>`));
+  ['Workstream', 'Scope Item', 'Milestone', 'Due', 'Actual', 'Status'].forEach(label => assertIncludes(html, `<span>${label}</span>`));
 });
 
 test('l1MilestoneRowsHtml renders the linked-milestone header row once expanded, and omits it while collapsed', function () {
@@ -532,7 +532,7 @@ test('toggleL1MilestoneLink(false) clears the link', function () {
   assertEqual(wm.l1MilestoneId, null);
 });
 
-test('linking never changes the L1 milestone\'s own stored status or dates — the displayed status rolls up live instead (see the "L1/L2 status rollup" tests below), but the underlying manual fields are untouched', function () {
+test('linking never changes the L1 milestone\'s own stored status or dueDate — the displayed status and Due both roll up live instead (see the "L1/L2 status rollup" and "L1/L2 date rollup" tests below), but the underlying manual fields are untouched', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   m.status = 'red';
@@ -543,7 +543,7 @@ test('linking never changes the L1 milestone\'s own stored status or dates — t
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
   assertEqual(m.status, 'red', 'the stored field is unchanged by the link — only the displayed/computed value now differs from it');
-  assertEqual(m.dueDate, '2026-01-01', 'dates are still never rolled up, only status');
+  assertEqual(m.dueDate, '2026-01-01', 'the stored dueDate is unchanged too — the computed rollup is display-only, exactly like status');
 });
 
 // ---------- L1/L2 status rollup — a later, explicit user reversal of the ----------
@@ -637,6 +637,96 @@ test('itemRowHtml renders an L1 Plan\'s own status badge from computeL1PlanStatu
   item.milestones.push(wm);
   const html = itemRowHtml(p);
   assertIncludes(html, statusLabel('red'), 'reflects the live rollup, not the stale stored status');
+});
+
+// ---------- L1/L2 date rollup — a later, explicit user request extending ----------
+// the same "the link now matters" reversal (see "L1/L2 status rollup" just
+// above) from status to dates too. An L1 milestone with at least one linked
+// workstream milestone now shows a computed, read-only Due (the latest Due
+// among its linked milestones, or — once every one of them is genuinely
+// Complete with a real actualDate — the latest of those actualDates
+// instead), falling back to its own manual, editable Due when nothing's
+// linked. Computed live at render time, never stored, exactly like status.
+
+test('computedL1MilestoneDate returns null when nothing is linked', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  assertEqual(computedL1MilestoneDate(m.id), null);
+});
+
+test('computedL1MilestoneDate uses the latest Due among linked milestones while any are still open', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm1 = { id: genId(), name: 'A', dueDate: '2027-03-31', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm2 = { id: genId(), name: 'B', dueDate: '2027-06-30', actualDate: null, status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm1, wm2);
+  assertEqual(computedL1MilestoneDate(m.id), '2027-06-30', 'latest Due wins — the milestone genuinely can\'t be hit before the slowest linked piece, and not everything is Complete yet');
+});
+
+test('computedL1MilestoneDate switches to the latest Actual only once every linked milestone is Complete with a real actualDate', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm1 = { id: genId(), name: 'A', dueDate: '2027-03-31', actualDate: '2027-03-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm2 = { id: genId(), name: 'B', dueDate: '2027-06-30', actualDate: '2027-07-05', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm1, wm2);
+  assertEqual(computedL1MilestoneDate(m.id), '2027-07-05', 'once everything is Complete, the latest actualDate wins, not the latest dueDate');
+});
+
+test('computedL1MilestoneDate falls back to Due for every linked milestone when completion is mixed — never a mix of Actual-for-done/Due-for-open', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm1 = { id: genId(), name: 'Done early', dueDate: '2027-01-31', actualDate: '2027-01-10', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm2 = { id: genId(), name: 'Still open', dueDate: '2027-06-30', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm1, wm2);
+  assertEqual(computedL1MilestoneDate(m.id), '2027-06-30', 'the whole group isn\'t done yet, so this is still a forecast — the latest Due, not wm1\'s own actualDate');
+});
+
+test('computedL1MilestoneDate excludes a notApplicable linked milestone entirely, same as computedL1MilestoneStatus already does', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm1 = { id: genId(), name: 'Real', dueDate: '2027-03-31', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm2 = { id: genId(), name: 'Skipped', dueDate: '2027-12-31', actualDate: null, status: 'not-started', notApplicable: true, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm1, wm2);
+  assertEqual(computedL1MilestoneDate(m.id), '2027-03-31', 'the notApplicable milestone\'s far-later Due must not win');
+});
+
+test('linking a workstream milestone to an L1 milestone makes its displayed Due roll up live, as read-only computed text', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2026-01-01';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: '2027-05-15', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  item.milestones.push(wm);
+  const htmlBefore = l1MilestoneRowsHtml(p);
+  assertIncludes(htmlBefore, 'inline-date-input', 'unlinked — still the manually editable pill');
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  const htmlAfter = l1MilestoneRowsHtml(p);
+  assertIncludes(htmlAfter, 'item-dates-computed', 'linked — now the same read-only computed span statusHtml already uses');
+  assertIncludes(htmlAfter, fmtDate('2027-05-15'), 'shows the linked milestone\'s own Due, not the stale manual one');
+});
+
+test('updateL1MilestoneDateField refuses to run against a linked (computed) milestone', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2026-01-01';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: '2027-05-15', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  updateL1MilestoneDateField(p.id, m.id, '2030-01-01');
+  assertEqual(m.dueDate, '2026-01-01', 'the stored dueDate must not change — this milestone is computed, not manual');
+});
+
+test('l1LinkedRowHtml renders the linked milestone\'s Actual date, or an em dash placeholder when unset', function () {
+  const item = addItem({ name: 'Deliverable' });
+  const withActual = { id: genId(), name: 'Done', dueDate: '2027-01-01', actualDate: '2027-01-05', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const noActual = { id: genId(), name: 'Open', dueDate: '2027-01-01', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  assertIncludes(l1LinkedRowHtml(item, withActual), fmtDate('2027-01-05'));
+  assertIncludes(l1LinkedRowHtml(item, noActual), '—');
 });
 
 test('toggleL1MilestoneLink is blocked below Editor', function () {
