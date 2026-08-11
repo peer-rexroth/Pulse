@@ -282,6 +282,16 @@ test('normalizeData backfills programme.updatedAt and rolePasswordsUpdatedAt to 
   assertEqual(programme.rolePasswordsUpdatedAt.reviewer, 1234);
 });
 
+test('normalizeData backfills a missing programme.lastSeenAppVersion to APP_VERSION, not 0 — legacy data predating this field must not immediately read as "behind"', function () {
+  delete programme.lastSeenAppVersion;
+  normalizeData();
+  assertEqual(programme.lastSeenAppVersion, APP_VERSION);
+
+  programme.lastSeenAppVersion = APP_VERSION + 7;
+  normalizeData();
+  assertEqual(programme.lastSeenAppVersion, APP_VERSION + 7, 'a real, already-higher value must not be reset');
+});
+
 test('pickRole switches immediately, with no password step, for Visitor regardless of any passwords set', async function () {
   const hash = await hashRolePassword('x');
   programme.rolePasswords = { reviewer: hash, editor: hash, admin: hash };

@@ -958,6 +958,47 @@ test('mergeData reports changed:false when the incoming programme has nothing ne
   assertFalse(changed);
 });
 
+// lastSeenAppVersion (see updateOutdatedVersionBanner() and APP_VERSION in
+// the inline script) merges by plain Math.max, unlike rolePasswords — a
+// bare integer already has a total order, so "highest wins" needs no
+// companion updatedAt timestamp the way a nullable {salt,hash} value does.
+test('mergeData merges a higher incoming programme.lastSeenAppVersion (max-wins)', function () {
+  programme.lastSeenAppVersion = APP_VERSION;
+  const { changed } = mergeData({ programme: { name: programme.name, updatedAt: 0, lastSeenAppVersion: APP_VERSION + 3 }, workstreams: [], items: [] });
+  assertTrue(changed);
+  assertEqual(programme.lastSeenAppVersion, APP_VERSION + 3);
+});
+
+test('mergeData never lets a lower/stale incoming programme.lastSeenAppVersion pull the local (higher) stamp back down', function () {
+  programme.lastSeenAppVersion = APP_VERSION + 5;
+  const { changed } = mergeData({ programme: { name: programme.name, updatedAt: 0, lastSeenAppVersion: APP_VERSION }, workstreams: [], items: [] });
+  assertFalse(changed);
+  assertEqual(programme.lastSeenAppVersion, APP_VERSION + 5);
+});
+
+test('save() stamps programme.lastSeenAppVersion up to at least APP_VERSION, but never regresses an already-higher (teammate\'s newer) stamp', function () {
+  programme.lastSeenAppVersion = APP_VERSION - 1;
+  save();
+  assertEqual(programme.lastSeenAppVersion, APP_VERSION, 'a lower/legacy stamp is bumped up to this device\'s own running version');
+
+  programme.lastSeenAppVersion = APP_VERSION + 4;
+  save();
+  assertEqual(programme.lastSeenAppVersion, APP_VERSION + 4, 'saving from an older build must never regress a teammate\'s newer stamp');
+});
+
+test('updateOutdatedVersionBanner shows the banner (and names both versions) only when programme.lastSeenAppVersion is ahead of this device\'s own APP_VERSION', function () {
+  programme.lastSeenAppVersion = APP_VERSION;
+  updateOutdatedVersionBanner();
+  assertEqual(document.getElementById('outdatedVersionBanner').style.display, 'none', 'same version — nothing to warn about');
+
+  programme.lastSeenAppVersion = APP_VERSION + 2;
+  updateOutdatedVersionBanner();
+  assertEqual(document.getElementById('outdatedVersionBanner').style.display, 'flex');
+  const text = document.getElementById('outdatedVersionBannerText').textContent;
+  assertIncludes(text, `v${APP_VERSION}`, 'names this device\'s own version');
+  assertIncludes(text, `v${APP_VERSION + 2}`, 'names the newer version a teammate is on');
+});
+
 test('mergeData works even when the incoming data has no programme field at all (e.g. a stray workstream-only file)', function () {
   const before = programme.name;
   const { changed } = mergeData({ workstreams: [], items: [] });

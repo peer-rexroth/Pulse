@@ -453,6 +453,18 @@
     height: 54px; flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
     padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--border);
   }
+  /* See updateOutdatedVersionBanner() in the inline script — amber, the same
+     --stat-amber/--stat-amber-bg pair every other "worth a look, not an
+     emergency" indicator in this app already uses (the sync-conflicts badge,
+     a review's own staleness tint), not --stat-red — being a version behind
+     is a nudge, not a broken/dangerous state. flex:0 0 auto keeps it from
+     ever being squeezed by the mode container beneath it, which is flex:1. */
+  .outdated-version-banner {
+    display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
+    padding: 8px 16px; background: var(--stat-amber-bg); color: var(--stat-amber);
+    font-size: 12.5px; font-weight: 600; border-bottom: 1px solid var(--border);
+  }
+  .outdated-version-banner i { font-size: 13px; }
   /* Matches mytasks' .topbar-brand sizing/weight/letter-spacing exactly, so
      the two sibling apps' headers read as one family. */
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 21px; letter-spacing: -0.02em; color: var(--text); }
@@ -1740,6 +1752,16 @@
   <button class="icon-btn" onclick="openAboutModal()" title="About"><i class="fa-solid fa-circle-info"></i></button>
 </div>
 
+<!-- Persistent (but non-blocking) — see updateOutdatedVersionBanner() below.
+     Sits outside every mode's own container (unlike #scopedBody/#adminBody/
+     #l1PlansBody, which swap per mode) so it stays visible regardless of
+     which mode is currently showing, the same "not workstream/mode-scoped"
+     reasoning the topbar itself already follows. -->
+<div id="outdatedVersionBanner" class="outdated-version-banner" style="display:none">
+  <i class="fa-solid fa-triangle-exclamation"></i>
+  <span id="outdatedVersionBannerText"></span>
+</div>
+
 <!-- Shared shell for Planning/Review/Dashboard: one sidebar + one main
      content area whose contents swap per mode. Admin alone is not
      workstream-scoped at all (see "Categories (Admin mode)" in CLAUDE.md)
@@ -2351,6 +2373,18 @@ const STORAGE_KEY = 'pulse-v1';
 const BACKUPS_KEY = 'pulse-backups';
 const MAX_BACKUPS = 7;
 
+// A plain, hand-incremented integer — not semver, since there's no real
+// major/minor/patch distinction worth tracking for a single-maintainer app,
+// and a bare integer is trivially comparable (no parsing, no edge cases).
+// Bump this by hand whenever a change is worth other devices knowing about
+// (a new/changed data field, a merge-behavior change, a real bug fix) — see
+// programme.lastSeenAppVersion/mergeProgramme()/updateOutdatedVersionBanner()
+// below for what actually consumes it. This is a soft, advisory signal, the
+// same "guardrail, not a gate" stance RBAC and everything else in this app
+// already takes — there's no server here to actually push an update, so the
+// most this can ever do is tell a device it's behind, never force it current.
+const APP_VERSION = 1;
+
 // 'pending' — an explicit user request — is a genuine 6th status value, not
 // a computed display override the way "Completed Late" is (see
 // isCompletedLate() below): it's a real, hand-set/cycleable STATUSES entry
@@ -2797,6 +2831,14 @@ function load() {
 }
 
 function save() {
+  // Stamp this device's own running APP_VERSION into the shared blob on
+  // every save, not just once at load — so the file always reflects the
+  // highest version any device has *actually written from*, not just
+  // loaded/viewed. Math.max, not a plain assignment: a device that's
+  // behind (its own APP_VERSION lower than what's already stamped, e.g.
+  // from a teammate's newer save synced in) must never regress the stamp
+  // back down just by saving its own, older-build edits.
+  programme.lastSeenAppVersion = Math.max(programme.lastSeenAppVersion || 0, APP_VERSION);
   const data = {
     programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
     filterWorkstreamId, sidebarWidth, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
@@ -2911,6 +2953,15 @@ function normalizeData() {
     if (r === 'visitor') return;
     if (typeof programme.rolePasswordsUpdatedAt[r] !== 'number') programme.rolePasswordsUpdatedAt[r] = 0;
   });
+  // lastSeenAppVersion — the highest APP_VERSION any device has ever run
+  // while touching this data (see mergeProgramme()'s own max-merge and
+  // updateOutdatedVersionBanner() below). Backfilled to THIS device's own
+  // APP_VERSION, not 0 — a save from before this field existed carries no
+  // real signal about what version wrote it, and 0 would make every
+  // pre-existing save falsely read as "behind" the instant this feature
+  // ships, for every device, regardless of whether anyone's actually ahead
+  // of anyone else yet.
+  if (typeof programme.lastSeenAppVersion !== 'number') programme.lastSeenAppVersion = APP_VERSION;
   if (!Array.isArray(deletedWorkstreamIds)) deletedWorkstreamIds = [];
   if (!Array.isArray(deletedItemIds)) deletedItemIds = [];
   if (!Array.isArray(deletedMilestoneIds)) deletedMilestoneIds = [];
@@ -3514,6 +3565,7 @@ function render() {
   document.getElementById('dataMenuImportItem').style.display = hasRole('admin') ? '' : 'none';
   document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
   updateSyncConflictsUI();
+  updateOutdatedVersionBanner();
   renderPlanningStatusChips();
   renderReviewLogFilterChips();
   renderSidebar();
@@ -10203,6 +10255,19 @@ function mergeProgramme(existing, incoming) {
       changed = true;
     }
   });
+  // lastSeenAppVersion — see normalizeData()'s own comment and
+  // updateOutdatedVersionBanner() below. Unlike rolePasswords, this needs
+  // no companion updatedAt at all: a plain integer already has a total
+  // order, so "highest wins" (Math.max) is conflict-free and commutative on
+  // its own — the exact opposite of rolePasswords' own null-can't-carry-a-
+  // timestamp problem, which is what forced that field into last-write-wins
+  // instead. Whichever side has run the newer app build always wins,
+  // regardless of which side happened to save more recently.
+  const incomingV = typeof incoming.lastSeenAppVersion === 'number' ? incoming.lastSeenAppVersion : 0;
+  if (incomingV > (existing.lastSeenAppVersion || 0)) {
+    existing.lastSeenAppVersion = incomingV;
+    changed = true;
+  }
   return changed;
 }
 // Additive merge used by every "read data from outside localStorage" path
@@ -10635,6 +10700,29 @@ function updateSyncConflictsUI() {
   el.innerHTML = (hasRole('editor') && syncConflictLog.length)
     ? `<button class="btn btn-sm sync-conflict-badge" onclick="openSyncConflictsModal()" title="Some edits needed automatic conflict resolution"><i class="fa-solid fa-triangle-exclamation"></i> ${syncConflictLog.length} conflict${syncConflictLog.length === 1 ? '' : 's'}</button>`
     : '';
+}
+// A device is "outdated" when programme.lastSeenAppVersion (the highest
+// APP_VERSION any device has ever stamped into this data — see save()/
+// mergeProgramme()) is ahead of this device's own, currently-running
+// APP_VERSION. Called unconditionally from render() (cheap — two field
+// reads and a comparison, the same "no mode check needed" reasoning
+// renderPlanningStatusChips()/updateSyncConflictsUI() already follow), so a
+// version gap surfaces the moment it's known — right after load, or the
+// moment a sync/merge pulls in a teammate's newer stamp — not just on the
+// next unrelated save. Not role-gated at all, unlike the sync-conflicts
+// badge just above: updating your own copy of Pulse isn't a permission-
+// gated action the way resolving a sync conflict is, so every role benefits
+// equally from knowing about it.
+function updateOutdatedVersionBanner() {
+  const el = document.getElementById('outdatedVersionBanner');
+  if (!el) return;
+  const seen = programme.lastSeenAppVersion || APP_VERSION;
+  const outdated = seen > APP_VERSION;
+  el.style.display = outdated ? 'flex' : 'none';
+  if (outdated) {
+    document.getElementById('outdatedVersionBannerText').textContent =
+      `You're on an older version of Pulse (v${APP_VERSION}) — a teammate is on a newer one (v${seen}). Please update this device's copy when you can.`;
+  }
 }
 function restoreBackup(date) {
   if (!requireRole('admin')) return;
