@@ -363,6 +363,21 @@ test('applyScopeCategory sets the item\'s workstream (out of Unassigned) and cat
   assertTrue(deletedMilestoneIds.some(x => x.id === oldMilestoneId), 'the discarded Pending checklist milestone should be tombstoned');
 });
 
+test('applyScopeCategory lands the item at the end of the target workstream\'s own list, not wherever its order happened to be in Unassigned', function () {
+  const ws = workstreams[0];
+  const existingA = { id: genId(), workstreamId: ws.id, categoryId: categories[0].id, name: 'Existing A', status: 'not-started', startDate: '2026-01-01', dueDate: '2026-01-01', actualDate: null, milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 0, updatedAt: Date.now(), itemType: 'scope' };
+  const existingB = { id: genId(), workstreamId: ws.id, categoryId: categories[0].id, name: 'Existing B', status: 'not-started', startDate: '2026-01-01', dueDate: '2026-01-01', actualDate: null, milestones: [], itStatus: 'green', businessStatus: 'green', budgetStatus: 'green', order: 1, updatedAt: Date.now(), itemType: 'scope' };
+  items.push(existingA, existingB);
+  // A quick-added item always starts at order 0 in Unassigned (it's the
+  // first/only item there) — the exact order value that used to collide
+  // with an already-real order-0 item once assigned into a workstream.
+  const it = addPendingItem();
+  assertEqual(it.order, 0);
+  const devCat = categories.find(c => c.name === 'Development');
+  applyScopeCategory(it.id, ws.id, devCat.id);
+  assertEqual(it.order, 2, 'should land after both existing items, not tie with Existing A at order 0');
+});
+
 test('applyScopeAssign reads the modal\'s selects and applies them, then closes the modal', function () {
   const it = addPendingItem();
   const devCat = categories.find(c => c.name === 'Development');

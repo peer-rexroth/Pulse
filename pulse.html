@@ -6260,6 +6260,11 @@ function applyScopeCategory(itemId, workstreamId, categoryId) {
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   it.workstreamId = workstreamId;
+  // Land at the end of the target workstream's own list, not wherever this
+  // item's order happened to be while it was still sitting in Unassigned —
+  // see saveItem()'s identical "one past every existing item" placement for
+  // a brand-new item.
+  it.order = items.filter(i => i.id !== it.id && i.workstreamId === workstreamId).length;
   it.categoryId = categoryId;
   // Same auto-flag onItemCategoryChange() applies in the ordinary item
   // modal — this is the other place a real (non-Pending) category ever gets
