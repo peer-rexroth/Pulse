@@ -30,3 +30,14 @@ test('openAboutModal/closeAboutModal toggle aboutModalBg\'s open class', functio
 // Data & sync sections, no Keyboard Shortcuts section) was
 // verified directly in a real browser instead — see CLAUDE.md's own comment
 // on this modal for what it covers and why.
+//
+// #aboutVersionLine is the one exception — openAboutModal() itself writes
+// its text at open time (see APP_VERSION/APP_BUILD_DATE near the top of the
+// script), so it's directly testable unlike the rest of this modal's static
+// markup.
+test('openAboutModal writes the current APP_VERSION/APP_BUILD_DATE into #aboutVersionLine', function () {
+  openAboutModal();
+  const text = document.getElementById('aboutVersionLine').textContent;
+  assertIncludes(text, `Version ${APP_VERSION}`);
+  assertIncludes(text, fmtDateY(APP_BUILD_DATE));
+});

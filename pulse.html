@@ -2256,6 +2256,15 @@
       <div style="margin-top:6px">Feedback &amp; suggestions welcome:</div>
       <div style="margin-top:3px"><a href="mailto:peer.rexroth@gmail.com" style="color:var(--accent);text-decoration:none;font-weight:600">peer.rexroth@gmail.com</a></div>
     </div>
+    <div style="height:1px;background:var(--border)"></div>
+    <!-- See APP_VERSION/APP_BUILD_DATE near the top of the inline script —
+         both hand-maintained, bumped together on a release worth other
+         devices knowing about. Same version this device stamps into
+         programme.lastSeenAppVersion on every save (see
+         updateOutdatedVersionBanner()) — showing it here is what lets
+         someone actually confirm which build they're on, not just be told
+         they're behind one. -->
+    <div id="aboutVersionLine" style="font-size:12px;color:var(--text-faint)"></div>
     <div class="modal-actions" style="justify-content:flex-end"><button class="btn btn-primary" onclick="closeAboutModal()">Close</button></div>
   </div>
 </div>
@@ -2384,6 +2393,14 @@ const MAX_BACKUPS = 7;
 // already takes — there's no server here to actually push an update, so the
 // most this can ever do is tell a device it's behind, never force it current.
 const APP_VERSION = 1;
+// Hand-updated alongside APP_VERSION, same manual-discipline convention —
+// purely informational (the About modal's own "Version X · <date>" line),
+// never compared/merged/read by anything else, unlike APP_VERSION itself.
+// 'YYYY-MM-DD', run through fmtDateY() (not the plain, no-year fmtDate())
+// wherever it's displayed — a build date is exactly the kind of value that
+// can be read long after the year it was set, so it should never rely on
+// "same year as now" being implied the way a plain fmtDate() call does.
+const APP_BUILD_DATE = '2026-08-11';
 
 // 'pending' — an explicit user request — is a genuine 6th status value, not
 // a computed display override the way "Completed Late" is (see
@@ -5177,7 +5194,10 @@ function closeThemeModal() {
 // plain open/close pair each, same shape as the Theme modal just above.
 function openHelpModal() { document.getElementById('helpModalBg').classList.add('open'); }
 function closeHelpModal() { document.getElementById('helpModalBg').classList.remove('open'); }
-function openAboutModal() { document.getElementById('aboutModalBg').classList.add('open'); }
+function openAboutModal() {
+  document.getElementById('aboutVersionLine').textContent = `Version ${APP_VERSION} · ${fmtDateY(APP_BUILD_DATE)}`;
+  document.getElementById('aboutModalBg').classList.add('open');
+}
 function closeAboutModal() { document.getElementById('aboutModalBg').classList.remove('open'); }
 function setColorScheme(scheme) {
   colorScheme = scheme;
