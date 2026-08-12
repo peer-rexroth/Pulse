@@ -232,6 +232,28 @@ test('an item due soon with a FUTURE actualDate (a plan, not yet happened) still
   assertIncludes(document.getElementById('main').innerHTML, 'Planned finish');
 });
 
+// ---------- Overdue/Upcoming rows show the actual date once one's set ----------
+// A user-reported gap: the row's own date used to always be dueDate, even
+// once a more relevant actualDate had been recorded — see toEntry()'s own
+// comment in renderDashboard().
+test('an Upcoming milestone with a future actualDate shows that actualDate on the row, not its dueDate — with an "(actual)" qualifier', function () {
+  const due = isoDaysFromNow(10), actual = isoDaysFromNow(5);
+  addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Planned early', dueDate: due, actualDate: actual, status: 'amber' }] });
+  renderDashboard();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, fmtDate(actual));
+  assertIncludes(html, '(actual)');
+  assertFalse(html.includes(fmtDate(due)), 'the plain dueDate text should not appear once actualDate is shown instead');
+});
+
+test('an Upcoming milestone with no actualDate yet still shows its plain dueDate, with no "(actual)" qualifier', function () {
+  addDashItem({ name: 'Parent item', milestones: [{ id: 'm1', name: 'Just planned', dueDate: isoDaysFromNow(10), actualDate: null, status: 'amber' }] });
+  renderDashboard();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, fmtDate(isoDaysFromNow(10)));
+  assertFalse(html.includes('(actual)'));
+});
+
 // ---------- Overdue also weighs a *revised* (later) actualDate ----------
 // A further, explicit user request ("if actual date is newer and not yet
 // overdue, do not show as overdue"): once a later actualDate than dueDate
