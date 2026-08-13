@@ -122,6 +122,103 @@ test('cancelReviewCycle tombstones the cycle id — needed so the cancellation a
   assertTrue(typeof tomb.deletedAt === 'number' && tomb.deletedAt > 0);
 });
 
+// ---------- Check All — bulk-confirm every item in one cycle ----------
+// An explicit user request ("in review mode, provide a check all option. in
+// that case, show a modal to double check with the user that really no
+// updates are needed"). Strictly one-directional (only ever confirms, never
+// un-confirms) and always gated behind openConfirmModal(), the same
+// "describe the impact, then confirm" pattern every other bulk/destructive
+// action in this app already uses.
+
+test('confirmAllInReviewCycle opens a confirm modal rather than confirming immediately', function () {
+  const it = addReviewItem({});
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  confirmAllInReviewCycle(cycle.id);
+  assertFalse(isItemConfirmedInCycle(cycle, it), 'nothing should be confirmed until the modal is actually confirmed');
+  assertEqual(document.getElementById('confirmModalActionBtn').textContent, 'Check All', 'the button must not say "Delete" for a non-destructive action');
+});
+
+test('confirmAllInReviewCycle confirms a zero-milestone item once the modal is confirmed', function () {
+  const it = addReviewItem({});
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  confirmAllInReviewCycle(cycle.id);
+  confirmModalAction();
+  assertTrue(isItemConfirmedInCycle(cycle, it));
+});
+
+test('confirmAllInReviewCycle confirms every applicable milestone across every item in the workstream', function () {
+  const a = addReviewItemWithMilestones(['A1', 'A2']);
+  const b = addReviewItemWithMilestones(['B1']);
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  confirmAllInReviewCycle(cycle.id);
+  confirmModalAction();
+  assertTrue(isItemConfirmedInCycle(cycle, a));
+  assertTrue(isItemConfirmedInCycle(cycle, b));
+  assertTrue(canCompleteReviewCycle(cycle));
+});
+
+test('confirmAllInReviewCycle skips a notApplicable milestone — nothing to confirm there', function () {
+  const it = addReviewItem({
+    milestones: [
+      { id: genId(), name: 'Real', dueDate: todayStr(), status: 'not-started', actualDate: null, notApplicable: false },
+      { id: genId(), name: 'Skipped', dueDate: null, status: 'not-started', actualDate: null, notApplicable: true }
+    ]
+  });
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  confirmAllInReviewCycle(cycle.id);
+  confirmModalAction();
+  assertEqual(cycle.milestoneConfirmations.length, 1, 'only the one real, applicable milestone should get a confirmation record');
+  assertTrue(isItemConfirmedInCycle(cycle, it));
+});
+
+test('confirmAllInReviewCycle leaves an already-confirmed item/milestone\'s own updatedAt untouched — it must be a true no-op for anything not actually changed', function () {
+  const it = addReviewItem({});
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleReviewConfirm(cycle.id, it.id);
+  const stampedAt = cycle.confirmations[0].updatedAt;
+  confirmAllInReviewCycle(cycle.id);
+  confirmModalAction();
+  assertEqual(cycle.confirmations.length, 1, 'must not push a second, redundant confirmation record');
+  assertEqual(cycle.confirmations[0].updatedAt, stampedAt, 'a value that was already true must not get re-stamped');
+});
+
+test('confirmAllInReviewCycle is a no-op with no modal at all once everything is already confirmed', function () {
+  const it = addReviewItem({});
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleReviewConfirm(cycle.id, it.id);
+  confirmAllInReviewCycle(cycle.id);
+  assertFalse(document.getElementById('confirmModalBg').classList.contains('open'), 'nothing left to confirm — no modal needed');
+});
+
+test('confirmAllInReviewCycle is blocked below Reviewer', function () {
+  const it = addReviewItem({});
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  userRole = 'visitor';
+  confirmAllInReviewCycle(cycle.id);
+  assertFalse(document.getElementById('confirmModalBg').classList.contains('open'));
+});
+
+test('renderReview shows a disabled Check All button once the cycle is already fully confirmed', function () {
+  const it = addReviewItem({});
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  toggleReviewConfirm(cycle.id, it.id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  const idx = html.indexOf('Check All');
+  const tagStart = html.lastIndexOf('<button', idx);
+  assertIncludes(html.slice(tagStart, idx), 'disabled');
+});
+
 test('reviewCyclesForWs returns every cycle (active and completed) for that workstream only', function () {
   document.getElementById('wsNameInput').value = 'Second';
   wsColorChoice = 'teal';

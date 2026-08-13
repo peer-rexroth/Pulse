@@ -978,13 +978,56 @@ test('normalizeData backfills a missing order per workstream, preserving current
   assertEqual(items[1].order, 1);
 });
 
-test('the drag handle renders in Planning but not in Review mode', function () {
+test('the drag handle renders in Planning at Editor+', function () {
   const it = addItem({ name: 'Draggable' });
   renderMain();
   assertIncludes(document.getElementById('main').innerHTML, 'drag-handle');
+});
+
+// A later, explicit user request ("allow reordering of scope items for
+// reviewer+ role") carved out an exception to Review mode's own original
+// "restructuring order isn't a review action" stance — reordering (not
+// Edit/Delete, still Editor+-only and still hidden in Review) is now also
+// reachable at Reviewer+, the identical "Editor+ everywhere, or Reviewer+
+// scoped to Review mode" shape canEditReviewFields() already established for
+// milestone Due/Actual/status edits.
+test('the drag handle renders in Review mode at Reviewer+, but Edit/Delete stay hidden', function () {
+  const it = addItem({ name: 'Draggable' });
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
   startReviewCycle(workstreams[0].id);
+  userRole = 'reviewer';
   renderReview();
-  assertNotIncludes(document.getElementById('main').innerHTML, 'drag-handle', 'restructuring order isn\'t a review action');
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'drag-handle');
+  assertNotIncludes(html, 'title="Edit"');
+  assertNotIncludes(html, 'title="Delete"');
+});
+
+test('the drag handle does not render in Review mode below Reviewer', function () {
+  const it = addItem({ name: 'Draggable' });
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  userRole = 'visitor';
+  renderReview();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'drag-handle');
+});
+
+test('reorderItem is reachable at Reviewer+ while inside Review mode', function () {
+  const a = addItem({ name: 'A', order: 0 });
+  const b = addItem({ name: 'B', order: 1 });
+  mode = 'review';
+  userRole = 'reviewer';
+  reorderItem(b.id, a.id);
+  assertEqual(items.find(i => i.id === b.id).order, 0, 'B should have moved to where A was');
+});
+
+test('reorderItem is blocked for a Reviewer while in Planning — the Review-mode exception does not carry over', function () {
+  const a = addItem({ name: 'A', order: 0 });
+  const b = addItem({ name: 'B', order: 1 });
+  mode = 'planning';
+  userRole = 'reviewer';
+  reorderItem(b.id, a.id);
+  assertEqual(items.find(i => i.id === b.id).order, 1, 'unchanged — Planning reordering still requires Editor+');
 });

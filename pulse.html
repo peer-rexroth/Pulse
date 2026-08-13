@@ -2430,7 +2430,7 @@ const MAX_BACKUPS = 7;
 // same "guardrail, not a gate" stance RBAC and everything else in this app
 // already takes — there's no server here to actually push an update, so the
 // most this can ever do is tell a device it's behind, never force it current.
-const APP_VERSION = 3;
+const APP_VERSION = 4;
 // Hand-updated alongside APP_VERSION, same manual-discipline convention —
 // purely informational (the About modal's own "Version X · <date>" line),
 // never compared/merged/read by anything else, unlike APP_VERSION itself.
@@ -4416,13 +4416,22 @@ function itemRowHtml(it, reviewCycle) {
   const subRows = !expanded ? '' : isL1Plan
     ? (total ? l1MilestoneHeaderHtml() + l1MilestoneRowsHtml(it) : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No milestones yet.</div>`) + l1AddMilestoneHtml
     : (total ? milestoneHeaderHtml(reviewCycle) + milestoneRowsHtml(it, reviewCycle) : '');
-  // Drag-and-drop reordering is Planning-only, same gating as Edit/Delete
-  // below — a review is for confirming, not restructuring. Only the grip
-  // handle itself is draggable="true" (not the whole row), so dragging
+  // Drag-and-drop reordering is Editor+ in Planning, same gating as
+  // Edit/Delete below — a review is for confirming, not restructuring, which
+  // is why this stayed disabled outright in Review mode for a long time. A
+  // later, explicit user request ("allow reordering of scope items for
+  // reviewer+ role") carved out one exception: reordering (not Edit/Delete,
+  // still Editor+-only and still hidden in Review below) is now also
+  // reachable at Reviewer+, but only while actually inside Review mode —
+  // the exact same "Editor+ everywhere, or Reviewer+ scoped to Review mode"
+  // shape canEditReviewFields() already established for milestone Due/
+  // Actual/status edits (see "Review-mode field edits are Reviewer+" in
+  // CLAUDE.md) reused here rather than inventing a second rule. Only the
+  // grip handle itself is draggable="true" (not the whole row), so dragging
   // doesn't fight with clicking the tags/status/actions packed into the
-  // rest of the row; the drop target is the whole row, so dropping
-  // anywhere on it (not just precisely on its own handle) works.
-  const dragAttrs = reviewCycle ? '' : ` ondragover="event.preventDefault()" ondrop="dropOnItem(event,'${it.id}')"`;
+  // rest of the row; the drop target is the whole row, so dropping anywhere
+  // on it (not just precisely on its own handle) works.
+  const dragAttrs = (reviewCycle && !reviewFieldsEditable) ? '' : ` ondragover="event.preventDefault()" ondrop="dropOnItem(event,'${it.id}')"`;
   // A quick-added item (see openInlineQuickAdd()) whose sole "Scope item
   // confirmed" milestone has been marked Complete still sits in the reserved
   // Pending category until its real workstream/category is chosen — the
@@ -4455,8 +4464,16 @@ function itemRowHtml(it, reviewCycle) {
       ${dependencySpocHtml}
       ${tagsHtml}
       ${statusBadgeHtml}
-      ${(reviewCycle || !editable)
-        ? `<span class="item-actions"></span>` // Edit/Delete/drag are hidden during a review, and for anyone below Editor — still a real (empty) element for the usual column-collapse reason (see "Status board" in CLAUDE.md).
+      ${reviewCycle
+        ? (reviewFieldsEditable
+            // Reordering only, at Reviewer+ scoped to Review mode — see
+            // dragAttrs' own comment above. Edit/Delete stay Editor+-only and
+            // hidden here regardless: restructuring/removing an item still
+            // isn't a review action, only its position within the list is.
+            ? `<span class="item-actions"><span class="row-icon-btn drag-handle" draggable="true" ondragstart="dragStartItem(event,'${it.id}')" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span></span>`
+            : `<span class="item-actions"></span>`)
+        : !editable
+        ? `<span class="item-actions"></span>` // still a real (empty) element for the usual column-collapse reason (see "Status board" in CLAUDE.md).
         : `<span class="item-actions">
         <span class="row-icon-btn drag-handle" draggable="true" ondragstart="dragStartItem(event,'${it.id}')" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
         <button class="row-icon-btn" onclick="openItemModal('${it.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
@@ -6878,9 +6895,10 @@ function toggleL1MilestoneLink(itemId, milestoneId, checked) {
 }
 
 // Drag-and-drop reordering of scope items within a workstream's status-board
-// list — Planning only (the drag handle only renders outside Review, same
-// gating as Edit/Delete — see itemRowHtml()'s reviewCycle branch). draggedItemId
-// is plain module-level state, not persisted, exactly like expandedItemIds.
+// list — Editor+ in Planning; also reachable at Reviewer+ while inside
+// Review mode (see itemRowHtml()'s own dragAttrs/reviewFieldsEditable
+// comment and reorderItem()'s own guard). draggedItemId is plain
+// module-level state, not persisted, exactly like expandedItemIds.
 let draggedItemId = null;
 function dragStartItem(e, id) {
   draggedItemId = id;
@@ -6904,7 +6922,12 @@ function reorderItem(fromId, targetId) {
   const dragged = items.find(i => i.id === fromId);
   const target = items.find(i => i.id === targetId);
   if (!dragged || !target) return;
-  if (!requireRole('editor')) return;
+  // Editor+ everywhere, or Reviewer+ scoped to Review mode — see
+  // itemRowHtml()'s own dragAttrs comment for why. In Planning (mode !==
+  // 'review'), canEditReviewFields() reduces to the exact same hasRole('editor')
+  // check this used to be a bare requireRole('editor') for, so this swap is a
+  // no-op there — it only actually changes anything while inside Review.
+  if (!requireReviewFieldRole()) return;
   if (dragged.workstreamId !== target.workstreamId) return;
   const wsItems = items.filter(i => i.workstreamId === dragged.workstreamId).sort((a, b) => a.order - b.order);
   const fromIdx = wsItems.findIndex(i => i.id === fromId);
@@ -7189,6 +7212,50 @@ function toggleConfirmAllMilestones(cycleId, itemId) {
     });
   }
   save(); render();
+}
+// Bulk-confirms every item in the cycle's workstream — and every one of
+// their milestones — in one action, an explicit user request ("in review
+// mode, provide a check all option"). Unlike toggleConfirmAllMilestones()
+// (per-item, and a genuine toggle that can also un-confirm everything back
+// off), this is cycle-wide and strictly one-directional — it only ever
+// confirms, never un-confirms, since there's no legitimate "bulk un-confirm
+// the whole review" action to mirror it against. Deliberately gated behind
+// the same openConfirmModal() double-check every other bulk/destructive
+// action in this app already uses — an explicit part of the request ("show
+// a modal to double check with the user that really no updates are
+// needed"), since skipping the normal item-by-item review is exactly the
+// kind of action that should require a deliberate, described confirmation
+// rather than a single accidental click.
+function confirmAllInReviewCycle(cycleId) {
+  if (!requireRole('reviewer')) return;
+  const cycle = reviewCycles.find(c => c.id === cycleId);
+  if (!cycle) return;
+  if (canCompleteReviewCycle(cycle)) return; // already fully confirmed — nothing to do
+  openConfirmModal({
+    title: 'Check all items?',
+    body: 'This will mark every item — and every one of its milestones — in this review as confirmed, without reviewing them individually. Only do this if you\'ve already verified that nothing here actually needs an update.',
+    confirmLabel: 'Check All',
+    action: () => {
+      const wItems = items.filter(it => it.workstreamId === cycle.workstreamId);
+      // Mirrors toggleConfirmAllMilestones()'s own per-item logic exactly
+      // (notApplicable milestones excluded, a Complete milestone/item
+      // already reading as confirmed via isMilestoneConfirmedInCycle()'s/
+      // isItemConfirmedInCycle()'s own status shortcut skipped rather than
+      // given a redundant record), just swept across every item in the
+      // workstream in one pass instead of one item at a time.
+      wItems.forEach(it => {
+        if (it.milestones.length) {
+          it.milestones.filter(m => !m.notApplicable).forEach(m => {
+            if (!isMilestoneConfirmedInCycle(cycle, m)) setConfirmRecord(cycle.milestoneConfirmations, 'milestoneId', m.id, true);
+          });
+        } else if (!isItemConfirmedInCycle(cycle, it)) {
+          setConfirmRecord(cycle.confirmations, 'itemId', it.id, true);
+        }
+      });
+      save(); render();
+      showToast('All items confirmed');
+    }
+  });
 }
 function canCompleteReviewCycle(cycle) {
   const wItems = items.filter(it => it.workstreamId === cycle.workstreamId);
@@ -8793,6 +8860,7 @@ function renderReview() {
         ${wItems.length ? wItems.map(it => itemRowHtml(it, cycle)).join('') : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No items in this workstream yet.</div>`}
       </div>
       ${hasRole('reviewer') ? `<div style="display:flex;gap:8px;margin-bottom:20px">
+        <button class="btn" ${canComplete ? 'disabled' : ''} title="${canComplete ? 'Everything here is already confirmed' : 'Mark every item — and every one of its milestones — in this review as confirmed'}" onclick="confirmAllInReviewCycle('${cycle.id}')"><i class="fa-solid fa-check-double"></i> Check All</button>
         <button class="btn btn-primary" ${canComplete ? '' : 'disabled'} title="${canComplete ? 'Mark this review cycle as completed' : 'Confirm every item — and every one of its milestones — before this can be completed'}" onclick="completeReviewCycle('${cycle.id}')"><i class="fa-solid fa-check"></i> Complete review</button>
         <button class="btn btn-danger" onclick="cancelReviewCycle('${cycle.id}')">Cancel review</button>
       </div>` : ''}`;
@@ -11866,7 +11934,48 @@ function openBackupFolderModal() { document.getElementById('backupFolderModalBg'
 function closeBackupFolderModal() { document.getElementById('backupFolderModalBg')?.classList.remove('open'); }
 
 // ---------- Data dropdown menu ----------
-function toggleDataMenu() { document.getElementById('dataMenu')?.classList.toggle('open'); }
+// A user-reported bug: at 115%/130% Text Size zoom, the Text Size popover
+// itself (and, for the identical reason, the Data dropdown) became
+// invisible — hidden behind .topbar's own new horizontal scrollbar (see
+// ".topbar > * { flex-shrink: 0 }" above for that fix). Root cause: setting
+// overflow-x:auto on an element forces overflow-y to compute as auto too —
+// a plain CSS rule (see "overflow-x: auto forces overflow-y..." elsewhere in
+// this file for the identical mechanic on a status-board row), not specific
+// to this element — and unlike those other cases, .topbar has a genuinely
+// *fixed* 54px height with children (these two dropdown menus) that
+// deliberately extend below it; the forced overflow-y:auto now clips any
+// descendant that visually extends outside .topbar's own box, including a
+// position:absolute popover, regardless of which element it's actually
+// anchored to. Fixed by switching just these two topbar-hosted dropdowns to
+// position:fixed, with coordinates computed here from the trigger wrapper's
+// own real getBoundingClientRect() — position:fixed is anchored to the
+// viewport, not any scrolling ancestor, so .topbar's own clipping no longer
+// applies to it at all. Dashboard's own Export Exec Summary dropdown
+// (execExportDropdown) doesn't need this — it lives outside .topbar
+// entirely, in a plain, non-clipping toolbar, so its own plain
+// position:absolute (set purely in CSS) was never affected.
+function positionFixedDropdown(wrapperId, menuId) {
+  const wrapper = document.getElementById(wrapperId);
+  const menu = document.getElementById(menuId);
+  // getBoundingClientRect() isn't defined on the JXA test harness's fake DOM
+  // elements (see "Tests" in CLAUDE.md for the same gap elsewhere,
+  // e.g. endSidebarResize()'s own getComputedStyle() caveat) — a safe no-op
+  // there, verified live in a real browser instead.
+  if (!wrapper || !menu || typeof wrapper.getBoundingClientRect !== 'function') return;
+  const rect = wrapper.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.top = (rect.bottom + 6) + 'px';
+  menu.style.left = 'auto';
+  // Explicit right, not the CSS rule's own `right:0` (which would anchor to
+  // .dropdown-menu's own containing block, not the viewport, once position
+  // is fixed) — window.innerWidth - rect.right is the trigger's own real
+  // distance from the viewport's right edge.
+  menu.style.right = (window.innerWidth - rect.right) + 'px';
+}
+function toggleDataMenu() {
+  positionFixedDropdown('dataDropdown', 'dataMenu');
+  document.getElementById('dataMenu')?.classList.toggle('open');
+}
 function closeDataMenu() { document.getElementById('dataMenu')?.classList.remove('open'); }
 // Dashboard's own "Export Exec Summary" dropdown (see exportExecSummaryPdf()/
 // exportExecSummaryPng() above) — same open/close/click-outside pattern as
@@ -11892,7 +12001,11 @@ function renderUiScaleMenu() {
     </div>
   `;
 }
-function toggleUiScaleMenu() { renderUiScaleMenu(); document.getElementById('uiScaleMenu')?.classList.toggle('open'); }
+function toggleUiScaleMenu() {
+  renderUiScaleMenu();
+  positionFixedDropdown('uiScaleDropdown', 'uiScaleMenu');
+  document.getElementById('uiScaleMenu')?.classList.toggle('open');
+}
 function closeUiScaleMenu() { document.getElementById('uiScaleMenu')?.classList.remove('open'); }
 function setUiScale(v) {
   uiScale = clampUiScale(v);
