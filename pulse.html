@@ -1312,6 +1312,14 @@
   .dropdown-item + .dropdown-item { border-top: 1px solid var(--border); }
   .dropdown-item-icon { flex: 0 0 auto; width: 14px; margin-top: 1px; color: var(--text-faint); font-size: 12px; }
   .dropdown-item-label { font-size: 12.5px; font-weight: 700; }
+  /* Text Size popover — see renderUiScaleMenu() above for why this reuses
+     .view-tabs/.view-tab (the Planning/Dashboard/Review mode pill) for its
+     own S/M/L/XL segments rather than a bespoke control. .view-tab's own
+     padding is tuned for text labels like "Dashboard"; narrowed here to a
+     compact, centered square better suited to a single letter/pair. */
+  .text-size-panel { padding: 10px 12px; min-width: 150px; }
+  .text-size-panel-header { font-size: 12px; font-weight: 700; color: var(--text-dim); margin-bottom: 8px; }
+  .text-size-panel .view-tab { min-width: 30px; padding: 6px 10px; justify-content: center; }
   .dropdown-item-desc { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
 
   /* File sync indicator */
@@ -1750,6 +1758,10 @@
   <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileImport(event)">
   <input type="file" id="l1PlanImportFileInput" accept=".xlsx" style="display:none" onchange="handleL1PlanImportFile(event)">
   <button class="icon-btn" id="roleBtn" onclick="openRoleModal()" title="Switch role"><i class="fa-solid" id="roleBtnIcon"></i></button>
+  <div class="data-dropdown" id="uiScaleDropdown">
+    <button class="icon-btn" onclick="event.stopPropagation();toggleUiScaleMenu()" title="Text size"><i class="fa-solid fa-text-height"></i></button>
+    <div class="dropdown-menu" id="uiScaleMenu" style="min-width:150px"></div>
+  </div>
   <button class="icon-btn" onclick="openThemeModal()" title="Color scheme"><i class="fa-solid fa-palette"></i></button>
   <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><i class="fa-solid fa-circle-half-stroke"></i></button>
   <button class="icon-btn" onclick="openHelpModal()" title="Help"><i class="fa-regular fa-circle-question"></i></button>
@@ -2613,6 +2625,51 @@ function resetSidebarWidth() {
   applySidebarWidth();
   save();
 }
+// ---------- Text Size ----------
+// A plain CSS zoom on <html>, picked from a 4-way segmented control (Small/
+// Medium/Large/Extra Large) in the topbar's own popover — ported from this
+// author's mytasks app ("Text Size"), an explicit user request. Reuses
+// .view-tabs/.view-tab outright (the same pill Planning/Dashboard/Review's
+// own mode switcher already uses), the identical "port the mechanism, adapt
+// to this app's own components" treatment the Color scheme system and Help/
+// About modals already got, rather than inventing a second segmented-control
+// component. Set directly as an inline style (document.documentElement.
+// style.zoom), since there's no small, fixed set of named steps a CSS
+// attribute selector could map cleanly to (see data-theme/data-scheme for
+// that pattern elsewhere) — zoom is a Chromium/Safari-only CSS property (not
+// Firefox), the same "Chrome/Edge is the primary target" stance the File
+// System Access sync feature already takes elsewhere in this app; on an
+// unsupported browser this is simply a no-op, never a crash.
+let uiScale = 100; // percent, e.g. 100 = 100% — see UI_SCALE_DEFAULT
+const UI_SCALE_STEPS = [
+  { pct: 90, label: 'Small', short: 'S' },
+  { pct: 100, label: 'Medium', short: 'M' },
+  { pct: 115, label: 'Large', short: 'L' },
+  { pct: 130, label: 'Extra Large', short: 'XL' }
+];
+const UI_SCALE_DEFAULT = 100;
+// Index into UI_SCALE_STEPS of whichever stop is closest to pct — what
+// clampUiScale() below actually uses, so a stored value that isn't exactly
+// one of the 4 stops (a hand-edited localStorage value, say) still lands on
+// a sensible one rather than breaking the control.
+function uiScaleStepIndex(pct) {
+  pct = Number(pct);
+  let bestIdx = 0, bestDiff = Infinity;
+  UI_SCALE_STEPS.forEach((s, i) => {
+    const diff = Math.abs(s.pct - pct);
+    if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+  });
+  return bestIdx;
+}
+// Snaps any value — from localStorage, a hand-edited import, not just the
+// control itself — to the nearest of the 4 real stops, so uiScale is always
+// exactly one of UI_SCALE_STEPS' own pct values, never something in between.
+function clampUiScale(v) { if (!isFinite(Number(v))) return UI_SCALE_DEFAULT; return UI_SCALE_STEPS[uiScaleStepIndex(v)].pct; }
+// Pushes the current uiScale onto <html>'s own zoom — called once at init
+// (right after load()) and again by setUiScale(), the same "apply once at
+// startup, no flash of the default" role applySidebarWidth() plays for its
+// own per-device preference just above.
+function applyUiScale() { document.documentElement.style.zoom = (uiScale / 100); }
 // null until a role is chosen (openRoleModal() then blocks the app behind an
 // undismissable picker — see render()). Deliberately stored under its own
 // localStorage key (loadRole()/saveRole(), not load()/save()'s 'pulse-v1'
@@ -2839,6 +2896,15 @@ function load() {
     if (raw.colorScheme && THEME_SCHEMES.some(s => s.id === raw.colorScheme)) colorScheme = raw.colorScheme;
     filterWorkstreamId = raw.filterWorkstreamId || null;
     sidebarWidth = clampSidebarWidth(raw.sidebarWidth || 220);
+    // A plain per-device display preference, the identical "lives in the
+    // pulse-v1 blob, never written to the synced folder" treatment
+    // sidebarWidth just above already gets — deliberately not the same
+    // choice mytasks itself made for this ported feature, which does sync
+    // its own uiScale through the linked-file payload; Pulse's own
+    // established stance (see buildIndexPayload()'s own comment) is that a
+    // personal zoom-level preference has no more business syncing to a
+    // shared folder than sidebarWidth/theme/colorScheme already do.
+    uiScale = clampUiScale(raw.uiScale || UI_SCALE_DEFAULT);
     deletedWorkstreamIds = raw.deletedWorkstreamIds || [];
     deletedItemIds = raw.deletedItemIds || [];
     deletedMilestoneIds = raw.deletedMilestoneIds || [];
@@ -2862,7 +2928,7 @@ function save() {
   programme.lastSeenAppVersion = Math.max(programme.lastSeenAppVersion || 0, APP_VERSION);
   const data = {
     programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
-    filterWorkstreamId, sidebarWidth, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
+    filterWorkstreamId, sidebarWidth, uiScale, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
     deletedActionLogIds, deletedDecisionLogIds, deletedReviewCycleIds
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -11786,9 +11852,37 @@ function closeDataMenu() { document.getElementById('dataMenu')?.classList.remove
 // CSS classes rather than inventing a second copy of them.
 function toggleExecExportMenu() { document.getElementById('execExportMenu')?.classList.toggle('open'); }
 function closeExecExportMenu() { document.getElementById('execExportMenu')?.classList.remove('open'); }
+// The Text Size popover — see "Text Size" above for uiScale/UI_SCALE_STEPS
+// themselves. Same open/close/click-outside pattern as the Data dropdown,
+// reusing .data-dropdown/.dropdown-menu for the popover's own positioning/
+// border/shadow, but .view-tabs/.view-tab (not .dropdown-item) for the
+// actual S/M/L/XL segments inside it — a click-to-jump 4-way pill, not a
+// list of separate actions.
+function renderUiScaleMenu() {
+  const el = document.getElementById('uiScaleMenu');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="text-size-panel">
+      <div class="text-size-panel-header">Text Size</div>
+      <div class="view-tabs">${UI_SCALE_STEPS.map(s => `
+        <button type="button" class="view-tab${s.pct === uiScale ? ' active' : ''}" title="${esc(s.label)}" onclick="setUiScale(${s.pct})">${esc(s.short)}</button>
+      `).join('')}</div>
+    </div>
+  `;
+}
+function toggleUiScaleMenu() { renderUiScaleMenu(); document.getElementById('uiScaleMenu')?.classList.toggle('open'); }
+function closeUiScaleMenu() { document.getElementById('uiScaleMenu')?.classList.remove('open'); }
+function setUiScale(v) {
+  uiScale = clampUiScale(v);
+  applyUiScale();
+  renderUiScaleMenu();
+  closeUiScaleMenu();
+  save();
+}
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#dataDropdown')) closeDataMenu();
   if (!e.target.closest('#execExportDropdown')) closeExecExportMenu();
+  if (!e.target.closest('#uiScaleDropdown')) closeUiScaleMenu();
 });
 
 // ---------- Modal backdrop click-to-close ----------
@@ -11857,6 +11951,7 @@ loadRole();
 document.documentElement.setAttribute('data-theme', theme);
 document.documentElement.setAttribute('data-scheme', colorScheme);
 applySidebarWidth();
+applyUiScale();
 render();
 initFileSync();
 if (!userRole) openRoleModal(); // mandatory first-launch gate — see the modal's own HTML comment
