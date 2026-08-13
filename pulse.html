@@ -452,7 +452,29 @@
   .topbar {
     height: 54px; flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
     padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--border);
+    overflow-x: auto;
   }
+  /* A user-reported bug, surfaced by the Text Size feature above (see
+     "Text Size" in CLAUDE.md): zoom scales every topbar button's own
+     rendered width without growing the viewport to match, so at 115%/130%
+     the row's own content genuinely no longer fits — and with no overflow
+     handling at all, the trailing icons (Help/About included) were simply
+     unreachable, not just visually clipped. This is the exact "row wider
+     than its own container" class of bug this app has already fixed
+     several times over (see ".ws-section never clips its own content" and
+     the min-width row-box fixes in CLAUDE.md) — overflow-x:auto above is
+     the identical fix, scoped to the topbar itself this time. flex-shrink:0
+     on every direct child is what makes that scroll actually kick in rather
+     than every button/dropdown silently squishing its own icon+label first
+     — a plain flex row's children default to flex-shrink:1, which would
+     otherwise absorb the overflow by cramming each control down toward its
+     own min-content width (wrapping/overlapping icon+text) instead of
+     leaving every control at its true size and letting the row scroll.
+     .topbar-spacer's own separate, more specific `flex: 1` rule still wins
+     over this wildcard (it's what pushes the icon cluster to the right in
+     the first place) — its own flex-shrink:1 is exactly what should happen
+     to an empty spacer once there's no room left to grow it. */
+  .topbar > * { flex-shrink: 0; }
   /* See updateOutdatedVersionBanner() in the inline script — amber, the same
      --stat-amber/--stat-amber-bg pair every other "worth a look, not an
      emergency" indicator in this app already uses (the sync-conflicts badge,
