@@ -2396,7 +2396,7 @@ const MAX_BACKUPS = 7;
 // same "guardrail, not a gate" stance RBAC and everything else in this app
 // already takes — there's no server here to actually push an update, so the
 // most this can ever do is tell a device it's behind, never force it current.
-const APP_VERSION = 2;
+const APP_VERSION = 3;
 // Hand-updated alongside APP_VERSION, same manual-discipline convention —
 // purely informational (the About modal's own "Version X · <date>" line),
 // never compared/merged/read by anything else, unlike APP_VERSION itself.
@@ -5944,6 +5944,35 @@ function saveItem() {
   if (!requireRole('editor')) return;
   const name = document.getElementById('itemNameInput').value.trim();
   if (!name) { showToast('Name is required', true); return; }
+  // An L1 Plan is only ever reachable here via Edit (openL1PlanQuickAdd()/
+  // saveL1PlanQuickAdd() is the only way to create one — see openItemModal()'s
+  // own comment), and this modal hides its Workstream/Category/Milestones
+  // fields for one outright rather than disabling them — but every field
+  // below used to get read and written regardless, since nothing here ever
+  // checked savingType. A user-reported bug: simply opening an L1 Plan's
+  // Edit modal and clicking Save (e.g. just to rename it) silently corrupted
+  // it — categoryId got set to a real category (there's no blank "no
+  // category" option in #itemCategorySelect, so an L1 Plan's own null
+  // categoryId just defaults to whichever real one renders first), which in
+  // turn tripped zeroMilestoneCategorySwitch below (an L1 Plan always enters
+  // this modal with editingItemForSave.categoryId === null, now suddenly
+  // "different" from the select's real category) and wholesale-replaced its
+  // own hand-managed milestones with that category's generic template,
+  // tombstoning the real ones out from under any workstream milestone still
+  // linked to them. Renaming is the only thing this modal is for on an L1
+  // Plan (see openItemModal()'s own comment) — everything else is managed
+  // inline on the L1 Plans page itself — so this returns early with just
+  // that one field touched, before any of the scope-item-only reads below
+  // ever run.
+  if (savingType === 'l1plan') {
+    const plan = editingItemId ? items.find(i => i.id === editingItemId) : null;
+    if (!plan) return;
+    plan.name = name;
+    plan.updatedAt = Date.now();
+    save(); closeItemModal(); render();
+    showToast('L1 Plan saved');
+    return;
+  }
   // A still-Pending item's workstream is likewise forced to stay whatever it
   // already is (always null/Unassigned — see openItemModal()'s own comment
   // on the Workstream select's lock), regardless of the (disabled, but

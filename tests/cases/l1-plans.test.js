@@ -80,6 +80,51 @@ test('allL1Plans returns only itemType:"l1plan" items, sorted by order', functio
   assertEqual(plans[1].id, p2.id);
 });
 
+// ---------- Editing an L1 Plan through the ordinary item modal ----------
+// A user-reported bug: opening an L1 Plan's Edit modal (its only reachable
+// use for one — renaming/deleting, see openItemModal()'s own comment) and
+// clicking Save silently corrupted it, even with nothing else touched.
+// #itemCategorySelect has no blank "no category" option, so an L1 Plan's own
+// null categoryId defaulted to whichever real category renders first —
+// which then tripped saveItem()'s zeroMilestoneCategorySwitch (the L1 Plan's
+// original categoryId, null, now read as "different" from that default) and
+// wholesale-replaced its real, hand-managed milestones with that category's
+// generic template.
+
+test('saveItem on an L1 Plan only ever renames it — categoryId/workstreamId/milestones are completely untouched', function () {
+  const p = addL1Plan('Rollout');
+  addL1Milestone(p.id, 'Phase 1');
+  addL1Milestone(p.id, 'Phase 2');
+  const originalMilestoneIds = p.milestones.map(m => m.id);
+  openItemModal(p.id);
+  document.getElementById('itemNameInput').value = 'Rollout (renamed)';
+  saveItem();
+  assertEqual(p.name, 'Rollout (renamed)');
+  assertEqual(p.itemType, 'l1plan');
+  assertEqual(p.categoryId, null, 'an L1 Plan must never pick up a real category just from opening/saving this modal');
+  assertEqual(p.workstreamId, null);
+  assertDeepEqual(p.milestones.map(m => m.id), originalMilestoneIds, 'the plan\'s own hand-added milestones must survive untouched, not get replaced by a category template');
+});
+
+test('saveItem on a zero-milestone L1 Plan still only renames it — the zero-milestone category-switch path must never apply to one', function () {
+  const p = addL1Plan('Empty plan');
+  openItemModal(p.id);
+  document.getElementById('itemNameInput').value = 'Empty plan (renamed)';
+  saveItem();
+  assertEqual(p.name, 'Empty plan (renamed)');
+  assertEqual(p.categoryId, null);
+  assertEqual(p.milestones.length, 0, 'must not get seeded with a category\'s milestone template');
+});
+
+test('saveItem on an L1 Plan is blocked below Editor, same as any other item edit', function () {
+  const p = addL1Plan('Guarded plan');
+  userRole = 'reviewer';
+  openItemModal(p.id);
+  document.getElementById('itemNameInput').value = 'Should not apply';
+  saveItem();
+  assertEqual(p.name, 'Guarded plan');
+});
+
 // ---------- Inline milestone add ----------
 
 test('openL1MilestoneQuickAdd/saveL1MilestoneQuickAdd adds a real, hand-added milestone to an L1 Plan', function () {
