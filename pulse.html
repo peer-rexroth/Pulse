@@ -7215,43 +7215,65 @@ function toggleConfirmAllMilestones(cycleId, itemId) {
 }
 // Bulk-confirms every item in the cycle's workstream — and every one of
 // their milestones — in one action, an explicit user request ("in review
-// mode, provide a check all option"). Unlike toggleConfirmAllMilestones()
-// (per-item, and a genuine toggle that can also un-confirm everything back
-// off), this is cycle-wide and strictly one-directional — it only ever
-// confirms, never un-confirms, since there's no legitimate "bulk un-confirm
-// the whole review" action to mirror it against. Deliberately gated behind
-// the same openConfirmModal() double-check every other bulk/destructive
-// action in this app already uses — an explicit part of the request ("show
-// a modal to double check with the user that really no updates are
-// needed"), since skipping the normal item-by-item review is exactly the
-// kind of action that should require a deliberate, described confirmation
-// rather than a single accidental click.
+// mode, provide a check all option"). A genuine toggle, the same shape
+// toggleConfirmAllMilestones() already uses one level down (per item): if
+// everything is already confirmed, this un-confirms all of it instead — a
+// later, explicit user follow-up ("also allow to uncheck all") reversing
+// this function's own original one-directional-only design.
 function confirmAllInReviewCycle(cycleId) {
   if (!requireRole('reviewer')) return;
   const cycle = reviewCycles.find(c => c.id === cycleId);
   if (!cycle) return;
-  if (canCompleteReviewCycle(cycle)) return; // already fully confirmed — nothing to do
+  const wItems = items.filter(it => it.workstreamId === cycle.workstreamId);
+  // Mirrors toggleConfirmAllMilestones()'s own per-item logic exactly
+  // (notApplicable milestones excluded, both directions run through
+  // setConfirmRecord() so an already-Complete milestone/item — which reads
+  // as confirmed via isMilestoneConfirmedInCycle()'s/
+  // isItemConfirmedInCycle()'s own status shortcut regardless of any stored
+  // record — never gets a redundant record materialized just to set it to
+  // the value it already effectively has), just swept across every item in
+  // the workstream in one pass instead of one item at a time.
+  const uncheck = () => wItems.forEach(it => {
+    if (it.milestones.length) {
+      it.milestones.filter(m => !m.notApplicable).forEach(m => setConfirmRecord(cycle.milestoneConfirmations, 'milestoneId', m.id, false));
+    } else {
+      setConfirmRecord(cycle.confirmations, 'itemId', it.id, false);
+    }
+  });
+  const check = () => wItems.forEach(it => {
+    if (it.milestones.length) {
+      it.milestones.filter(m => !m.notApplicable).forEach(m => {
+        if (!isMilestoneConfirmedInCycle(cycle, m)) setConfirmRecord(cycle.milestoneConfirmations, 'milestoneId', m.id, true);
+      });
+    } else if (!isItemConfirmedInCycle(cycle, it)) {
+      setConfirmRecord(cycle.confirmations, 'itemId', it.id, true);
+    }
+  });
+  // Un-confirming is the safer, freely-reversible direction (it can't
+  // itself lose data, and just puts items back into "needs review" — the
+  // honest default) — no confirm modal needed, the same "no gate on a
+  // non-destructive toggle" stance toggleConfirmAllMilestones()'s own
+  // un-confirm branch already takes. Confirming everything is the risky
+  // direction this feature was actually built to guard — see below.
+  if (canCompleteReviewCycle(cycle)) {
+    uncheck();
+    save(); render();
+    showToast('All items unconfirmed');
+    return;
+  }
+  // Deliberately gated behind the same openConfirmModal() double-check every
+  // other bulk/destructive action in this app already uses — an explicit
+  // part of the original request ("show a modal to double check with the
+  // user that really no updates are needed"), since skipping the normal
+  // item-by-item review is exactly the kind of action that should require a
+  // deliberate, described confirmation rather than a single accidental
+  // click. This gate applies to the confirm direction only.
   openConfirmModal({
     title: 'Check all items?',
     body: 'This will mark every item — and every one of its milestones — in this review as confirmed, without reviewing them individually. Only do this if you\'ve already verified that nothing here actually needs an update.',
     confirmLabel: 'Check All',
     action: () => {
-      const wItems = items.filter(it => it.workstreamId === cycle.workstreamId);
-      // Mirrors toggleConfirmAllMilestones()'s own per-item logic exactly
-      // (notApplicable milestones excluded, a Complete milestone/item
-      // already reading as confirmed via isMilestoneConfirmedInCycle()'s/
-      // isItemConfirmedInCycle()'s own status shortcut skipped rather than
-      // given a redundant record), just swept across every item in the
-      // workstream in one pass instead of one item at a time.
-      wItems.forEach(it => {
-        if (it.milestones.length) {
-          it.milestones.filter(m => !m.notApplicable).forEach(m => {
-            if (!isMilestoneConfirmedInCycle(cycle, m)) setConfirmRecord(cycle.milestoneConfirmations, 'milestoneId', m.id, true);
-          });
-        } else if (!isItemConfirmedInCycle(cycle, it)) {
-          setConfirmRecord(cycle.confirmations, 'itemId', it.id, true);
-        }
-      });
+      check();
       save(); render();
       showToast('All items confirmed');
     }
@@ -8856,11 +8878,13 @@ function renderReview() {
     // reused .ws-section would carry.
     html += `<div class="review-progress">${confirmedCount} of ${total} item${total === 1 ? '' : 's'} confirmed — started ${fmtDate(dateStrFromTs(cycle.startedAt))}</div>
       <div class="review-progress-bar"><div class="review-progress-fill" style="width:${pct}%"></div></div>
+      ${(hasRole('reviewer') && wItems.length) ? `<div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+        <button class="btn btn-sm" title="${canComplete ? 'Unconfirm every item — and every one of its milestones — in this review' : 'Mark every item — and every one of its milestones — in this review as confirmed'}" onclick="confirmAllInReviewCycle('${cycle.id}')"><i class="fa-solid ${canComplete ? 'fa-rotate-left' : 'fa-check-double'}"></i> ${canComplete ? 'Uncheck All' : 'Check All'}</button>
+      </div>` : ''}
       <div class="review-checklist">
         ${wItems.length ? wItems.map(it => itemRowHtml(it, cycle)).join('') : `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No items in this workstream yet.</div>`}
       </div>
       ${hasRole('reviewer') ? `<div style="display:flex;gap:8px;margin-bottom:20px">
-        <button class="btn" ${canComplete ? 'disabled' : ''} title="${canComplete ? 'Everything here is already confirmed' : 'Mark every item — and every one of its milestones — in this review as confirmed'}" onclick="confirmAllInReviewCycle('${cycle.id}')"><i class="fa-solid fa-check-double"></i> Check All</button>
         <button class="btn btn-primary" ${canComplete ? '' : 'disabled'} title="${canComplete ? 'Mark this review cycle as completed' : 'Confirm every item — and every one of its milestones — before this can be completed'}" onclick="completeReviewCycle('${cycle.id}')"><i class="fa-solid fa-check"></i> Complete review</button>
         <button class="btn btn-danger" onclick="cancelReviewCycle('${cycle.id}')">Cancel review</button>
       </div>` : ''}`;

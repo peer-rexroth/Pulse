@@ -187,13 +187,32 @@ test('confirmAllInReviewCycle leaves an already-confirmed item/milestone\'s own 
   assertEqual(cycle.confirmations[0].updatedAt, stampedAt, 'a value that was already true must not get re-stamped');
 });
 
-test('confirmAllInReviewCycle is a no-op with no modal at all once everything is already confirmed', function () {
+// A later, explicit user follow-up ("also allow to uncheck all") reversed
+// this function's own original one-directional-only design — calling it
+// once everything is already confirmed now un-confirms everything instead
+// of being a no-op.
+test('confirmAllInReviewCycle un-confirms everything, with no modal, once everything is already confirmed', function () {
   const it = addReviewItem({});
   startReviewCycle(workstreams[0].id);
   const cycle = activeReviewCycle(workstreams[0].id);
   toggleReviewConfirm(cycle.id, it.id);
   confirmAllInReviewCycle(cycle.id);
-  assertFalse(document.getElementById('confirmModalBg').classList.contains('open'), 'nothing left to confirm — no modal needed');
+  assertFalse(document.getElementById('confirmModalBg').classList.contains('open'), 'un-confirming is the safe direction — no modal needed');
+  assertFalse(isItemConfirmedInCycle(cycle, it));
+});
+
+test('confirmAllInReviewCycle un-confirms every applicable milestone across every item once everything is already confirmed', function () {
+  const a = addReviewItemWithMilestones(['A1', 'A2']);
+  const b = addReviewItemWithMilestones(['B1']);
+  startReviewCycle(workstreams[0].id);
+  const cycle = activeReviewCycle(workstreams[0].id);
+  confirmAllInReviewCycle(cycle.id);
+  confirmModalAction();
+  assertTrue(canCompleteReviewCycle(cycle));
+  confirmAllInReviewCycle(cycle.id);
+  assertFalse(isItemConfirmedInCycle(cycle, a));
+  assertFalse(isItemConfirmedInCycle(cycle, b));
+  assertFalse(canCompleteReviewCycle(cycle));
 });
 
 test('confirmAllInReviewCycle is blocked below Reviewer', function () {
@@ -205,7 +224,7 @@ test('confirmAllInReviewCycle is blocked below Reviewer', function () {
   assertFalse(document.getElementById('confirmModalBg').classList.contains('open'));
 });
 
-test('renderReview shows a disabled Check All button once the cycle is already fully confirmed', function () {
+test('renderReview swaps the button to "Uncheck All" (not disabled) once the cycle is already fully confirmed', function () {
   const it = addReviewItem({});
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
@@ -214,9 +233,60 @@ test('renderReview shows a disabled Check All button once the cycle is already f
   toggleReviewConfirm(cycle.id, it.id);
   renderReview();
   const html = document.getElementById('main').innerHTML;
-  const idx = html.indexOf('Check All');
+  assertIncludes(html, 'Uncheck All');
+  const idx = html.indexOf('Uncheck All');
   const tagStart = html.lastIndexOf('<button', idx);
-  assertIncludes(html.slice(tagStart, idx), 'disabled');
+  assertNotIncludes(html.slice(tagStart, idx), 'disabled', 'Uncheck All must always be clickable, never disabled');
+});
+
+test('renderReview shows "Check All" (not "Uncheck All") while the cycle is only partially confirmed', function () {
+  addReviewItemWithMilestones(['A1', 'A2']);
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'Check All');
+  assertNotIncludes(html, 'Uncheck All');
+});
+
+// A later, explicit user request ("move the check all above the check
+// column") repositioned the button from the trailing button row (alongside
+// Complete/Cancel review) to its own small, right-aligned toolbar directly
+// above .review-checklist — closer to the review-confirm-toggle column it
+// actually acts on, rather than buried among the cycle's own terminal
+// actions.
+test('the Check All/Uncheck All button renders above .review-checklist, not in the Complete/Cancel review button row', function () {
+  addReviewItem({});
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  renderReview();
+  const html = document.getElementById('main').innerHTML;
+  const checkAllIdx = html.indexOf('Check All');
+  const checklistIdx = html.indexOf('review-checklist');
+  const completeIdx = html.indexOf('Complete review');
+  assertTrue(checkAllIdx > -1 && checklistIdx > -1 && completeIdx > -1);
+  assertTrue(checkAllIdx < checklistIdx, 'Check All must render before (above) the checklist');
+  assertTrue(checklistIdx < completeIdx, 'the checklist must still render before the Complete/Cancel review row');
+});
+
+test('the Check All toolbar is omitted entirely (not just disabled) below Reviewer', function () {
+  addReviewItem({});
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  userRole = 'visitor';
+  renderReview();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Check All');
+});
+
+test('the Check All toolbar is omitted when the workstream has no items to confirm', function () {
+  setFilterWorkstream(workstreams[0].id);
+  setMode('review');
+  startReviewCycle(workstreams[0].id);
+  renderReview();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Check All');
 });
 
 test('reviewCyclesForWs returns every cycle (active and completed) for that workstream only', function () {
