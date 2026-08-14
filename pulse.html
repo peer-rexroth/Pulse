@@ -442,7 +442,39 @@
     background: var(--bg);
     color: var(--text);
     font-size: 14px;
-    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+    display: flex; flex-direction: column; height: 100vh;
+    /* A user-reported bug: at 115%/130% Text Size zoom, the app doesn't
+       scroll vertically at all, even when content genuinely overflows.
+       Root cause: the legacy, non-standard CSS `zoom` property (applied to
+       <html> — see "Text Size" in CLAUDE.md) inflates this element's own
+       *rendered* height beyond the real viewport by exactly the zoom
+       factor, even though `100vh` itself still resolves against the true,
+       un-zoomed viewport height as its used value first — verified live:
+       at 130% zoom in a 900px-tall window, body's own rendered height read
+       1170px (900 × 1.3), a full 270px taller than the physical window.
+       `.main`'s own `overflow: auto` (its usual, primary scroll mechanism)
+       can only ever scroll *within* body's own box — it has no way to
+       reveal the part of the layout that spills past body's own inflated
+       height, past the true viewport's bottom edge. This was previously
+       genuinely unreachable, since body's own overflow:hidden — via the
+       CSS spec's own long-standing html/body-to-viewport overflow
+       propagation quirk — was what disabled page-level (root/viewport)
+       scrolling entirely, the one thing that *could* have reached it.
+       overflow-y:auto here is the fix: it's the same "always leave a
+       working escape-hatch scrollbar, never let overflow become truly
+       unreachable" stance this app already takes everywhere else (the
+       topbar's own overflow-x:auto fix just above is the identical
+       principle, one axis over) — .main's own internal scroll stays the
+       everyday mechanism (this rarely engages outside the zoom-inflation
+       case), this is purely a fallback. overflow-x stays hidden — the
+       topbar already handles its own horizontal overflow internally
+       (scoped there specifically so the page itself never needs to scroll
+       sideways), so there's nothing this axis needs to additionally
+       expose. Verified live: scrolling the page itself (not .main) after
+       this fix reaches exactly the 270px of previously-unreachable content
+       in the 130%-zoom repro above.
+    */
+    overflow-x: hidden; overflow-y: auto;
   }
   button { font-family: inherit; }
   button:focus:not(:focus-visible) { outline: none; }
