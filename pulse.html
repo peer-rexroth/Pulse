@@ -6703,7 +6703,17 @@ function l1MilestoneRowsHtml(plan) {
     const linkedRowsHtml = (linkedCount && l1Expanded)
       ? l1LinkedHeaderHtml() + linked.map(({ item, milestone }) => l1LinkedRowHtml(item, milestone, m.dueDate)).join('')
       : '';
-    return `<div class="l1-milestone-row">
+    // The whole row is tinted by the milestone's own effective status (the
+    // computed, rolled-up one when linked, its own manual value otherwise —
+    // the identical value statusHtml's own badge already colors itself
+    // with) — an explicit user request ("highlight the L1 milestone row
+    // according to status"). Reuses the exact same --stat-*-bg token the
+    // badge and every other status-colored surface in this app already
+    // read from, the same "row tinted by its own status" precedent
+    // .review-confirmed already establishes for a confirmed Review row
+    // (background: var(--stat-green-bg)), just generalized here to every
+    // status rather than one fixed color for one fixed state.
+    return `<div class="l1-milestone-row" style="background:var(--stat-${effectiveStatus}-bg)">
         ${chevronHtml}
         ${nameHtml}
         ${dueHtml}

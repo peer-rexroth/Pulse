@@ -412,6 +412,31 @@ test('l1MilestoneRowsHtml renders the Actual cell between Due and Status, blank 
   assertIncludes(between, '<span></span>', 'a genuinely blank cell — this milestone has nothing linked, so there\'s no rolled-up Actual to show');
 });
 
+// A user-reported request ("highlight the L1 milestone row according to
+// status") — the whole row is tinted by the milestone's own effective
+// status (computed/rolled-up when linked, its own manual value otherwise —
+// the same value the row's own status badge already colors itself with),
+// reusing the identical --stat-*-bg token the badge and .review-confirmed's
+// own row-tint precedent already read from.
+test('l1MilestoneRowsHtml tints the row background by the milestone\'s own manual status when unlinked', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.status = 'red';
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'class="l1-milestone-row" style="background:var(--stat-red-bg)"');
+});
+
+test('l1MilestoneRowsHtml tints the row by the *computed* rolled-up status, not the milestone\'s own stale manual one, once it\'s linked', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.status = 'green'; // stale manual value — should be overridden by the computed rollup below
+  const item = addItem({ name: 'Finance Deliverable' });
+  const wm = { id: genId(), name: 'Cutover', dueDate: '2026-09-01', actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  item.milestones.push(wm);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'class="l1-milestone-row" style="background:var(--stat-red-bg)"');
+});
+
 test('renderL1Plans() uses its own .l1-plans-list container, not the reused .journeys-list', function () {
   setMode('l1plans');
   renderL1Plans();
