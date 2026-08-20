@@ -9,12 +9,14 @@
 // lets it ride the *existing*, unmodified items/milestones
 // sync+tombstone+merge machinery with zero new plumbing.
 //
-// The link lives on the *workstream* milestone (m.l1MilestoneId), not the
-// L1 milestone. Many-to-one: a workstream milestone links to at most one
-// L1 milestone at a time. Linking is pure traceability —
-// confirmed directly with the user — it never computes or changes an L1
-// milestone's own status/dates; those stay entirely manual, exactly like
-// any other milestone.
+// The link lives on the *workstream* milestone (m.l1MilestoneIds), not the
+// L1 milestone. Many-to-many — a later, explicit user reversal of this
+// feature's original many-to-one design ("change the link item to a
+// checkbox to allow linking to multiple l1 milestones"): a workstream
+// milestone can link to any number of L1 milestones at once. Linking is
+// pure traceability on the workstream side — it never changes the
+// workstream milestone's own status/dates — but does feed the L1 side's
+// own rollup (see computedL1MilestoneStatus() in pulse.html).
 
 function addL1Plan(name) {
   openL1PlanQuickAdd();
@@ -135,7 +137,7 @@ test('openL1MilestoneQuickAdd/saveL1MilestoneQuickAdd adds a real, hand-added mi
   assertEqual(m.dueDate, null, 'no template to seed a date from — always hand-added');
   assertEqual(m.status, 'not-started');
   assertEqual(m.notApplicable, false);
-  assertFalse(!!m.l1MilestoneId, 'an L1 milestone never links to another L1 milestone');
+  assertDeepEqual(m.l1MilestoneIds, [], 'an L1 milestone never links to another L1 milestone');
 });
 
 test('saveL1MilestoneQuickAdd supports adding several milestones to the same L1 Plan, like a scope item\'s own checklist', function () {
@@ -264,7 +266,7 @@ test('an L1 milestone with a linked workstream milestone gets a real, clickable 
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: '2026-09-01', actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: '2026-09-01', actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   const html = l1MilestoneRowsHtml(p);
   assertIncludes(html, `onclick="toggleL1MilestoneExpanded('${m.id}')"`);
@@ -302,19 +304,19 @@ test('the milestone name shows a small "N linked" badge right next to it once an
   const m1 = addL1Milestone(p.id, 'Unlinked milestone');
   const m2 = addL1Milestone(p.id, 'Linked milestone');
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m2.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m2.id] };
   item.milestones.push(wm);
   const html = l1MilestoneRowsHtml(p);
-  assertIncludes(html, `<span>Unlinked milestone</span>`, 'no badge at all when nothing is linked');
-  assertIncludes(html, `Linked milestone<span class="l1-milestone-linked-count">1 linked</span>`);
+  assertIncludes(html, `<span class="l1-milestone-name">Unlinked milestone</span></span>`, 'no badge at all when nothing is linked');
+  assertIncludes(html, `<span class="l1-milestone-name">Linked milestone</span><span class="l1-milestone-linked-count">1 linked</span>`);
 });
 
 test('the "N linked" badge reflects the real linked count, not just 0-vs-1', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm1 = { id: genId(), name: 'A', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
-  const wm2 = { id: genId(), name: 'B', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm1 = { id: genId(), name: 'A', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  const wm2 = { id: genId(), name: 'B', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm1, wm2);
   const html = l1MilestoneRowsHtml(p);
   assertIncludes(html, '<span class="l1-milestone-linked-count">2 linked</span>');
@@ -368,7 +370,7 @@ test('l1LinkedHeaderHtml/l1LinkedRowHtml carry exactly one small, deliberately b
   const headerHtml = l1LinkedHeaderHtml();
   assertEqual((headerHtml.match(/<span/g) || []).length, 7, 'six real columns (Workstream/Scope Item/Milestone/Due/Actual/Status) plus one blank alignment cell');
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   const rowHtml = l1LinkedRowHtml(item, wm);
   assertEqual((rowHtml.match(/<span/g) || []).length, 7, 'six real columns plus one blank alignment cell');
@@ -431,7 +433,7 @@ test('l1MilestoneRowsHtml tints the row by the *computed* rolled-up status, not 
   const m = addL1Milestone(p.id);
   m.status = 'green'; // stale manual value — should be overridden by the computed rollup below
   const item = addItem({ name: 'Finance Deliverable' });
-  const wm = { id: genId(), name: 'Cutover', dueDate: '2026-09-01', actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Cutover', dueDate: '2026-09-01', actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   const html = l1MilestoneRowsHtml(p);
   assertIncludes(html, 'class="l1-milestone-row" style="background:var(--stat-red-bg)"');
@@ -449,7 +451,7 @@ test('toggleL1MilestoneExpanded reveals the linked workstream milestone undernea
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Finance Deliverable' });
-  const wm = { id: genId(), name: 'Cutover complete', dueDate: '2026-09-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Cutover complete', dueDate: '2026-09-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   let html = l1MilestoneRowsHtml(p);
   assertNotIncludes(html, 'Cutover complete', 'collapsed by default');
@@ -468,7 +470,7 @@ test('l1LinkedRowHtml never renders the linked milestone\'s status/due as an edi
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: '2026-09-01', actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: '2026-09-01', actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   const html = l1LinkedRowHtml(item, wm);
   assertIncludes(html, 'cursor:default');
@@ -480,7 +482,7 @@ test('l1LinkedRowHtml renders Workstream and Scope Item as two separate cells, n
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Finance Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   const html = l1LinkedRowHtml(item, wm);
   const matches = html.match(/<span class="l1-linked-source">/g) || [];
@@ -499,7 +501,7 @@ test('l1MilestoneRowsHtml renders the linked-milestone header row once expanded,
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   let html = l1MilestoneRowsHtml(p);
   assertNotIncludes(html, 'l1-linked-header', 'collapsed by default — no header shown yet');
@@ -512,7 +514,7 @@ test('l1LinkedRowHtml labels a linked milestone from an Unassigned scope item as
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Unassigned deliverable', workstreamId: null });
-  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   const html = l1LinkedRowHtml(item, wm);
   assertIncludes(html, 'Unassigned');
@@ -590,16 +592,29 @@ test('removeL1Milestone tombstones the milestone via deletedMilestoneIds, same a
   assertTrue(deletedMilestoneIds.some(t => t.id === m.id));
 });
 
-test('removeL1Milestone clears l1MilestoneId on every workstream milestone that was linked to it, rather than leaving a dangling reference', function () {
+test('removeL1Milestone removes its own id from every workstream milestone that was linked to it, rather than leaving a dangling reference', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: Date.now(), l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: Date.now(), l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   assertEqual(linkedWorkstreamMilestones(m.id).length, 1);
   removeL1Milestone(p.id, m.id);
   confirmModalAction();
-  assertEqual(wm.l1MilestoneId, null, 'the link is cleaned up immediately, not left to the next normalizeData() self-heal');
+  assertDeepEqual(wm.l1MilestoneIds, [], 'the link is cleaned up immediately, not left to the next normalizeData() self-heal');
+});
+
+test('removeL1Milestone only drops its own id, leaving a multi-linked workstream milestone\'s other links untouched', function () {
+  const p1 = addL1Plan();
+  const m1 = addL1Milestone(p1.id);
+  const p2 = addL1Plan();
+  const m2 = addL1Milestone(p2.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: Date.now(), l1MilestoneIds: [m1.id, m2.id] };
+  item.milestones.push(wm);
+  removeL1Milestone(p1.id, m1.id);
+  confirmModalAction();
+  assertDeepEqual(wm.l1MilestoneIds, [m2.id]);
 });
 
 test('removeL1Milestone recomputes the parent L1 Plan\'s own status/date-range after removal', function () {
@@ -620,16 +635,16 @@ test('removeL1Milestone undoes cleanly — restores the milestone and re-links w
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: Date.now(), l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: Date.now(), l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   removeL1Milestone(p.id, m.id);
   confirmModalAction();
   assertEqual(p.milestones.length, 0);
-  assertEqual(wm.l1MilestoneId, null);
+  assertDeepEqual(wm.l1MilestoneIds, []);
   triggerToastUndo();
   assertEqual(p.milestones.length, 1);
   assertEqual(p.milestones[0].id, m.id);
-  assertEqual(wm.l1MilestoneId, m.id, 'the link this delete itself removed should come back too');
+  assertDeepEqual(wm.l1MilestoneIds, [m.id], 'the link this delete itself removed should come back too');
 });
 
 test('removeL1Milestone is blocked below Editor', function () {
@@ -643,27 +658,57 @@ test('removeL1Milestone is blocked below Editor', function () {
 
 // ---------- Linking a workstream milestone to an L1 milestone ----------
 
-test('toggleL1MilestoneLink sets l1MilestoneId on the workstream milestone and stamps updatedAt', function () {
+test('toggleL1MilestoneLink adds l1ConnectMilestoneId to the workstream milestone\'s own l1MilestoneIds and stamps updatedAt', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
-  assertEqual(wm.l1MilestoneId, m.id);
+  assertDeepEqual(wm.l1MilestoneIds, [m.id]);
   assertTrue(wm.updatedAt > 0);
 });
 
-test('toggleL1MilestoneLink(false) clears the link', function () {
+test('toggleL1MilestoneLink(false) removes just that one id, leaving any other links on the same milestone untouched', function () {
+  const p1 = addL1Plan();
+  const m1 = addL1Milestone(p1.id);
+  const p2 = addL1Plan();
+  const m2 = addL1Milestone(p2.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m1.id, m2.id] };
+  item.milestones.push(wm);
+  openL1ConnectModal(p1.id, m1.id);
+  toggleL1MilestoneLink(item.id, wm.id, false);
+  assertDeepEqual(wm.l1MilestoneIds, [m2.id]);
+});
+
+test('a workstream milestone can be linked to multiple L1 milestones at once — the many-to-many reversal of this feature\'s original design', function () {
+  const p1 = addL1Plan();
+  const m1 = addL1Milestone(p1.id);
+  const p2 = addL1Plan();
+  const m2 = addL1Milestone(p2.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  item.milestones.push(wm);
+  openL1ConnectModal(p1.id, m1.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  openL1ConnectModal(p2.id, m2.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  assertDeepEqual(wm.l1MilestoneIds, [m1.id, m2.id]);
+  assertEqual(linkedWorkstreamMilestones(m1.id).length, 1);
+  assertEqual(linkedWorkstreamMilestones(m2.id).length, 1);
+});
+
+test('toggleL1MilestoneLink checking an already-linked id twice does not duplicate it', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
-  toggleL1MilestoneLink(item.id, wm.id, false);
-  assertEqual(wm.l1MilestoneId, null);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  assertDeepEqual(wm.l1MilestoneIds, [m.id]);
 });
 
 test('linking never changes the L1 milestone\'s own stored status or dueDate — the displayed status and Due both roll up live instead (see the "L1/L2 status rollup" and "L1/L2 date rollup" tests below), but the underlying manual fields are untouched', function () {
@@ -672,7 +717,7 @@ test('linking never changes the L1 milestone\'s own stored status or dueDate —
   m.status = 'red';
   m.dueDate = '2026-01-01';
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: '2026-12-31', actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Ship it', dueDate: '2026-12-31', actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
@@ -703,8 +748,8 @@ test('computedL1MilestoneStatus rolls up the weakest linked workstream milestone
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm1 = { id: genId(), name: 'A', dueDate: null, actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
-  const wm2 = { id: genId(), name: 'B', dueDate: null, actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm1 = { id: genId(), name: 'A', dueDate: null, actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  const wm2 = { id: genId(), name: 'B', dueDate: null, actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm1, wm2);
   assertEqual(computedL1MilestoneStatus(m.id), 'red', 'red is the weakest of green/red, per STATUS_SEVERITY');
 });
@@ -714,7 +759,7 @@ test('linking a workstream milestone to an L1 milestone makes its displayed stat
   const m = addL1Milestone(p.id);
   m.status = 'not-started';
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   const htmlBefore = l1MilestoneRowsHtml(p);
   assertIncludes(htmlBefore, statusLabel('not-started'), 'unlinked — shows its own manual status');
@@ -728,7 +773,7 @@ test('a linked L1 milestone\'s status badge is read-only, not a clickable cycle 
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   const html = l1MilestoneRowsHtml(p);
   assertNotIncludes(html, `onclick="cycleL1MilestoneStatus('${p.id}','${m.id}')"`, 'no click-to-cycle handler once the status is computed');
@@ -739,7 +784,7 @@ test('cycleL1MilestoneStatus refuses to run against a linked (computed) mileston
   const m = addL1Milestone(p.id);
   m.status = 'not-started';
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   cycleL1MilestoneStatus(p.id, m.id);
   assertEqual(m.status, 'not-started', 'the stored status must not change — this milestone is computed, not manual');
@@ -757,7 +802,7 @@ test('computeL1PlanStatus rolls up over its own milestones\' effective status �
   m1.status = 'not-started';
   m2.status = 'green';
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneId: m1.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m1.id] };
   item.milestones.push(wm);
   assertEqual(computeL1PlanStatus(p.id), 'red', 'the linked milestone\'s own computed (red) status is the weakest, even though its own stored status is not-started');
 });
@@ -767,7 +812,7 @@ test('itemRowHtml renders an L1 Plan\'s own status badge from computeL1PlanStatu
   p.status = 'green'; // stale/irrelevant stored value
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   const html = itemRowHtml(p);
   assertIncludes(html, statusLabel('red'), 'reflects the live rollup, not the stale stored status');
@@ -795,7 +840,7 @@ test('computedL1MilestoneActualDate returns null when nothing is linked, or noth
   const m = addL1Milestone(p.id);
   assertEqual(computedL1MilestoneActualDate(m.id), null);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Still open', dueDate: '2027-03-31', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Still open', dueDate: '2027-03-31', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   assertEqual(computedL1MilestoneActualDate(m.id), null);
 });
@@ -804,8 +849,8 @@ test('computedL1MilestoneActualDate is progressive — the latest actualDate amo
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm1 = { id: genId(), name: 'Done', dueDate: '2027-01-31', actualDate: '2027-01-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
-  const wm2 = { id: genId(), name: 'Still open', dueDate: '2027-06-30', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm1 = { id: genId(), name: 'Done', dueDate: '2027-01-31', actualDate: '2027-01-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  const wm2 = { id: genId(), name: 'Still open', dueDate: '2027-06-30', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm1, wm2);
   assertEqual(computedL1MilestoneActualDate(m.id), '2027-01-20', 'shows the one real actualDate so far, even though the group isn\'t fully done');
 });
@@ -814,8 +859,8 @@ test('computedL1MilestoneActualDate excludes a notApplicable linked milestone en
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm1 = { id: genId(), name: 'Real', dueDate: '2027-01-31', actualDate: '2027-01-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
-  const wm2 = { id: genId(), name: 'Skipped', dueDate: '2027-12-31', actualDate: '2027-12-31', status: 'complete', notApplicable: true, updatedAt: 0, l1MilestoneId: m.id };
+  const wm1 = { id: genId(), name: 'Real', dueDate: '2027-01-31', actualDate: '2027-01-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  const wm2 = { id: genId(), name: 'Skipped', dueDate: '2027-12-31', actualDate: '2027-12-31', status: 'complete', notApplicable: true, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm1, wm2);
   assertEqual(computedL1MilestoneActualDate(m.id), '2027-01-20', 'the notApplicable milestone\'s own actualDate must not win');
 });
@@ -825,7 +870,7 @@ test('linking a workstream milestone to an L1 milestone leaves its own Due exact
   const m = addL1Milestone(p.id);
   m.dueDate = '2026-01-01';
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: '2027-05-15', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Ship it', dueDate: '2027-05-15', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   const htmlBefore = l1MilestoneRowsHtml(p);
   assertIncludes(htmlBefore, 'inline-date-input', 'unlinked — the manually editable pill');
@@ -840,7 +885,7 @@ test('l1MilestoneRowsHtml shows the L1 milestone\'s own rolled-up Actual once a 
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: '2027-05-15', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Ship it', dueDate: '2027-05-15', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
@@ -854,7 +899,7 @@ test('l1MilestoneRowsHtml colors the L1 milestone\'s own rolled-up Actual red wh
   const m = addL1Milestone(p.id);
   m.dueDate = '2027-05-15';
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
@@ -866,7 +911,7 @@ test('l1MilestoneRowsHtml never colors the rolled-up Actual when the L1 mileston
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Finished', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Finished', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
@@ -878,7 +923,7 @@ test('updateL1MilestoneDateField works normally on a linked milestone too — an
   const m = addL1Milestone(p.id);
   m.dueDate = '2026-01-01';
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: '2027-05-15', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: '2027-05-15', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   updateL1MilestoneDateField(p.id, m.id, '2030-01-01');
   assertEqual(m.dueDate, '2030-01-01', 'the manual dueDate must update normally — linking never blocks it');
@@ -886,8 +931,8 @@ test('updateL1MilestoneDateField works normally on a linked milestone too — an
 
 test('l1LinkedRowHtml renders the linked milestone\'s Actual date, or an em dash placeholder when unset', function () {
   const item = addItem({ name: 'Deliverable' });
-  const withActual = { id: genId(), name: 'Done', dueDate: '2027-01-01', actualDate: '2027-01-05', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
-  const noActual = { id: genId(), name: 'Open', dueDate: '2027-01-01', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const withActual = { id: genId(), name: 'Done', dueDate: '2027-01-01', actualDate: '2027-01-05', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  const noActual = { id: genId(), name: 'Open', dueDate: '2027-01-01', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   assertIncludes(l1LinkedRowHtml(item, withActual), fmtDate('2027-01-05'));
   assertIncludes(l1LinkedRowHtml(item, noActual), '—');
 });
@@ -905,8 +950,8 @@ test('l1LinkedRowHtml renders the linked milestone\'s Actual date, or an em dash
 
 test('l1LinkedRowHtml colors a linked milestone\'s Due red when past the L1 milestone\'s own manually-set due date', function () {
   const item = addItem({ name: 'Deliverable' });
-  const late = { id: genId(), name: 'Slipping', dueDate: '2027-08-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
-  const onTrack = { id: genId(), name: 'On track', dueDate: '2027-05-01', actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const late = { id: genId(), name: 'Slipping', dueDate: '2027-08-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  const onTrack = { id: genId(), name: 'On track', dueDate: '2027-05-01', actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   const l1Due = '2027-06-01';
   assertIncludes(l1LinkedRowHtml(item, late, l1Due), 'color:var(--stat-red)');
   assertNotIncludes(l1LinkedRowHtml(item, onTrack, l1Due), 'color:var(--stat-red)');
@@ -914,8 +959,8 @@ test('l1LinkedRowHtml colors a linked milestone\'s Due red when past the L1 mile
 
 test('l1LinkedRowHtml colors a linked milestone\'s Actual red when past the L1 milestone\'s own manually-set due date', function () {
   const item = addItem({ name: 'Deliverable' });
-  const finishedLate = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-08-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
-  const finishedOnTime = { id: genId(), name: 'Finished on time', dueDate: '2027-05-01', actualDate: '2027-04-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const finishedLate = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-08-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  const finishedOnTime = { id: genId(), name: 'Finished on time', dueDate: '2027-05-01', actualDate: '2027-04-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   const l1Due = '2027-06-01';
   assertIncludes(l1LinkedRowHtml(item, finishedLate, l1Due), 'color:var(--stat-red)');
   assertNotIncludes(l1LinkedRowHtml(item, finishedOnTime, l1Due), 'color:var(--stat-red)');
@@ -923,7 +968,7 @@ test('l1LinkedRowHtml colors a linked milestone\'s Actual red when past the L1 m
 
 test('l1LinkedRowHtml never colors Due/Actual when the L1 milestone has no manually-set due date to compare against', function () {
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Whatever', dueDate: '2030-01-01', actualDate: '2030-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Whatever', dueDate: '2030-01-01', actualDate: '2030-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   assertNotIncludes(l1LinkedRowHtml(item, wm, null), 'color:var(--stat-red)');
 });
 
@@ -932,7 +977,7 @@ test('l1MilestoneRowsHtml passes the L1 milestone\'s own manual dueDate through 
   const m = addL1Milestone(p.id);
   m.dueDate = '2027-06-01';
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Slipping', dueDate: '2027-08-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Slipping', dueDate: '2027-08-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
@@ -944,12 +989,12 @@ test('toggleL1MilestoneLink is blocked below Editor', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   userRole = 'reviewer';
   toggleL1MilestoneLink(item.id, wm.id, true);
-  assertEqual(wm.l1MilestoneId, null);
+  assertDeepEqual(wm.l1MilestoneIds, []);
 });
 
 test('linkedWorkstreamMilestones returns every workstream milestone linked to a given L1 milestone, excluding L1 Plans\' own milestones entirely', function () {
@@ -958,31 +1003,32 @@ test('linkedWorkstreamMilestones returns every workstream milestone linked to a 
   const otherPlan = addL1Plan('Other plan');
   addL1Milestone(otherPlan.id); // never a candidate for linking to another L1 milestone
   const item = addItem({ name: 'Deliverable' });
-  const wm1 = { id: genId(), name: 'A', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
-  const wm2 = { id: genId(), name: 'B', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm1 = { id: genId(), name: 'A', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  const wm2 = { id: genId(), name: 'B', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm1, wm2);
   const linked = linkedWorkstreamMilestones(m.id);
   assertEqual(linked.length, 1);
   assertEqual(linked[0].milestone.id, wm1.id);
 });
 
-test('renderL1ConnectList excludes a workstream milestone already linked to a *different* L1 milestone', function () {
+test('renderL1ConnectList no longer excludes a workstream milestone already linked to a *different* L1 milestone — many-to-many, a later reversal of this feature\'s original design', function () {
   const p = addL1Plan();
   const m1 = addL1Milestone(p.id, 'Milestone 1');
   const m2 = addL1Milestone(p.id, 'Milestone 2');
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Claimed elsewhere', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m1.id };
+  const wm = { id: genId(), name: 'Already linked elsewhere', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m1.id] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m2.id);
   const html = document.getElementById('l1ConnectList').innerHTML;
-  assertNotIncludes(html, 'Claimed elsewhere');
+  assertIncludes(html, 'Already linked elsewhere');
+  assertIncludes(html, `<input type="checkbox"  onchange="toggleL1MilestoneLink('${item.id}','${wm.id}', this.checked)">`, 'a real, unchecked candidate for m2 specifically, even though it\'s already linked to m1');
 });
 
 test('renderL1ConnectList still includes a milestone already linked to the *same* L1 milestone being managed, pre-checked', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Already linked', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Already linked', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   const html = document.getElementById('l1ConnectList').innerHTML;
@@ -994,8 +1040,8 @@ test('renderL1ConnectList\'s search box narrows candidates by milestone or scope
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Finance Migration' });
-  const wm1 = { id: genId(), name: 'Cutover complete', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
-  const wm2 = { id: genId(), name: 'Unrelated step', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm1 = { id: genId(), name: 'Cutover complete', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  const wm2 = { id: genId(), name: 'Unrelated step', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm1, wm2);
   openL1ConnectModal(p.id, m.id);
   document.getElementById('l1ConnectSearchInput').value = 'cutover';
@@ -1022,7 +1068,7 @@ test('renderL1ConnectList shows each candidate\'s Workstream, Scope Item, and Du
   const w2 = { id: genId(), name: 'Data Platform', color: 'teal', order: 1 };
   workstreams.push(w2);
   const item = addItem({ name: 'Warehouse migration', workstreamId: w2.id });
-  const wm = { id: genId(), name: 'Cutover complete', dueDate: '2027-04-01', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Cutover complete', dueDate: '2027-04-01', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   const html = document.getElementById('l1ConnectList').innerHTML;
@@ -1035,7 +1081,7 @@ test('renderL1ConnectList shows an em dash for a candidate with no Due date set'
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'No date yet', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'No date yet', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   assertIncludes(document.getElementById('l1ConnectList').innerHTML, '—');
@@ -1045,7 +1091,7 @@ test('renderL1ConnectList labels a candidate from an Unassigned scope item as "U
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Orphan item', workstreamId: null });
-  const wm = { id: genId(), name: 'Some milestone', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Some milestone', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   assertIncludes(document.getElementById('l1ConnectList').innerHTML, 'Unassigned');
@@ -1061,7 +1107,7 @@ test('renderL1ConnectList sorts candidates by workstream display order, Unassign
   const itemA = addItem({ name: 'A in first stream', workstreamId: workstreams[0].id });
   const itemUnassigned = addItem({ name: 'Unassigned item', workstreamId: null });
   [itemInB, itemZ, itemA, itemUnassigned].forEach(it => {
-    it.milestones.push({ id: genId(), name: `${it.name} milestone`, dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null });
+    it.milestones.push({ id: genId(), name: `${it.name} milestone`, dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] });
   });
   openL1ConnectModal(p.id, m.id);
   const html = document.getElementById('l1ConnectList').innerHTML;
@@ -1076,7 +1122,7 @@ test('renderL1ConnectList sorts candidates by workstream display order, Unassign
 
 test('l1ConnectRowHtml renders the whole row as one clickable label wrapping the checkbox, not just the checkbox itself', function () {
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   const html = l1ConnectRowHtml(item, wm, false);
   assertIncludes(html, '<label class="l1-connect-row"');
   assertIncludes(html, '<input type="checkbox"');
@@ -1102,36 +1148,84 @@ test('findL1Milestone resolves an id to {plan, milestone}, or null when it doesn
 
 // ---------- Read-only linked indicator on the workstream side ----------
 
-test('l1LinkIndicatorHtml is empty for a milestone with no l1MilestoneId', function () {
-  const m = { id: genId(), name: 'X', l1MilestoneId: null };
+test('l1LinkIndicatorHtml is empty for a milestone with no l1MilestoneIds', function () {
+  const m = { id: genId(), name: 'X', l1MilestoneIds: [] };
   assertEqual(l1LinkIndicatorHtml(m), '');
 });
 
 test('l1LinkIndicatorHtml renders a chain-link icon naming the L1 Plan and milestone once linked', function () {
   const p = addL1Plan('Company OKRs');
   const m = addL1Milestone(p.id, 'Q4 target');
-  const wm = { id: genId(), name: 'Ship it', l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', l1MilestoneIds: [m.id] };
   const html = l1LinkIndicatorHtml(wm);
   assertIncludes(html, 'fa-link');
   assertIncludes(html, 'Company OKRs');
   assertIncludes(html, 'Q4 target');
 });
 
-test('l1LinkIndicatorHtml is empty (not a broken icon) when the l1MilestoneId no longer resolves to anything real', function () {
-  const wm = { id: genId(), name: 'Ship it', l1MilestoneId: 'stale-deleted-id' };
+test('l1LinkIndicatorHtml lists every linked plan/milestone in its tooltip once linked to more than one', function () {
+  const p1 = addL1Plan('Company OKRs');
+  const m1 = addL1Milestone(p1.id, 'Q4 target');
+  const p2 = addL1Plan('Finance Programme');
+  const m2 = addL1Milestone(p2.id, 'Go-live');
+  const wm = { id: genId(), name: 'Ship it', l1MilestoneIds: [m1.id, m2.id] };
+  const html = l1LinkIndicatorHtml(wm);
+  const count = (html.match(/fa-link/g) || []).length;
+  assertEqual(count, 1, 'still one icon, regardless of how many links it names');
+  assertIncludes(html, 'Company OKRs');
+  assertIncludes(html, 'Q4 target');
+  assertIncludes(html, 'Finance Programme');
+  assertIncludes(html, 'Go-live');
+});
+
+test('l1LinkIndicatorHtml is empty (not a broken icon) when none of l1MilestoneIds resolves to anything real', function () {
+  const wm = { id: genId(), name: 'Ship it', l1MilestoneIds: ['stale-deleted-id'] };
   assertEqual(l1LinkIndicatorHtml(wm), '');
+});
+
+test('l1LinkIndicatorHtml only names the ids that still resolve, skipping any stale ones mixed in', function () {
+  const p = addL1Plan('Company OKRs');
+  const m = addL1Milestone(p.id, 'Q4 target');
+  const wm = { id: genId(), name: 'Ship it', l1MilestoneIds: ['stale-deleted-id', m.id] };
+  const html = l1LinkIndicatorHtml(wm);
+  assertIncludes(html, 'Q4 target');
 });
 
 test('milestoneRowsHtml appends the linked indicator after a linked milestone\'s own name', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   toggleItemExpanded(item.id);
   const html = milestoneRowsHtml(item, null, false);
   assertIncludes(html, 'Ship it');
   assertIncludes(html, 'fa-link');
+});
+
+test('saveItem() preserves an existing milestone\'s l1MilestoneIds through the item modal — a real, user-facing bug this app used to have (every save silently dropped every L1 link, since neither openItemModal()\'s own editingMilestones copy nor saveItem()\'s own milestone-mapping ever carried the field through at all)', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const it = {
+    id: genId(), workstreamId: workstreams[0].id, categoryId: categories[0].id, name: 'Deliverable',
+    owner: '', status: 'green', actualDate: null, startDate: todayStr(), dueDate: todayStr(), updatedAt: Date.now(),
+    milestones: [{ id: genId(), name: 'Ship it', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] }]
+  };
+  items.push(it);
+  openItemModal(it.id);
+  // The fake <select> doesn't reflect populateCategorySelect()'s own
+  // selected="" attribute in .value (a documented harness limitation — see
+  // "Tests" in CLAUDE.md), so this is set explicitly, matching every other
+  // test in this suite that saves an item through the modal.
+  document.getElementById('itemCategorySelect').value = it.categoryId;
+  // Edit something wholly unrelated — the bug fired regardless of what was
+  // actually changed, since it was the milestone-mapping itself dropping
+  // the field, not anything about how the edit was made.
+  document.getElementById('itemNameInput').value = 'Deliverable (renamed)';
+  saveItem();
+  const saved = items.find(i => i.id === it.id);
+  assertDeepEqual(saved.milestones[0].l1MilestoneIds, [m.id]);
+  assertEqual(linkedWorkstreamMilestones(m.id).length, 1, 'the L1 milestone\'s own rollup must still see this link after the save');
 });
 
 // ---------- normalizeData() backfill ----------
@@ -1150,35 +1244,49 @@ test('normalizeData falls an unrecognized itemType back to "scope", never leavin
   assertEqual(items.find(it => it.name === 'Bogus type').itemType, 'scope');
 });
 
-test('normalizeData backfills a missing l1MilestoneId on an ordinary milestone to null', function () {
+test('normalizeData backfills a missing l1MilestoneIds on an ordinary milestone to an empty array', function () {
   const item = addItem({ name: 'Deliverable' });
   item.milestones.push({ id: genId(), name: 'M', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: Date.now() });
   normalizeData();
-  assertEqual(item.milestones[0].l1MilestoneId, null);
+  assertDeepEqual(item.milestones[0].l1MilestoneIds, []);
 });
 
-test('normalizeData resets a stale l1MilestoneId pointing at a deleted L1 Plan/milestone back to null', function () {
-  const item = addItem({ name: 'Deliverable' });
-  item.milestones.push({ id: genId(), name: 'M', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: Date.now(), l1MilestoneId: 'never-existed' });
-  normalizeData();
-  assertEqual(item.milestones[0].l1MilestoneId, null);
-});
-
-test('normalizeData preserves a valid l1MilestoneId that still resolves to a real L1 milestone', function () {
+test('normalizeData migrates a legacy scalar l1MilestoneId into a one-element l1MilestoneIds array, and drops the old field', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
   item.milestones.push({ id: genId(), name: 'M', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: Date.now(), l1MilestoneId: m.id });
   normalizeData();
-  assertEqual(item.milestones[0].l1MilestoneId, m.id);
+  assertDeepEqual(item.milestones[0].l1MilestoneIds, [m.id]);
+  assertEqual('l1MilestoneId' in item.milestones[0], false, 'the legacy scalar field is never read again after migration');
 });
 
-test('normalizeData forces l1MilestoneId to null on an L1 Plan\'s own milestones — an L1 milestone never links to another L1 milestone', function () {
+test('normalizeData drops any stale id in l1MilestoneIds pointing at a deleted L1 Plan/milestone, keeping the rest', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
-  m.l1MilestoneId = 'bogus';
+  const item = addItem({ name: 'Deliverable' });
+  item.milestones.push({ id: genId(), name: 'M', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: Date.now(), l1MilestoneIds: ['never-existed', m.id] });
   normalizeData();
-  assertEqual(m.l1MilestoneId, null);
+  assertDeepEqual(item.milestones[0].l1MilestoneIds, [m.id]);
+});
+
+test('normalizeData preserves every valid id in l1MilestoneIds that still resolves to a real L1 milestone', function () {
+  const p1 = addL1Plan();
+  const m1 = addL1Milestone(p1.id);
+  const p2 = addL1Plan();
+  const m2 = addL1Milestone(p2.id);
+  const item = addItem({ name: 'Deliverable' });
+  item.milestones.push({ id: genId(), name: 'M', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: Date.now(), l1MilestoneIds: [m1.id, m2.id] });
+  normalizeData();
+  assertDeepEqual(item.milestones[0].l1MilestoneIds, [m1.id, m2.id]);
+});
+
+test('normalizeData forces l1MilestoneIds to an empty array on an L1 Plan\'s own milestones — an L1 milestone never links to another L1 milestone', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.l1MilestoneIds = ['bogus'];
+  normalizeData();
+  assertDeepEqual(m.l1MilestoneIds, []);
 });
 
 // ---------- itemRowHtml / mode plumbing ----------
@@ -1262,7 +1370,7 @@ test('a tombstoned L1 milestone sweeps correctly via the existing, unmodified me
   // Simulate an incoming copy of this same L1 Plan that still has the
   // milestone — the sweep in mergeMilestonesArray() should drop it locally
   // since the tombstone is newer than the milestone's own last edit.
-  const incomingPlan = { ...p, updatedAt: Date.now() + 1, milestones: [{ ...m, l1MilestoneId: null }] };
+  const incomingPlan = { ...p, updatedAt: Date.now() + 1, milestones: [{ ...m, l1MilestoneIds: [] }] };
   mergeData({ programme, workstreams: [], categories: [], items: [incomingPlan], deletedWorkstreamIds: [], deletedItemIds: [], deletedMilestoneIds: [], deletedActionLogIds: [], deletedDecisionLogIds: [], deletedReviewCycleIds: [] });
   const merged = items.find(it => it.id === p.id);
   assertEqual(merged.milestones.length, 0, 'the tombstone must win — a stale incoming copy should not resurrect the deleted L1 milestone');
@@ -1309,7 +1417,7 @@ test('makeL1Milestone defaults dueDate/reportingLevel to null when omitted, and 
   const bare = makeL1Milestone('Bare milestone');
   assertEqual(bare.dueDate, null);
   assertEqual(bare.reportingLevel, null);
-  assertEqual(bare.l1MilestoneId, null, 'an L1 milestone never links to another L1 milestone');
+  assertDeepEqual(bare.l1MilestoneIds, [], 'an L1 milestone never links to another L1 milestone');
   const full = makeL1Milestone('Full milestone', '2027-03-31', 'Programme');
   assertEqual(full.dueDate, '2027-03-31');
   assertEqual(full.reportingLevel, 'Programme');
@@ -1399,7 +1507,7 @@ test('Import/Export only render on the Plans tab, not the Dashboard tab', functi
 });
 
 test('isWorkstreamMilestoneLate returns false for both when there is nothing to compare against (no L1 due date)', function () {
-  const wm = { id: genId(), name: 'X', dueDate: '2030-01-01', actualDate: '2030-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'X', dueDate: '2030-01-01', actualDate: '2030-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   assertDeepEqual(isWorkstreamMilestoneLate(wm, null), { dueLate: false, actualLate: false });
 });
 
@@ -1423,7 +1531,7 @@ test('l1DelayedEntries includes an L1 milestone whose own rolled-up Actual is la
   // Finishing after the L1's own Due (05-15) makes wm itself the attached
   // half of this signal too (its own actualDate is also past m.dueDate) —
   // both entries are correct and expected here, not a duplicate.
-  const wm = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
@@ -1441,7 +1549,7 @@ test('l1DelayedEntries includes an attached milestone whose Due or Actual is lat
   const m = addL1Milestone(p.id, 'Initiation');
   m.dueDate = '2027-06-01';
   const item = addItem({ name: 'Ledger migration' });
-  const wm = { id: genId(), name: 'Slipping', dueDate: '2027-08-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Slipping', dueDate: '2027-08-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   const entries = l1DelayedEntries();
   assertEqual(entries.length, 1);
@@ -1453,7 +1561,7 @@ test('l1DelayedEntries skips attached milestones entirely when the L1 milestone 
   const p = addL1Plan();
   const m = addL1Milestone(p.id); // dueDate stays null
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Whatever', dueDate: '2030-01-01', actualDate: '2030-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Whatever', dueDate: '2030-01-01', actualDate: '2030-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   assertEqual(l1DelayedEntries().length, 0);
 });
@@ -1463,7 +1571,7 @@ test('l1DelayedEntries never flags a notApplicable attached milestone — its da
   const m = addL1Milestone(p.id);
   m.dueDate = '2027-01-01';
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Skipped', dueDate: null, actualDate: null, status: 'not-started', notApplicable: true, updatedAt: 0, l1MilestoneId: m.id };
+  const wm = { id: genId(), name: 'Skipped', dueDate: null, actualDate: null, status: 'not-started', notApplicable: true, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   assertEqual(l1DelayedEntries().length, 0);
 });
@@ -1475,8 +1583,8 @@ test('l1DelayedEntries sorts entries oldest-offending first', function () {
   const m2 = addL1Milestone(p.id, 'Earlier one');
   m2.dueDate = '2027-01-01';
   const item = addItem({ name: 'Deliverable' });
-  const wm1 = { id: genId(), name: 'A', dueDate: '2027-09-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: m1.id };
-  const wm2 = { id: genId(), name: 'B', dueDate: '2027-03-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneId: m2.id };
+  const wm1 = { id: genId(), name: 'A', dueDate: '2027-09-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m1.id] };
+  const wm2 = { id: genId(), name: 'B', dueDate: '2027-03-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m2.id] };
   item.milestones.push(wm1, wm2);
   const entries = l1DelayedEntries();
   assertEqual(entries.length, 2);
@@ -1508,7 +1616,7 @@ test('renderL1PlansDashboardHtml renders a clickable Delayed row wired to openL1
   const m = addL1Milestone(p.id);
   m.dueDate = '2027-05-15';
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
@@ -1537,7 +1645,7 @@ test('l1PlanRollupRows counts each plan\'s own status, total milestones, and how
   const m2 = addL1Milestone(p.id, 'Standalone one');
   m2.status = 'amber';
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Attached', dueDate: '2027-01-01', actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneId: null };
+  const wm = { id: genId(), name: 'Attached', dueDate: '2027-01-01', actualDate: null, status: 'green', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m1.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
@@ -1593,4 +1701,310 @@ test('openL1PlanFromDashboard switches to L1 Plans mode, the Plans tab, and expa
   assertEqual(l1PlansTab, 'plans');
   assertTrue(expandedItemIds.has(p.id));
   assertFalse(expandedL1MilestoneIds.has(m.id));
+});
+
+// ---------- The "Unlinked" sub-tab: milestones with no L1 traceability ----------
+// An explicit user request ("provide a view a under l1 plans that lists all
+// scope items which are not linked to any l1 milestone"), later reshaped
+// from a per-item list into a per-milestone table ("change the unlinked
+// page to a view like on this screenshot") — see unlinkedMilestones()'s own
+// comment in pulse.html for the exact filtering semantics this exercises.
+
+function unlinkedMilestoneFixture(overrides) {
+  return Object.assign({ id: genId(), name: 'M', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] }, overrides || {});
+}
+
+test('unlinkedMilestones excludes every L1 Plan\'s own milestones', function () {
+  const p = addL1Plan('A Plan');
+  addL1Milestone(p.id);
+  assertEqual(unlinkedMilestones().length, 0);
+});
+
+test('unlinkedMilestones excludes a genuinely zero-milestone scope item — nothing there to individually link', function () {
+  addItem({ name: 'No milestones yet' });
+  assertEqual(unlinkedMilestones().length, 0);
+});
+
+test('unlinkedMilestones includes every milestone on a scope item whose milestones are all unlinked', function () {
+  const it = addItem({ name: 'All unlinked' });
+  const m1 = unlinkedMilestoneFixture({ name: 'M1' });
+  const m2 = unlinkedMilestoneFixture({ name: 'M2' });
+  it.milestones.push(m1, m2);
+  const entries = unlinkedMilestones();
+  assertEqual(entries.length, 2);
+  assertTrue(entries.some(e => e.milestone === m1));
+  assertTrue(entries.some(e => e.milestone === m2));
+});
+
+test('unlinkedMilestones includes only the still-unlinked milestones on an item that\'s partially traced', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const it = addItem({ name: 'Partially traced' });
+  const linkedOne = unlinkedMilestoneFixture({ name: 'Linked', l1MilestoneIds: [m.id] });
+  const stillUnlinked = unlinkedMilestoneFixture({ name: 'Still unlinked' });
+  it.milestones.push(linkedOne, stillUnlinked);
+  const entries = unlinkedMilestones();
+  assertEqual(entries.length, 1);
+  assertEqual(entries[0].milestone, stillUnlinked);
+});
+
+test('unlinkedMilestonesSorted sorts by workstream display order, Unassigned last, then by the item\'s own name within each', function () {
+  const wsB = { id: genId(), name: 'B Stream', color: 'teal', order: 1 };
+  workstreams.push(wsB); // workstreams[0] ('Workstream 1', order 0) already exists from resetState()
+  const itemInB = addItem({ name: 'In B', workstreamId: wsB.id });
+  const itemUnassigned = addItem({ name: 'Unassigned item', workstreamId: null });
+  const itemFirstZ = addItem({ name: 'Z in first stream', workstreamId: workstreams[0].id });
+  const itemFirstA = addItem({ name: 'A in first stream', workstreamId: workstreams[0].id });
+  [itemInB, itemUnassigned, itemFirstZ, itemFirstA].forEach(it => it.milestones.push(unlinkedMilestoneFixture({ name: `${it.name} milestone` })));
+  const sorted = unlinkedMilestonesSorted();
+  assertDeepEqual(sorted.map(e => e.item.id), [itemFirstA.id, itemFirstZ.id, itemInB.id, itemUnassigned.id]);
+});
+
+test('unlinkedMilestonesSorted keeps an item\'s own milestones in their existing array order relative to each other', function () {
+  const it = addItem({ name: 'Multi' });
+  const m1 = unlinkedMilestoneFixture({ name: 'First' });
+  const m2 = unlinkedMilestoneFixture({ name: 'Second' });
+  it.milestones.push(m1, m2);
+  assertDeepEqual(unlinkedMilestonesSorted().map(e => e.milestone.id), [m1.id, m2.id]);
+});
+
+test('renderL1UnlinkedItemsHtml shows the count in its own header', function () {
+  addItem({ name: 'One' }).milestones.push(unlinkedMilestoneFixture());
+  addItem({ name: 'Two' }).milestones.push(unlinkedMilestoneFixture());
+  const html = renderL1UnlinkedItemsHtml();
+  assertIncludes(html, 'Not Linked to an L1 Milestone (2)');
+});
+
+test('renderL1UnlinkedItemsHtml renders each row as Workstream / Scope Item / Milestone / Due, with an icon-only Link action at Editor+', function () {
+  const it = addItem({ name: 'Migrate billing', workstreamId: workstreams[0].id });
+  const m = unlinkedMilestoneFixture({ name: 'Design defined', dueDate: '2026-09-01' });
+  it.milestones.push(m);
+  const html = renderL1UnlinkedItemsHtml();
+  assertIncludes(html, `<span class="l1-unlinked-source">${esc(workstreams[0].name)}</span>`);
+  assertIncludes(html, `<span class="l1-unlinked-source">Migrate billing</span>`);
+  assertIncludes(html, '<span>Design defined</span>');
+  assertIncludes(html, fmtDate('2026-09-01'));
+  assertIncludes(html, `<button class="row-icon-btn" onclick="openL1PickModal('${it.id}','${m.id}')"`);
+  assertIncludes(html, 'fa-link');
+});
+
+test('renderL1UnlinkedItemsHtml shows an em dash for a milestone with no Due date set', function () {
+  const it = addItem({ name: 'No date' });
+  it.milestones.push(unlinkedMilestoneFixture({ name: 'M', dueDate: null }));
+  assertIncludes(renderL1UnlinkedItemsHtml(), '—');
+});
+
+test('renderL1UnlinkedItemsHtml renders an inert placeholder, not a Link button, below Editor', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  it.milestones.push(unlinkedMilestoneFixture());
+  userRole = 'reviewer';
+  const html = renderL1UnlinkedItemsHtml();
+  assertNotIncludes(html, 'openL1PickModal');
+});
+
+test('renderL1UnlinkedItemsHtml labels an Unassigned item\'s row "Unassigned", not a blank/missing workstream name', function () {
+  const it = addItem({ name: 'Orphan', workstreamId: null });
+  it.milestones.push(unlinkedMilestoneFixture());
+  assertIncludes(renderL1UnlinkedItemsHtml(), '<span class="l1-unlinked-source">Unassigned</span>');
+});
+
+test('renderL1UnlinkedItemsHtml shows an empty-state message when every milestone is linked', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const it = addItem({ name: 'Fully traced' });
+  it.milestones.push(unlinkedMilestoneFixture({ l1MilestoneIds: [m.id] }));
+  const html = renderL1UnlinkedItemsHtml();
+  assertIncludes(html, 'Every scope item milestone is linked to an L1 milestone.');
+  assertNotIncludes(html, 'openL1PickModal');
+});
+
+test('renderL1UnlinkedItemsHtml shows the same empty-state message when there are no scope items at all', function () {
+  assertIncludes(renderL1UnlinkedItemsHtml(), 'Every scope item milestone is linked to an L1 milestone.');
+});
+
+test('renderL1Plans() adds a third "Unlinked" sub-tab alongside Plans/Dashboard, and setL1PlansTab(\'unlinked\') switches to it', function () {
+  mode = 'l1plans';
+  setL1PlansTab('plans');
+  render();
+  let html = document.getElementById('l1PlansBody').innerHTML;
+  assertIncludes(html, `onclick="setL1PlansTab('unlinked')"`);
+  const it = addItem({ name: 'Untraced item' });
+  it.milestones.push(unlinkedMilestoneFixture());
+  setL1PlansTab('unlinked');
+  assertEqual(l1PlansTab, 'unlinked');
+  html = document.getElementById('l1PlansBody').innerHTML;
+  assertIncludes(html, 'Not Linked to an L1 Milestone');
+  assertIncludes(html, 'Untraced item');
+  assertNotIncludes(html, 'No L1 Plans yet.', 'the Plans tab\'s own empty-state text should not leak into the Unlinked tab');
+});
+
+test('renderL1Plans() marks the Unlinked tab button active only while l1PlansTab is \'unlinked\'', function () {
+  mode = 'l1plans';
+  setL1PlansTab('unlinked');
+  render();
+  const html = document.getElementById('l1PlansBody').innerHTML;
+  assertIncludes(html, `<button class="view-tab active" onclick="setL1PlansTab('unlinked')">`);
+});
+
+test('Import/Export/expand-all only render on the Plans tab, not on Unlinked either', function () {
+  mode = 'l1plans';
+  setL1PlansTab('unlinked');
+  render();
+  const html = document.getElementById('l1PlansBody').innerHTML;
+  assertNotIncludes(html, 'triggerL1PlanImport');
+  assertNotIncludes(html, 'exportL1PlansToExcel');
+});
+
+// ---------- The L1 milestone picker (l1PickModalBg) ----------
+// The Unlinked tab's own Link icon — a later, explicit user request
+// ("instead of the checkmark icon, add a link button wich opens a modal to
+// select from the L1 milestones") — opens this modal to pick which L1
+// milestone(s) one already-known workstream milestone should link to,
+// via a checkbox per candidate — a further, explicit user request
+// ("change the link item to a checkbox to allow linking to multiple l1
+// milestones").
+
+test('openL1PickModal sets the modal title from the milestone\'s own name and opens it', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  const m = unlinkedMilestoneFixture({ name: 'Design defined' });
+  it.milestones.push(m);
+  openL1PickModal(it.id, m.id);
+  assertEqual(document.getElementById('l1PickModalTitle').textContent, 'Link "Design defined" to an L1 Milestone');
+  assertTrue(document.getElementById('l1PickModalBg').classList.contains('open'));
+});
+
+test('openL1PickModal is blocked below Editor', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  const m = unlinkedMilestoneFixture();
+  it.milestones.push(m);
+  userRole = 'reviewer';
+  openL1PickModal(it.id, m.id);
+  assertFalse(document.getElementById('l1PickModalBg').classList.contains('open'));
+});
+
+test('closeL1PickModal closes the modal and clears its own module state', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  const m = unlinkedMilestoneFixture();
+  it.milestones.push(m);
+  openL1PickModal(it.id, m.id);
+  closeL1PickModal();
+  assertFalse(document.getElementById('l1PickModalBg').classList.contains('open'));
+  assertEqual(l1PickItemId, null);
+  assertEqual(l1PickMilestoneId, null);
+});
+
+test('renderL1PickList lists every L1 Plan\'s every milestone as a candidate, each with an unchecked checkbox', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  const m = unlinkedMilestoneFixture();
+  it.milestones.push(m);
+  const p = addL1Plan('Digital Transformation');
+  const l1m = addL1Milestone(p.id, 'Kickoff');
+  openL1PickModal(it.id, m.id);
+  const html = document.getElementById('l1PickList').innerHTML;
+  assertIncludes(html, 'Digital Transformation');
+  assertIncludes(html, 'Kickoff');
+  assertIncludes(html, `onchange="toggleL1PickMilestoneLink('${p.id}','${l1m.id}', this.checked)"`);
+  assertNotIncludes(html, 'checked>', 'nothing is linked yet, so no box should render pre-checked');
+});
+
+test('renderL1PickList pre-checks a candidate the milestone is already linked to', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  const p = addL1Plan('Digital Transformation');
+  const l1m = addL1Milestone(p.id, 'Kickoff');
+  const m = unlinkedMilestoneFixture({ l1MilestoneIds: [l1m.id] });
+  it.milestones.push(m);
+  openL1PickModal(it.id, m.id);
+  const html = document.getElementById('l1PickList').innerHTML;
+  assertIncludes(html, `<input type="checkbox" checked onchange="toggleL1PickMilestoneLink('${p.id}','${l1m.id}', this.checked)">`);
+});
+
+test('renderL1PickList narrows candidates by the search box, matching either the L1 milestone or its plan\'s name', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  const m = unlinkedMilestoneFixture();
+  it.milestones.push(m);
+  const p1 = addL1Plan('Digital Transformation');
+  addL1Milestone(p1.id, 'Kickoff');
+  const p2 = addL1Plan('Finance Programme');
+  addL1Milestone(p2.id, 'Go-live');
+  openL1PickModal(it.id, m.id);
+  document.getElementById('l1PickSearchInput').value = 'finance';
+  renderL1PickList();
+  const html = document.getElementById('l1PickList').innerHTML;
+  assertIncludes(html, 'Finance Programme');
+  assertNotIncludes(html, 'Digital Transformation');
+});
+
+test('renderL1PickList shows a "no matching" message when nothing matches the search', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  const m = unlinkedMilestoneFixture();
+  it.milestones.push(m);
+  const p = addL1Plan();
+  addL1Milestone(p.id);
+  openL1PickModal(it.id, m.id);
+  document.getElementById('l1PickSearchInput').value = 'nonexistent query';
+  renderL1PickList();
+  assertIncludes(document.getElementById('l1PickList').innerHTML, 'No matching L1 milestones.');
+});
+
+test('toggleL1PickMilestoneLink(true) adds the id to the milestone\'s own l1MilestoneIds and re-renders the list, without closing the modal', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  const m = unlinkedMilestoneFixture();
+  it.milestones.push(m);
+  const p = addL1Plan();
+  const l1m = addL1Milestone(p.id);
+  openL1PickModal(it.id, m.id);
+  toggleL1PickMilestoneLink(p.id, l1m.id, true);
+  assertDeepEqual(m.l1MilestoneIds, [l1m.id]);
+  assertTrue(document.getElementById('l1PickModalBg').classList.contains('open'), 'checking a box commits immediately but leaves the modal open for more selections');
+});
+
+test('toggleL1PickMilestoneLink(false) removes the id, leaving any other links on the same milestone untouched', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  const p1 = addL1Plan();
+  const l1m1 = addL1Milestone(p1.id);
+  const p2 = addL1Plan();
+  const l1m2 = addL1Milestone(p2.id);
+  const m = unlinkedMilestoneFixture({ l1MilestoneIds: [l1m1.id, l1m2.id] });
+  it.milestones.push(m);
+  openL1PickModal(it.id, m.id);
+  toggleL1PickMilestoneLink(p1.id, l1m1.id, false);
+  assertDeepEqual(m.l1MilestoneIds, [l1m2.id]);
+});
+
+test('checking multiple boxes links the same workstream milestone to multiple L1 milestones at once', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  const m = unlinkedMilestoneFixture();
+  it.milestones.push(m);
+  const p1 = addL1Plan();
+  const l1m1 = addL1Milestone(p1.id);
+  const p2 = addL1Plan();
+  const l1m2 = addL1Milestone(p2.id);
+  openL1PickModal(it.id, m.id);
+  toggleL1PickMilestoneLink(p1.id, l1m1.id, true);
+  toggleL1PickMilestoneLink(p2.id, l1m2.id, true);
+  assertDeepEqual(m.l1MilestoneIds, [l1m1.id, l1m2.id]);
+});
+
+test('toggleL1PickMilestoneLink is blocked below Editor', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  const m = unlinkedMilestoneFixture();
+  it.milestones.push(m);
+  const p = addL1Plan();
+  const l1m = addL1Milestone(p.id);
+  openL1PickModal(it.id, m.id);
+  userRole = 'reviewer';
+  toggleL1PickMilestoneLink(p.id, l1m.id, true);
+  assertDeepEqual(m.l1MilestoneIds, []);
+});
+
+test('a milestone linked via toggleL1PickMilestoneLink drops off the Unlinked tab\'s own list', function () {
+  const it = addItem({ name: 'Migrate billing' });
+  const m = unlinkedMilestoneFixture();
+  it.milestones.push(m);
+  const p = addL1Plan();
+  const l1m = addL1Milestone(p.id);
+  assertEqual(unlinkedMilestones().length, 1);
+  openL1PickModal(it.id, m.id);
+  toggleL1PickMilestoneLink(p.id, l1m.id, true);
+  assertEqual(unlinkedMilestones().length, 0);
 });

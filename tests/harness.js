@@ -218,6 +218,7 @@ async function run(argv) {
   editingMilestones = []; expandedItemIds = new Set(); revealedActualIds = new Set(); revealedDueIds = new Set(); revealedActionLogDueIds = new Set(); revealedLogTextFields = new Set();
   unassignedQuickAddOpen = false; planningSearchQuery = ''; planningStatusFilters = new Set(); planningDependencyFilter = false;
   l1PlanQuickAddOpen = false; l1MilestoneQuickAddOpenFor = null; l1ConnectPlanId = null; l1ConnectMilestoneId = null; expandedL1MilestoneIds = new Set();
+  l1PickItemId = null; l1PickMilestoneId = null;
   actionLogSearchQuery = ''; decisionLogSearchQuery = '';
   actionLogStatusFilters = new Set(); actionLogFlaggedFilter = false; decisionLogFlaggedFilter = false;
   editingCategoryId = null; editingCategoryMilestones = [];

@@ -996,6 +996,13 @@
   }
   .l1-milestone-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
   .l1-milestone-row { font-size: 12.5px; background: var(--panel-2); }
+  /* L1 milestone names are bolded — an explicit user request ("make L1
+     milestones bold") — the same "row's own name reads as the headline"
+     treatment .item-row's own .item-name already gets elsewhere. Scoped to
+     just the name span, not the whole row, so the linked-count/reporting-
+     level badges riding alongside it (already bold/colored in their own
+     right) aren't affected. */
+  .l1-milestone-name { font-weight: 700; }
   /* Connect + Delete rendered together as one small flex cluster (mirroring
      .item-actions's own display:flex/gap layout so both look identical),
      not .item-actions itself — that class's own visibility:hidden-until-
@@ -1211,6 +1218,55 @@
   .l1-connect-row:hover { background: var(--panel-2); }
   .l1-connect-row input[type="checkbox"] { cursor: pointer; }
   .l1-connect-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The Unlinked tab's own real table (Workstream / Scope Item / Milestone /
+     Due / Link) — a later, explicit user request reshaping this tab from a
+     per-item "attention row" list into the same flat, per-milestone table
+     shape the L1 Connect modal's own candidate list already established
+     above — mirroring .l1-connect-header/-row's column shape almost
+     exactly, just widened slightly (this table isn't squeezed into a
+     760px-wide modal). The trailing action opens l1PickModalBg (see its own
+     CSS/JS below) rather than toggling a link right there, since a
+     workstream milestone links to at most one L1 milestone at a time and
+     there's no "already linked" state to toggle off from this page (every
+     row here is unlinked by definition) — rendered icon-only via
+     .row-icon-btn (a later, explicit user request, "same as under l1
+     plans" — matching l1MilestoneRowsHtml()'s own Connect icon exactly
+     rather than a labeled .btn), so the action column only needs to fit a
+     bare icon, not an icon-plus-label pill. */
+  .l1-unlinked-header, .l1-unlinked-row {
+    display: grid; grid-template-columns: 160px 190px minmax(200px,1fr) 100px 40px;
+    align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border);
+  }
+  .l1-unlinked-header {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--text-faint); background: var(--panel-2);
+  }
+  .l1-unlinked-row:last-child { border-bottom: none; }
+  .l1-unlinked-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* l1PickModalBg's own candidate list — the reverse direction of
+     l1ConnectModalBg above: that modal picks workstream milestones for one
+     given L1 milestone; this one picks which L1 milestone(s) one given
+     workstream milestone should link to (opened from the Unlinked tab's
+     own Link icon). Three real columns (L1 Plan / Milestone / Due) plus a
+     trailing checkbox — a later, explicit user request ("change the link
+     item to a checkbox to allow linking to multiple l1 milestones"),
+     replacing what was originally a single icon-only Link action —
+     narrower than .l1-connect-*'s own 5-column layout since there's no
+     Workstream/Scope Item pair to show here. */
+  .l1-pick-list { max-height: 50vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+  .l1-pick-header, .l1-pick-row {
+    display: grid; grid-template-columns: minmax(140px,1fr) minmax(160px,1.2fr) 90px 40px;
+    align-items: center; gap: 10px; padding: 7px 10px; border-bottom: 1px solid var(--border);
+  }
+  .l1-pick-header {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--text-faint); background: var(--panel-2); position: sticky; top: 0;
+  }
+  .l1-pick-row { cursor: pointer; }
+  .l1-pick-row:last-child { border-bottom: none; }
+  .l1-pick-row:hover { background: var(--panel-2); }
+  .l1-pick-row input[type="checkbox"] { cursor: pointer; }
+  .l1-pick-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Color scheme picker modal — ported from mytasks (see THEME_SCHEMES). */
   .theme-options { display: flex; flex-direction: column; gap: 10px; }
@@ -2163,6 +2219,30 @@
   </div>
 </div>
 
+<!-- L1 milestone picker — the Unlinked tab's own Link icon opens this to
+     pick which L1 milestone(s) one given workstream milestone should feed
+     into (the reverse direction of the connect modal just above). A
+     checkbox per candidate, not a single click-and-close action — an
+     explicit user request ("change the link item to a checkbox to allow
+     linking to multiple l1 milestones"), matching l1ConnectModalBg's own
+     checkbox-list shape and its "Done" close button, since toggling a
+     checkbox here is just as immediately-committed and freely reversible
+     as it already is over there. See "L1 Plans" in CLAUDE.md. -->
+<div class="modal-bg" id="l1PickModalBg">
+  <div class="modal modal-wide" style="width:600px">
+    <h3 id="l1PickModalTitle">Link to an L1 Milestone</h3>
+    <p style="margin-top:0;color:var(--text-dim);font-size:13px">Pick which L1 milestone(s) this feeds into — any number can be checked. Each one's Status rolls up from this once linked; this milestone's own Due/Actual are never changed by linking.</p>
+    <div class="search-box" style="max-width:none;margin-bottom:10px">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="text" id="l1PickSearchInput" placeholder="Search by L1 milestone or plan name..." oninput="renderL1PickList()">
+    </div>
+    <div id="l1PickList" class="l1-pick-list"></div>
+    <div class="modal-actions" style="justify-content:flex-end">
+      <button class="btn btn-primary" onclick="closeL1PickModal()">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- Confirm modal -->
 <div class="modal-bg" id="confirmModalBg">
   <div class="modal">
@@ -2462,7 +2542,7 @@ const MAX_BACKUPS = 7;
 // same "guardrail, not a gate" stance RBAC and everything else in this app
 // already takes — there's no server here to actually push an update, so the
 // most this can ever do is tell a device it's behind, never force it current.
-const APP_VERSION = 4;
+const APP_VERSION = 5;
 // Hand-updated alongside APP_VERSION, same manual-discipline convention —
 // purely informational (the About modal's own "Version X · <date>" line),
 // never compared/merged/read by anything else, unlike APP_VERSION itself.
@@ -2470,7 +2550,7 @@ const APP_VERSION = 4;
 // wherever it's displayed — a build date is exactly the kind of value that
 // can be read long after the year it was set, so it should never rely on
 // "same year as now" being implied the way a plain fmtDate() call does.
-const APP_BUILD_DATE = '2026-08-11';
+const APP_BUILD_DATE = '2026-08-20';
 
 // 'pending' — an explicit user request — is a genuine 6th status value, not
 // a computed display override the way "Completed Late" is (see
@@ -3348,21 +3428,30 @@ function normalizeData() {
       // item's own timestamp is the closest honest approximation of "when
       // this milestone was last known to be in this state".
       if (typeof m.updatedAt !== 'number') m.updatedAt = it.updatedAt || Date.now();
-      // l1MilestoneId links this (ordinary workstream) milestone to an L1
-      // Plan's own milestone — see "L1 Plans" below, and findL1Milestone().
-      // Only ever meaningful on a milestone belonging to a non-L1-Plan item
-      // (an L1 Plan's own milestones never link to another L1 Plan); reset
-      // to null for that case, and — the same orphaned-reference treatment
-      // a stale workstreamId already gets above — reset to null if it
-      // points at something that's since been deleted or is no longer a
-      // real L1 milestone, rather than left dangling.
+      // l1MilestoneIds links this (ordinary workstream) milestone to any
+      // number of an L1 Plan's own milestones — see "L1 Plans" below, and
+      // findL1Milestone(). Only ever meaningful on a milestone belonging to
+      // a non-L1-Plan item (an L1 Plan's own milestones never link to
+      // another L1 Plan); forced empty for that case. **A later, explicit
+      // user request ("in this modal, change the link item to a checkbox
+      // to allow linking to multiple l1 milestones") reversed this
+      // feature's own original "many-to-one" design** (see "L1 Plans" in
+      // CLAUDE.md) — this field used to be a single nullable
+      // `l1MilestoneId` string; a pre-existing save with that legacy scalar
+      // is migrated into the equivalent one-element (or empty) array the
+      // first time it loads under this version, and the old field is
+      // dropped — nothing reads it again after this pass. Either way, the
+      // same orphaned-reference treatment a stale workstreamId already gets
+      // above applies per-id: any id that's since been deleted or no
+      // longer resolves to a real L1 milestone is filtered out rather than
+      // left dangling.
       if (it.itemType === 'l1plan') {
-        m.l1MilestoneId = null;
-      } else if (m.l1MilestoneId == null) {
-        m.l1MilestoneId = null; // normalizes a missing/undefined field to a real null
-      } else if (!findL1Milestone(m.l1MilestoneId)) {
-        m.l1MilestoneId = null;
+        m.l1MilestoneIds = [];
+      } else {
+        if (!Array.isArray(m.l1MilestoneIds)) m.l1MilestoneIds = m.l1MilestoneId ? [m.l1MilestoneId] : [];
+        m.l1MilestoneIds = m.l1MilestoneIds.filter(id => !!findL1Milestone(id));
       }
+      delete m.l1MilestoneId;
       // reportingLevel (see "L1 Plan import/export" in CLAUDE.md) is the
       // mirror image of l1MilestoneId just above — only ever meaningful on
       // an L1 Plan's own milestone (set by importing a file that provides
@@ -3555,12 +3644,13 @@ function isDependencyCategory(categoryId) { const c = categoryById(categoryId); 
 // milestones are just an item and its own milestones, as far as
 // normalizeData()/mergeData() are concerned.
 //
-// An ordinary (workstream) milestone can optionally link to one L1
-// milestone via its own l1MilestoneId field (see normalizeData()'s own
-// backfill above) — deliberately pure traceability, an explicit user
-// decision: linking never computes anything on the L1 milestone side; an
-// L1 milestone's own status/dates are always hand-set, same as any other
-// milestone, completely independent of what's linked to it.
+// An ordinary (workstream) milestone can optionally link to any number of
+// L1 milestones via its own l1MilestoneIds array (see normalizeData()'s own
+// backfill above — many-to-many, a later reversal of this feature's
+// original many-to-one design). Linking itself is deliberately pure
+// traceability: it never computes anything about the *workstream*
+// milestone's own status/dates, only ever feeds *into* the L1 side's own
+// rollup (see computedL1MilestoneStatus() below).
 function allL1Plans() {
   return items.filter(it => it.itemType === 'l1plan').sort((a, b) => a.order - b.order);
 }
@@ -3582,7 +3672,7 @@ function linkedWorkstreamMilestones(l1MilestoneId) {
   const out = [];
   items.forEach(it => {
     if (it.itemType === 'l1plan') return;
-    it.milestones.forEach(m => { if (m.l1MilestoneId === l1MilestoneId) out.push({ item: it, milestone: m }); });
+    it.milestones.forEach(m => { if ((m.l1MilestoneIds || []).includes(l1MilestoneId)) out.push({ item: it, milestone: m }); });
   });
   return out;
 }
@@ -3667,11 +3757,18 @@ function computeL1PlanStatus(planId) {
 // link), and deliberately placed inline within the name cell's own already-
 // flexible width rather than claiming a new grid column, so
 // --item-grid-cols itself needs no changes at all.
+// One or more links now render as the same single icon — an explicit user
+// request for multi-link support ("allow linking to multiple l1
+// milestones") reversed this feature's original many-to-one design (see
+// linkedWorkstreamMilestones()'s own comment above) — with the tooltip
+// listing every resolved link, one per line, rather than assuming there's
+// only ever one to name.
 function l1LinkIndicatorHtml(m) {
-  if (!m.l1MilestoneId) return '';
-  const found = findL1Milestone(m.l1MilestoneId);
-  if (!found) return '';
-  return ` <i class="fa-solid fa-link" style="font-size:10px;color:var(--accent);margin-left:4px" title="Linked to L1 Plan &quot;${esc(found.plan.name)}&quot; — ${esc(found.milestone.name)}"></i>`;
+  const ids = m.l1MilestoneIds || [];
+  const found = ids.map(id => findL1Milestone(id)).filter(Boolean);
+  if (!found.length) return '';
+  const tooltip = found.map(f => `${f.plan.name} — ${f.milestone.name}`).join('\n');
+  return ` <i class="fa-solid fa-link" style="font-size:10px;color:var(--accent);margin-left:4px" title="Linked to ${esc(tooltip)}"></i>`;
 }
 
 // ---------- Rendering ----------
@@ -4134,6 +4231,47 @@ function l1PlanRollupRows() {
     return { plan: p, status: computeL1PlanStatus(p.id) || 'not-started', total, linked, standalone: total - linked };
   });
 }
+// The "Unlinked" sub-tab's own data — an explicit user request ("provide a
+// view under l1 plans that lists all scope items which are not linked to
+// any l1 milestone"), later reshaped from a per-*item* list to a per-
+// *milestone* one ("change the unlinked page to a view like on this
+// screenshot" — the same flat Workstream/Scope Item/Milestone/Due table
+// l1ConnectRowHtml()'s own candidate list above already uses). A row here is
+// one real traceability gap: one milestone, on one ordinary (non-L1-Plan)
+// item, with a genuinely empty l1MilestoneIds — an item with 5 milestones
+// and only 1 linked now surfaces its remaining 4 gaps individually, rather
+// than the whole item reading as one lump "unlinked" entry the moment even
+// one milestone still needs tracing. A genuinely zero-milestone item has
+// nothing to iterate here and so no longer appears at all — there's
+// nothing to individually link at the milestone level for one, a real,
+// accepted scope narrowing from this feature's original per-item shape.
+// Since linking is now many-to-many (see linkedWorkstreamMilestones()'s
+// own comment), "unlinked" here specifically means zero links, not
+// "not yet linked to every applicable L1 milestone" — a milestone with even
+// one real link is already traced and drops off this list.
+function unlinkedMilestones() {
+  const entries = [];
+  items.forEach(it => {
+    if (it.itemType === 'l1plan') return;
+    it.milestones.forEach(m => {
+      if (!(m.l1MilestoneIds || []).length) entries.push({ item: it, milestone: m });
+    });
+  });
+  return entries;
+}
+// Sorted the same way l1ConnectRowHtml()'s own candidate list is — real
+// workstreams in their own display order, Unassigned last (the same
+// "Unassigned sorts last via Infinity" convention used throughout this
+// feature), then by scope item name within each — rather than reinventing a
+// third sort order for what's now structurally the same kind of list.
+function unlinkedMilestonesSorted() {
+  const wsOrder = new Map(workstreams.map(w => [w.id, w.order]));
+  return unlinkedMilestones().sort((a, b) => {
+    const oa = a.item.workstreamId == null ? Infinity : (wsOrder.get(a.item.workstreamId) ?? Infinity);
+    const ob = b.item.workstreamId == null ? Infinity : (wsOrder.get(b.item.workstreamId) ?? Infinity);
+    return oa !== ob ? oa - ob : a.item.name.localeCompare(b.item.name);
+  });
+}
 // The L1 Plans Dashboard sub-tab itself — an explicit user request, three of
 // several proposed sections confirmed directly with the user as the most
 // load-bearing to build, in two passes ("features 1+2" first, then the
@@ -4198,6 +4336,54 @@ function renderL1PlansDashboardHtml() {
     <div class="section-label">Delayed</div>
     <div class="category-list">${delayedHtml}</div>`;
 }
+// The "Unlinked" sub-tab itself — a real 5-column table (Workstream / Scope
+// Item / Milestone / Due / Link), mirroring l1ConnectRowHtml()'s own
+// candidate-list shape almost exactly (see .l1-unlinked-header/-row's own
+// CSS comment) rather than the plain .attention-row list this used to
+// render — a later, explicit user request ("change the unlinked page to a
+// view like on this screenshot"). The count still lives in the header, the
+// same shape the "Plans" tab's own <h2> uses.
+function l1UnlinkedHeaderHtml() {
+  return `<div class="l1-unlinked-header">
+      <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span></span>
+    </div>`;
+}
+// Each row's trailing action opens l1PickModalBg to pick a single L1
+// milestone for this one workstream milestone — a later, explicit user
+// request replacing what used to be a status badge here ("instead of the
+// checkmark icon, add a link button wich opens a modal to select from the
+// L1 milestones"), rendered icon-only via .row-icon-btn (a further explicit
+// user request, "change the Link button to icon only like under l1 plans")
+// — the identical treatment l1MilestoneRowsHtml()'s own Connect icon
+// already uses one page over, rather than a labeled .btn. Below Editor
+// there's nothing to link, so the action cell is a real, present, empty
+// <span> instead — the usual "every cell must be a real element, even when
+// inert" discipline this grid already follows.
+function l1UnlinkedRowHtml(item, milestone) {
+  const ws = item.workstreamId ? wsById(item.workstreamId) : null;
+  const wsLabel = ws ? ws.name : 'Unassigned';
+  const linkActionHtml = hasRole('editor')
+    ? `<button class="row-icon-btn" onclick="openL1PickModal('${item.id}','${milestone.id}')" title="Link to an L1 milestone"><i class="fa-solid fa-link"></i></button>`
+    : `<span></span>`;
+  return `<div class="l1-unlinked-row" title="${esc(wsLabel)} — ${esc(item.name)} — ${esc(milestone.name)}">
+      <span class="l1-unlinked-source">${esc(wsLabel)}</span>
+      <span class="l1-unlinked-source">${esc(item.name)}</span>
+      <span>${esc(milestone.name)}</span>
+      <span>${milestone.dueDate ? esc(fmtDate(milestone.dueDate)) : '—'}</span>
+      ${linkActionHtml}
+    </div>`;
+}
+function renderL1UnlinkedItemsHtml() {
+  const entries = unlinkedMilestonesSorted();
+  const rowsHtml = entries.length
+    ? l1UnlinkedHeaderHtml() + entries.map(({ item, milestone }) => l1UnlinkedRowHtml(item, milestone)).join('')
+    : `<div class="attention-empty">Every scope item milestone is linked to an L1 milestone.</div>`;
+  return `
+    <div class="admin-header">
+      <h2><i class="fa-solid fa-link-slash" style="font-size:16px;color:var(--accent)"></i> Not Linked to an L1 Milestone (${entries.length})</h2>
+    </div>
+    <div class="category-list">${rowsHtml}</div>`;
+}
 // Plans/Dashboard sub-tabs — the exact same "grew a second view" split
 // dashboardTab's own Overview/Dependencies already established (see
 // l1PlansTab's own declaration comment), just rendered inline as part of
@@ -4214,9 +4400,14 @@ function renderL1Plans() {
   const subTabsHtml = `<div class="view-tabs" style="margin-bottom:16px">
       <button class="view-tab ${l1PlansTab === 'plans' ? 'active' : ''}" onclick="setL1PlansTab('plans')"><i class="fa-solid fa-list"></i> Plans</button>
       <button class="view-tab ${l1PlansTab === 'dashboard' ? 'active' : ''}" onclick="setL1PlansTab('dashboard')"><i class="fa-solid fa-gauge-high"></i> Dashboard</button>
+      <button class="view-tab ${l1PlansTab === 'unlinked' ? 'active' : ''}" onclick="setL1PlansTab('unlinked')"><i class="fa-solid fa-link-slash"></i> Unlinked</button>
     </div>`;
   if (l1PlansTab === 'dashboard') {
     el.innerHTML = subTabsHtml + renderL1PlansDashboardHtml();
+    return;
+  }
+  if (l1PlansTab === 'unlinked') {
+    el.innerHTML = subTabsHtml + renderL1UnlinkedItemsHtml();
     return;
   }
   const plans = allL1Plans();
@@ -5797,7 +5988,7 @@ function populateCategorySelect(selectedId) {
 // with no due date yet actually looks like on the board.
 function milestonesForCategory(categoryId, dueDate) {
   const cat = categoryById(categoryId);
-  return (cat ? cat.milestones : []).map(name => ({ id: genId(), name, dueDate: null, status: 'pending', actualDate: null, notApplicable: false }));
+  return (cat ? cat.milestones : []).map(name => ({ id: genId(), name, dueDate: null, status: 'pending', actualDate: null, notApplicable: false, l1MilestoneIds: [] }));
 }
 function onItemCategoryChange() {
   const categoryId = document.getElementById('itemCategorySelect').value;
@@ -5884,8 +6075,18 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   // hand-edited file) — the checkbox driving that toggle is itself hidden
   // here, so nothing should be able to show this field regardless.
   if (stillPending) document.getElementById('itemDependencySpocField').style.display = 'none';
+  // l1MilestoneIds is carried through unedited (this editor has no UI for
+  // it at all — linking only ever happens via l1PickModalBg/l1ConnectModalBg,
+  // which write straight to `items`) — a later, explicit user-facing bug
+  // fix: this copy used to omit the field entirely, which meant saveItem()
+  // below (whose own milestone-mapping only ever reads from this working
+  // copy) silently discarded every L1 link on the item the moment it was
+  // saved through this modal at all, regardless of what was actually
+  // edited. `.slice()` so mutating the working copy's own array (there is
+  // none currently, but nothing here should risk it) can never alias back
+  // into the real item's own array.
   editingMilestones = it
-    ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable }))
+    ? it.milestones.map(m => ({ id: m.id, name: m.name, dueDate: m.dueDate, status: m.status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable, l1MilestoneIds: (m.l1MilestoneIds || []).slice() }))
     : milestonesForCategory(defaultCategoryId, document.getElementById('itemDueInput').value);
   renderMilestonesEditor();
   // Below Editor, the modal is still reachable to view an item's full detail —
@@ -6167,7 +6368,10 @@ function saveItem() {
         // rather than the two editing surfaces disagreeing about whether
         // "received a date" counts.
         const status = (m.status === 'pending' && !!dueDate && !m.notApplicable) ? 'not-started' : m.status;
-        return { id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate, status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable, updatedAt: Date.now() };
+        // l1MilestoneIds carried straight through from editingMilestones —
+        // see openItemModal()'s own comment on why this field is copied in
+        // at all despite having no editor UI here.
+        return { id: m.id, name: (m.name || '').trim() || 'Untitled milestone', dueDate, status, actualDate: m.actualDate || null, notApplicable: !!m.notApplicable, l1MilestoneIds: m.l1MilestoneIds || [], updatedAt: Date.now() };
       });
   // An item with milestones always gets its status AND plan date range
   // computed from them — the Status <select> and Start/Due <input>s are only
@@ -6523,7 +6727,7 @@ function cancelL1MilestoneQuickAdd() {
 function makeL1Milestone(name, dueDate, reportingLevel) {
   return {
     id: genId(), name, dueDate: dueDate || null, actualDate: null, status: 'not-started',
-    notApplicable: false, l1MilestoneId: null, reportingLevel: reportingLevel || null,
+    notApplicable: false, l1MilestoneIds: [], reportingLevel: reportingLevel || null,
     updatedAt: Date.now()
   };
 }
@@ -6678,7 +6882,7 @@ function l1MilestoneRowsHtml(plan) {
       : editable
       ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleL1MilestoneStatus('${plan.id}','${m.id}')">${esc(statusLabel(m.status))}</button>`
       : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`;
-    const nameHtml = `<span>${esc(m.name)}${linkedCount ? `<span class="l1-milestone-linked-count">${linkedCount} linked</span>` : ''}${m.reportingLevel ? `<span class="l1-milestone-reporting-level" title="Reporting Level">${esc(m.reportingLevel)}</span>` : ''}</span>`;
+    const nameHtml = `<span><span class="l1-milestone-name">${esc(m.name)}</span>${linkedCount ? `<span class="l1-milestone-linked-count">${linkedCount} linked</span>` : ''}${m.reportingLevel ? `<span class="l1-milestone-reporting-level" title="Reporting Level">${esc(m.reportingLevel)}</span>` : ''}</span>`;
     // Connect and Delete share one trailing Actions cell now — an explicit
     // user request to align this row's own action column with the L1
     // Plan's own row and the connected-milestone row beneath it (see the
@@ -6798,17 +7002,22 @@ function removeL1Milestone(planId, milestoneId) {
       if (removeIdx === -1) return;
       const [removed] = plan.milestones.splice(removeIdx, 1);
       tombstone(deletedMilestoneIds, milestoneId);
-      // Any workstream milestone linked to the one just removed loses that
-      // link immediately, rather than waiting for the next normalizeData()
-      // pass (load/merge/import) to self-heal it — the same "clean up
-      // dependent references right away, don't leave it to eventual
-      // self-heal" discipline this app already applies elsewhere (e.g. a
-      // deleted category's items). linkedIds is captured by id, not by
-      // object reference, purely so undo below can re-find each one fresh
-      // rather than trusting a closed-over reference could still be valid.
+      // Any workstream milestone linked to the one just removed loses just
+      // that one id from its own l1MilestoneIds array — not the whole
+      // array, since multi-link (see linkedWorkstreamMilestones()'s own
+      // comment) means the same workstream milestone can legitimately still
+      // be linked to other L1 milestones that have nothing to do with this
+      // deletion. Done immediately, rather than waiting for the next
+      // normalizeData() pass (load/merge/import) to self-heal it — the same
+      // "clean up dependent references right away, don't leave it to
+      // eventual self-heal" discipline this app already applies elsewhere
+      // (e.g. a deleted category's items). linkedIds is captured by id, not
+      // by object reference, purely so undo below can re-find each one
+      // fresh rather than trusting a closed-over reference could still be
+      // valid.
       const linkedIds = links.map(({ item, milestone: wm }) => ({ itemId: item.id, milestoneId: wm.id }));
       links.forEach(({ item, milestone: wm }) => {
-        wm.l1MilestoneId = null;
+        wm.l1MilestoneIds = (wm.l1MilestoneIds || []).filter(id => id !== milestoneId);
         wm.updatedAt = Date.now();
         item.updatedAt = Date.now();
       });
@@ -6821,15 +7030,18 @@ function removeL1Milestone(planId, milestoneId) {
       showToast('Milestone deleted', false, () => {
         untombstone(deletedMilestoneIds, milestoneId);
         plan.milestones.splice(removeIdx, 0, removed);
-        // Only re-links a workstream milestone that's *still* unlinked —
-        // the same care deleteWorkstreamFromModal()'s own undo already
-        // takes for its moved items — so undo can't clobber an
-        // independent link someone made to something else during the
-        // undo window.
+        // Re-adds just this one id back to the workstream milestone's own
+        // l1MilestoneIds — a plain idempotent add (skipped if it's somehow
+        // already there again), the multi-link counterpart of the same care
+        // deleteWorkstreamFromModal()'s own undo already takes for its moved
+        // items.
         linkedIds.forEach(({ itemId, milestoneId: wmId }) => {
           const it = items.find(i => i.id === itemId);
           const wm = it && it.milestones.find(m => m.id === wmId);
-          if (wm && wm.l1MilestoneId == null) { wm.l1MilestoneId = milestoneId; wm.updatedAt = Date.now(); }
+          if (wm) {
+            wm.l1MilestoneIds = wm.l1MilestoneIds || [];
+            if (!wm.l1MilestoneIds.includes(milestoneId)) { wm.l1MilestoneIds.push(milestoneId); wm.updatedAt = Date.now(); }
+          }
         });
         plan.status = computedStatusFromMilestones(plan.milestones);
         const range2 = computedDateRangeFromMilestones(plan.milestones);
@@ -6875,9 +7087,14 @@ function closeL1ConnectModal() {
 // workstream display order (Unassigned last, matching every other
 // Unassigned-last convention in this app), then by scope item name within
 // each, so related milestones still read together even without the old
-// grouping's visual headers. A milestone already claimed by a *different*
-// L1 milestone is excluded entirely — connecting it here would silently
-// steal it from wherever it already belongs. An L1 Plan's own milestones
+// grouping's visual headers. Every workstream milestone is a real
+// candidate here regardless of what it's already linked to — a later,
+// explicit user request ("allow linking to multiple l1 milestones")
+// reversed this feature's own original many-to-one design, so a milestone
+// already linked to a *different* L1 milestone is no longer excluded (it
+// used to be, on the reasoning that connecting it here would silently
+// steal it — that concern doesn't apply once a milestone can legitimately
+// belong to several L1 milestones at once). An L1 Plan's own milestones
 // never appear as candidates (an L1 milestone doesn't link to another L1
 // milestone).
 function l1ConnectHeaderHtml() {
@@ -6904,7 +7121,6 @@ function renderL1ConnectList() {
   items.forEach(it => {
     if (it.itemType === 'l1plan') return;
     it.milestones.forEach(m => {
-      if (m.l1MilestoneId != null && m.l1MilestoneId !== milestoneId) return;
       if (query && !(m.name.toLowerCase().includes(query) || it.name.toLowerCase().includes(query))) return;
       candidates.push({ item: it, milestone: m });
     });
@@ -6920,8 +7136,12 @@ function renderL1ConnectList() {
     return orderA !== orderB ? orderA - orderB : a.item.name.localeCompare(b.item.name);
   });
   document.getElementById('l1ConnectList').innerHTML = l1ConnectHeaderHtml() +
-    candidates.map(({ item, milestone }) => l1ConnectRowHtml(item, milestone, milestone.l1MilestoneId === milestoneId)).join('');
+    candidates.map(({ item, milestone }) => l1ConnectRowHtml(item, milestone, (milestone.l1MilestoneIds || []).includes(milestoneId))).join('');
 }
+// Adds/removes l1ConnectMilestoneId from this one workstream milestone's own
+// l1MilestoneIds array — never overwrites the whole array, since a
+// multi-linked milestone may already carry other, unrelated L1 milestone
+// ids that this toggle must leave untouched.
 function toggleL1MilestoneLink(itemId, milestoneId, checked) {
   if (!requireRole('editor')) return;
   if (!l1ConnectMilestoneId) return;
@@ -6929,11 +7149,110 @@ function toggleL1MilestoneLink(itemId, milestoneId, checked) {
   if (!it) return;
   const m = it.milestones.find(x => x.id === milestoneId);
   if (!m) return;
-  m.l1MilestoneId = checked ? l1ConnectMilestoneId : null;
+  const ids = m.l1MilestoneIds || [];
+  m.l1MilestoneIds = checked
+    ? (ids.includes(l1ConnectMilestoneId) ? ids : [...ids, l1ConnectMilestoneId])
+    : ids.filter(id => id !== l1ConnectMilestoneId);
   m.updatedAt = Date.now();
   it.updatedAt = Date.now();
   save(); render();
   renderL1ConnectList();
+}
+
+// ---------- L1 milestone picker (the reverse direction) ----------
+// The Unlinked tab's own Link icon (see renderL1UnlinkedItemsHtml() below)
+// opens this — a later, explicit user request ("instead of the checkmark
+// icon, add a link button wich opens a modal to select from the L1
+// milestones"). Where l1ConnectModalBg above starts from one L1 milestone
+// and picks *several* workstream milestones to feed into it, this starts
+// from one already-known workstream milestone (l1PickItemId/
+// l1PickMilestoneId) and picks which L1 milestone(s) it should link to.
+// **A checkbox per row, not a single click-and-close action — a further,
+// explicit user request ("change the link item to a checkbox to allow
+// linking to multiple l1 milestones"), reversing this feature's own
+// original many-to-one design** (see linkedWorkstreamMilestones()'s own
+// comment for the full history) — checking/unchecking a box here commits
+// immediately, the same "no detached working copy, no separate Save step"
+// shape toggleL1MilestoneLink() already established for the connect
+// modal's own checkboxes; only Done actually closes the modal.
+let l1PickItemId = null;
+let l1PickMilestoneId = null;
+function openL1PickModal(itemId, milestoneId) {
+  if (!requireRole('editor')) return;
+  const it = items.find(i => i.id === itemId);
+  if (!it) return;
+  const m = it.milestones.find(x => x.id === milestoneId);
+  if (!m) return;
+  l1PickItemId = itemId;
+  l1PickMilestoneId = milestoneId;
+  document.getElementById('l1PickModalTitle').textContent = `Link "${m.name}" to an L1 Milestone`;
+  document.getElementById('l1PickSearchInput').value = '';
+  renderL1PickList();
+  document.getElementById('l1PickModalBg').classList.add('open');
+}
+function closeL1PickModal() {
+  document.getElementById('l1PickModalBg').classList.remove('open');
+  l1PickItemId = null;
+  l1PickMilestoneId = null;
+}
+function l1PickHeaderHtml() {
+  return `<div class="l1-pick-header"><span>L1 Plan</span><span>Milestone</span><span>Due</span><span></span></div>`;
+}
+function l1PickRowHtml(plan, milestone, checked) {
+  return `<label class="l1-pick-row" title="${esc(plan.name)} — ${esc(milestone.name)}">
+      <span class="l1-pick-source">${esc(plan.name)}</span>
+      <span class="l1-pick-source">${esc(milestone.name)}</span>
+      <span>${milestone.dueDate ? esc(fmtDate(milestone.dueDate)) : '—'}</span>
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleL1PickMilestoneLink('${plan.id}','${milestone.id}', this.checked)">
+    </label>`;
+}
+// Every L1 Plan's every milestone is a real candidate here — same as
+// l1ConnectModalBg's own candidate list once its own "already claimed by a
+// different L1 milestone" exclusion was removed for the identical
+// many-to-many reason (see l1ConnectHeaderHtml()'s own comment above): a
+// workstream milestone can now legitimately be linked to any number of L1
+// milestones at once, so nothing here is ever excluded on account of an
+// existing link.
+function renderL1PickList() {
+  if (!l1PickMilestoneId) return;
+  const it = items.find(i => i.id === l1PickItemId);
+  const m = it && it.milestones.find(x => x.id === l1PickMilestoneId);
+  const linkedIds = (m && m.l1MilestoneIds) || [];
+  const query = (document.getElementById('l1PickSearchInput').value || '').trim().toLowerCase();
+  const candidates = [];
+  allL1Plans().forEach(p => {
+    p.milestones.forEach(cm => {
+      if (query && !(cm.name.toLowerCase().includes(query) || p.name.toLowerCase().includes(query))) return;
+      candidates.push({ plan: p, milestone: cm });
+    });
+  });
+  if (!candidates.length) {
+    document.getElementById('l1PickList').innerHTML = `<p style="color:var(--text-faint);font-size:13px;margin:0;padding:10px">No matching L1 milestones.</p>`;
+    return;
+  }
+  document.getElementById('l1PickList').innerHTML = l1PickHeaderHtml() +
+    candidates.map(({ plan, milestone }) => l1PickRowHtml(plan, milestone, linkedIds.includes(milestone.id))).join('');
+}
+// Adds/removes l1MilestoneId from l1PickMilestoneId's own l1MilestoneIds —
+// toggleL1MilestoneLink()'s exact mirror image, one field flipped: that one
+// fixes the L1 milestone and varies which workstream milestones point at
+// it; this one fixes the workstream milestone and varies which L1
+// milestones it points at.
+function toggleL1PickMilestoneLink(planId, l1MilestoneId, checked) {
+  if (!requireRole('editor')) return;
+  if (!l1PickItemId || !l1PickMilestoneId) return;
+  const it = items.find(i => i.id === l1PickItemId);
+  if (!it) return;
+  const m = it.milestones.find(x => x.id === l1PickMilestoneId);
+  if (!m) return;
+  const ids = m.l1MilestoneIds || [];
+  m.l1MilestoneIds = checked
+    ? (ids.includes(l1MilestoneId) ? ids : [...ids, l1MilestoneId])
+    : ids.filter(id => id !== l1MilestoneId);
+  m.updatedAt = Date.now();
+  it.updatedAt = Date.now();
+  save(); render();
+  renderL1PickList();
 }
 
 // Drag-and-drop reordering of scope items within a workstream's status-board
@@ -9404,7 +9723,7 @@ function applyCategoryMilestoneSync(categoryId, addedNames, removedNames, ordere
     }
     addedNames.forEach(name => {
       if (!it.milestones.some(m => m.name === name)) {
-        it.milestones.push({ id: genId(), name, dueDate: it.dueDate, status: 'not-started', actualDate: null, notApplicable: false, updatedAt: Date.now() });
+        it.milestones.push({ id: genId(), name, dueDate: it.dueDate, status: 'not-started', actualDate: null, notApplicable: false, l1MilestoneIds: [], updatedAt: Date.now() });
       }
     });
     it.milestones.sort((a, b) => rank(a) - rank(b));
@@ -9821,7 +10140,7 @@ function excelCellToIsoDate(val) {
 // A brand-new plan/milestone is created outright from the row. An existing
 // milestone is updated *in place* (same id) rather than replaced — the
 // explicit reason this matters: a workstream milestone can link to an L1
-// milestone by its id (m.l1MilestoneId, see "L1 Plans" in CLAUDE.md), and
+// milestone by its id (m.l1MilestoneIds, see "L1 Plans" in CLAUDE.md), and
 // there's deliberately no reverse-reference to fix up if that id ever
 // changed, so replacing the milestone object outright on a re-import would
 // silently orphan every link pointing at it. Target Date/Reporting Level
@@ -11510,7 +11829,17 @@ async function chooseBackupFolder() {
   if (!requireRole('editor')) return;
   if (!window.showDirectoryPicker) { showToast('Daily backups require Chrome or Edge', true); return; }
   try {
-    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    // A stable id — an explicit user request ("would it be possible to open
+    // the file system folder for the provided link to ask for access?").
+    // The File System Access API has no way to jump the native picker to an
+    // arbitrary path/URL at all (a deliberate browser security boundary —
+    // JS is never handed real filesystem paths), but passing the same `id`
+    // on every call is a real, supported hint: Chrome/Edge remembers which
+    // folder was last picked under that id and reopens the picker there
+    // next time, rather than at its own default location — so re-choosing
+    // a backup folder (e.g. after unlinking) starts back at the one
+    // actually in use instead of Downloads/Desktop.
+    const dir = await window.showDirectoryPicker({ mode: 'readwrite', id: 'pulse-backup-folder' });
     if (syncDirHandle && dir.isSameEntry) {
       try {
         if (await dir.isSameEntry(syncDirHandle)) showToast(`Note: that's the same folder the linked programme already syncs to — backups will still save there`, false);
@@ -11691,7 +12020,13 @@ function applyIncomingFolderData(data, actionLabel) {
 async function linkFolder() {
   if (!window.showDirectoryPicker) { showToast('File linking requires Chrome or Edge', true); return; }
   try {
-    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    // A stable id — see chooseBackupFolder()'s own comment for why this is
+    // the closest real equivalent to "open the picker at the right folder"
+    // the File System Access API actually offers. Deliberately a different
+    // id than the backup folder's own — the two are picked independently
+    // (see "Daily backups to a linked folder" in CLAUDE.md) and each should
+    // remember its own last location, not share one.
+    const dir = await window.showDirectoryPicker({ mode: 'readwrite', id: 'pulse-sync-folder' });
     const perm = await dir.requestPermission({ mode: 'readwrite' });
     if (perm !== 'granted') { showToast('Write permission denied', true); return; }
     syncDirHandle = dir;
@@ -12113,8 +12448,9 @@ document.getElementById('roleModalBg').addEventListener('click', (e) => { if (e.
 document.getElementById('helpModalBg').addEventListener('click', (e) => { if (e.target.id === 'helpModalBg') closeHelpModal(); });
 document.getElementById('aboutModalBg').addEventListener('click', (e) => { if (e.target.id === 'aboutModalBg') closeAboutModal(); });
 document.getElementById('rolePasswordsModalBg').addEventListener('click', (e) => { if (e.target.id === 'rolePasswordsModalBg') closeRolePasswordsModal(); });
+document.getElementById('l1PickModalBg').addEventListener('click', (e) => { if (e.target.id === 'l1PickModalBg') closeL1PickModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeL1ConnectModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeL1ConnectModal(); closeL1PickModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
 });
 
 // A user-reported bug on some Chrome/Safari + macOS combinations: a modal's

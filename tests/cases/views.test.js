@@ -513,11 +513,18 @@ test('renderMain shows an empty state with no workstreams', function () {
 });
 
 test('an item\'s own actual date is not shown or editable inline on its row (still a real, editable field via the item modal)', function () {
-  addItem({ name: 'Done item', actualDate: '2026-08-20' });
+  // A fixed past date, not todayStr() — the item's own start/due dates
+  // default to today (see addItem()'s own overrides), so a hardcoded
+  // literal here must never collide with "today" on whatever date this
+  // suite happens to run, or this assertion would false-positive fail
+  // against the row's legitimately-shown start/due dates instead of the
+  // actualDate it's actually meant to guard against.
+  const actualDate = isoDaysFromNow(-3650);
+  addItem({ name: 'Done item', actualDate });
   renderMain();
   const html = document.getElementById('main').innerHTML;
   assertNotIncludes(html, 'item-actual-inline', 'the item-level inline actual-date input was intentionally removed from the row');
-  assertNotIncludes(html, '2026-08-20');
+  assertNotIncludes(html, actualDate);
 });
 
 test('a milestone with no actual date shows a "+" ghost instead of an empty editable input', function () {
