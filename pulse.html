@@ -1062,9 +1062,11 @@
     /* Workstream/Scope Item/Milestone widened — a later, explicit user
        request ("give the columns Workstream, Scope Item and Milestone more
        space") — from their original 110px/140px/minmax(160px,1fr) to
-       150px/180px/minmax(220px,1fr), then Scope Item doubled again on a
-       direct follow-up ("double the space of scope item") to 360px. Scope
-       Item is still capped at a fixed width, not its own equal-share
+       150px/180px/minmax(220px,1fr), then Scope Item doubled on a direct
+       follow-up ("double the space of scope item") to 360px, then widened
+       a further 25% on one more follow-up ("give scope item even more
+       space. another 25%") to 450px. Scope Item is still capped at a fixed
+       width, not its own equal-share
        minmax(...,1fr) — a user-reported "way too wide" (both it and
        Milestone were 1fr, so they always split the leftover space evenly
        regardless of either one's actual content) left Milestone's own
@@ -1091,13 +1093,13 @@
        *this* row than on .l1-plans-list two levels up (which has no
        Due/Actual of its own to align at all) — there was no way to add a
        genuinely new column without moving something. */
-    display: grid; grid-template-columns: 150px 360px minmax(220px,1fr) 110px 110px 116px 56px;
+    display: grid; grid-template-columns: 150px 450px minmax(220px,1fr) 110px 110px 116px 56px;
     align-items: center; gap: 10px; padding: 6px 20px 6px 64px; border-bottom: 1px solid var(--border);
     /* min-width: same fix/reasoning as .item-row's own CSS comment — this
        row sits inside the same .ws-section-rows scroll container, two
-       levels deep. 150+360+220+110+110+116+56 = 1122, +60 (6 gaps) +84
-       (64+20 padding) = 1266. */
-    min-width: 1266px;
+       levels deep. 150+450+220+110+110+116+56 = 1212, +60 (6 gaps) +84
+       (64+20 padding) = 1356. */
+    min-width: 1356px;
   }
   .l1-linked-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
   .l1-linked-row { font-size: 12px; color: var(--text-dim); background: var(--panel); }
