@@ -510,6 +510,24 @@ test('l1MilestoneRowsHtml renders the linked-milestone header row once expanded,
   assertIncludes(html, 'l1-linked-header');
 });
 
+test('l1MilestoneRowsHtml orders the expanded linked-milestones list by due date (or actual date) ascending, latest at the bottom, undated ones last', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const earliest = addItem({ name: 'Earliest' });
+  earliest.milestones.push({ id: genId(), name: 'A', dueDate: '2026-01-01', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] });
+  const latestByActual = addItem({ name: 'Latest by actual' });
+  latestByActual.milestones.push({ id: genId(), name: 'B', dueDate: '2026-02-01', actualDate: '2026-06-01', status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] });
+  const middle = addItem({ name: 'Middle' });
+  middle.milestones.push({ id: genId(), name: 'C', dueDate: '2026-03-01', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] });
+  const undated = addItem({ name: 'Undated' });
+  undated.milestones.push({ id: genId(), name: 'D', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] });
+  toggleL1MilestoneExpanded(m.id);
+  const html = l1MilestoneRowsHtml(p);
+  const names = ['Earliest', 'Middle', 'Latest by actual', 'Undated'];
+  const order = names.map(n => html.indexOf(n));
+  for (let i = 1; i < order.length; i++) assertTrue(order[i - 1] < order[i], `expected ${names[i-1]} before ${names[i]}`);
+});
+
 test('l1LinkedRowHtml labels a linked milestone from an Unassigned scope item as "Unassigned", not a stale/missing workstream name', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
