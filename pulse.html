@@ -1059,13 +1059,16 @@
      blank 56px trailing cell (see below) purely to keep Status aligned
      with the other two levels. */
   .l1-linked-header, .l1-linked-row {
-    /* Scope Item is capped at a fixed 140px, not its own equal-share
-       minmax(...,1fr) — a user-reported "way too wide" (both it and
-       Milestone were 1fr, so they always split the leftover space evenly
-       regardless of either one's actual content) left Milestone's own
-       column pinned further right than it needed to be. Milestone is now
-       the only flexible track, so shrinking Scope Item's fixed width
-       directly moves Milestone's own start position further left.
+    /* Workstream/Scope Item/Milestone widened — a later, explicit user
+       request ("give the columns Workstream, Scope Item and Milestone more
+       space") — from their original 110px/140px/minmax(160px,1fr) to
+       150px/180px/minmax(220px,1fr). Scope Item is still capped at a fixed
+       width, not its own equal-share minmax(...,1fr) — a user-reported "way
+       too wide" (both it and Milestone were 1fr, so they always split the
+       leftover space evenly regardless of either one's actual content) left
+       Milestone's own column pinned further right than it needed to be.
+       Milestone is still the only flexible track, so its own fixed width
+       directly governs where Milestone's own start position lands.
        Due (110px) and Status (116px) match .l1-milestone-row's own widths
        exactly, immediately followed (no spacer, matching that row's own
        adjacency — see its CSS comment for why an earlier revision
@@ -1086,13 +1089,13 @@
        *this* row than on .l1-plans-list two levels up (which has no
        Due/Actual of its own to align at all) — there was no way to add a
        genuinely new column without moving something. */
-    display: grid; grid-template-columns: 110px 140px minmax(160px,1fr) 110px 110px 116px 56px;
+    display: grid; grid-template-columns: 150px 180px minmax(220px,1fr) 110px 110px 116px 56px;
     align-items: center; gap: 10px; padding: 6px 20px 6px 64px; border-bottom: 1px solid var(--border);
     /* min-width: same fix/reasoning as .item-row's own CSS comment — this
        row sits inside the same .ws-section-rows scroll container, two
-       levels deep. 110+140+160+110+110+116+56 = 802, +60 (6 gaps) +84
-       (64+20 padding) = 946. */
-    min-width: 946px;
+       levels deep. 150+180+220+110+110+116+56 = 942, +60 (6 gaps) +84
+       (64+20 padding) = 1086. */
+    min-width: 1086px;
   }
   .l1-linked-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
   .l1-linked-row { font-size: 12px; color: var(--text-dim); background: var(--panel); }
