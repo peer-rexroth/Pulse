@@ -853,34 +853,49 @@ test('itemRowHtml renders an L1 Plan\'s own status badge from computeL1PlanStatu
 // group finishing first — a further, later explicit request: "also show
 // the actual date... on L1 milestone level").
 
-test('computedL1MilestoneActualDate returns null when nothing is linked, or nothing linked has finished yet', function () {
+test('computedL1MilestoneActualDate returns null when nothing is linked, or nothing linked has either date set', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   assertEqual(computedL1MilestoneActualDate(m.id), null);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Still open', dueDate: '2027-03-31', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  const wm = { id: genId(), name: 'No dates yet', dueDate: null, actualDate: null, status: 'pending', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   assertEqual(computedL1MilestoneActualDate(m.id), null);
 });
 
-test('computedL1MilestoneActualDate is progressive — the latest actualDate among whichever linked milestones have finished so far, not gated on the whole group', function () {
+// A later, explicit user request ("l1 milestone actual date should roll up
+// from linked milestones and reflect latest date from due date or actual
+// date") reversed this function's own original Actual-only design — it now
+// reduces over every linked, non-notApplicable milestone's own Due *and*
+// Actual together, not Actual alone.
+
+test('computedL1MilestoneActualDate is progressive — the latest Due or Actual among linked milestones so far, not gated on the whole group finishing', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
   const wm1 = { id: genId(), name: 'Done', dueDate: '2027-01-31', actualDate: '2027-01-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   const wm2 = { id: genId(), name: 'Still open', dueDate: '2027-06-30', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm1, wm2);
-  assertEqual(computedL1MilestoneActualDate(m.id), '2027-01-20', 'shows the one real actualDate so far, even though the group isn\'t fully done');
+  assertEqual(computedL1MilestoneActualDate(m.id), '2027-06-30', 'the still-open milestone\'s own Due is the latest date across the group so far, even though it hasn\'t finished');
 });
 
-test('computedL1MilestoneActualDate excludes a notApplicable linked milestone entirely', function () {
+test('computedL1MilestoneActualDate prefers a linked milestone\'s own Actual over its Due whenever Actual lands later', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Finished late', dueDate: '2027-05-01', actualDate: '2027-06-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  item.milestones.push(wm);
+  assertEqual(computedL1MilestoneActualDate(m.id), '2027-06-01');
+});
+
+test('computedL1MilestoneActualDate excludes a notApplicable linked milestone\'s dates entirely', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
   const wm1 = { id: genId(), name: 'Real', dueDate: '2027-01-31', actualDate: '2027-01-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   const wm2 = { id: genId(), name: 'Skipped', dueDate: '2027-12-31', actualDate: '2027-12-31', status: 'complete', notApplicable: true, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm1, wm2);
-  assertEqual(computedL1MilestoneActualDate(m.id), '2027-01-20', 'the notApplicable milestone\'s own actualDate must not win');
+  assertEqual(computedL1MilestoneActualDate(m.id), '2027-01-31', 'wm1\'s own later Due wins; the notApplicable milestone\'s dates must not count at all');
 });
 
 test('linking a workstream milestone to an L1 milestone leaves its own Due exactly as manually editable as before — an explicit user reversal of a brief earlier rollup attempt', function () {
@@ -899,20 +914,22 @@ test('linking a workstream milestone to an L1 milestone leaves its own Due exact
   assertIncludes(htmlAfter, 'value="2026-01-01"', 'still shows its own manual value, not the linked milestone\'s Due');
 });
 
-test('l1MilestoneRowsHtml shows the L1 milestone\'s own rolled-up Actual once a linked milestone has finished, blank otherwise', function () {
+test('l1MilestoneRowsHtml shows the L1 milestone\'s own rolled-up Actual from a linked milestone\'s Due even before it finishes, then from its Actual once that\'s later', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: '2027-05-15', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
-  assertNotIncludes(l1MilestoneRowsHtml(p), fmtDate('2027-05-20'), 'nothing to show yet — the linked milestone hasn\'t finished');
+  assertNotIncludes(l1MilestoneRowsHtml(p), fmtDate('2027-05-20'), 'nothing to show yet — the linked milestone has neither date set');
+  wm.dueDate = '2027-05-15';
+  assertIncludes(l1MilestoneRowsHtml(p), fmtDate('2027-05-15'), 'now shows the rolled-up Due, even before the milestone has finished');
   wm.status = 'complete'; wm.actualDate = '2027-05-20';
-  assertIncludes(l1MilestoneRowsHtml(p), fmtDate('2027-05-20'), 'now shows the rolled-up Actual');
+  assertIncludes(l1MilestoneRowsHtml(p), fmtDate('2027-05-20'), 'now shows the rolled-up Actual, since it\'s later than Due');
 });
 
-test('l1MilestoneRowsHtml colors the L1 milestone\'s own rolled-up Actual red when it lands after its own manually-set Due', function () {
+test('l1MilestoneRowsHtml renders the L1 milestone\'s own rolled-up Actual as a red overdue pill when it lands after its own manually-set Due', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   m.dueDate = '2027-05-15';
@@ -922,10 +939,10 @@ test('l1MilestoneRowsHtml colors the L1 milestone\'s own rolled-up Actual red wh
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
   const html = l1MilestoneRowsHtml(p);
-  assertIncludes(html, 'color:var(--stat-red)', 'the rolled-up Actual (2027-06-01) is later than this milestone\'s own manual Due (2027-05-15)');
+  assertIncludes(html, 'class="date-pill pill-overdue"', 'the rolled-up Actual (2027-06-01) is later than this milestone\'s own manual Due (2027-05-15)');
 });
 
-test('l1MilestoneRowsHtml never colors the rolled-up Actual when the L1 milestone has no manual Due to compare against', function () {
+test('l1MilestoneRowsHtml never renders the rolled-up Actual as an overdue pill when the L1 milestone has no manual Due to compare against', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Deliverable' });
@@ -933,7 +950,7 @@ test('l1MilestoneRowsHtml never colors the rolled-up Actual when the L1 mileston
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
-  assertNotIncludes(l1MilestoneRowsHtml(p), 'color:var(--stat-red)');
+  assertNotIncludes(l1MilestoneRowsHtml(p), 'pill-overdue');
 });
 
 test('updateL1MilestoneDateField works normally on a linked milestone too — an explicit user reversal, Due is never computed/refused regardless of link state', function () {
@@ -1570,9 +1587,15 @@ test('l1DelayedEntries includes an attached milestone whose Due or Actual is lat
   const wm = { id: genId(), name: 'Slipping', dueDate: '2027-08-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm);
   const entries = l1DelayedEntries();
-  assertEqual(entries.length, 1);
-  assertEqual(entries[0].label, 'Call Money — Initiation: Ledger migration — Slipping');
-  assertEqual(entries[0].date, '2027-08-01');
+  // wm's own Due, being past m's own manual Due, is now also the latest
+  // date in m's own rolled-up Actual (see computedL1MilestoneActualDate()'s
+  // Due-or-Actual reversal) — so this correctly produces two entries, the
+  // same "both are correct, not a duplicate" shape the L1-Actual-vs-Due test
+  // above already establishes, not a regression back to one.
+  assertEqual(entries.length, 2);
+  const attachedEntry = entries.find(e => e.label === 'Call Money — Initiation: Ledger migration — Slipping');
+  assertTrue(!!attachedEntry, 'the attached milestone\'s own entry should be present');
+  assertEqual(attachedEntry.date, '2027-08-01');
 });
 
 test('l1DelayedEntries skips attached milestones entirely when the L1 milestone has no manual Due set', function () {
@@ -1605,9 +1628,13 @@ test('l1DelayedEntries sorts entries oldest-offending first', function () {
   const wm2 = { id: genId(), name: 'B', dueDate: '2027-03-01', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m2.id] };
   item.milestones.push(wm1, wm2);
   const entries = l1DelayedEntries();
-  assertEqual(entries.length, 2);
-  assertIncludes(entries[0].label, 'Earlier one', 'the March date sorts before the September one');
-  assertIncludes(entries[1].label, 'Later one');
+  // Each attached milestone's own Due, being past its own L1 milestone's
+  // manual Due, now also feeds that L1 milestone's own rolled-up Actual
+  // (see computedL1MilestoneActualDate()'s Due-or-Actual reversal) — so
+  // each side produces its own entry, 4 total, not 2.
+  assertEqual(entries.length, 4);
+  assertTrue(entries[0].label.includes('Earlier one') && entries[1].label.includes('Earlier one'), 'the March-dated pair sorts before the September-dated pair');
+  assertTrue(entries[2].label.includes('Later one') && entries[3].label.includes('Later one'));
 });
 
 test('renderL1PlansDashboardHtml shows a status breakdown counting computeL1PlanStatus() across every L1 Plan', function () {

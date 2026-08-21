@@ -3719,18 +3719,25 @@ function computedL1MilestoneStatus(l1MilestoneId) {
 // the exact linked milestones being compared against it.
 //
 // Actual, by contrast, is roll-up-only — "Actual date should not be able
-// to set, only rolled up" — the latest actualDate among whichever linked,
-// non-notApplicable milestones (the same exclusion
-// computedStatusFromMilestones() already applies) happen to have one *so
-// far*. Progressive, not gated on every linked milestone being Complete
-// first (an explicit user choice: this should read as "the most recent
-// real progress so far," not stay blank until the entire group finishes).
-// Returns null when nothing's linked yet, or nothing linked has finished
-// yet — there is no manual fallback to return instead, since there's
-// nothing to fall back to (see l1MilestoneRowsHtml()'s own actualHtml).
+// to set, only rolled up" — the latest date across every linked,
+// non-notApplicable milestone's own Due *or* Actual (the same exclusion
+// computedStatusFromMilestones() already applies), not Actual alone — a
+// later, explicit user request ("l1 milestone actual date should roll up
+// from linked milestones and reflect latest date from due date or actual
+// date"), reversing this function's own original Actual-only design.
+// Progressive, not gated on every linked milestone being Complete first
+// (an explicit user choice carried over from that original design: this
+// should read as "the latest known date across the group so far," not
+// stay blank until the entire group finishes) — and, since a milestone
+// that hasn't finished yet still contributes its own Due, this can now
+// reflect a still-future planned date, not only a date that's already
+// happened. Returns null when nothing's linked yet, or nothing linked has
+// either date set — there is no manual fallback to return instead, since
+// there's nothing to fall back to (see l1MilestoneRowsHtml()'s own
+// actualHtml).
 function computedL1MilestoneActualDate(l1MilestoneId) {
   const linked = linkedWorkstreamMilestones(l1MilestoneId).map(l => l.milestone).filter(m => !m.notApplicable);
-  const dates = linked.map(m => m.actualDate).filter(Boolean);
+  const dates = linked.flatMap(m => [m.dueDate, m.actualDate]).filter(Boolean);
   if (!dates.length) return null;
   return dates.sort().pop(); // ISO 'YYYY-MM-DD' strings sort correctly as plain strings; last = latest
 }
@@ -6864,16 +6871,23 @@ function l1MilestoneRowsHtml(plan) {
     // actualDate is never directly editable anywhere (there's no input for
     // it, mirroring reportingLevel's own "import/computed only, no UI to
     // hand-set it" treatment above) — so this is always either the
-    // rolled-up value or a genuinely blank placeholder, never a pill.
-    // Colored red exactly like the status board's own actualLate treatment
-    // (see "Delayed-milestone color coding" in CLAUDE.md) whenever it's
-    // later than the milestone's own real, independent Due (m.dueDate,
-    // never a rollup — see above) — an explicit user request extending
-    // that same convention up to L1 level.
+    // rolled-up value or a genuinely blank placeholder. On time, it's plain
+    // text (.item-dates-computed), the same "no pill without a real editable
+    // input behind it" reasoning every other read-only computed span in
+    // this app already follows. Once it's later than the milestone's own
+    // real, independent Due (m.dueDate, never a rollup — see above), it
+    // switches to the same red .date-pill.pill-overdue treatment the status
+    // board's own overdue Due/Actual pills use (see "Delayed-milestone
+    // color coding" in CLAUDE.md) — a later, explicit user request ("show
+    // actual date as red pill (overdue)") upgrading what was originally
+    // just red text to the real pill look, reused directly even though
+    // there's no calendar icon inside it here (that pill variant was built
+    // for dateInputHtml()'s own editable fields, but its background/color/
+    // shape read correctly on a plain read-only span too).
     const computedActual = computedL1MilestoneActualDate(m.id);
     const l1ActualLate = isL1MilestoneActualLate(m, computedActual);
     const actualHtml = computedActual
-      ? `<span class="item-dates-computed" ${l1ActualLate ? 'style="color:var(--stat-red)"' : ''} title="${l1ActualLate ? 'Finished after this milestone\'s own Due — ' : ''}Computed from ${linkedCount} linked workstream milestone${linkedCount === 1 ? '' : 's'}">${fmtDate(computedActual)}</span>`
+      ? `<span class="${l1ActualLate ? 'date-pill pill-overdue' : 'item-dates-computed'}" title="${l1ActualLate ? 'Finished after this milestone\'s own Due — ' : ''}Computed from ${linkedCount} linked workstream milestone${linkedCount === 1 ? '' : 's'}">${fmtDate(computedActual)}</span>`
       : `<span></span>`;
     // Once linked, status is computed live from the linked workstream
     // milestones (see computedL1MilestoneStatus()'s own comment for why —
