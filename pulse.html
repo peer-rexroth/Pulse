@@ -1462,6 +1462,17 @@
   .import-option-text strong { display: block; font-size: 13px; font-weight: 700; }
   .import-option-text span { font-size: 12px; color: var(--text-faint); }
 
+  /* Sync-first help disclosure (file sync onboarding modal) — a plain
+     text toggle, not styled as a button, since it's a secondary "still
+     stuck?" affordance sitting below the two real options above it. */
+  .fs-help-toggle { display: flex; align-items: center; gap: 6px; background: none; border: none; padding: 2px 0; font-size: 12.5px; color: var(--text-dim); cursor: pointer; text-align: left; }
+  .fs-help-toggle:hover { color: var(--text); }
+  .fs-help-toggle i.fa-chevron-down, .fs-help-toggle i.fa-chevron-right { font-size: 10px; }
+  .fs-help-panel { display: flex; flex-direction: column; gap: 10px; background: var(--panel-2); border-radius: 10px; padding: 10px 12px; margin-top: 4px; }
+  .fs-help-os { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); }
+  .fs-help-panel ol { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6; color: var(--text-dim); }
+  .fs-help-panel ol + .fs-help-os { margin-top: 10px; }
+
   /* Backups modal */
   .backups-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
   .backups-empty { font-size: 13px; color: var(--text-faint); padding: 8px 2px; line-height: 1.5; }
@@ -2490,6 +2501,10 @@
         </div>
       </div>
     </div>
+    <button type="button" class="fs-help-toggle" id="fileSyncHelpToggle" onclick="toggleFileSyncHelp()">
+      <i class="fa-solid fa-chevron-right" id="fileSyncHelpToggleIcon"></i> Don't see your SharePoint folder here?
+    </button>
+    <div class="fs-help-panel" id="fileSyncHelpPanel" style="display:none"></div>
     <div id="fileSyncWarning" style="display:flex;align-items:flex-start;gap:8px;background:var(--stat-amber-bg);border-radius:10px;padding:10px 12px;margin-top:4px">
       <i class="fa-solid fa-triangle-exclamation" style="color:var(--stat-amber);font-size:13px;margin-top:2px;flex-shrink:0"></i>
       <span style="font-size:12px;color:var(--stat-amber);line-height:1.55">A linked folder is required for every role. Without one, your programme can't be saved here.</span>
@@ -12360,11 +12375,71 @@ async function initFileSync() {
 // so a manually-reopened modal later in the session never unexpectedly
 // pops up a second modal on close.
 let fileSyncModalIsLaunchFlow = false;
+// A later, explicit user-facing addition — teams reported struggling with
+// the "Choose a folder" step above because the native picker can only ever
+// show a folder that's already been synced to local disk by the OneDrive
+// desktop client; someone who's never clicked "Sync" on the SharePoint site
+// itself first has nothing to pick at all, and the two options above give
+// no hint that a separate, outside-this-app step needs to happen before
+// either one will work. This is a plain, collapsed-by-default disclosure —
+// not a gate, and not part of the mandatory-linking flow itself, just a
+// "still stuck?" checklist a confused first-time user can open on their own.
+//
+// fileSyncHelpStepsHtml(os) renders a short, OS-specific version of that
+// checklist, detected fresh each time from this browser's own navigator
+// info — each teammate opens Pulse on their own machine, so this is a
+// real per-device signal, not something to cache or persist. Falls back to
+// showing both Mac and Windows sections, clearly labeled, when the OS can't
+// be determined — deliberately not a hard requirement to get right, since
+// guessing wrong here just means one extra, harmless section rather than
+// anything actually breaking.
+function detectFileSyncHelpOs() {
+  const sig = `${navigator.platform || ''} ${navigator.userAgent || ''}`;
+  if (/Mac|iPhone|iPad/i.test(sig)) return 'mac';
+  if (/Win/i.test(sig)) return 'windows';
+  return null;
+}
+function fileSyncHelpStepsHtml(os) {
+  const macSteps = `<div class="fs-help-os">On Mac</div><ol>
+    <li>Open the SharePoint or Teams link in your browser and click <strong>Sync</strong> near the top of the page.</li>
+    <li>Wait for OneDrive to open and finish adding the folder — its cloud icon in the menu bar settles once it's done.</li>
+    <li>Open <strong>Finder</strong> — the folder now shows up under <strong>OneDrive - &lt;your company&gt;</strong> in the sidebar.</li>
+    <li>Come back here, click "Choose a folder", and pick it from there.</li>
+  </ol>`;
+  const winSteps = `<div class="fs-help-os">On Windows</div><ol>
+    <li>Open the SharePoint or Teams link in your browser and click <strong>Sync</strong> near the top of the page.</li>
+    <li>Wait for OneDrive to open and finish adding the folder — its cloud icon in the system tray settles once it's done.</li>
+    <li>Open <strong>File Explorer</strong> — the folder now shows up under <strong>OneDrive - &lt;your company&gt;</strong> in the sidebar.</li>
+    <li>Come back here, click "Choose a folder", and pick it from there.</li>
+  </ol>`;
+  if (os === 'mac') return macSteps;
+  if (os === 'windows') return winSteps;
+  return macSteps + winSteps; // OS not recognized — show both rather than guessing wrong
+}
+function toggleFileSyncHelp() {
+  const panel = document.getElementById('fileSyncHelpPanel');
+  const icon = document.getElementById('fileSyncHelpToggleIcon');
+  const isOpen = panel.style.display !== 'none';
+  if (isOpen) {
+    panel.style.display = 'none';
+    icon.className = 'fa-solid fa-chevron-right';
+  } else {
+    panel.innerHTML = fileSyncHelpStepsHtml(detectFileSyncHelpOs());
+    panel.style.display = 'flex';
+    icon.className = 'fa-solid fa-chevron-down';
+  }
+}
 function openFileSyncModal(reconnectHandle, isLaunch) {
   fileSyncModalIsLaunchFlow = !!isLaunch;
   const ro = document.getElementById('fileSyncReconnectOption');
   const rl = document.getElementById('fileSyncReconnectLabel');
   const warn = document.getElementById('fileSyncWarning');
+  // The help disclosure always reopens collapsed — a stale, still-expanded
+  // panel from a previous open would just be visual noise for a returning
+  // user who already knows what to do.
+  document.getElementById('fileSyncHelpPanel').style.display = 'none';
+  document.getElementById('fileSyncHelpPanel').innerHTML = '';
+  document.getElementById('fileSyncHelpToggleIcon').className = 'fa-solid fa-chevron-right';
   // Linking or reconnecting a synced folder is mandatory for every role —
   // an explicit user request — so this modal has no gated content and no
   // dismiss path at all; it always shows the real options, and stays open

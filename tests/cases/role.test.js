@@ -810,6 +810,77 @@ test('openFileSyncModal shows the real reconnect prompt or warning at every role
   assertEqual(document.getElementById('fileSyncWarning').style.display, 'none');
 });
 
+// A later, explicit user-facing addition — teams reported struggling with
+// "Choose a folder" because the native picker only ever shows a folder
+// already synced to disk by OneDrive; someone who's never clicked "Sync" on
+// the SharePoint site itself has nothing to pick. This is a plain,
+// collapsed-by-default "still stuck?" checklist, not part of the mandatory
+// linking flow itself — see openFileSyncModal()'s own comment.
+
+test('detectFileSyncHelpOs reads Mac vs Windows from navigator.platform/userAgent, and returns null when neither matches', function () {
+  navigator.platform = 'MacIntel';
+  navigator.userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)';
+  assertEqual(detectFileSyncHelpOs(), 'mac');
+
+  navigator.platform = 'Win32';
+  navigator.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
+  assertEqual(detectFileSyncHelpOs(), 'windows');
+
+  navigator.platform = 'Linux x86_64';
+  navigator.userAgent = 'Mozilla/5.0 (X11; Linux x86_64)';
+  assertEqual(detectFileSyncHelpOs(), null);
+
+  delete navigator.platform;
+  delete navigator.userAgent;
+  assertEqual(detectFileSyncHelpOs(), null, 'missing navigator info must not throw, just fail to detect');
+});
+
+test('fileSyncHelpStepsHtml renders only the matching OS\'s steps when one is given, and both when it can\'t be determined', function () {
+  const mac = fileSyncHelpStepsHtml('mac');
+  assertIncludes(mac, 'On Mac');
+  assertIncludes(mac, 'Finder');
+  assertNotIncludes(mac, 'On Windows');
+  assertNotIncludes(mac, 'File Explorer');
+
+  const win = fileSyncHelpStepsHtml('windows');
+  assertIncludes(win, 'On Windows');
+  assertIncludes(win, 'File Explorer');
+  assertNotIncludes(win, 'On Mac');
+  assertNotIncludes(win, 'Finder');
+
+  const both = fileSyncHelpStepsHtml(null);
+  assertIncludes(both, 'On Mac');
+  assertIncludes(both, 'On Windows');
+});
+
+test('toggleFileSyncHelp expands the panel with OS-specific steps and collapses it again on a second call', function () {
+  navigator.platform = 'MacIntel';
+  navigator.userAgent = 'Macintosh';
+  openFileSyncModal(); // establishes the known collapsed baseline every real open resets to
+  assertEqual(document.getElementById('fileSyncHelpPanel').style.display, 'none');
+  assertEqual(document.getElementById('fileSyncHelpToggleIcon').className, 'fa-solid fa-chevron-right');
+
+  toggleFileSyncHelp();
+  assertEqual(document.getElementById('fileSyncHelpPanel').style.display, 'flex');
+  assertIncludes(document.getElementById('fileSyncHelpPanel').innerHTML, 'On Mac');
+  assertEqual(document.getElementById('fileSyncHelpToggleIcon').className, 'fa-solid fa-chevron-down');
+
+  toggleFileSyncHelp();
+  assertEqual(document.getElementById('fileSyncHelpPanel').style.display, 'none');
+  assertEqual(document.getElementById('fileSyncHelpToggleIcon').className, 'fa-solid fa-chevron-right');
+});
+
+test('openFileSyncModal always reopens the help panel collapsed, even if it was left expanded from a previous open', function () {
+  openFileSyncModal();
+  toggleFileSyncHelp();
+  assertEqual(document.getElementById('fileSyncHelpPanel').style.display, 'flex', 'sanity check — panel is genuinely open before reopening the modal');
+
+  openFileSyncModal();
+  assertEqual(document.getElementById('fileSyncHelpPanel').style.display, 'none');
+  assertEqual(document.getElementById('fileSyncHelpPanel').innerHTML, '');
+  assertEqual(document.getElementById('fileSyncHelpToggleIcon').className, 'fa-solid fa-chevron-right');
+});
+
 // Regression test: on a brand-new browser, initFileSync() runs concurrently
 // with the mandatory first-launch role-picker gate. It used to call
 // openFileSyncModal() (link, or reconnect a lapsed-permission handle)
