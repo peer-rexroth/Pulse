@@ -6901,6 +6901,18 @@ function isWorkstreamMilestoneLate(milestone, l1DueDate) {
     actualLate: !!(l1DueDate && milestone.actualDate && milestone.actualDate > l1DueDate)
   };
 }
+// Due/Actual here use fmtDateY() (always shows the year), not the plain
+// fmtDate() every other read-only date span in this app defaults to — a
+// user-reported readability gap: an L1 plan's own linked milestones can
+// legitimately span several years (a target set far out, work items due
+// long before it), and fmtDate()'s bare "19. Jan." with no year made it
+// genuinely impossible to tell whether a date was months before or after
+// the L1 milestone's own Due at a glance — including, in the case that
+// surfaced this, misreading a row's own dueLate/actualLate red flag (or
+// lack of one) as wrong when the underlying comparison was actually
+// correct. Matches the exact convention "Plan-date ranges always show the
+// year" already established for a Start→Due range that can span years —
+// this is the identical reasoning, just for these two columns.
 function l1LinkedRowHtml(item, milestone, l1DueDate) {
   const ws = item.workstreamId ? workstreams.find(w => w.id === item.workstreamId) : null;
   const wsLabel = ws ? ws.name : 'Unassigned';
@@ -6909,8 +6921,8 @@ function l1LinkedRowHtml(item, milestone, l1DueDate) {
       <span class="l1-linked-source">${esc(wsLabel)}</span>
       <span class="l1-linked-source">${esc(item.name)}</span>
       <span>${esc(milestone.name)}</span>
-      <span ${dueLate ? `style="color:var(--stat-red)" title="Past the L1 milestone's own due date"` : ''}>${milestone.dueDate ? esc(fmtDate(milestone.dueDate)) : '—'}</span>
-      <span ${actualLate ? `style="color:var(--stat-red)" title="Past the L1 milestone's own due date"` : ''}>${milestone.actualDate ? esc(fmtDate(milestone.actualDate)) : '—'}</span>
+      <span ${dueLate ? `style="color:var(--stat-red)" title="Past the L1 milestone's own due date"` : ''}>${milestone.dueDate ? esc(fmtDateY(milestone.dueDate)) : '—'}</span>
+      <span ${actualLate ? `style="color:var(--stat-red)" title="Past the L1 milestone's own due date"` : ''}>${milestone.actualDate ? esc(fmtDateY(milestone.actualDate)) : '—'}</span>
       <span class="status-badge" style="background:var(--stat-${milestone.status}-bg);color:var(--stat-${milestone.status});cursor:default">${esc(statusLabel(milestone.status))}</span>
       <span></span>
     </div>`;
@@ -6944,11 +6956,17 @@ function l1MilestoneRowsHtml(plan) {
     // just red text to the real pill look, reused directly even though
     // there's no calendar icon inside it here (that pill variant was built
     // for dateInputHtml()'s own editable fields, but its background/color/
-    // shape read correctly on a plain read-only span too).
+    // shape read correctly on a plain read-only span too). Rendered via
+    // fmtDateY(), not the plain fmtDate() this text would otherwise
+    // default to — the same later, user-reported readability fix
+    // l1LinkedRowHtml()'s own Due/Actual columns got (see its own comment):
+    // a bare "19. Jan." with no year is genuinely ambiguous once a
+    // programme's own dates span more than one year, which is exactly the
+    // shape this rolled-up value is most likely to hit.
     const computedActual = computedL1MilestoneActualDate(m.id);
     const l1ActualLate = isL1MilestoneActualLate(m, computedActual);
     const actualHtml = computedActual
-      ? `<span class="${l1ActualLate ? 'date-pill pill-overdue' : 'item-dates-computed'}" title="${l1ActualLate ? 'Finished after this milestone\'s own Due — ' : ''}Computed from ${linkedCount} linked workstream milestone${linkedCount === 1 ? '' : 's'}">${fmtDate(computedActual)}</span>`
+      ? `<span class="${l1ActualLate ? 'date-pill pill-overdue' : 'item-dates-computed'}" title="${l1ActualLate ? 'Finished after this milestone\'s own Due — ' : ''}Computed from ${linkedCount} linked workstream milestone${linkedCount === 1 ? '' : 's'}">${fmtDateY(computedActual)}</span>`
       : `<span></span>`;
     // Once linked, status is computed live from the linked workstream
     // milestones (see computedL1MilestoneStatus()'s own comment for why —

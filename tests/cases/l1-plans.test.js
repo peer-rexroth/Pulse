@@ -1021,11 +1021,11 @@ test('l1MilestoneRowsHtml shows the L1 milestone\'s own rolled-up Actual from a 
   item.milestones.push(wm);
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
-  assertNotIncludes(l1MilestoneRowsHtml(p), fmtDate('2027-05-20'), 'nothing to show yet — the linked milestone has neither date set');
+  assertNotIncludes(l1MilestoneRowsHtml(p), fmtDateY('2027-05-20'), 'nothing to show yet — the linked milestone has neither date set');
   wm.dueDate = '2027-05-15';
-  assertIncludes(l1MilestoneRowsHtml(p), fmtDate('2027-05-15'), 'now shows the rolled-up Due, even before the milestone has finished');
+  assertIncludes(l1MilestoneRowsHtml(p), fmtDateY('2027-05-15'), 'now shows the rolled-up Due, even before the milestone has finished');
   wm.status = 'complete'; wm.actualDate = '2027-05-20';
-  assertIncludes(l1MilestoneRowsHtml(p), fmtDate('2027-05-20'), 'now shows the rolled-up Actual, since it\'s later than Due');
+  assertIncludes(l1MilestoneRowsHtml(p), fmtDateY('2027-05-20'), 'now shows the rolled-up Actual, since it\'s later than Due');
 });
 
 test('l1MilestoneRowsHtml renders the L1 milestone\'s own rolled-up Actual as a red overdue pill when it lands after its own manually-set Due', function () {
@@ -1067,8 +1067,40 @@ test('l1LinkedRowHtml renders the linked milestone\'s Actual date, or an em dash
   const item = addItem({ name: 'Deliverable' });
   const withActual = { id: genId(), name: 'Done', dueDate: '2027-01-01', actualDate: '2027-01-05', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   const noActual = { id: genId(), name: 'Open', dueDate: '2027-01-01', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
-  assertIncludes(l1LinkedRowHtml(item, withActual), fmtDate('2027-01-05'));
+  assertIncludes(l1LinkedRowHtml(item, withActual), fmtDateY('2027-01-05'));
   assertIncludes(l1LinkedRowHtml(item, noActual), '—');
+});
+
+// A user-reported readability gap: these dates can legitimately span
+// several years (an L1 target set far out, work items due long before
+// it), and the plain fmtDate() every other read-only date span in this app
+// defaults to never shows the year — making it genuinely impossible to
+// tell, at a glance, whether a bare "19. Jan." landed months before or
+// after the comparison date it was colored against. Both l1LinkedRowHtml()
+// (Due/Actual) and l1MilestoneRowsHtml() (the L1 milestone's own rolled-up
+// Actual) render via fmtDateY() instead, matching the same "Plan-date
+// ranges always show the year" convention a Start→Due range already
+// established. These two tests assert the literal year digits show up,
+// not just that the html happens to match whatever fmtDateY() produces —
+// a direct guard against silently reverting to fmtDate() one day.
+
+test('l1LinkedRowHtml shows the year on both Due and Actual, not just month/day', function () {
+  const item = addItem({ name: 'Deliverable' });
+  const m = { id: genId(), name: 'Done', dueDate: '2027-01-01', actualDate: '2028-01-19', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  const html = l1LinkedRowHtml(item, m);
+  assertIncludes(html, '2027', 'the year on Due');
+  assertIncludes(html, '2028', 'the year on Actual');
+});
+
+test('l1MilestoneRowsHtml shows the year on the L1 milestone\'s own rolled-up Actual, not just month/day', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Finished', dueDate: '2027-05-01', actualDate: '2028-01-19', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  assertIncludes(l1MilestoneRowsHtml(p), '2028');
 });
 
 // ---------- Attached-milestone delayed color coding — a later, explicit ----------
