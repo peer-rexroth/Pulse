@@ -7170,11 +7170,15 @@ function l1MilestoneRowsHtml(plan) {
     // the whole row, is draggable="true", so dragging doesn't fight with
     // selecting text in the name input right next to it (see
     // wireModalBackdropClose()'s own unrelated but similarly-motivated fix
-    // above for why that distinction matters generally in this app).
+    // above for why that distinction matters generally in this app). The
+    // Edit icon itself was corrected from fa-pencil to the plain fa-pen +
+    // "Edit" title — a later, explicit user request to match the exact
+    // icon/label every other Edit button in this app already uses
+    // (itemRowHtml()'s own, the sidebar's ws-row-edit, the category list's).
     const actionsHtml = editable
       ? `<span class="l1-milestone-actions">
           <span class="row-icon-btn drag-handle" draggable="true" ondragstart="dragStartL1Milestone(event,'${m.id}')" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
-          <button class="row-icon-btn" onclick="openL1MilestoneModal('${plan.id}','${m.id}')" title="Edit milestone"><i class="fa-solid fa-pencil"></i></button>
+          <button class="row-icon-btn" onclick="openL1MilestoneModal('${plan.id}','${m.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
           <button class="row-icon-btn${linkedCount ? ' l1-linked' : ''}" onclick="openL1ConnectModal('${plan.id}','${m.id}')" title="Connect workstream milestones to this one"><i class="fa-solid fa-link"></i></button>
           <button class="row-icon-btn" onclick="removeL1Milestone('${plan.id}','${m.id}')" title="Remove milestone"><i class="fa-solid fa-trash"></i></button>
         </span>`

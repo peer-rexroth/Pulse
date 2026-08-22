@@ -928,11 +928,11 @@ test('saveL1MilestoneModal is blocked below Editor', function () {
   assertEqual(m.reportingLevel, null);
 });
 
-test('the Actions cluster includes a pencil Edit button wired to openL1MilestoneModal, at Editor+', function () {
+test('the Actions cluster includes an Edit button (the same fa-pen icon every other Edit button in this app uses) wired to openL1MilestoneModal, at Editor+', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const html = l1MilestoneRowsHtml(p);
-  assertIncludes(html, `<button class="row-icon-btn" onclick="openL1MilestoneModal('${p.id}','${m.id}')" title="Edit milestone"><i class="fa-solid fa-pencil"></i></button>`);
+  assertIncludes(html, `<button class="row-icon-btn" onclick="openL1MilestoneModal('${p.id}','${m.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>`);
 });
 
 // ---------- L1 milestone `order` (cross-device sync for drag-reorder) ----------
