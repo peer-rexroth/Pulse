@@ -732,6 +732,147 @@ test('l1MilestoneRowsHtml renders the name as a live, editable input at Editor+,
   assertIncludes(html, `<input type="text" class="l1-milestone-name" value="Editable here" onblur="updateL1MilestoneName('${p.id}','${m.id}', this.value)">`);
 });
 
+// ---------- Drag-and-drop reordering of an L1 Plan's own milestones ----------
+// An explicit user request ("also allow rearraning of l1 milestones per
+// drag and drop"). A plain splice on plan.milestones, keyed by id (looked
+// up fresh at drop time, not trusting a stale captured index) — the same
+// shape dragStartCategoryMilestoneRow()'s own template-reorder uses, just
+// over live, persisted data instead of a modal's in-memory working copy.
+
+test('dropOnL1Milestone moves the dragged milestone to the drop target\'s position', function () {
+  const p = addL1Plan();
+  const m1 = addL1Milestone(p.id, 'First');
+  const m2 = addL1Milestone(p.id, 'Second');
+  const m3 = addL1Milestone(p.id, 'Third');
+  dragStartL1Milestone({ dataTransfer: {} }, m1.id);
+  dropOnL1Milestone({ preventDefault() {} }, p.id, m3.id);
+  assertDeepEqual(p.milestones.map(m => m.name), ['Second', 'Third', 'First']);
+});
+
+test('dropOnL1Milestone is a no-op when dropped back on the same milestone it was dragged from', function () {
+  const p = addL1Plan();
+  const m1 = addL1Milestone(p.id, 'First');
+  const m2 = addL1Milestone(p.id, 'Second');
+  dragStartL1Milestone({ dataTransfer: {} }, m1.id);
+  dropOnL1Milestone({ preventDefault() {} }, p.id, m1.id);
+  assertDeepEqual(p.milestones.map(m => m.name), ['First', 'Second']);
+});
+
+test('dropOnL1Milestone is blocked below Editor', function () {
+  const p = addL1Plan();
+  const m1 = addL1Milestone(p.id, 'First');
+  const m2 = addL1Milestone(p.id, 'Second');
+  dragStartL1Milestone({ dataTransfer: {} }, m1.id);
+  userRole = 'reviewer';
+  dropOnL1Milestone({ preventDefault() {} }, p.id, m2.id);
+  assertDeepEqual(p.milestones.map(m => m.name), ['First', 'Second'], 'unchanged — the guard should have refused before touching it');
+});
+
+test('l1MilestoneRowsHtml wires the row itself as the drop target, and the grip handle as the only draggable element, at Editor+', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, `ondragover="event.preventDefault()" ondrop="dropOnL1Milestone(event,'${p.id}','${m.id}')"`);
+  assertIncludes(html, `<span class="row-icon-btn drag-handle" draggable="true" ondragstart="dragStartL1Milestone(event,'${m.id}')" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>`);
+});
+
+test('l1MilestoneRowsHtml omits the drag/drop wiring entirely below Editor', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  userRole = 'reviewer';
+  const html = l1MilestoneRowsHtml(p);
+  assertNotIncludes(html, 'ondragover');
+  assertNotIncludes(html, 'drag-handle');
+});
+
+// ---------- The L1 milestone edit modal (Due date, Reporting Level) ----------
+// An explicit user request ("provide a real edit modal, where i can change
+// due date and Reporting Level"). Reporting Level previously had no editing
+// surface anywhere in the app at all — see "L1 Plan import/export" in
+// CLAUDE.md — this is the fix. Due is included too, purely as a
+// convenience; it routes through the exact same updateL1MilestoneDateField()
+// the row's own inline pill already uses, so there's only one real
+// implementation of what a Due edit does.
+
+test('openL1MilestoneModal populates the title and both fields from the milestone\'s own current values', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  m.dueDate = '2027-03-01';
+  m.reportingLevel = 'Programme';
+  openL1MilestoneModal(p.id, m.id);
+  assertEqual(document.getElementById('l1MilestoneModalTitle').textContent, 'Kickoff');
+  assertEqual(document.getElementById('l1MilestoneDueInput').value, '2027-03-01');
+  assertEqual(document.getElementById('l1MilestoneReportingLevelInput').value, 'Programme');
+  assertTrue(document.getElementById('l1MilestoneModalBg').classList.contains('open'));
+});
+
+test('openL1MilestoneModal shows blank fields for a milestone with no Due/Reporting Level set yet', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  openL1MilestoneModal(p.id, m.id);
+  assertEqual(document.getElementById('l1MilestoneDueInput').value, '');
+  assertEqual(document.getElementById('l1MilestoneReportingLevelInput').value, '');
+});
+
+test('openL1MilestoneModal is blocked below Editor', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  userRole = 'reviewer';
+  openL1MilestoneModal(p.id, m.id);
+  assertFalse(document.getElementById('l1MilestoneModalBg').classList.contains('open'));
+});
+
+test('saveL1MilestoneModal writes both Due and Reporting Level back onto the real milestone, and closes the modal', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  openL1MilestoneModal(p.id, m.id);
+  document.getElementById('l1MilestoneDueInput').value = '2027-06-15';
+  document.getElementById('l1MilestoneReportingLevelInput').value = 'Programme';
+  saveL1MilestoneModal();
+  assertEqual(m.dueDate, '2027-06-15');
+  assertEqual(m.reportingLevel, 'Programme');
+  assertFalse(document.getElementById('l1MilestoneModalBg').classList.contains('open'));
+});
+
+test('saveL1MilestoneModal trims Reporting Level and stores an empty one as null, not an empty string', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  m.reportingLevel = 'Old value';
+  openL1MilestoneModal(p.id, m.id);
+  document.getElementById('l1MilestoneReportingLevelInput').value = '   ';
+  saveL1MilestoneModal();
+  assertEqual(m.reportingLevel, null);
+});
+
+test('saveL1MilestoneModal clearing Due goes through updateL1MilestoneDateField, recomputing the parent plan\'s own plan-date range', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  m.dueDate = '2027-06-15';
+  p.startDate = '2027-06-15'; p.dueDate = '2027-06-15';
+  openL1MilestoneModal(p.id, m.id);
+  document.getElementById('l1MilestoneDueInput').value = '';
+  saveL1MilestoneModal();
+  assertEqual(m.dueDate, null);
+  assertEqual(p.dueDate, null, 'the plan\'s own recomputed range must follow, the same as an inline Due edit already does');
+});
+
+test('saveL1MilestoneModal is blocked below Editor', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  openL1MilestoneModal(p.id, m.id);
+  userRole = 'reviewer';
+  document.getElementById('l1MilestoneReportingLevelInput').value = 'Should not stick';
+  saveL1MilestoneModal();
+  assertEqual(m.reportingLevel, null);
+});
+
+test('the Actions cluster includes a pencil Edit button wired to openL1MilestoneModal, at Editor+', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, `<button class="row-icon-btn" onclick="openL1MilestoneModal('${p.id}','${m.id}')" title="Edit milestone"><i class="fa-solid fa-pencil"></i></button>`);
+});
+
 // ---------- Removing an L1 milestone ----------
 
 // removeL1Milestone() now opens a confirm modal first — an explicit user

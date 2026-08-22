@@ -938,29 +938,45 @@
      always-present column even though most rows have nothing to expand,
      same "every cell in every row must be a real element" discipline
      --item-grid-cols itself follows) / Milestone name / Due / Status /
-     Actions (Connect + Delete together, one 56px column — see below).
-     Indented 34px, not the base 14px, so this list visually reads as
-     nested under its own parent L1 Plan row rather than sitting flush with
-     it. Always nested (there's no non-nested use of this class the way
-     .milestone-header/.milestone-sub-row have), so the indent is baked
-     straight into the base rule rather than needing its own conditional
-     indent class.
-     Status is 116px, immediately followed by a snug 56px Actions column —
-     no blank spacer between them at all, matching the shared
-     --item-grid-cols' own real shape once its 11 columns are read
-     correctly (Status is the 10th value, 116px, sitting directly next to
-     the 11th, Actions — see "Column layout is a real CSS grid" in
-     CLAUDE.md; an earlier revision of this rule mistook the 9th value,
-     100px — Tags — for Status, and mistook the real Status column for "a
-     blank spacer before Actions", which is what led to a spurious 10px
-     spacer being inserted here that was never actually needed). This
-     row's alignment story went through several revisions before landing
-     here — see .l1-plans-list's own CSS comment, above, for the full
-     history. With Status/Actions both matching --item-grid-cols'/
-     .l1-plans-list's own real widths and adjacency, this row's own
-     Status→right-edge distance (gap(10) + Actions(56) + padding-right(20)
-     = 86) now matches .l1-plans-list's own identical distance exactly, no
-     spacer column needed anywhere.
+     Actions (drag handle + Edit + Connect + Delete together, one 120px
+     column — see below). Indented 34px, not the base 14px, so this list
+     visually reads as nested under its own parent L1 Plan row rather than
+     sitting flush with it. Always nested (there's no non-nested use of
+     this class the way .milestone-header/.milestone-sub-row have), so the
+     indent is baked straight into the base rule rather than needing its
+     own conditional indent class.
+     Status is 116px, immediately followed by the Actions column — no blank
+     spacer between them at all, matching the shared --item-grid-cols' own
+     real shape once its 11 columns are read correctly (Status is the 10th
+     value, 116px, sitting directly next to the 11th, Actions — see "Column
+     layout is a real CSS grid" in CLAUDE.md; an earlier revision of this
+     rule mistook the 9th value, 100px — Tags — for Status, and mistook the
+     real Status column for "a blank spacer before Actions", which is what
+     led to a spurious 10px spacer being inserted here that was never
+     actually needed). This row's alignment story went through several
+     revisions before landing here — see .l1-plans-list's own CSS comment,
+     above, for the full history.
+     **Actions grew from a snug 56px (Connect + Delete, matching
+     .l1-plans-list's own identical width one level up — see below) to
+     120px once a drag handle and a real Edit action joined the cluster —
+     two later, explicit user requests ("also allow rearraning of l1
+     milestons per drag and drop", "provide a real edit modal"). 120px
+     matches this app's own established width for a real 4-icon actions
+     cluster elsewhere (see --item-grid-cols' own comment on
+     .item-actions — 56px was only ever correctly sized for 3). This is a
+     deliberate, accepted trade-off, not a regression nobody noticed: it
+     breaks the "Status→right-edge distance matches .l1-plans-list"
+     alignment invariant this exact row fought hard to establish earlier
+     (this row's own distance is now gap(10) + Actions(120) +
+     padding-right(20) = 150, vs. .l1-plans-list's still-unchanged 86) —
+     the L1 Plan's own outer row never needs a drag handle or Edit action
+     of its own (only its milestones do), so widening it to match would
+     mean re-deriving its own carefully-tuned Milestones-badge spacer math
+     too (see .l1-plans-list's own CSS comment) for zero real benefit.
+     Four real, differently-shaped interactive icons genuinely do not fit
+     in 56px — verified live (see CLAUDE.md) that they visibly overflowed
+     the row's own right edge before this width increase — so narrowing
+     the mismatch was never actually an option here.**
      A 110px column sits right after Due, before Status — originally added
      as a genuinely blank alignment reservation (an explicit user request,
      "align the due date of the l1 milestone with the due date of the
@@ -988,11 +1004,12 @@
      content width, not just what's currently visible, or its background/
      border-bottom would vanish once scrolled the same way .milestone-sub-
      row's did. Computed from this rule's own columns: 20+160+110+110+116+
-     56 = 572, +50 (5 gaps) +54 (34+20 padding) = 676. */
+     120 = 636, +50 (5 gaps) +54 (34+20 padding) = 740 (Actions grew from
+     56 to 120 — see this rule's own comment on why). */
   .l1-milestone-header, .l1-milestone-row {
-    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 110px 116px 56px;
+    display: grid; grid-template-columns: 20px minmax(160px,1fr) 110px 110px 116px 120px;
     align-items: center; gap: 10px; padding: 7px 20px 7px 34px; border-bottom: 1px solid var(--border);
-    min-width: 676px;
+    min-width: 740px;
   }
   .l1-milestone-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--panel-2); padding-top: 5px; padding-bottom: 5px; }
   .l1-milestone-row { font-size: 12.5px; background: var(--panel-2); }
@@ -2284,6 +2301,31 @@
   </div>
 </div>
 
+<!-- L1 milestone edit modal — Due date and Reporting Level, an explicit
+     user request ("provide a real edit modal, where i can change due date
+     and Reporting Level"). Name has its own always-live inline input on
+     the row itself (see updateL1MilestoneName() in the inline script) and
+     isn't duplicated here; Due is included as a convenience alongside
+     Reporting Level, which previously had no editing surface anywhere in
+     this app at all. See openL1MilestoneModal()/saveL1MilestoneModal(). -->
+<div class="modal-bg" id="l1MilestoneModalBg">
+  <div class="modal">
+    <h3 id="l1MilestoneModalTitle">Edit milestone</h3>
+    <div class="field">
+      <label>Due date</label>
+      <input type="date" id="l1MilestoneDueInput">
+    </div>
+    <div class="field">
+      <label>Reporting Level</label>
+      <input type="text" id="l1MilestoneReportingLevelInput" placeholder="e.g. Programme">
+    </div>
+    <div class="modal-actions" style="justify-content:flex-end">
+      <button class="btn" onclick="closeL1MilestoneModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveL1MilestoneModal()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Confirm modal -->
 <div class="modal-bg" id="confirmModalBg">
   <div class="modal">
@@ -2587,7 +2629,7 @@ const MAX_BACKUPS = 7;
 // same "guardrail, not a gate" stance RBAC and everything else in this app
 // already takes — there's no server here to actually push an update, so the
 // most this can ever do is tell a device it's behind, never force it current.
-const APP_VERSION = 8;
+const APP_VERSION = 9;
 // Hand-updated alongside APP_VERSION, same manual-discipline convention —
 // purely informational (the About modal's own "Version X · <date>" line),
 // never compared/merged/read by anything else, unlike APP_VERSION itself.
@@ -7065,8 +7107,22 @@ function l1MilestoneRowsHtml(plan) {
     // a small .l1-milestone-actions flex cluster, the same layout
     // .item-actions uses elsewhere, minus its hover-to-reveal behavior
     // (these two have always been plainly visible, not hover-gated).
+    // A drag handle and a real Edit action joined this cluster later, both
+    // explicit user requests: "allow rearraning of l1 milestones per drag
+    // and drop", and "provide a real edit modal, where i can change due
+    // date and Reporting Level" (Name already got its own inline edit —
+    // see nameEditableHtml above — but Due, already inline-editable too,
+    // and Reporting Level, which had no editing surface anywhere before
+    // this, both needed a real form rather than another one-off inline
+    // control). The grip icon mirrors dragStartItem()'s own — only it, not
+    // the whole row, is draggable="true", so dragging doesn't fight with
+    // selecting text in the name input right next to it (see
+    // wireModalBackdropClose()'s own unrelated but similarly-motivated fix
+    // above for why that distinction matters generally in this app).
     const actionsHtml = editable
       ? `<span class="l1-milestone-actions">
+          <span class="row-icon-btn drag-handle" draggable="true" ondragstart="dragStartL1Milestone(event,'${m.id}')" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
+          <button class="row-icon-btn" onclick="openL1MilestoneModal('${plan.id}','${m.id}')" title="Edit milestone"><i class="fa-solid fa-pencil"></i></button>
           <button class="row-icon-btn${linkedCount ? ' l1-linked' : ''}" onclick="openL1ConnectModal('${plan.id}','${m.id}')" title="Connect workstream milestones to this one"><i class="fa-solid fa-link"></i></button>
           <button class="row-icon-btn" onclick="removeL1Milestone('${plan.id}','${m.id}')" title="Remove milestone"><i class="fa-solid fa-trash"></i></button>
         </span>`
@@ -7124,7 +7180,17 @@ function l1MilestoneRowsHtml(plan) {
     // Completed surface in this app uses, not a lingering red/amber for
     // something no longer actually at risk of anything.
     const rowColor = effectiveStatus === 'complete' ? 'complete' : (computedL1MilestoneDelayColor(m.id, m.dueDate) || effectiveStatus);
-    return `<div class="l1-milestone-row" style="background:var(--stat-${rowColor}-bg)">
+    // Drag-and-drop reordering — an explicit user request ("also allow
+    // rearraning of l1 milestones per drag and drop") — mirrors
+    // dragStartItem()/dropOnItem()'s own whole-row-drop-target pattern: the
+    // grip handle alone is draggable (see actionsHtml above), but any point
+    // on the row accepts the drop, the same larger, easier target every
+    // other draggable row in this app already uses. Editor+ only —
+    // dropOnL1Milestone() itself carries the real requireRole('editor')
+    // guard, this is just the render-time half (no ondragover/ondrop
+    // attributes at all below Editor, since there's nothing to drop onto).
+    const dragAttrs = editable ? ` ondragover="event.preventDefault()" ondrop="dropOnL1Milestone(event,'${plan.id}','${m.id}')"` : '';
+    return `<div class="l1-milestone-row" style="background:var(--stat-${rowColor}-bg)"${dragAttrs}>
         ${chevronHtml}
         ${nameHtml}
         ${dueHtml}
@@ -7207,6 +7273,112 @@ function updateL1MilestoneName(planId, milestoneId, value) {
   m.name = trimmed;
   m.updatedAt = Date.now();
   save(); render();
+}
+// Drag-and-drop reordering of an L1 Plan's own milestones — an explicit
+// user request ("also allow rearraning of l1 milestones per drag and
+// drop"). Unlike reorderItem()/reorderWorkstream() (which need a real
+// numeric `order` field, since `items`/`workstreams` are flat arrays mixing
+// records from many different groups together), plan.milestones is already
+// a small array scoped to just this one plan and rendered in plain array
+// order — the same shape editingCategoryMilestones has in the category
+// modal — so a plain splice is all reordering needs here, no `order` field
+// at all. Uses ids, not raw indices (dragStartCategoryMilestoneRow()'s own
+// approach, safe there since that array is a modal working copy that can't
+// change out from under a drag) — plan.milestones is live, persisted data,
+// so both indices are looked up fresh at drop time rather than trusting
+// whatever position was captured back at dragstart.
+//
+// Known limitation, honestly documented rather than silently shipped as if
+// solved: this does NOT yet reach another already-synced device.
+// mergeMilestonesArray() (see "Merge and last-write-wins" in CLAUDE.md)
+// merges each milestone's own *fields* by id by comparing updatedAt, but
+// never considers array *position* at all — a local reorder rebuilds
+// `merged` starting from this device's own existing array order and only
+// ever updates a record in place or appends a new one, so another device's
+// own array order always wins back on its own next merge, exactly the same
+// class of bug reorderItem()/reorderWorkstream() themselves used to have
+// before their own `order` field + merge fix shipped (see "A user-reported
+// gap: neither reorder actually reached another already-synced device" in
+// CLAUDE.md). Fixing that here would mean adding a real `order` field to
+// every L1 milestone and teaching mergeMilestonesArray() to merge it — a
+// genuine follow-up feature in its own right, not something folded
+// silently into this one.
+let draggedL1MilestoneId = null;
+function dragStartL1Milestone(e, milestoneId) {
+  draggedL1MilestoneId = milestoneId;
+  e.dataTransfer.effectAllowed = 'move';
+}
+function dropOnL1Milestone(e, planId, targetMilestoneId) {
+  e.preventDefault();
+  const fromId = draggedL1MilestoneId;
+  draggedL1MilestoneId = null;
+  if (!requireRole('editor')) return;
+  if (!fromId || fromId === targetMilestoneId) return;
+  const plan = items.find(i => i.id === planId && i.itemType === 'l1plan');
+  if (!plan) return;
+  const fromIdx = plan.milestones.findIndex(m => m.id === fromId);
+  const toIdx = plan.milestones.findIndex(m => m.id === targetMilestoneId);
+  if (fromIdx === -1 || toIdx === -1) return;
+  const [moved] = plan.milestones.splice(fromIdx, 1);
+  plan.milestones.splice(toIdx, 0, moved);
+  save(); render();
+}
+// A real edit modal for an L1 milestone's own Due date and Reporting
+// Level — an explicit user request ("provide a real edit modal, where i
+// can change due date and Reporting Level"). Name already has its own
+// always-live inline input (see updateL1MilestoneName() above) and Due
+// already has its own inline pill (updateL1MilestoneDateField()) — this
+// modal doesn't replace either, it's specifically for Reporting Level,
+// which until now had genuinely no editing surface anywhere in the app at
+// all ("There is deliberately no UI to hand-set it — the only way a
+// milestone gets a reportingLevel at all is by importing a file that
+// provides one for it", see "L1 Plan import/export" in CLAUDE.md) — that
+// was a real, later-reversed limitation, not a permanent design decision;
+// a real UI for it was always the natural next step once someone wanted to
+// set or correct one by hand rather than only through a re-import. Due is
+// included here too, purely as a convenience — editing it via the modal
+// and via the row's own pill both funnel through the exact same
+// updateL1MilestoneDateField(), so there's only one source of truth for
+// what a Due edit actually does either way.
+let editingL1MilestonePlanId = null;
+let editingL1MilestoneId = null;
+function openL1MilestoneModal(planId, milestoneId) {
+  if (!requireRole('editor')) return;
+  const plan = items.find(i => i.id === planId && i.itemType === 'l1plan');
+  if (!plan) return;
+  const m = plan.milestones.find(x => x.id === milestoneId);
+  if (!m) return;
+  editingL1MilestonePlanId = planId;
+  editingL1MilestoneId = milestoneId;
+  document.getElementById('l1MilestoneModalTitle').textContent = m.name;
+  document.getElementById('l1MilestoneDueInput').value = m.dueDate || '';
+  document.getElementById('l1MilestoneReportingLevelInput').value = m.reportingLevel || '';
+  document.getElementById('l1MilestoneModalBg').classList.add('open');
+}
+function closeL1MilestoneModal() {
+  editingL1MilestonePlanId = null;
+  editingL1MilestoneId = null;
+  document.getElementById('l1MilestoneModalBg')?.classList.remove('open');
+}
+function saveL1MilestoneModal() {
+  if (!requireRole('editor')) return;
+  const plan = items.find(i => i.id === editingL1MilestonePlanId && i.itemType === 'l1plan');
+  const m = plan && plan.milestones.find(x => x.id === editingL1MilestoneId);
+  if (!plan || !m) { closeL1MilestoneModal(); render(); return; }
+  // Due goes through the exact same update path the row's own inline pill
+  // uses — one function, so a Due edit behaves identically (recomputes the
+  // plan's own plan-date range, stamps updatedAt) regardless of which of
+  // the two UIs made it.
+  const dueValue = document.getElementById('l1MilestoneDueInput').value || null;
+  if (dueValue !== m.dueDate) updateL1MilestoneDateField(plan.id, m.id, dueValue);
+  const reportingLevelValue = document.getElementById('l1MilestoneReportingLevelInput').value.trim() || null;
+  if (reportingLevelValue !== m.reportingLevel) {
+    m.reportingLevel = reportingLevelValue;
+    m.updatedAt = Date.now();
+    save();
+  }
+  closeL1MilestoneModal();
+  render();
 }
 // Confirm-modal-then-undo-toast — an explicit user request ("add a delete
 // modal l1 plans and l1 milestones, asking for confirmation, like deleting
@@ -12778,8 +12950,9 @@ wireModalBackdropClose(document.getElementById('helpModalBg'), closeHelpModal);
 wireModalBackdropClose(document.getElementById('aboutModalBg'), closeAboutModal);
 wireModalBackdropClose(document.getElementById('rolePasswordsModalBg'), closeRolePasswordsModal);
 wireModalBackdropClose(document.getElementById('l1PickModalBg'), closeL1PickModal);
+wireModalBackdropClose(document.getElementById('l1MilestoneModalBg'), closeL1MilestoneModal);
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeL1ConnectModal(); closeL1PickModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeL1ConnectModal(); closeL1PickModal(); closeL1MilestoneModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
 });
 
 // A user-reported bug on some Chrome/Safari + macOS combinations: a modal's
