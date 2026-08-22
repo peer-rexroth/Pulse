@@ -6937,8 +6937,19 @@ function l1MilestoneRowsHtml(plan) {
     // it up the same way Status does (see computedL1MilestoneActualDate()'s
     // own comment for the full history). Never disabled purely for being
     // linked — updateL1MilestoneDateField() has no link-based guard either.
+    // A user-reported regression: this field had carried a hardcoded
+    // onchange="if(this.value) updateL1MilestoneDateField(...)" attribute
+    // alongside its onblur ever since it was first built — the exact
+    // "commits after one or two typed digits" bug documented at length
+    // under "A third, separate bug" above (Chrome fires change on a date
+    // input the moment any single segment looks complete, and the year
+    // segment does after just its first digit), which every OTHER date
+    // input in this app was fixed against by dropping onchange entirely in
+    // favor of onblur + armPickerCommit() (the pickerArmFn 4th argument
+    // below, already correctly wired) — this one spot alone never got that
+    // same fix applied. Removed here to match every other call site.
     const dueHtml = dateInputHtml(m.dueDate,
-      `title="Due date" ${editable ? `onblur="if(this.value) updateL1MilestoneDateField('${plan.id}','${m.id}',this.value); else this.value='${m.dueDate || ''}'" onchange="if(this.value) updateL1MilestoneDateField('${plan.id}','${m.id}',this.value)"` : 'disabled'}`,
+      `title="Due date" ${editable ? `onblur="if(this.value) updateL1MilestoneDateField('${plan.id}','${m.id}',this.value); else this.value='${m.dueDate || ''}'"` : 'disabled'}`,
       '', editable ? `v => updateL1MilestoneDateField('${plan.id}','${m.id}',v)` : null);
     // Actual has no hand-set path at all — an L1 milestone's own
     // actualDate is never directly editable anywhere (there's no input for

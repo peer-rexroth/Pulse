@@ -1013,6 +1013,26 @@ test('linking a workstream milestone to an L1 milestone leaves its own Due exact
   assertIncludes(htmlAfter, 'value="2026-01-01"', 'still shows its own manual value, not the linked milestone\'s Due');
 });
 
+// A user-reported regression: "inline editing of the date field is broken
+// again on 4 digit year. after 2 digits, it leaves field" — traced to this
+// one field alone still carrying a hardcoded onchange attribute that every
+// other date input in the app had already been fixed to drop (see "The
+// native calendar picker commits via armPickerCommit(), not onchange" in
+// views.test.js for the full history: Chrome fires change the moment any
+// single segment looks complete, and a date input's year segment does that
+// after just its first typed digit, destroying the still-focused input and
+// swallowing every further keystroke). onblur is the only commit path for
+// a keyboard edit now; armPickerCommit() (wired via the calendar icon's own
+// onclick) is what makes a genuine native-picker selection still commit
+// reliably despite that.
+test('an L1 milestone\'s own Due input arms a picker commit via its calendar icon, not a plain onchange', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, `armPickerCommit(inp, v => updateL1MilestoneDateField('${p.id}','${m.id}',v))`);
+  assertNotIncludes(html, `onchange="if(this.value) updateL1MilestoneDateField('${p.id}','${m.id}'`, 'must not auto-commit on a plain onchange any more');
+});
+
 test('l1MilestoneRowsHtml shows the L1 milestone\'s own rolled-up Actual from a linked milestone\'s Due even before it finishes, then from its Actual once that\'s later', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
