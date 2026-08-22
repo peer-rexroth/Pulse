@@ -7049,7 +7049,17 @@ function l1MilestoneRowsHtml(plan) {
     // tinted by its own status" precedent .review-confirmed already
     // establishes for a confirmed Review row (background:
     // var(--stat-green-bg)).
-    const rowColor = computedL1MilestoneDelayColor(m.id, m.dueDate) || effectiveStatus;
+    //
+    // A Complete milestone is a hard override, checked before the delay
+    // color at all — an explicit user request ("if a l1 milestone is
+    // completed do not apply red, amber, green color coding. use blue").
+    // Once done is done: a milestone that finished late still shows its own
+    // "Finished after Due" overdue-Actual pill (see actualHtml above,
+    // untouched by this) as the honest historical record of a late finish,
+    // but the row itself reads the same --stat-complete-bg blue every other
+    // Completed surface in this app uses, not a lingering red/amber for
+    // something no longer actually at risk of anything.
+    const rowColor = effectiveStatus === 'complete' ? 'complete' : (computedL1MilestoneDelayColor(m.id, m.dueDate) || effectiveStatus);
     return `<div class="l1-milestone-row" style="background:var(--stat-${rowColor}-bg)">
         ${chevronHtml}
         ${nameHtml}
@@ -12615,33 +12625,65 @@ document.addEventListener('click', (e) => {
 });
 
 // ---------- Modal backdrop click-to-close ----------
+// A user-reported bug: selecting a few letters of a word by dragging the
+// mouse across it — e.g. inside the item modal's own Name field — could
+// silently close the whole modal mid-selection, with no intent to dismiss
+// anything. Root cause is a plain browser-spec quirk every naive "click
+// outside this element closes it" listener is exposed to: when a
+// mousedown and the mouseup that follows it land on two *different*
+// elements, the browser still synthesizes a 'click' event, and fires it on
+// the nearest common ancestor of the two — not on wherever the mouseup
+// itself happened to land. A text-selection drag that starts inside a
+// modal's own input and merely ends a pixel or two outside that input's
+// own box (an ordinary side effect of dragging near a field's edge, not a
+// deliberate "click the backdrop" gesture) has the modal's own full-bleed
+// backdrop as that common ancestor — so the old
+// `addEventListener('click', e => { if (e.target.id === '...') close() })`
+// pattern this whole section used to use closed the modal on exactly that
+// drag, since a synthesized click's own `e.target` genuinely is the
+// backdrop in that case, indistinguishable from a real backdrop click by
+// looking at the click event alone.
+//
+// wireModalBackdropClose(bg, closeFn) fixes this the standard way any
+// "click outside to close" implementation needs to be safe: it also
+// tracks whether the *mousedown* itself started on the backdrop element
+// specifically, and only closes when both the mousedown and the click
+// agree — a real backdrop click always satisfies both; a text-selection
+// drag that happens to end up there satisfies only the click half, and no
+// longer closes anything.
+function wireModalBackdropClose(bg, closeFn) {
+  if (!bg) return;
+  let downOnBackdrop = false;
+  bg.addEventListener('mousedown', (e) => { downOnBackdrop = (e.target === bg); });
+  bg.addEventListener('click', (e) => { if (e.target === bg && downOnBackdrop) closeFn(); });
+}
 // scopeAssignModalBg deliberately has no backdrop-click listener here (and
 // is excluded from the Escape handler just below) — it's the one modal in
 // this app with no dismiss/cancel path at all once open, an explicit user
 // request ("do not allow to later in the assigning step"); Apply is the
 // only way out. See its own HTML comment above for the precedent this
 // mirrors (the role picker's own mandatory first-launch gate).
-document.getElementById('wsModalBg').addEventListener('click', (e) => { if (e.target.id === 'wsModalBg') closeWorkstreamModal(); });
-document.getElementById('itemModalBg').addEventListener('click', (e) => { if (e.target.id === 'itemModalBg') closeItemModal(); });
-document.getElementById('categoryModalBg').addEventListener('click', (e) => { if (e.target.id === 'categoryModalBg') closeCategoryModal(); });
-document.getElementById('l1ConnectModalBg').addEventListener('click', (e) => { if (e.target.id === 'l1ConnectModalBg') closeL1ConnectModal(); });
-document.getElementById('minutesModalBg').addEventListener('click', (e) => { if (e.target.id === 'minutesModalBg') closeMinutesModal(); });
-document.getElementById('confirmModalBg').addEventListener('click', (e) => { if (e.target.id === 'confirmModalBg') closeConfirmModal(); });
-document.getElementById('importModalBg').addEventListener('click', (e) => { if (e.target.id === 'importModalBg') closeImportModal(); });
-document.getElementById('backupsModalBg').addEventListener('click', (e) => { if (e.target.id === 'backupsModalBg') closeBackupsModal(); });
-document.getElementById('syncConflictsModalBg').addEventListener('click', (e) => { if (e.target.id === 'syncConflictsModalBg') closeSyncConflictsModal(); });
+wireModalBackdropClose(document.getElementById('wsModalBg'), closeWorkstreamModal);
+wireModalBackdropClose(document.getElementById('itemModalBg'), closeItemModal);
+wireModalBackdropClose(document.getElementById('categoryModalBg'), closeCategoryModal);
+wireModalBackdropClose(document.getElementById('l1ConnectModalBg'), closeL1ConnectModal);
+wireModalBackdropClose(document.getElementById('minutesModalBg'), closeMinutesModal);
+wireModalBackdropClose(document.getElementById('confirmModalBg'), closeConfirmModal);
+wireModalBackdropClose(document.getElementById('importModalBg'), closeImportModal);
+wireModalBackdropClose(document.getElementById('backupsModalBg'), closeBackupsModal);
+wireModalBackdropClose(document.getElementById('syncConflictsModalBg'), closeSyncConflictsModal);
 // fileSyncModalBg deliberately has no backdrop-click-to-close listener —
 // see its own HTML comment; linking is mandatory, and closeFileSyncModal()
 // is only ever called from linkFolder()/reconnectFolder()'s own success
 // paths now. backupFolderModalBg is the same, for the same reason (see its
 // own HTML comment) — closeBackupFolderModal() is only ever called from
 // chooseBackupFolder()'s own success path now.
-document.getElementById('themeModalBg').addEventListener('click', (e) => { if (e.target.id === 'themeModalBg') closeThemeModal(); });
-document.getElementById('roleModalBg').addEventListener('click', (e) => { if (e.target.id === 'roleModalBg') closeRoleModal(); });
-document.getElementById('helpModalBg').addEventListener('click', (e) => { if (e.target.id === 'helpModalBg') closeHelpModal(); });
-document.getElementById('aboutModalBg').addEventListener('click', (e) => { if (e.target.id === 'aboutModalBg') closeAboutModal(); });
-document.getElementById('rolePasswordsModalBg').addEventListener('click', (e) => { if (e.target.id === 'rolePasswordsModalBg') closeRolePasswordsModal(); });
-document.getElementById('l1PickModalBg').addEventListener('click', (e) => { if (e.target.id === 'l1PickModalBg') closeL1PickModal(); });
+wireModalBackdropClose(document.getElementById('themeModalBg'), closeThemeModal);
+wireModalBackdropClose(document.getElementById('roleModalBg'), closeRoleModal);
+wireModalBackdropClose(document.getElementById('helpModalBg'), closeHelpModal);
+wireModalBackdropClose(document.getElementById('aboutModalBg'), closeAboutModal);
+wireModalBackdropClose(document.getElementById('rolePasswordsModalBg'), closeRolePasswordsModal);
+wireModalBackdropClose(document.getElementById('l1PickModalBg'), closeL1PickModal);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeL1ConnectModal(); closeL1PickModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
 });

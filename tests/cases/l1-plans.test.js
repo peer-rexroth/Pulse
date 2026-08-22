@@ -454,6 +454,43 @@ test('l1MilestoneRowsHtml tints the row by computedL1MilestoneDelayColor once th
   assertIncludes(html, 'class="l1-milestone-row" style="background:var(--stat-green-bg)"');
 });
 
+// A Complete milestone is a hard override on the row color — an explicit
+// user request ("if a l1 milestone is completed do not apply red, amber,
+// green color coding. use blue"), checked before computedL1MilestoneDelayColor
+// gets a say at all.
+
+test('l1MilestoneRowsHtml tints the row blue when the milestone\'s own manual status is Complete, unlinked', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.status = 'complete';
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'class="l1-milestone-row" style="background:var(--stat-complete-bg)"');
+});
+
+test('l1MilestoneRowsHtml tints the row blue when linked and the rolled-up status is Complete, even with a Due set and a badly-late linked date', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-03-15';
+  const item = addItem({ name: 'Finance Deliverable' });
+  const wm = { id: genId(), name: 'Finished very late', dueDate: '2027-03-01', actualDate: '2027-09-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  item.milestones.push(wm);
+  assertEqual(computedL1MilestoneDelayColor(m.id, m.dueDate), 'red', 'sanity check — the date-based color alone would be red here');
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'class="l1-milestone-row" style="background:var(--stat-complete-bg)"', 'Complete overrides the red delay color entirely');
+});
+
+test('l1MilestoneRowsHtml still applies the date-based delay color for every non-Complete status', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-03-15';
+  m.status = 'green';
+  const item = addItem({ name: 'Finance Deliverable' });
+  const wm = { id: genId(), name: 'Badly slipped', dueDate: '2027-03-01', actualDate: '2027-09-01', status: 'amber', notApplicable: false, l1MilestoneIds: [m.id], updatedAt: 0 };
+  item.milestones.push(wm);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'class="l1-milestone-row" style="background:var(--stat-red-bg)"', 'not Complete — the date-based color still applies as before');
+});
+
 test('renderL1Plans() uses its own .l1-plans-list container, not the reused .journeys-list', function () {
   setMode('l1plans');
   renderL1Plans();

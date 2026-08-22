@@ -978,6 +978,80 @@ test('armPickerCommit does not call applyFn if the input\'s value is empty when 
   assertFalse(called);
 });
 
+// ---------- wireModalBackdropClose() ----------
+// A user-reported bug: dragging the mouse to select a few letters inside a
+// modal's own input (e.g. the item modal's own Name field) could silently
+// close the whole modal mid-selection. A mousedown and the mouseup that
+// follows it landing on two *different* elements still fires a synthesized
+// 'click' — per the DOM spec — on their nearest common ancestor, not on
+// wherever the mouseup itself happened; a text-selection drag that merely
+// ends a pixel outside the field it started in has the modal's own
+// full-bleed backdrop as that common ancestor, so the naive
+// `if (e.target === bg) close()` pattern every modal used to use closed on
+// exactly that drag. wireModalBackdropClose() additionally requires the
+// *mousedown* to have started on the backdrop itself — a real backdrop
+// click always satisfies both; an in-progress text selection only ever
+// satisfies the click half.
+//
+// Same "hand-rolled fake EventTarget, not the harness's own no-op DOM
+// mock" technique armPickerCommit()'s own tests just above already use —
+// the harness stubs every fake element's addEventListener as a no-op, so
+// this is what lets the actual mousedown-then-click logic run for real.
+function fakeMouseTarget() {
+  const handlers = {};
+  return {
+    addEventListener(type, fn) { handlers[type] = fn; },
+    removeEventListener(type, fn) { if (handlers[type] === fn) delete handlers[type]; },
+    fire(type, target) { if (handlers[type]) handlers[type]({ target }); }
+  };
+}
+
+test('wireModalBackdropClose closes when both the mousedown and the click land on the backdrop itself', function () {
+  const bg = fakeMouseTarget();
+  let closed = false;
+  wireModalBackdropClose(bg, function () { closed = true; });
+  bg.fire('mousedown', bg);
+  bg.fire('click', bg);
+  assertTrue(closed);
+});
+
+test('wireModalBackdropClose does not close when the click lands on the backdrop but the mousedown started on real content — a text-selection drag', function () {
+  const bg = fakeMouseTarget();
+  const innerInput = {};
+  let closed = false;
+  wireModalBackdropClose(bg, function () { closed = true; });
+  bg.fire('mousedown', innerInput); // the drag started inside the modal's own field
+  bg.fire('click', bg); // ...but the synthesized click still lands on the backdrop
+  assertFalse(closed, 'a drag that merely ends just outside the field it started in must not close the modal');
+});
+
+test('wireModalBackdropClose does not close on an ordinary click that starts and ends on real content', function () {
+  const bg = fakeMouseTarget();
+  const innerButton = {};
+  let closed = false;
+  wireModalBackdropClose(bg, function () { closed = true; });
+  bg.fire('mousedown', innerButton);
+  bg.fire('click', innerButton);
+  assertFalse(closed);
+});
+
+test('wireModalBackdropClose resets its own tracked mousedown target after each click, so a later real backdrop click still works', function () {
+  const bg = fakeMouseTarget();
+  const innerInput = {};
+  let closeCount = 0;
+  wireModalBackdropClose(bg, function () { closeCount++; });
+  bg.fire('mousedown', innerInput);
+  bg.fire('click', bg);
+  assertEqual(closeCount, 0, 'the drag-selection case above must not have closed it');
+  bg.fire('mousedown', bg);
+  bg.fire('click', bg);
+  assertEqual(closeCount, 1, 'a genuine, later backdrop click must still work');
+});
+
+test('wireModalBackdropClose is a no-op when given a null element, rather than throwing', function () {
+  wireModalBackdropClose(null, function () { throw new Error('must never be called'); });
+});
+
 test('an item row shows IT/Business/Budget tag badges colored by their current value', function () {
   const it = addItem({ name: 'Tagged', itStatus: 'red', businessStatus: 'amber', budgetStatus: 'green' });
   renderMain();
