@@ -1608,6 +1608,29 @@
   .action-log-row textarea.flat-cell-input, .decision-log-row textarea.flat-cell-input {
     resize: none; overflow: hidden; min-height: 22px; field-sizing: content;
   }
+  /* An L1 milestone's own name — inline-editable at Editor+, an explicit
+     user request ("allow me to edit l1 milestons. i can only link and
+     delete right now"). Unlike Action Log/Decision Log's own
+     .flat-cell-input fields, this one shares its grid cell with sibling
+     badges (linked-count, Reporting Level — see .l1-milestone-linked-count/
+     -reporting-level above), so it deliberately does NOT take width:100%
+     the way those do — field-sizing:content instead sizes it to its own
+     text, the same auto-grow mechanism .minutes-action-item-row's own
+     textarea already uses, so it sits inline before its sibling badges
+     exactly like the plain <span> it replaces used to. No border/background
+     at rest, matching every other in-row flat text edit in this app;
+     font-weight:700 carries over .l1-milestone-name's own bold treatment,
+     since a real <input> doesn't inherit that class's styling from a
+     shared selector the same way a <span> would once the element itself
+     changes. */
+  .l1-milestone-row input.l1-milestone-name {
+    box-sizing: border-box; padding: 3px 4px; margin: 0; border: none; border-radius: 5px;
+    background: transparent; color: inherit; font: inherit; font-weight: 700;
+    field-sizing: content; min-width: 40px; max-width: 100%;
+  }
+  .l1-milestone-row input.l1-milestone-name:focus {
+    outline: none; background: var(--bg); box-shadow: inset 0 0 0 1px var(--accent);
+  }
   /* A user-reported readability bug: this originally matched
      .minutes-action-item-row's own :focus background (--panel-2) — but
      unlike that modal table, .action-log-row/.decision-log-row share the
@@ -2564,7 +2587,7 @@ const MAX_BACKUPS = 7;
 // same "guardrail, not a gate" stance RBAC and everything else in this app
 // already takes — there's no server here to actually push an update, so the
 // most this can ever do is tell a device it's behind, never force it current.
-const APP_VERSION = 7;
+const APP_VERSION = 8;
 // Hand-updated alongside APP_VERSION, same manual-discipline convention —
 // purely informational (the About modal's own "Version X · <date>" line),
 // never compared/merged/read by anything else, unlike APP_VERSION itself.
@@ -6991,8 +7014,21 @@ function l1MilestoneRowsHtml(plan) {
     // shape this rolled-up value is most likely to hit.
     const computedActual = computedL1MilestoneActualDate(m.id);
     const l1ActualLate = isL1MilestoneActualLate(m, computedActual);
+    // A user-reported alignment bug: switching between a real, padded
+    // .date-pill (overdue) and bare, unpadded .item-dates-computed text
+    // (on time) gave the two states different left insets (the pill's own
+    // padding: 3px 8px vs. plain text's none) — so across several L1
+    // milestones, the Actual date text itself started at a different
+    // x-position row to row depending on which state each one happened to
+    // be in, reading as misaligned even though every row's own grid column
+    // was correctly aligned underneath it. Fixed by always rendering
+    // .date-pill as the base class (same padding/shape regardless of
+    // state) and layering .pill-overdue on top only for the red tint — the
+    // same base-class-plus-color-modifier pattern every other overdue pill
+    // in this app already uses; only this one read-only span had briefly
+    // split into two entirely different box models instead.
     const actualHtml = computedActual
-      ? `<span class="${l1ActualLate ? 'date-pill pill-overdue' : 'item-dates-computed'}" title="${l1ActualLate ? 'Finished after this milestone\'s own Due — ' : ''}Computed from ${linkedCount} linked workstream milestone${linkedCount === 1 ? '' : 's'}">${fmtDateY(computedActual)}</span>`
+      ? `<span class="date-pill${l1ActualLate ? ' pill-overdue' : ''}" title="${l1ActualLate ? 'Finished after this milestone\'s own Due — ' : ''}Computed from ${linkedCount} linked workstream milestone${linkedCount === 1 ? '' : 's'}">${fmtDateY(computedActual)}</span>`
       : `<span></span>`;
     // Once linked, status is computed live from the linked workstream
     // milestones (see computedL1MilestoneStatus()'s own comment for why —
@@ -7008,7 +7044,20 @@ function l1MilestoneRowsHtml(plan) {
       : editable
       ? `<button class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status})" onclick="cycleL1MilestoneStatus('${plan.id}','${m.id}')">${esc(statusLabel(m.status))}</button>`
       : `<span class="status-badge" style="background:var(--stat-${m.status}-bg);color:var(--stat-${m.status});cursor:default">${esc(statusLabel(m.status))}</span>`;
-    const nameHtml = `<span><span class="l1-milestone-name">${esc(m.name)}</span>${linkedCount ? `<span class="l1-milestone-linked-count">${linkedCount} linked</span>` : ''}${m.reportingLevel ? `<span class="l1-milestone-reporting-level" title="Reporting Level">${esc(m.reportingLevel)}</span>` : ''}</span>`;
+    // An explicit user request ("allow me to edit l1 milestons. i can only
+    // link and delete right now") — Due and Status were already
+    // inline-editable directly on this row (see updateL1MilestoneDateField()/
+    // cycleL1MilestoneStatus() above), but the name itself, set once at
+    // creation via saveL1MilestoneQuickAdd(), had no way to be corrected
+    // afterward. Editor+ gets a real, always-live <input> (the same "no
+    // modal round-trip needed" treatment Due already has — see
+    // updateL1MilestoneName()'s own comment for why there's no parent modal
+    // to fall back on here at all); below that tier it's still the same
+    // plain, non-interactive text it's always been.
+    const nameEditableHtml = editable
+      ? `<input type="text" class="l1-milestone-name" value="${esc(m.name)}" onblur="updateL1MilestoneName('${plan.id}','${m.id}', this.value)">`
+      : `<span class="l1-milestone-name">${esc(m.name)}</span>`;
+    const nameHtml = `<span>${nameEditableHtml}${linkedCount ? `<span class="l1-milestone-linked-count">${linkedCount} linked</span>` : ''}${m.reportingLevel ? `<span class="l1-milestone-reporting-level" title="Reporting Level">${esc(m.reportingLevel)}</span>` : ''}</span>`;
     // Connect and Delete share one trailing Actions cell now — an explicit
     // user request to align this row's own action column with the L1
     // Plan's own row and the connected-milestone row beneath it (see the
@@ -7127,6 +7176,36 @@ function updateL1MilestoneDateField(planId, milestoneId, value) {
   plan.startDate = range ? range.startDate : null;
   plan.dueDate = range ? range.dueDate : null;
   plan.updatedAt = Date.now();
+  save(); render();
+}
+// A user-reported gap: Due and Status were both already inline-editable
+// directly on an L1 milestone's own row (this function's own sibling just
+// above, and cycleL1MilestoneStatus()), but its own name — set once at
+// creation via saveL1MilestoneQuickAdd() — had no way to be corrected
+// afterward at all; Connect and Delete were the only two actions available
+// ("i can only link and delete right now"). Unlike an ordinary item's own
+// milestones, an L1 milestone has no parent modal to fall back on for this
+// either (see "The item modal is reachable for an existing L1 Plan only via
+// Edit, for renaming/deleting — never for milestone management" above) — the
+// row itself is the only place this could ever live, so it gets the same
+// "always a real, live input, no modal round-trip needed" treatment Due
+// already has, rather than a double-click-to-reveal affordance (which would
+// be a genuinely different interaction model from the rest of this same row).
+// Trims and no-ops on a blank result — same "an edit that resolves to
+// nothing doesn't get committed" stance the Action Log/Decision Log's own
+// inline text edits already take (updateActionLogText()) — and, like every
+// other field on this row, a focus+blur with no real change is a no-op too,
+// so it never logs a spurious edit.
+function updateL1MilestoneName(planId, milestoneId, value) {
+  if (!requireRole('editor')) return;
+  const plan = items.find(i => i.id === planId && i.itemType === 'l1plan');
+  if (!plan) return;
+  const m = plan.milestones.find(x => x.id === milestoneId);
+  if (!m) return;
+  const trimmed = (value || '').trim();
+  if (!trimmed || trimmed === m.name) { render(); return; }
+  m.name = trimmed;
+  m.updatedAt = Date.now();
   save(); render();
 }
 // Confirm-modal-then-undo-toast — an explicit user request ("add a delete

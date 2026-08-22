@@ -307,8 +307,8 @@ test('the milestone name shows a small "N linked" badge right next to it once an
   const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m2.id] };
   item.milestones.push(wm);
   const html = l1MilestoneRowsHtml(p);
-  assertIncludes(html, `<span class="l1-milestone-name">Unlinked milestone</span></span>`, 'no badge at all when nothing is linked');
-  assertIncludes(html, `<span class="l1-milestone-name">Linked milestone</span><span class="l1-milestone-linked-count">1 linked</span>`);
+  assertIncludes(html, `value="Unlinked milestone" onblur="updateL1MilestoneName('${p.id}','${m1.id}', this.value)"></span>`, 'no badge at all when nothing is linked');
+  assertIncludes(html, `value="Linked milestone" onblur="updateL1MilestoneName('${p.id}','${m2.id}', this.value)"><span class="l1-milestone-linked-count">1 linked</span>`);
 });
 
 test('the "N linked" badge reflects the real linked count, not just 0-vs-1', function () {
@@ -667,6 +667,69 @@ test('updateL1MilestoneDateField is blocked below Editor', function () {
   userRole = 'reviewer';
   updateL1MilestoneDateField(p.id, m.id, '2026-09-01');
   assertEqual(m.dueDate, null);
+});
+
+// ---------- Renaming an L1 milestone ----------
+// A user-reported gap: Due and Status were already inline-editable directly
+// on this row, but the name — set once at creation via quick-add — had no
+// way to be corrected afterward at all ("i can only link and delete right
+// now"). updateL1MilestoneName() closes that gap the same way Due already
+// works: no modal, just a real, always-live input on the row itself,
+// committing on blur.
+
+test('updateL1MilestoneName renames the milestone and stamps updatedAt', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Original name');
+  const before = m.updatedAt;
+  updateL1MilestoneName(p.id, m.id, 'Corrected name');
+  assertEqual(m.name, 'Corrected name');
+  assertTrue(m.updatedAt >= before);
+});
+
+test('updateL1MilestoneName trims surrounding whitespace', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Original name');
+  updateL1MilestoneName(p.id, m.id, '  Trimmed name  ');
+  assertEqual(m.name, 'Trimmed name');
+});
+
+test('updateL1MilestoneName is a no-op — the name stays unchanged — when given a blank or whitespace-only value', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Original name');
+  updateL1MilestoneName(p.id, m.id, '   ');
+  assertEqual(m.name, 'Original name', 'a blank edit must not clear the name — the real value is what render() redraws the input back to');
+});
+
+test('updateL1MilestoneName is a no-op (no updatedAt bump) when the trimmed value equals the current name', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Same name');
+  const stamped = m.updatedAt;
+  updateL1MilestoneName(p.id, m.id, 'Same name');
+  assertEqual(m.updatedAt, stamped);
+});
+
+test('updateL1MilestoneName is blocked below Editor', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Original name');
+  userRole = 'reviewer';
+  updateL1MilestoneName(p.id, m.id, 'Should not stick');
+  assertEqual(m.name, 'Original name');
+});
+
+test('l1MilestoneRowsHtml renders the name as a plain, non-editable span below Editor, not the live input', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Read only here');
+  userRole = 'reviewer';
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, '<span class="l1-milestone-name">Read only here</span>');
+  assertNotIncludes(html, '<input type="text" class="l1-milestone-name"');
+});
+
+test('l1MilestoneRowsHtml renders the name as a live, editable input at Editor+, wired to updateL1MilestoneName via onblur', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Editable here');
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, `<input type="text" class="l1-milestone-name" value="Editable here" onblur="updateL1MilestoneName('${p.id}','${m.id}', this.value)">`);
 });
 
 // ---------- Removing an L1 milestone ----------
@@ -1141,6 +1204,30 @@ test('l1MilestoneRowsHtml never renders the rolled-up Actual as an overdue pill 
   openL1ConnectModal(p.id, m.id);
   toggleL1MilestoneLink(item.id, wm.id, true);
   assertNotIncludes(l1MilestoneRowsHtml(p), 'pill-overdue');
+});
+
+// A user-reported alignment bug: an on-time rolled-up Actual used to render
+// as bare, unpadded text (.item-dates-computed) while an overdue one
+// rendered as a real, padded pill (.date-pill.pill-overdue) — two entirely
+// different box models sharing one grid column, so the date text itself
+// started at a different x-position row to row depending on which state
+// each milestone happened to be in. Both states now share the identical
+// .date-pill base (same padding/shape), differing only by the additive
+// .pill-overdue color modifier — so the two rows below must both render
+// through .date-pill, never through the old plain-text class at all.
+
+test('l1MilestoneRowsHtml renders an on-time rolled-up Actual as a plain (non-overdue) date-pill, not bare unpadded text — for alignment with an overdue row\'s own pill', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-06-01';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'On time', dueDate: '2027-05-01', actualDate: '2027-05-15', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'class="date-pill"', 'a real pill, same box model as the overdue variant, just no red tint');
+  assertNotIncludes(html, 'item-dates-computed', 'no longer falls back to bare, unpadded text — that box model is what broke row-to-row alignment');
 });
 
 test('updateL1MilestoneDateField works normally on a linked milestone too — an explicit user reversal, Due is never computed/refused regardless of link state', function () {
