@@ -609,6 +609,40 @@ test('cycleL1MilestoneStatus is blocked below Editor', function () {
   assertEqual(m.status, 'not-started', 'unchanged — the guard should have refused before touching it');
 });
 
+// A user-reported bug: the L1 Plan's own "X/Y milestones" badge
+// (itemRowHtml()'s `done` count) never incremented for a *linked* L1
+// milestone marked Complete purely through its own rolled-up status — it
+// read the milestone's raw `m.status` field directly, but a linked
+// milestone's real, displayed status is computedL1MilestoneStatus()'s own
+// rollup, which deliberately never writes back onto `m.status` itself (see
+// that function's own "computed fresh at read time, never stored back"
+// comment). effectiveMilestoneStatus() is the fix — the same
+// "rolled-up-when-linked, manual otherwise" fallback every other L1
+// milestone display already uses.
+
+test('itemRowHtml\'s "X/Y milestones" badge counts a linked L1 milestone as done once its rolled-up status is Complete, even though its own raw status field never changed', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  assertEqual(m.status, 'not-started', 'sanity check — the L1 milestone\'s own raw status is never touched by linking');
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Done', dueDate: '2027-01-01', actualDate: '2027-01-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  assertEqual(computedL1MilestoneStatus(m.id), 'complete', 'sanity check — the rollup itself is correct');
+  assertEqual(m.status, 'not-started', 'sanity check — still untouched even after the link makes it read as Complete');
+  const html = itemRowHtml(p);
+  assertIncludes(html, '1/1 milestones', 'the badge must count the linked milestone\'s effective (rolled-up) status, not its stale raw one');
+});
+
+test('itemRowHtml\'s "X/Y milestones" badge still counts an unlinked L1 milestone\'s own manual Complete status directly, as before', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.status = 'complete';
+  const html = itemRowHtml(p);
+  assertIncludes(html, '1/1 milestones');
+});
+
 test('updateL1MilestoneDateField sets the due date and recomputes the parent L1 Plan\'s own plan-date range', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);

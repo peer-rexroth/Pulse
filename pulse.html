@@ -2564,7 +2564,7 @@ const MAX_BACKUPS = 7;
 // same "guardrail, not a gate" stance RBAC and everything else in this app
 // already takes — there's no server here to actually push an update, so the
 // most this can ever do is tell a device it's behind, never force it current.
-const APP_VERSION = 6;
+const APP_VERSION = 7;
 // Hand-updated alongside APP_VERSION, same manual-discipline convention —
 // purely informational (the About modal's own "Version X · <date>" line),
 // never compared/merged/read by anything else, unlike APP_VERSION itself.
@@ -4520,6 +4520,17 @@ function renderL1Plans() {
 // above.
 function itemRowHtml(it, reviewCycle) {
   const total = it.milestones.length;
+  // An L1 Plan (see "L1 Plans" above) needs almost none of the special-
+  // casing below — it keeps a real, non-empty milestones array, so
+  // `editable`/`expandable`/`milestoneBadge`/`planDatesHtml` all already do
+  // the right thing for it via their plain "has milestones" fallback path
+  // with no changes at all. Only `subRows` (its own bespoke milestone rows,
+  // not the shared milestoneRowsHtml()/--item-grid-cols grid) and
+  // `tagsHtml` (IT/Business/Budget tags aren't a meaningful concept for a
+  // high-level plan) need an explicit branch for it. Computed up here
+  // (moved ahead of `done` below, which needs it) rather than staying where
+  // it originally sat further down.
+  const isL1Plan = it.itemType === 'l1plan';
   // The badge's own X/Y counts only the *applicable* milestones on both
   // sides of the fraction — a milestone marked notApplicable was never
   // going to be completed, so counting it in the denominator would make
@@ -4530,17 +4541,21 @@ function itemRowHtml(it, reviewCycle) {
   // since those still need to be reachable to un-mark.
   const applicableMilestones = it.milestones.filter(m => !m.notApplicable);
   const applicableTotal = applicableMilestones.length;
-  const done = applicableMilestones.filter(m => m.status === 'complete').length;
+  // A user-reported bug: this counter never incremented for a *linked* L1
+  // milestone marked Complete via its own rolled-up status — `m.status` is
+  // an L1 milestone's raw, hand-set field, but once linked its real,
+  // displayed status is the computed rollup (computedL1MilestoneStatus(),
+  // see "L1 Plans" above), which never writes back onto `m.status` itself
+  // (deliberately — see that function's own comment on why nothing is
+  // cached). Reading `m.status` directly here counted a linked-and-Complete
+  // milestone as still open. `effectiveMilestoneStatus(m)` is the same
+  // "rolled-up when linked, its own manual value otherwise" fallback every
+  // other L1 milestone display (the Status badge, the row's own delay-color
+  // fallback) already uses — an ordinary item's milestone has no rollup
+  // concept at all, so this is a no-op there, `m.status` unchanged.
+  const effectiveMilestoneStatus = m => isL1Plan ? (computedL1MilestoneStatus(m.id) || m.status) : m.status;
+  const done = applicableMilestones.filter(m => effectiveMilestoneStatus(m) === 'complete').length;
   const expanded = expandedItemIds.has(it.id);
-  // An L1 Plan (see "L1 Plans" above) needs almost none of the special-
-  // casing below — it keeps a real, non-empty milestones array, so
-  // `editable`/`expandable`/`milestoneBadge`/`planDatesHtml` all already do
-  // the right thing for it via their plain "has milestones" fallback path
-  // with no changes at all. Only `subRows` (its own bespoke milestone rows,
-  // not the shared milestoneRowsHtml()/--item-grid-cols grid) and
-  // `tagsHtml` (IT/Business/Budget tags aren't a meaningful concept for a
-  // high-level plan) need an explicit branch for it.
-  const isL1Plan = it.itemType === 'l1plan';
   const editable = hasRole('editor');
   // Editor+ everywhere, same as `editable` above, except for one specific
   // set of fields (IT/Business/Budget tags here; Due/Actual dates and
