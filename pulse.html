@@ -3787,27 +3787,28 @@ function addOneMonthIso(iso) {
 // reversing the row's previous status-rollup-driven tint. This is now a
 // pure date comparison, independent of computedL1MilestoneStatus() (which
 // still drives the row's own status *badge*, untouched by this change —
-// only the row's own background reads from this function instead). For
-// every linked, non-notApplicable milestone, its own Due-or-Actual —
-// whichever is later, the identical "prefer the later of the two" reduce
-// computedL1MilestoneActualDate() already performs — is collected, and the
-// single latest date across all of them is compared against the L1
-// milestone's own manual dueDate (never a rollup — see its own comment
-// above): on or before it is green, up to one calendar month after is
-// amber, anything later is red. Returns null — "nothing to compute a color
-// from" — when there's no manual Due to compare against, or nothing
-// linked has contributed a date yet; l1MilestoneRowsHtml() falls back to
-// the milestone's own plain status color in that case, the same
-// "nothing to compute from, fall back to the manual value" convention
-// computedL1MilestoneStatus() itself already established one function up.
+// only the row's own background reads from this function instead). A
+// direct comparison of exactly two values — the L1 milestone's own manual
+// Due (never a rollup — see computedL1MilestoneDueDate's own comment
+// above) against its own rolled-up Actual (computedL1MilestoneActualDate()
+// itself, called directly rather than re-derived here, so this is
+// guaranteed to compare against the literal same value already shown in
+// the row's own Actual column, not a second, independently-computed copy
+// of it that could quietly drift out of sync with it later): on or before
+// is green, up to one calendar month after is amber, anything later is
+// red. Returns null — "nothing to compute a color from" — when there's no
+// manual Due to compare against, or the rolled-up Actual is itself null
+// (nothing linked yet, or nothing linked has contributed a date);
+// l1MilestoneRowsHtml() falls back to the milestone's own plain status
+// color in that case, the same "nothing to compute from, fall back to the
+// manual value" convention computedL1MilestoneStatus() itself already
+// established one function up.
 function computedL1MilestoneDelayColor(l1MilestoneId, l1DueDate) {
   if (!l1DueDate) return null;
-  const linked = linkedWorkstreamMilestones(l1MilestoneId).map(l => l.milestone).filter(m => !m.notApplicable);
-  const dates = linked.flatMap(m => [m.dueDate, m.actualDate]).filter(Boolean);
-  if (!dates.length) return null;
-  const latest = dates.sort().pop();
-  if (latest <= l1DueDate) return 'green';
-  return latest <= addOneMonthIso(l1DueDate) ? 'amber' : 'red';
+  const rolledUpActual = computedL1MilestoneActualDate(l1MilestoneId);
+  if (!rolledUpActual) return null;
+  if (rolledUpActual <= l1DueDate) return 'green';
+  return rolledUpActual <= addOneMonthIso(l1DueDate) ? 'amber' : 'red';
 }
 // An L1 Plan's own status is one level further removed: it reduces over
 // its own milestones' *effective* status — each one's own
