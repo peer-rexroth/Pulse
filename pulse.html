@@ -2629,7 +2629,7 @@ const MAX_BACKUPS = 7;
 // same "guardrail, not a gate" stance RBAC and everything else in this app
 // already takes — there's no server here to actually push an update, so the
 // most this can ever do is tell a device it's behind, never force it current.
-const APP_VERSION = 9;
+const APP_VERSION = 10;
 // Hand-updated alongside APP_VERSION, same manual-discipline convention —
 // purely informational (the About modal's own "Version X · <date>" line),
 // never compared/merged/read by anything else, unlike APP_VERSION itself.
@@ -3492,7 +3492,7 @@ function normalizeData() {
     else if (typeof it.dependencySpoc !== 'string') it.dependencySpoc = null;
     ITEM_TAG_FIELDS.forEach(f => { if (!RAG3.includes(it[f])) it[f] = 'green'; });
     if (!Array.isArray(it.milestones)) it.milestones = [];
-    it.milestones.forEach(m => {
+    it.milestones.forEach((m, idx) => {
       if (!isSafeId(m.id)) m.id = genId();
       if (!m.name) m.name = 'Untitled milestone';
       if (typeof m.notApplicable !== 'boolean') m.notApplicable = false;
@@ -3547,6 +3547,26 @@ function normalizeData() {
         if (typeof m.reportingLevel !== 'string') m.reportingLevel = null;
       } else {
         m.reportingLevel = null;
+      }
+      // order — an explicit user request ("i want cross-device sync") for
+      // drag-and-drop reordering (dropOnL1Milestone()) to actually reach
+      // another already-synced device, the same gap reorderItem()/
+      // reorderWorkstream() themselves once had before their own order
+      // field shipped. Only ever meaningful on an L1 Plan's own milestone —
+      // an ordinary item's milestones have never had a persisted order
+      // field and still don't; their own display order is, and remains,
+      // plain array order (see "Category template edits sync to items
+      // already using that category" above for why that's deliberate).
+      // Backfilled from current array position (idx) the same way an
+      // item's own order backfills from its position within its
+      // workstream — this is what gives a pre-existing plan's milestones a
+      // real, stable order the very first time they're loaded under this
+      // version, matching whatever they already visually rendered as
+      // before this field existed (plain array order).
+      if (it.itemType === 'l1plan') {
+        if (typeof m.order !== 'number') m.order = idx;
+      } else {
+        delete m.order;
       }
     });
     // Enforce the "weakest milestone wins" status and the earliest/latest
@@ -6878,13 +6898,32 @@ function cancelL1MilestoneQuickAdd() {
 // makeL1Plan()'s own comment just above for why this exists as a factory.
 // reportingLevel (see "L1 Plan import/export" below) is the one field with
 // no hand-add path of its own — a milestone added here always starts null,
-// only ever set by importing a file that provides one.
-function makeL1Milestone(name, dueDate, reportingLevel) {
+// only ever set by importing a file that provides one, or by hand through
+// the edit modal (openL1MilestoneModal()) afterward.
+// order — an explicit user request ("i want cross-device sync") for
+// dropOnL1Milestone()'s own reorder to actually reach another device —
+// this factory has no plan reference of its own, so each call site passes
+// the position to append at (plan.milestones.length, same "always lands at
+// the end" convention saveItem()'s own brand-new-item order already uses).
+function makeL1Milestone(name, dueDate, reportingLevel, order) {
   return {
     id: genId(), name, dueDate: dueDate || null, actualDate: null, status: 'not-started',
     notApplicable: false, l1MilestoneIds: [], reportingLevel: reportingLevel || null,
-    updatedAt: Date.now()
+    order: order || 0, updatedAt: Date.now()
   };
+}
+// One past the current highest order value among a plan's own milestones —
+// deliberately not plan.milestones.length (which collides the moment a
+// milestone's been removed from the middle: 3 milestones at order 0/1/2,
+// remove the middle one, length drops to 2 but the surviving pair still
+// holds 0/2 — a next milestone added via `.length` would land on order 2
+// too, tying with the real one). removeL1Milestone() never renumbers the
+// survivors to stay contiguous (there's no need to — sorting by order
+// alone is enough for correct display regardless of gaps), so a genuinely
+// new milestone has to look at what's actually there rather than assume a
+// gapless count.
+function nextL1MilestoneOrder(plan) {
+  return plan.milestones.reduce((max, m) => Math.max(max, m.order || 0), -1) + 1;
 }
 function saveL1MilestoneQuickAdd() {
   const planId = l1MilestoneQuickAddOpenFor;
@@ -6894,7 +6933,7 @@ function saveL1MilestoneQuickAdd() {
   if (!name) { render(); return; }
   const plan = items.find(it => it.id === planId && it.itemType === 'l1plan');
   if (!plan) return;
-  plan.milestones.push(makeL1Milestone(name));
+  plan.milestones.push(makeL1Milestone(name, null, null, nextL1MilestoneOrder(plan)));
   plan.updatedAt = Date.now();
   save(); render();
 }
@@ -7009,7 +7048,20 @@ function l1LinkedRowHtml(item, milestone, l1DueDate) {
 }
 function l1MilestoneRowsHtml(plan) {
   const editable = hasRole('editor');
-  return plan.milestones.map(m => {
+  // Sorted by each milestone's own `order` field, not plan.milestones' own
+  // raw array position — an explicit user request ("i want cross-device
+  // sync") for dropOnL1Milestone()'s own reorder to actually reach another
+  // already-synced device. `order` merges correctly today for free through
+  // the ordinary per-milestone field merge (mergeMilestonesArray() already
+  // replaces a whole milestone object, order field included, whenever the
+  // incoming copy's own updatedAt is newer — see dropOnL1Milestone()'s own
+  // comment for why that's enough with zero changes to the shared merge
+  // function) — but only once *display* actually reads that field instead
+  // of trusting physical array position, which a merge was never going to
+  // touch or reconstruct. A `.slice()` copy, so sorting for display never
+  // mutates the plan's own real array.
+  const sortedMilestones = plan.milestones.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+  return sortedMilestones.map(m => {
     const linked = linkedWorkstreamMilestones(m.id);
     const linkedCount = linked.length;
     // Due is always the milestone's own manual/imported value, linked or
@@ -7276,33 +7328,35 @@ function updateL1MilestoneName(planId, milestoneId, value) {
 }
 // Drag-and-drop reordering of an L1 Plan's own milestones — an explicit
 // user request ("also allow rearraning of l1 milestones per drag and
-// drop"). Unlike reorderItem()/reorderWorkstream() (which need a real
-// numeric `order` field, since `items`/`workstreams` are flat arrays mixing
-// records from many different groups together), plan.milestones is already
-// a small array scoped to just this one plan and rendered in plain array
-// order — the same shape editingCategoryMilestones has in the category
-// modal — so a plain splice is all reordering needs here, no `order` field
-// at all. Uses ids, not raw indices (dragStartCategoryMilestoneRow()'s own
-// approach, safe there since that array is a modal working copy that can't
-// change out from under a drag) — plan.milestones is live, persisted data,
-// so both indices are looked up fresh at drop time rather than trusting
-// whatever position was captured back at dragstart.
+// drop"), later followed by a second explicit request ("i want cross-device
+// sync") once the first cut turned out to be local-only. Unlike
+// dragStartCategoryMilestoneRow()'s own template reorder (a plain array
+// splice, safe there since editingCategoryMilestones is a modal working
+// copy nothing else can see mid-edit), plan.milestones is live, synced
+// data — so this reorders by writing a real `order` field onto each
+// milestone instead of physically splicing plan.milestones itself. That's
+// the one change that makes cross-device sync fall out for free, with zero
+// changes needed to mergeMilestonesArray() (see "Merge and last-write-wins"
+// in CLAUDE.md): that function already replaces a whole milestone object,
+// `order` field included, whenever an incoming copy's own `updatedAt` is
+// newer than the local one — it just never had a reason to *read* `order`
+// for anything before now. `l1MilestoneRowsHtml()` is the other half: it
+// sorts by `order` for display (`sortedMilestones`) rather than trusting
+// plan.milestones' own raw array position, which a merge was never going to
+// reconstruct — the same reasoning behind reorderItem()/reorderWorkstream()
+// themselves needing a real `order` field in the first place (see "A
+// user-reported gap: neither reorder actually reached another
+// already-synced device" in CLAUDE.md for that exact precedent).
 //
-// Known limitation, honestly documented rather than silently shipped as if
-// solved: this does NOT yet reach another already-synced device.
-// mergeMilestonesArray() (see "Merge and last-write-wins" in CLAUDE.md)
-// merges each milestone's own *fields* by id by comparing updatedAt, but
-// never considers array *position* at all — a local reorder rebuilds
-// `merged` starting from this device's own existing array order and only
-// ever updates a record in place or appends a new one, so another device's
-// own array order always wins back on its own next merge, exactly the same
-// class of bug reorderItem()/reorderWorkstream() themselves used to have
-// before their own `order` field + merge fix shipped (see "A user-reported
-// gap: neither reorder actually reached another already-synced device" in
-// CLAUDE.md). Fixing that here would mean adding a real `order` field to
-// every L1 milestone and teaching mergeMilestonesArray() to merge it — a
-// genuine follow-up feature in its own right, not something folded
-// silently into this one.
+// dropOnL1Milestone() works on a sorted copy — not plan.milestones directly
+// — splices the dragged milestone to the target's position within *that*
+// copy, then reassigns clean, contiguous order values (0,1,2,…) back onto
+// the real milestone objects (same array, same references — .slice() only
+// copies the array, not its contents). Only a milestone whose own `order`
+// value actually changed gets a fresh `updatedAt` stamp — reorderItem()'s
+// own "don't make an untouched record look freshly edited" discipline,
+// and what makes the *next* merge correctly recognize only the genuinely-
+// moved milestones as newer, not the whole plan's worth.
 let draggedL1MilestoneId = null;
 function dragStartL1Milestone(e, milestoneId) {
   draggedL1MilestoneId = milestoneId;
@@ -7316,11 +7370,13 @@ function dropOnL1Milestone(e, planId, targetMilestoneId) {
   if (!fromId || fromId === targetMilestoneId) return;
   const plan = items.find(i => i.id === planId && i.itemType === 'l1plan');
   if (!plan) return;
-  const fromIdx = plan.milestones.findIndex(m => m.id === fromId);
-  const toIdx = plan.milestones.findIndex(m => m.id === targetMilestoneId);
+  const sorted = plan.milestones.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+  const fromIdx = sorted.findIndex(m => m.id === fromId);
+  const toIdx = sorted.findIndex(m => m.id === targetMilestoneId);
   if (fromIdx === -1 || toIdx === -1) return;
-  const [moved] = plan.milestones.splice(fromIdx, 1);
-  plan.milestones.splice(toIdx, 0, moved);
+  const [moved] = sorted.splice(fromIdx, 1);
+  sorted.splice(toIdx, 0, moved);
+  sorted.forEach((m, i) => { if (m.order !== i) { m.order = i; m.updatedAt = Date.now(); } });
   save(); render();
 }
 // A real edit modal for an L1 milestone's own Due date and Reporting
@@ -10601,7 +10657,7 @@ async function importL1PlansFromExcel(file) {
       milestone.updatedAt = Date.now();
       milestonesUpdated++;
     } else {
-      plan.milestones.push(makeL1Milestone(milestoneName, dueDate, reportingLevel));
+      plan.milestones.push(makeL1Milestone(milestoneName, dueDate, reportingLevel, nextL1MilestoneOrder(plan)));
       milestonesCreated++;
     }
     plan.updatedAt = Date.now();

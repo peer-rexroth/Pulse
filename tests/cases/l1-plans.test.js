@@ -734,19 +734,59 @@ test('l1MilestoneRowsHtml renders the name as a live, editable input at Editor+,
 
 // ---------- Drag-and-drop reordering of an L1 Plan's own milestones ----------
 // An explicit user request ("also allow rearraning of l1 milestones per
-// drag and drop"). A plain splice on plan.milestones, keyed by id (looked
-// up fresh at drop time, not trusting a stale captured index) — the same
-// shape dragStartCategoryMilestoneRow()'s own template-reorder uses, just
-// over live, persisted data instead of a modal's in-memory working copy.
+// drag and drop"), later followed by "i want cross-device sync" once the
+// first cut turned out to be local-only. dropOnL1Milestone() reorders by
+// writing a real `order` field onto each milestone (never physically
+// splicing plan.milestones itself) — display sorts by that field
+// (l1MilestoneRowsHtml()'s own sortedMilestones), and mergeMilestonesArray()
+// already merges `order` for free via its own ordinary per-milestone field
+// merge, since a reorder stamps updatedAt only on the milestones whose
+// order value actually changed. Tests read order via l1MilestoneRowsHtml()'s
+// own rendered sequence (the real, user-visible effect of a reorder) rather
+// than plan.milestones' own raw array position, which a reorder no longer
+// touches at all.
 
-test('dropOnL1Milestone moves the dragged milestone to the drop target\'s position', function () {
+function renderedL1MilestoneOrder(plan) {
+  const html = l1MilestoneRowsHtml(plan);
+  return plan.milestones
+    .slice()
+    .sort((a, b) => html.indexOf(`value="${a.name}"`) - html.indexOf(`value="${b.name}"`))
+    .map(m => m.name);
+}
+
+test('dropOnL1Milestone moves the dragged milestone to the drop target\'s position, reflected in render order', function () {
   const p = addL1Plan();
   const m1 = addL1Milestone(p.id, 'First');
   const m2 = addL1Milestone(p.id, 'Second');
   const m3 = addL1Milestone(p.id, 'Third');
   dragStartL1Milestone({ dataTransfer: {} }, m1.id);
   dropOnL1Milestone({ preventDefault() {} }, p.id, m3.id);
-  assertDeepEqual(p.milestones.map(m => m.name), ['Second', 'Third', 'First']);
+  assertDeepEqual(renderedL1MilestoneOrder(p), ['Second', 'Third', 'First']);
+});
+
+test('dropOnL1Milestone reassigns clean, contiguous order values (0,1,2,…) matching the new sequence', function () {
+  const p = addL1Plan();
+  const m1 = addL1Milestone(p.id, 'First');
+  const m2 = addL1Milestone(p.id, 'Second');
+  const m3 = addL1Milestone(p.id, 'Third');
+  dragStartL1Milestone({ dataTransfer: {} }, m1.id);
+  dropOnL1Milestone({ preventDefault() {} }, p.id, m3.id);
+  assertEqual(m2.order, 0);
+  assertEqual(m3.order, 1);
+  assertEqual(m1.order, 2);
+});
+
+test('dropOnL1Milestone stamps updatedAt only on milestones whose order value actually changed', function () {
+  const p = addL1Plan();
+  const m1 = addL1Milestone(p.id, 'First');
+  const m2 = addL1Milestone(p.id, 'Second');
+  const m3 = addL1Milestone(p.id, 'Third');
+  const m3Stamp = m3.updatedAt;
+  dragStartL1Milestone({ dataTransfer: {} }, m1.id);
+  dropOnL1Milestone({ preventDefault() {} }, p.id, m2.id);
+  // First <-> Second swap places: both move. Third stays at index 2 either way.
+  assertEqual(m3.order, 2);
+  assertEqual(m3.updatedAt, m3Stamp, 'Third never actually moved, so it must not look freshly edited to a later merge');
 });
 
 test('dropOnL1Milestone is a no-op when dropped back on the same milestone it was dragged from', function () {
@@ -755,7 +795,7 @@ test('dropOnL1Milestone is a no-op when dropped back on the same milestone it wa
   const m2 = addL1Milestone(p.id, 'Second');
   dragStartL1Milestone({ dataTransfer: {} }, m1.id);
   dropOnL1Milestone({ preventDefault() {} }, p.id, m1.id);
-  assertDeepEqual(p.milestones.map(m => m.name), ['First', 'Second']);
+  assertDeepEqual(renderedL1MilestoneOrder(p), ['First', 'Second']);
 });
 
 test('dropOnL1Milestone is blocked below Editor', function () {
@@ -765,7 +805,29 @@ test('dropOnL1Milestone is blocked below Editor', function () {
   dragStartL1Milestone({ dataTransfer: {} }, m1.id);
   userRole = 'reviewer';
   dropOnL1Milestone({ preventDefault() {} }, p.id, m2.id);
-  assertDeepEqual(p.milestones.map(m => m.name), ['First', 'Second'], 'unchanged — the guard should have refused before touching it');
+  assertDeepEqual(renderedL1MilestoneOrder(p), ['First', 'Second'], 'unchanged — the guard should have refused before touching it');
+});
+
+test('a milestone\'s own order field merges correctly across devices via the ordinary per-milestone field merge — the whole point of reordering by field instead of array position', function () {
+  const base = { status: 'not-started', dueDate: null, actualDate: null, notApplicable: false, l1MilestoneIds: [], reportingLevel: null };
+  // This device's own local copy — still in the original order.
+  const existing = [
+    { ...base, id: 'a', name: 'First', order: 0, updatedAt: 1000 },
+    { ...base, id: 'b', name: 'Second', order: 1, updatedAt: 1000 },
+    { ...base, id: 'c', name: 'Third', order: 2, updatedAt: 1000 },
+  ];
+  // Another device dragged Third to the front — its own order values for
+  // the two milestones that actually moved are newer; Second never moved,
+  // so its own copy is deliberately left at the old timestamp (matching
+  // dropOnL1Milestone()'s own "don't stamp what didn't move" discipline).
+  const incoming = [
+    { ...base, id: 'c', name: 'Third', order: 0, updatedAt: 2000 },
+    { ...base, id: 'a', name: 'First', order: 1, updatedAt: 2000 },
+    { ...base, id: 'b', name: 'Second', order: 2, updatedAt: 1000 },
+  ];
+  const { merged } = mergeMilestonesArray(existing, incoming, true);
+  const sorted = merged.slice().sort((x, y) => x.order - y.order).map(m => m.name);
+  assertDeepEqual(sorted, ['Third', 'First', 'Second'], 'the incoming, newer order values must win — a plain array-position-only merge would have left this device\'s own stale order untouched');
 });
 
 test('l1MilestoneRowsHtml wires the row itself as the drop target, and the grip handle as the only draggable element, at Editor+', function () {
@@ -871,6 +933,48 @@ test('the Actions cluster includes a pencil Edit button wired to openL1Milestone
   const m = addL1Milestone(p.id);
   const html = l1MilestoneRowsHtml(p);
   assertIncludes(html, `<button class="row-icon-btn" onclick="openL1MilestoneModal('${p.id}','${m.id}')" title="Edit milestone"><i class="fa-solid fa-pencil"></i></button>`);
+});
+
+// ---------- L1 milestone `order` (cross-device sync for drag-reorder) ----------
+// An explicit user request ("i want cross-device sync") — nextL1MilestoneOrder()
+// is what a brand-new milestone's own order is computed from, deliberately not
+// plan.milestones.length (see that function's own comment for the exact
+// collision it avoids once a milestone's been removed from the middle).
+
+test('a newly quick-added L1 milestone appends after the existing ones', function () {
+  const p = addL1Plan();
+  const m1 = addL1Milestone(p.id, 'First');
+  const m2 = addL1Milestone(p.id, 'Second');
+  assertEqual(m1.order, 0);
+  assertEqual(m2.order, 1);
+});
+
+test('a newly quick-added L1 milestone still appends after the survivors, not colliding, once one has been removed from the middle', function () {
+  const p = addL1Plan();
+  const m1 = addL1Milestone(p.id, 'First');
+  const m2 = addL1Milestone(p.id, 'Second');
+  const m3 = addL1Milestone(p.id, 'Third');
+  p.milestones.splice(p.milestones.indexOf(m2), 1); // simulate removeL1Milestone()'s own splice, order gap: 0, 2
+  const m4 = addL1Milestone(p.id, 'Fourth');
+  assertEqual(m4.order, 3, 'one past the real highest order (2), not plan.milestones.length (which would collide at 2)');
+});
+
+test('normalizeData backfills a missing order on a legacy L1 milestone from its current array position', function () {
+  const p = addL1Plan();
+  const m1 = addL1Milestone(p.id, 'First');
+  const m2 = addL1Milestone(p.id, 'Second');
+  delete m1.order; delete m2.order; // simulate a save from before this field existed
+  normalizeData();
+  assertEqual(m1.order, 0);
+  assertEqual(m2.order, 1);
+});
+
+test('normalizeData never adds an order field to an ordinary (non-L1) item\'s milestone', function () {
+  const it = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'A milestone', dueDate: '2027-01-01', actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  it.milestones.push(wm);
+  normalizeData();
+  assertEqual(wm.order, undefined);
 });
 
 // ---------- Removing an L1 milestone ----------
