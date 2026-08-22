@@ -3749,6 +3749,51 @@ function computedL1MilestoneActualDate(l1MilestoneId) {
 function isL1MilestoneActualLate(m, computedActual) {
   return !!(computedActual && m.dueDate && computedActual > m.dueDate);
 }
+// Plain calendar-month addition on an ISO 'YYYY-MM-DD' string, used only by
+// computedL1MilestoneDelayColor()'s own amber-vs-red threshold below. Built
+// the same way isoFromDateParts() next to it composes a Date from plain
+// parts rather than string-parsing a locale format — JS's own Date
+// constructor already normalizes a month-index overflow (December + 1 ->
+// January of the following year) for free, so no special-casing is needed
+// for a year rollover. A day-of-month overflow off a short month (e.g. Jan
+// 31 + 1 month) rolls forward into the following month the same way — an
+// accepted, unflagged edge case, since this only ever feeds a "within about
+// a month" threshold, not an exact calendar computation anything else in
+// this app relies on.
+function addOneMonthIso(iso) {
+  const [y, mo, d] = iso.split('-').map(Number);
+  const dt = new Date(y, mo, d); // mo is already the 0-based index of the *next* month (mo-1 + 1)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+// The L1 milestone row's own background color — an explicit user request
+// ("change how the color of the l1 milestone row is determined... determined
+// by fact, if the due date or actual date of all linked scope item
+// milestones is matching with the target date of the l1 milestones"),
+// reversing the row's previous status-rollup-driven tint. This is now a
+// pure date comparison, independent of computedL1MilestoneStatus() (which
+// still drives the row's own status *badge*, untouched by this change —
+// only the row's own background reads from this function instead). For
+// every linked, non-notApplicable milestone, its own Due-or-Actual —
+// whichever is later, the identical "prefer the later of the two" reduce
+// computedL1MilestoneActualDate() already performs — is collected, and the
+// single latest date across all of them is compared against the L1
+// milestone's own manual dueDate (never a rollup — see its own comment
+// above): on or before it is green, up to one calendar month after is
+// amber, anything later is red. Returns null — "nothing to compute a color
+// from" — when there's no manual Due to compare against, or nothing
+// linked has contributed a date yet; l1MilestoneRowsHtml() falls back to
+// the milestone's own plain status color in that case, the same
+// "nothing to compute from, fall back to the manual value" convention
+// computedL1MilestoneStatus() itself already established one function up.
+function computedL1MilestoneDelayColor(l1MilestoneId, l1DueDate) {
+  if (!l1DueDate) return null;
+  const linked = linkedWorkstreamMilestones(l1MilestoneId).map(l => l.milestone).filter(m => !m.notApplicable);
+  const dates = linked.flatMap(m => [m.dueDate, m.actualDate]).filter(Boolean);
+  if (!dates.length) return null;
+  const latest = dates.sort().pop();
+  if (latest <= l1DueDate) return 'green';
+  return latest <= addOneMonthIso(l1DueDate) ? 'amber' : 'red';
+}
 // An L1 Plan's own status is one level further removed: it reduces over
 // its own milestones' *effective* status — each one's own
 // computedL1MilestoneStatus() when it has links, falling back to its own
@@ -6944,17 +6989,23 @@ function l1MilestoneRowsHtml(plan) {
     const linkedRowsHtml = (linkedCount && l1Expanded)
       ? l1LinkedHeaderHtml() + linkedSorted.map(({ item, milestone }) => l1LinkedRowHtml(item, milestone, m.dueDate)).join('')
       : '';
-    // The whole row is tinted by the milestone's own effective status (the
-    // computed, rolled-up one when linked, its own manual value otherwise —
-    // the identical value statusHtml's own badge already colors itself
-    // with) — an explicit user request ("highlight the L1 milestone row
-    // according to status"). Reuses the exact same --stat-*-bg token the
-    // badge and every other status-colored surface in this app already
-    // read from, the same "row tinted by its own status" precedent
-    // .review-confirmed already establishes for a confirmed Review row
-    // (background: var(--stat-green-bg)), just generalized here to every
-    // status rather than one fixed color for one fixed state.
-    return `<div class="l1-milestone-row" style="background:var(--stat-${effectiveStatus}-bg)">
+    // The whole row is tinted — originally by the milestone's own effective
+    // status (an explicit user request, "highlight the L1 milestone row
+    // according to status"), later reversed to a pure date-vs-Due
+    // comparison instead (see computedL1MilestoneDelayColor()'s own
+    // comment for the full "determined by fact" request this shipped
+    // against). rowColor falls back to effectiveStatus — the same value
+    // statusHtml's own badge colors itself with — whenever there's nothing
+    // to compute a delay color from (no manual Due set, or nothing linked
+    // with a date yet), so an unlinked or still-undated milestone's row
+    // keeps reading its own plain status color rather than going tint-less.
+    // Reuses the exact same --stat-*-bg token the badge and every other
+    // status-colored surface in this app already read from, the same "row
+    // tinted by its own status" precedent .review-confirmed already
+    // establishes for a confirmed Review row (background:
+    // var(--stat-green-bg)).
+    const rowColor = computedL1MilestoneDelayColor(m.id, m.dueDate) || effectiveStatus;
+    return `<div class="l1-milestone-row" style="background:var(--stat-${rowColor}-bg)">
         ${chevronHtml}
         ${nameHtml}
         ${dueHtml}

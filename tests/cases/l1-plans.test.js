@@ -415,12 +415,15 @@ test('l1MilestoneRowsHtml renders the Actual cell between Due and Status, blank 
 });
 
 // A user-reported request ("highlight the L1 milestone row according to
-// status") — the whole row is tinted by the milestone's own effective
-// status (computed/rolled-up when linked, its own manual value otherwise —
-// the same value the row's own status badge already colors itself with),
-// reusing the identical --stat-*-bg token the badge and .review-confirmed's
-// own row-tint precedent already read from.
-test('l1MilestoneRowsHtml tints the row background by the milestone\'s own manual status when unlinked', function () {
+// status") first tinted the whole row by the milestone's own effective
+// status (computed/rolled-up when linked, its own manual value otherwise).
+// A later, explicit user request reversed the row's own background to a
+// pure date-vs-Due fact check instead (computedL1MilestoneDelayColor(),
+// tested separately above) — effective status is now only ever the row's
+// *fallback* tint, used whenever there's nothing to compute a delay color
+// from (no manual Due set, or nothing linked with a date yet, both true in
+// these two fixtures below since neither one ever sets m.dueDate).
+test('l1MilestoneRowsHtml falls back to the milestone\'s own manual status color when unlinked and there\'s no Due to compare against', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   m.status = 'red';
@@ -428,7 +431,7 @@ test('l1MilestoneRowsHtml tints the row background by the milestone\'s own manua
   assertIncludes(html, 'class="l1-milestone-row" style="background:var(--stat-red-bg)"');
 });
 
-test('l1MilestoneRowsHtml tints the row by the *computed* rolled-up status, not the milestone\'s own stale manual one, once it\'s linked', function () {
+test('l1MilestoneRowsHtml falls back to the *computed* rolled-up status, not the milestone\'s own stale manual one, once it\'s linked but still has no Due', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   m.status = 'green'; // stale manual value — should be overridden by the computed rollup below
@@ -437,6 +440,18 @@ test('l1MilestoneRowsHtml tints the row by the *computed* rolled-up status, not 
   item.milestones.push(wm);
   const html = l1MilestoneRowsHtml(p);
   assertIncludes(html, 'class="l1-milestone-row" style="background:var(--stat-red-bg)"');
+});
+
+test('l1MilestoneRowsHtml tints the row by computedL1MilestoneDelayColor once the L1 milestone has its own Due set, overriding effective status entirely', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-03-15';
+  m.status = 'red'; // manual status says red — the date-based delay color must win instead
+  const item = addItem({ name: 'Finance Deliverable' });
+  const wm = { id: genId(), name: 'On time', dueDate: '2027-03-01', actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  item.milestones.push(wm);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'class="l1-milestone-row" style="background:var(--stat-green-bg)"');
 });
 
 test('renderL1Plans() uses its own .l1-plans-list container, not the reused .journeys-list', function () {
@@ -896,6 +911,90 @@ test('computedL1MilestoneActualDate excludes a notApplicable linked milestone\'s
   const wm2 = { id: genId(), name: 'Skipped', dueDate: '2027-12-31', actualDate: '2027-12-31', status: 'complete', notApplicable: true, updatedAt: 0, l1MilestoneIds: [m.id] };
   item.milestones.push(wm1, wm2);
   assertEqual(computedL1MilestoneActualDate(m.id), '2027-01-31', 'wm1\'s own later Due wins; the notApplicable milestone\'s dates must not count at all');
+});
+
+// The L1 milestone row's own background color — a later, explicit user
+// request reversing the row-tint feature above from a status rollup to a
+// pure "how late are the linked dates against my own Due" fact check
+// ("Color should be determined by fact, if the due date or actual date of
+// all linked scope item milestones is matching with the target date of the
+// l1 milestones. If all dates are before or on the date, set to green. if
+// its within 1 month after the date, set to amber, if its longer, set to
+// red"). computedL1MilestoneStatus() itself is untouched — it still drives
+// the row's own status badge — only l1MilestoneRowsHtml()'s own background
+// now reads from this function instead.
+
+test('computedL1MilestoneDelayColor returns null when the L1 milestone has no manual Due date set, even with linked dates that would otherwise be late', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Late', dueDate: '2027-01-01', actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  item.milestones.push(wm);
+  assertEqual(m.dueDate, null, 'sanity check — a freshly quick-added L1 milestone starts with no Due');
+  assertEqual(computedL1MilestoneDelayColor(m.id, m.dueDate), null);
+});
+
+test('computedL1MilestoneDelayColor returns null when nothing is linked, or nothing linked has a date yet', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-01-01';
+  assertEqual(computedL1MilestoneDelayColor(m.id, m.dueDate), null);
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'No dates yet', dueDate: null, actualDate: null, status: 'pending', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  item.milestones.push(wm);
+  assertEqual(computedL1MilestoneDelayColor(m.id, m.dueDate), null);
+});
+
+test('computedL1MilestoneDelayColor is green when every linked milestone\'s Due-or-Actual lands on or before the L1 milestone\'s own Due', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-03-15';
+  const item = addItem({ name: 'Deliverable' });
+  const wm1 = { id: genId(), name: 'Early', dueDate: '2027-02-01', actualDate: '2027-01-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  const wm2 = { id: genId(), name: 'On the day', dueDate: '2027-03-15', actualDate: null, status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  item.milestones.push(wm1, wm2);
+  assertEqual(computedL1MilestoneDelayColor(m.id, m.dueDate), 'green');
+});
+
+test('computedL1MilestoneDelayColor is amber when the latest linked date is later than the L1 milestone\'s own Due but still within a month', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-03-15';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Slipped a bit', dueDate: '2027-03-20', actualDate: '2027-04-10', status: 'amber', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  item.milestones.push(wm);
+  assertEqual(computedL1MilestoneDelayColor(m.id, m.dueDate), 'amber', 'the latest linked date (2027-04-10) is after the Due (2027-03-15) but still within one calendar month of it (up to 2027-04-15)');
+});
+
+test('computedL1MilestoneDelayColor is red once the latest linked date is more than a month after the L1 milestone\'s own Due', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-03-15';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Badly slipped', dueDate: '2027-03-20', actualDate: '2027-04-16', status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  item.milestones.push(wm);
+  assertEqual(computedL1MilestoneDelayColor(m.id, m.dueDate), 'red');
+});
+
+test('computedL1MilestoneDelayColor prefers a linked milestone\'s own Actual over its Due whenever Actual lands later, same as computedL1MilestoneActualDate', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-01-01';
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Finished very late', dueDate: '2027-01-05', actualDate: '2027-05-01', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  item.milestones.push(wm);
+  assertEqual(computedL1MilestoneDelayColor(m.id, m.dueDate), 'red', 'the Actual (2027-05-01), not the earlier Due (2027-01-05), must be what\'s compared');
+});
+
+test('computedL1MilestoneDelayColor excludes a notApplicable linked milestone\'s dates entirely', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.dueDate = '2027-01-31';
+  const item = addItem({ name: 'Deliverable' });
+  const wm1 = { id: genId(), name: 'On time', dueDate: '2027-01-31', actualDate: '2027-01-20', status: 'complete', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  const wm2 = { id: genId(), name: 'Skipped', dueDate: '2027-12-31', actualDate: '2027-12-31', status: 'complete', notApplicable: true, updatedAt: 0, l1MilestoneIds: [m.id] };
+  item.milestones.push(wm1, wm2);
+  assertEqual(computedL1MilestoneDelayColor(m.id, m.dueDate), 'green', 'the notApplicable milestone\'s far-future dates must not count at all');
 });
 
 test('linking a workstream milestone to an L1 milestone leaves its own Due exactly as manually editable as before — an explicit user reversal of a brief earlier rollup attempt', function () {
