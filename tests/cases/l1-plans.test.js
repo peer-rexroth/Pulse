@@ -856,7 +856,14 @@ test('l1MilestoneRowsHtml omits the drag/drop wiring entirely below Editor', fun
 // the row's own inline pill already uses, so there's only one real
 // implementation of what a Due edit does.
 
-test('openL1MilestoneModal populates the title and both fields from the milestone\'s own current values', function () {
+// The Reporting Level field is a real <select>, not free text — the JXA
+// harness's own fake <select> elements don't parse innerHTML into .value
+// the way a real browser does (see "Tests" in CLAUDE.md), so — matching
+// the exact pattern items.test.js's own "preselects the given workstream"
+// test already established — these check the rendered innerHTML string for
+// a `selected` option rather than reading .value back.
+
+test('openL1MilestoneModal populates the title and Due from the milestone\'s own current values, and preselects its current Reporting Level in the dropdown', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id, 'Kickoff');
   m.dueDate = '2027-03-01';
@@ -864,16 +871,42 @@ test('openL1MilestoneModal populates the title and both fields from the mileston
   openL1MilestoneModal(p.id, m.id);
   assertEqual(document.getElementById('l1MilestoneModalTitle').textContent, 'Kickoff');
   assertEqual(document.getElementById('l1MilestoneDueInput').value, '2027-03-01');
-  assertEqual(document.getElementById('l1MilestoneReportingLevelInput').value, 'Programme');
+  assertIncludes(document.getElementById('l1MilestoneReportingLevelInput').innerHTML, '<option value="Programme" selected>Programme</option>');
   assertTrue(document.getElementById('l1MilestoneModalBg').classList.contains('open'));
 });
 
-test('openL1MilestoneModal shows blank fields for a milestone with no Due/Reporting Level set yet', function () {
+test('openL1MilestoneModal offers every admin-managed Reporting Level as an option, in order', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  openL1MilestoneModal(p.id, m.id);
+  const html = document.getElementById('l1MilestoneReportingLevelInput').innerHTML;
+  reportingLevels.forEach(l => assertIncludes(html, `<option value="${l}"`));
+});
+
+test('openL1MilestoneModal shows a blank Due and selects the blank "—" Reporting Level option for a milestone with neither set yet', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id, 'Kickoff');
   openL1MilestoneModal(p.id, m.id);
   assertEqual(document.getElementById('l1MilestoneDueInput').value, '');
-  assertEqual(document.getElementById('l1MilestoneReportingLevelInput').value, '');
+  assertIncludes(document.getElementById('l1MilestoneReportingLevelInput').innerHTML, '<option value="" selected>—</option>');
+});
+
+test('openL1MilestoneModal appends a milestone\'s own Reporting Level as an extra, labeled option when it isn\'t in the admin-managed list at all', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  m.reportingLevel = 'Some Legacy Value'; // e.g. imported before this field became a fixed list
+  openL1MilestoneModal(p.id, m.id);
+  const html = document.getElementById('l1MilestoneReportingLevelInput').innerHTML;
+  assertIncludes(html, '<option value="Some Legacy Value" selected>Some Legacy Value (not in the current list)</option>', 'kept selected and visibly flagged, not silently dropped or changed');
+});
+
+test('openL1MilestoneModal matches a milestone\'s own Reporting Level case-insensitively against the admin-managed list, so a mere case difference doesn\'t count as an orphan', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  m.reportingLevel = 'programme'; // reportingLevels itself holds "Programme"
+  openL1MilestoneModal(p.id, m.id);
+  const html = document.getElementById('l1MilestoneReportingLevelInput').innerHTML;
+  assertNotIncludes(html, 'not in the current list');
 });
 
 test('openL1MilestoneModal is blocked below Editor', function () {
@@ -896,12 +929,12 @@ test('saveL1MilestoneModal writes both Due and Reporting Level back onto the rea
   assertFalse(document.getElementById('l1MilestoneModalBg').classList.contains('open'));
 });
 
-test('saveL1MilestoneModal trims Reporting Level and stores an empty one as null, not an empty string', function () {
+test('saveL1MilestoneModal stores the blank "—" selection as null, not an empty string', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id, 'Kickoff');
-  m.reportingLevel = 'Old value';
+  m.reportingLevel = 'Programme';
   openL1MilestoneModal(p.id, m.id);
-  document.getElementById('l1MilestoneReportingLevelInput').value = '   ';
+  document.getElementById('l1MilestoneReportingLevelInput').value = '';
   saveL1MilestoneModal();
   assertEqual(m.reportingLevel, null);
 });
@@ -2061,12 +2094,22 @@ test('triggerL1PlanImport is blocked below Editor', function () {
 // Delayed list surfacing every place this app's own delayed-color coding
 // is currently firing.
 
-test('l1PlansTab defaults to "plans", and renderL1Plans() always renders the Plans/Dashboard sub-tab pill', function () {
+// The Plans/Dashboard/Unlinked sub-tab pills live in their own static
+// #l1PlansSubTabsToolbar now, not inline inside renderL1Plans()'s own
+// output (see that function's own comment for why — a search toolbar,
+// added later, needed to render below the tabs, not above them). render()
+// itself toggles each tab button's own .active class directly, the
+// identical pattern the Dashboard sub-tabs already use — so these tests
+// call render() (via setL1PlansTab(), which already calls it), not just
+// renderL1Plans(), and check the static buttons rather than #l1PlansBody's
+// own innerHTML for tab-pill markup.
+
+test('l1PlansTab defaults to "plans", and render() shows the Plans/Dashboard/Unlinked sub-tab pill', function () {
   setMode('l1plans');
-  renderL1Plans();
+  render();
+  assertTrue(document.getElementById('tabL1PlansPlans').classList.contains('active'));
+  assertFalse(document.getElementById('tabL1PlansDashboard').classList.contains('active'));
   const html = document.getElementById('l1PlansBody').innerHTML;
-  assertIncludes(html, 'setL1PlansTab(\'plans\')');
-  assertIncludes(html, 'setL1PlansTab(\'dashboard\')');
   assertIncludes(html, 'No L1 Plans yet.', 'defaults to the Plans tab\'s own content');
 });
 
@@ -2075,12 +2118,14 @@ test('setL1PlansTab switches which tab is active and which content renders', fun
   setMode('l1plans');
   setL1PlansTab('dashboard');
   assertEqual(l1PlansTab, 'dashboard');
+  assertTrue(document.getElementById('tabL1PlansDashboard').classList.contains('active'));
   let html = document.getElementById('l1PlansBody').innerHTML;
-  assertIncludes(html, 'view-tab active');
   assertIncludes(html, 'L1 Plan Status');
   assertNotIncludes(html, 'l1-plans-list', 'the Plans tab\'s own list container should not render on the Dashboard tab');
   setL1PlansTab('plans');
   assertEqual(l1PlansTab, 'plans');
+  assertTrue(document.getElementById('tabL1PlansPlans').classList.contains('active'));
+  assertFalse(document.getElementById('tabL1PlansDashboard').classList.contains('active'));
   html = document.getElementById('l1PlansBody').innerHTML;
   assertIncludes(html, 'l1-plans-list');
   assertIncludes(html, esc('Only plan'));
@@ -2421,28 +2466,27 @@ test('renderL1UnlinkedItemsHtml shows the same empty-state message when there ar
   assertIncludes(renderL1UnlinkedItemsHtml(), 'Every scope item milestone is linked to an L1 milestone.');
 });
 
-test('renderL1Plans() adds a third "Unlinked" sub-tab alongside Plans/Dashboard, and setL1PlansTab(\'unlinked\') switches to it', function () {
+test('setL1PlansTab(\'unlinked\') switches the third sub-tab (alongside Plans/Dashboard) active and renders its own content', function () {
   mode = 'l1plans';
   setL1PlansTab('plans');
   render();
-  let html = document.getElementById('l1PlansBody').innerHTML;
-  assertIncludes(html, `onclick="setL1PlansTab('unlinked')"`);
+  assertFalse(document.getElementById('tabL1PlansUnlinked').classList.contains('active'));
   const it = addItem({ name: 'Untraced item' });
   it.milestones.push(unlinkedMilestoneFixture());
   setL1PlansTab('unlinked');
   assertEqual(l1PlansTab, 'unlinked');
-  html = document.getElementById('l1PlansBody').innerHTML;
+  const html = document.getElementById('l1PlansBody').innerHTML;
   assertIncludes(html, 'Not Linked to an L1 Milestone');
   assertIncludes(html, 'Untraced item');
   assertNotIncludes(html, 'No L1 Plans yet.', 'the Plans tab\'s own empty-state text should not leak into the Unlinked tab');
 });
 
-test('renderL1Plans() marks the Unlinked tab button active only while l1PlansTab is \'unlinked\'', function () {
+test('render() marks the Unlinked tab button active only while l1PlansTab is \'unlinked\'', function () {
   mode = 'l1plans';
   setL1PlansTab('unlinked');
   render();
-  const html = document.getElementById('l1PlansBody').innerHTML;
-  assertIncludes(html, `<button class="view-tab active" onclick="setL1PlansTab('unlinked')">`);
+  assertTrue(document.getElementById('tabL1PlansUnlinked').classList.contains('active'));
+  assertFalse(document.getElementById('tabL1PlansPlans').classList.contains('active'));
 });
 
 test('Import/Export/expand-all only render on the Plans tab, not on Unlinked either', function () {
@@ -2606,4 +2650,199 @@ test('a milestone linked via toggleL1PickMilestoneLink drops off the Unlinked ta
   openL1PickModal(it.id, m.id);
   toggleL1PickMilestoneLink(p.id, l1m.id, true);
   assertEqual(unlinkedMilestones().length, 0);
+});
+
+// ---------- reportingLevels (the fixed vocabulary, admin-managed) ----------
+// An explicit user request ("Reporting Level should be a fixed selection...
+// editable as admin in settings"), reversing Reporting Level's own brief
+// run as free text. Mirrors `categories`' own data-model shape closely —
+// seeded on a fresh programme, coerced/reseeded-if-empty in normalizeData(),
+// synced via buildIndexPayload()/recombineSyncData(), merged additively —
+// just without categories' own id/order/milestones structure, since a
+// Reporting Level is nothing more than a plain string.
+
+test('seedDefaults seeds reportingLevels with the three defaults', function () {
+  seedDefaults();
+  assertDeepEqual(reportingLevels, DEFAULT_REPORTING_LEVELS);
+});
+
+test('normalizeData trims, drops blank entries, and de-duplicates reportingLevels case-insensitively (first occurrence wins)', function () {
+  reportingLevels = ['  Programme  ', '', 'programme', 'Board', null, 'Board'];
+  normalizeData();
+  assertDeepEqual(reportingLevels, ['Programme', 'Board']);
+});
+
+test('normalizeData reseeds the default reportingLevels once the list is genuinely empty', function () {
+  reportingLevels = [];
+  normalizeData();
+  assertDeepEqual(reportingLevels, DEFAULT_REPORTING_LEVELS);
+});
+
+test('normalizeData coerces a non-array reportingLevels (e.g. a pre-this-feature save) to the seeded defaults', function () {
+  reportingLevels = undefined;
+  normalizeData();
+  assertDeepEqual(reportingLevels, DEFAULT_REPORTING_LEVELS);
+});
+
+test('buildIndexPayload includes reportingLevels, and recombineSyncData reads it back', function () {
+  reportingLevels = ['Programme', 'Board'];
+  const payload = buildIndexPayload();
+  assertDeepEqual(payload.reportingLevels, ['Programme', 'Board']);
+  const recombined = recombineSyncData(payload, {});
+  assertDeepEqual(recombined.reportingLevels, ['Programme', 'Board']);
+});
+
+test('mergeData adds an incoming reportingLevel this device doesn\'t have yet, silently, and reports changed:true', function () {
+  reportingLevels = ['Programme'];
+  const { changed } = mergeData({ workstreams: [], items: [], reportingLevels: ['Programme', 'Board'] });
+  assertDeepEqual(reportingLevels, ['Programme', 'Board']);
+  assertTrue(changed);
+});
+
+test('mergeData does not duplicate a reportingLevel already present, matched case-insensitively', function () {
+  reportingLevels = ['Programme'];
+  const { changed } = mergeData({ workstreams: [], items: [], reportingLevels: ['programme'] });
+  assertDeepEqual(reportingLevels, ['Programme']);
+  assertFalse(changed);
+});
+
+// ---------- Managing reportingLevels — Admin-only (reportingLevelsModalBg) ----------
+
+test('reportingLevelsSectionHtml is blank below Admin, and lists the current levels at Admin', function () {
+  userRole = 'editor';
+  assertEqual(reportingLevelsSectionHtml(), '');
+  userRole = 'admin';
+  const html = reportingLevelsSectionHtml();
+  assertIncludes(html, 'Reporting Levels');
+  DEFAULT_REPORTING_LEVELS.forEach(l => assertIncludes(html, esc(l)));
+});
+
+test('openReportingLevelsModal copies reportingLevels into a detached working array and opens the modal, Admin-only', function () {
+  reportingLevels = ['Programme', 'Board'];
+  openReportingLevelsModal();
+  assertDeepEqual(editingReportingLevels, ['Programme', 'Board']);
+  assertTrue(document.getElementById('reportingLevelsModalBg').classList.contains('open'));
+});
+
+test('openReportingLevelsModal is blocked below Admin', function () {
+  userRole = 'editor';
+  openReportingLevelsModal();
+  assertFalse(document.getElementById('reportingLevelsModalBg').classList.contains('open'));
+});
+
+test('addReportingLevelRow/removeReportingLevelRow edit the working array only, not the real reportingLevels, until Save', function () {
+  reportingLevels = ['Programme'];
+  openReportingLevelsModal();
+  addReportingLevelRow();
+  assertEqual(editingReportingLevels.length, 2);
+  assertDeepEqual(reportingLevels, ['Programme'], 'the real list must be untouched until saveReportingLevelsModal()');
+  removeReportingLevelRow(0);
+  assertDeepEqual(editingReportingLevels, ['']);
+});
+
+test('saveReportingLevelsModal commits the cleaned working array, trimmed/deduped, and closes the modal', function () {
+  reportingLevels = ['Programme'];
+  openReportingLevelsModal();
+  editingReportingLevels = ['  Board  ', 'board', 'ExCo', ''];
+  saveReportingLevelsModal();
+  assertDeepEqual(reportingLevels, ['Board', 'ExCo']);
+  assertFalse(document.getElementById('reportingLevelsModalBg').classList.contains('open'));
+});
+
+test('saveReportingLevelsModal refuses to save down to zero entries, leaving the real list untouched', function () {
+  reportingLevels = ['Programme'];
+  openReportingLevelsModal();
+  editingReportingLevels = ['', '   '];
+  saveReportingLevelsModal();
+  assertDeepEqual(reportingLevels, ['Programme']);
+  assertTrue(document.getElementById('reportingLevelsModalBg').classList.contains('open'), 'must stay open — nothing was actually saved');
+});
+
+test('saveReportingLevelsModal is blocked below Admin', function () {
+  reportingLevels = ['Programme'];
+  openReportingLevelsModal();
+  editingReportingLevels = ['Board'];
+  userRole = 'editor';
+  saveReportingLevelsModal();
+  assertDeepEqual(reportingLevels, ['Programme']);
+});
+
+// ---------- L1 Plans search + Reporting Level filter ----------
+// An explicit user request ("add search/filter options on L1... instead of
+// depencies, provide the different report levels a filter... multi select,
+// like in workstream planning"). matchesL1PlansSearch()/
+// matchesL1PlansReportingLevelFilter() mirror matchesPlanningSearch()/
+// matchesPlanningStatusFilter() almost exactly — see their own comments.
+
+test('matchesL1PlansSearch matches an L1 Plan\'s own name, case-insensitively, and passes everything when the query is empty', function () {
+  const p = addL1Plan('Digital Transformation');
+  l1PlansSearchQuery = '';
+  assertTrue(matchesL1PlansSearch(p));
+  l1PlansSearchQuery = 'digital';
+  assertTrue(matchesL1PlansSearch(p));
+  l1PlansSearchQuery = 'finance';
+  assertFalse(matchesL1PlansSearch(p));
+});
+
+test('matchesL1PlansReportingLevelFilter passes every plan when no chip is selected, and otherwise only a plan with a matching milestone', function () {
+  const p1 = addL1Plan('Has Programme');
+  addL1Milestone(p1.id).reportingLevel = 'Programme';
+  const p2 = addL1Plan('Has Board');
+  addL1Milestone(p2.id).reportingLevel = 'Board';
+  const p3 = addL1Plan('No level set');
+  addL1Milestone(p3.id);
+  l1PlansReportingLevelFilters = new Set();
+  assertTrue(matchesL1PlansReportingLevelFilter(p1) && matchesL1PlansReportingLevelFilter(p2) && matchesL1PlansReportingLevelFilter(p3));
+  l1PlansReportingLevelFilters = new Set(['Programme']);
+  assertTrue(matchesL1PlansReportingLevelFilter(p1));
+  assertFalse(matchesL1PlansReportingLevelFilter(p2));
+  assertFalse(matchesL1PlansReportingLevelFilter(p3));
+});
+
+test('matchesL1PlansReportingLevelFilter is a genuine multi-select — a plan matches if any selected level matches any of its milestones', function () {
+  const p = addL1Plan();
+  addL1Milestone(p.id).reportingLevel = 'Board';
+  l1PlansReportingLevelFilters = new Set(['Programme', 'Board']);
+  assertTrue(matchesL1PlansReportingLevelFilter(p));
+});
+
+test('setL1PlansReportingLevelFilter toggles by array index, not raw value — safe against a level name containing a quote', function () {
+  reportingLevels = ["Steering Co'ee"];
+  l1PlansReportingLevelFilters = new Set();
+  setL1PlansReportingLevelFilter(0);
+  assertTrue(l1PlansReportingLevelFilters.has("Steering Co'ee"));
+  setL1PlansReportingLevelFilter(0);
+  assertFalse(l1PlansReportingLevelFilters.has("Steering Co'ee"));
+});
+
+test('renderL1Plans narrows the list by both the search box and the Reporting Level chips together', function () {
+  const p1 = addL1Plan('Digital Transformation');
+  addL1Milestone(p1.id).reportingLevel = 'Programme';
+  const p2 = addL1Plan('Finance Overhaul');
+  addL1Milestone(p2.id).reportingLevel = 'Programme';
+  l1PlansSearchQuery = 'digital';
+  l1PlansReportingLevelFilters = new Set(['Programme']);
+  setMode('l1plans');
+  renderL1Plans();
+  const html = document.getElementById('l1PlansBody').innerHTML;
+  assertIncludes(html, 'Digital Transformation');
+  assertNotIncludes(html, 'Finance Overhaul');
+});
+
+test('renderL1Plans shows a distinct "no match" message once filters narrow a real, non-empty list down to nothing', function () {
+  addL1Plan('Digital Transformation');
+  l1PlansSearchQuery = 'nothing matches this';
+  setMode('l1plans');
+  renderL1Plans();
+  const html = document.getElementById('l1PlansBody').innerHTML;
+  assertIncludes(html, 'No L1 Plans match');
+  assertNotIncludes(html, 'No L1 Plans yet.');
+});
+
+test('l1PlansExpandAllIds only includes plans currently passing the search/filter, not every L1 Plan', function () {
+  const p1 = addL1Plan('Digital Transformation');
+  const p2 = addL1Plan('Finance Overhaul');
+  l1PlansSearchQuery = 'digital';
+  const ids = l1PlansExpandAllIds();
+  assertDeepEqual(ids, [p1.id]);
 });

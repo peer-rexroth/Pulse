@@ -2040,6 +2040,42 @@
 
 <div class="main" id="adminBody" style="display:none"></div>
 
+<!-- L1 Plans' own sub-tab pills (Plans/Dashboard/Unlinked) — moved out to
+     their own static element (mirroring dashboardModeToolbar's own
+     Overview/Dependencies pills) once the search toolbar just below needed
+     to sit BELOW the tabs, not above them — renderL1Plans() used to build
+     this same markup inline as part of its own innerHTML, which put it
+     after (not before) a static search toolbar placed ahead of #l1PlansBody
+     in source order. render()'s own mode==='l1plans' handling toggles the
+     .active class on each button directly (see l1PlansTab's own comment),
+     the identical toggle-not-regenerate pattern the Dashboard tabs already
+     use. -->
+<div class="planning-toolbar" id="l1PlansSubTabsToolbar" style="display:none">
+  <div class="view-tabs">
+    <button class="view-tab" id="tabL1PlansPlans" onclick="setL1PlansTab('plans')"><i class="fa-solid fa-list"></i> Plans</button>
+    <button class="view-tab" id="tabL1PlansDashboard" onclick="setL1PlansTab('dashboard')"><i class="fa-solid fa-gauge-high"></i> Dashboard</button>
+    <button class="view-tab" id="tabL1PlansUnlinked" onclick="setL1PlansTab('unlinked')"><i class="fa-solid fa-link-slash"></i> Unlinked</button>
+  </div>
+</div>
+
+<!-- L1 Plans' own search box + Reporting Level quick-filter chips — an
+     explicit user request ("add search/filter options on L1. like on the
+     screenshot. instead of depencies, provide the different report levels
+     a filter"). Static, outside #l1PlansBody, the identical reason
+     #planningSearchToolbar sits outside #main — so a keystroke's own
+     re-render of renderL1Plans() never steals focus from the input.
+     Shown only for the Plans sub-tab (see render()'s own toolbar-visibility
+     block) — Dashboard/Unlinked have no flat plan list to search/filter
+     this way. -->
+<div class="planning-toolbar" id="l1PlansSearchToolbar" style="display:none">
+  <div class="search-box">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <input type="text" id="l1PlansSearchInput" placeholder="Search L1 Plans by name..." oninput="setL1PlansSearch(this.value)">
+    <button type="button" class="search-clear-btn" id="l1PlansSearchClearBtn" onclick="clearL1PlansSearch()" title="Clear search" style="display:none"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="status-filter-chips" id="l1PlansReportingLevelChips"></div>
+</div>
+
 <!-- L1 Plans mode — sidebar-less, same shape as adminBody, for the same
      reason: not workstream-scoped, so the shared workstream-filter sidebar
      has nothing to filter by here (see "L1 Plans" in CLAUDE.md). -->
@@ -2317,7 +2353,7 @@
     </div>
     <div class="field">
       <label>Reporting Level</label>
-      <input type="text" id="l1MilestoneReportingLevelInput" placeholder="e.g. Programme">
+      <select id="l1MilestoneReportingLevelInput"></select>
     </div>
     <div class="modal-actions" style="justify-content:flex-end">
       <button class="btn" onclick="closeL1MilestoneModal()">Cancel</button>
@@ -2399,6 +2435,27 @@
     <div class="modal-actions" style="justify-content:flex-end">
       <button class="btn" onclick="closeRolePasswordsModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveRolePasswords()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reporting Levels modal — the fixed vocabulary an L1 milestone's own
+     Reporting Level is picked from, Admin-only to manage — an explicit
+     user request ("Reporting Level should be a fixed selection... editable
+     as admin in settings"). See reportingLevelsSectionHtml()/
+     openReportingLevelsModal() in the inline script. -->
+<div class="modal-bg" id="reportingLevelsModalBg">
+  <div class="modal">
+    <h3>Reporting Levels</h3>
+    <p>The fixed list an L1 milestone's own Reporting Level is picked from, across every L1 Plan.</p>
+    <div class="field">
+      <label>Levels</label>
+      <div id="reportingLevelsEditor"></div>
+      <button class="btn btn-sm" style="margin-top:8px" onclick="addReportingLevelRow()"><i class="fa-solid fa-plus"></i> Add level</button>
+    </div>
+    <div class="modal-actions" style="justify-content:flex-end">
+      <button class="btn" onclick="closeReportingLevelsModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveReportingLevelsModal()">Save</button>
     </div>
   </div>
 </div>
@@ -2629,7 +2686,7 @@ const MAX_BACKUPS = 7;
 // same "guardrail, not a gate" stance RBAC and everything else in this app
 // already takes — there's no server here to actually push an update, so the
 // most this can ever do is tell a device it's behind, never force it current.
-const APP_VERSION = 10;
+const APP_VERSION = 11;
 // Hand-updated alongside APP_VERSION, same manual-discipline convention —
 // purely informational (the About modal's own "Version X · <date>" line),
 // never compared/merged/read by anything else, unlike APP_VERSION itself.
@@ -2727,6 +2784,17 @@ const DEFAULT_CATEGORIES = [
 // tests only ever cared about "the first/default category's own milestone
 // template", back when Development was the only one seeded.
 const DEFAULT_CATEGORY_MILESTONES = DEFAULT_CATEGORIES[0].milestones;
+// An L1 milestone's own Reporting Level — originally a free-form string set
+// only by importing a file, then given a real hand-set UI via the edit
+// modal (see openL1MilestoneModal()) — was reversed a second time into a
+// genuine fixed vocabulary on an explicit user request ("Reporting Level
+// should be a fixed selection... editable as admin in settings"). These
+// three are the starting set every fresh programme gets; an Admin can add,
+// rename, or remove entries afterward (reportingLevelsSectionHtml()/
+// openReportingLevelsModal(), Settings/Admin mode) the same way
+// DEFAULT_CATEGORIES only ever seeds a programme's starting categories, not
+// a fixed, permanent list.
+const DEFAULT_REPORTING_LEVELS = ['Programme', 'Management Reporting', 'Executive Committee (ExCo)'];
 const DAY_MS = 86400000;
 const REVIEW_STALE_DAYS = 30;
 const MODES = ['planning', 'review', 'dashboard', 'admin', 'l1plans'];
@@ -2791,6 +2859,11 @@ let programme = { name: 'New Programme' };
 let workstreams = [];
 let items = [];
 let categories = [];
+// The admin-managed fixed vocabulary an L1 milestone's own Reporting Level
+// is picked from (see DEFAULT_REPORTING_LEVELS' own comment) — a flat array
+// of plain strings, no ids/order/milestones the way a category has, since
+// there's genuinely nothing else to attach to one.
+let reportingLevels = [];
 let reviewCycles = [];
 let mode = 'planning'; // 'planning' | 'review' | 'dashboard' | 'admin' | 'l1plans' — see MODES
 let theme = 'light';
@@ -2918,6 +2991,10 @@ let editingItemType = 'scope';
 let editingMilestones = [];
 let editingCategoryId = null;
 let editingCategoryMilestones = [];
+// The reportingLevelsModalBg's own detached working copy — plain strings,
+// the same shape editingCategoryMilestones has, not committed to the real
+// reportingLevels array until Save. See openReportingLevelsModal() below.
+let editingReportingLevels = [];
 // The category's milestone template as it was when the modal opened — diffed
 // against editingCategoryMilestones at Save time to sync additions/removals
 // out to items already using this category. See "Categories (Admin mode)"
@@ -3057,6 +3134,21 @@ let dashboardTab = 'overview';
 // not-workstream-scoped ones). UI-only, not persisted, same shape as
 // dashboardTab/reviewTab.
 let l1PlansTab = 'plans';
+// Search + Reporting Level filter for the L1 Plans "Plans" sub-tab — an
+// explicit user request ("add search/filter options on L1. like on the
+// screenshot. instead of depencies, provide the different report levels a
+// filter... multi select, like in workstream planning"), mirroring
+// planningSearchQuery/planningStatusFilters above almost exactly: a plain
+// case-insensitive substring match against an L1 Plan's own name (see
+// matchesPlanningSearch()'s own "quick find one thing" scope), plus a
+// multi-select Set of Reporting Level strings a plan passes if *any* of its
+// own milestones carries one of the selected levels (matchesPlanningStatusFilter()'s
+// own "matches if any selected chip matches" shape) — there's no
+// Dependencies-style single boolean equivalent here, since Reporting Level
+// is itself a value to pick among, not an on/off flag. Both UI-only, not
+// persisted, reset on reload same as their Planning-mode counterparts.
+let l1PlansSearchQuery = '';
+let l1PlansReportingLevelFilters = new Set();
 const HISTORY_PAGE_SIZE = 5;
 
 // Deletion tombstones: {id, deletedAt}[] — records "this id used to exist and
@@ -3106,6 +3198,7 @@ function load() {
     workstreams = raw.workstreams || [];
     items = raw.items || [];
     categories = raw.categories || [];
+    reportingLevels = raw.reportingLevels || [];
     reviewCycles = raw.reviewCycles || [];
     mode = raw.mode || 'planning';
     theme = raw.theme || 'light';
@@ -3148,7 +3241,7 @@ function save() {
   // back down just by saving its own, older-build edits.
   programme.lastSeenAppVersion = Math.max(programme.lastSeenAppVersion || 0, APP_VERSION);
   const data = {
-    programme, workstreams, items, categories, reviewCycles, mode, theme, colorScheme,
+    programme, workstreams, items, categories, reportingLevels, reviewCycles, mode, theme, colorScheme,
     filterWorkstreamId, sidebarWidth, uiScale, deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds,
     deletedActionLogIds, deletedDecisionLogIds, deletedReviewCycleIds
   };
@@ -3199,6 +3292,7 @@ function seedDefaults() {
   // category is chosen (see applyScopeCategory()).
   categories = DEFAULT_CATEGORIES.map((c, i) => ({ id: genId(), name: c.name, milestones: c.milestones.slice(), order: i, dependency: !!c.dependency }));
   categories.push({ id: genId(), name: 'Pending', milestones: ['Scope Item Confirmed'], pending: true, order: categories.length });
+  reportingLevels = DEFAULT_REPORTING_LEVELS.slice();
   reviewCycles = [];
   deletedWorkstreamIds = [];
   deletedItemIds = [];
@@ -3359,6 +3453,31 @@ function normalizeData() {
   if (!categories.some(c => c.pending)) {
     categories.push({ id: genId(), name: 'Pending', milestones: ['Scope Item Confirmed'], pending: true, order: categories.length });
   }
+
+  // reportingLevels — the fixed vocabulary an L1 milestone's own Reporting
+  // Level is picked from (see DEFAULT_REPORTING_LEVELS' own comment).
+  // Coerced to an array of trimmed, non-empty, de-duplicated (case-
+  // insensitive, first occurrence wins) strings — a hand-edited import or a
+  // pre-this-feature save might have anything from a missing field to a
+  // malformed value here. A programme with none left at all (pre-feature
+  // save, or every entry removed via the admin modal) reseeds the same
+  // DEFAULT_REPORTING_LEVELS a fresh install gets, the identical "always
+  // something to pick from" invariant categories.length === 0 just above
+  // already enforces for categories.
+  if (!Array.isArray(reportingLevels)) reportingLevels = [];
+  {
+    const seen = new Set();
+    reportingLevels = reportingLevels
+      .filter(rl => typeof rl === 'string' && rl.trim())
+      .map(rl => rl.trim())
+      .filter(rl => {
+        const key = rl.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }
+  if (reportingLevels.length === 0) reportingLevels = DEFAULT_REPORTING_LEVELS.slice();
   const catIds = new Set(categories.map(c => c.id));
 
   if (!Array.isArray(reviewCycles)) reviewCycles = [];
@@ -3960,12 +4079,18 @@ function render() {
   document.getElementById('reviewLogSearchToolbar').style.display = (mode === 'review' && (reviewTab === 'actionLog' || reviewTab === 'decisionLog')) ? '' : 'none';
   document.getElementById('dashboardModeToolbar').style.display = mode === 'dashboard' ? '' : 'none';
   document.getElementById('dashboardToolbar').style.display = (mode === 'dashboard' && dashboardTab === 'overview') ? '' : 'none';
+  document.getElementById('l1PlansSubTabsToolbar').style.display = mode === 'l1plans' ? '' : 'none';
+  document.getElementById('tabL1PlansPlans').classList.toggle('active', l1PlansTab === 'plans');
+  document.getElementById('tabL1PlansDashboard').classList.toggle('active', l1PlansTab === 'dashboard');
+  document.getElementById('tabL1PlansUnlinked').classList.toggle('active', l1PlansTab === 'unlinked');
+  document.getElementById('l1PlansSearchToolbar').style.display = (mode === 'l1plans' && l1PlansTab === 'plans') ? '' : 'none';
   document.getElementById('dataMenuImportItem').style.display = hasRole('admin') ? '' : 'none';
   document.getElementById('dataMenuBackupsItem').style.display = hasRole('admin') ? '' : 'none';
   updateSyncConflictsUI();
   updateOutdatedVersionBanner();
   renderPlanningStatusChips();
   renderReviewLogFilterChips();
+  renderL1PlansReportingLevelChips();
   renderSidebar();
   if (mode === 'planning') {
     renderMain();
@@ -4024,6 +4149,58 @@ function setMode(m) {
 // declaration comment above. Same shape as setReviewTab().
 function setDashboardTab(t) { dashboardTab = t; render(); }
 function setL1PlansTab(t) { l1PlansTab = t; render(); }
+function matchesL1PlansSearch(plan) {
+  return !l1PlansSearchQuery || plan.name.toLowerCase().includes(l1PlansSearchQuery);
+}
+// A plan passes once *any* of its own milestones carries a selected
+// Reporting Level — the same "matches if any selected chip matches
+// anywhere within it" shape matchesPlanningStatusFilter() already
+// established for an item's own milestones, just keyed on Reporting Level
+// instead of status.
+function matchesL1PlansReportingLevelFilter(plan) {
+  if (!l1PlansReportingLevelFilters.size) return true;
+  return plan.milestones.some(m => m.reportingLevel && l1PlansReportingLevelFilters.has(m.reportingLevel));
+}
+// Lives in the static #l1PlansSearchToolbar, not #l1PlansBody, for the
+// identical reason setPlanningSearch() lives outside #main — so a
+// keystroke's own re-render of renderL1Plans() never steals focus from the
+// input mid-type.
+function setL1PlansSearch(value) {
+  l1PlansSearchQuery = (value || '').trim().toLowerCase();
+  document.getElementById('l1PlansSearchClearBtn').style.display = l1PlansSearchQuery ? '' : 'none';
+  renderL1Plans();
+}
+function clearL1PlansSearch() {
+  l1PlansSearchQuery = '';
+  document.getElementById('l1PlansSearchInput').value = '';
+  document.getElementById('l1PlansSearchClearBtn').style.display = 'none';
+  renderL1Plans();
+}
+// Rebuilt from the live, admin-managed reportingLevels list (not a fixed
+// constant like STATUSES) — an Admin adding/removing a level in Settings
+// changes what chips show up here on the very next render(), with no
+// separate wiring needed. Called unconditionally from render() alongside
+// renderPlanningStatusChips(), the same "cheap enough, no mode check
+// needed" reasoning that function's own comment already documents.
+// Keyed by array index in the onclick, not the raw level string — the
+// established convention every other onclick in this app already follows
+// (a plain generated id, or an index, never free/admin-entered text
+// embedded directly in a JS string literal), so a level name containing an
+// apostrophe (an Admin could type anything in reportingLevelsModalBg's own
+// free-text rows) can never break out of the handler's own quoting.
+function renderL1PlansReportingLevelChips() {
+  const el = document.getElementById('l1PlansReportingLevelChips');
+  if (!el) return;
+  el.innerHTML = reportingLevels.map((l, idx) => `<button class="status-filter-chip ${l1PlansReportingLevelFilters.has(l) ? 'active' : ''}" style="--chip-color:var(--accent);--chip-bg:var(--accent-bg)" onclick="setL1PlansReportingLevelFilter(${idx})">${esc(l)}</button>`).join('');
+}
+function setL1PlansReportingLevelFilter(idx) {
+  const level = reportingLevels[idx];
+  if (!level) return;
+  if (l1PlansReportingLevelFilters.has(level)) l1PlansReportingLevelFilters.delete(level);
+  else l1PlansReportingLevelFilters.add(level);
+  renderL1PlansReportingLevelChips();
+  renderL1Plans();
+}
 
 function renderSidebar() {
   document.getElementById('addWsBtn').style.display = hasRole('editor') ? '' : 'none';
@@ -4305,8 +4482,13 @@ function renderStatusView(main) {
 // itemRowHtml()'s own isL1Plan comment) — only the expanded milestone list
 // underneath is bespoke (l1MilestoneHeaderHtml()/l1MilestoneRowsHtml()),
 // not the shared milestoneRowsHtml()/--item-grid-cols grid.
+// Scoped to whatever the search box/Reporting Level chips currently leave
+// visible — the same "a click only ever acts on what's actually on screen,
+// never a plan a filter is currently narrowing out" discipline
+// expandAllToggleHtml() already established for Planning's own per-section
+// toggle.
 function l1PlansExpandAllIds() {
-  return allL1Plans().map(p => p.id);
+  return allL1Plans().filter(p => matchesL1PlansSearch(p) && matchesL1PlansReportingLevelFilter(p)).map(p => p.id);
 }
 function l1PlansExpandAllToggleHtml() {
   const ids = l1PlansExpandAllIds();
@@ -4555,30 +4737,47 @@ function renderL1UnlinkedItemsHtml() {
 // tab — managing the list isn't a meaningful action on the Dashboard tab —
 // mirroring how the main Dashboard's own Export-Exec-Summary toolbar is
 // scoped to its Overview tab alone.
+// The Plans/Dashboard/Unlinked sub-tab pills used to be built inline here
+// (the same string-concatenation-per-render style renderPlanningStatusChips()
+// avoids for its own chips) — moved out to the static #l1PlansSubTabsToolbar
+// element instead once the search toolbar (an explicit user request, "add
+// search/filter options on L1") needed to render *below* the tabs, not
+// above them: a static toolbar placed ahead of #l1PlansBody in source order
+// always visually preceded whatever this function put at the very top of
+// its own innerHTML, so keeping the tabs inline here left them stuck below
+// the search box instead of above it. render()'s own mode==='l1plans'
+// handling toggles each tab's .active class directly now (the identical
+// toggle-not-regenerate pattern the Dashboard sub-tabs already use), so
+// this function only ever needs to write its own tab's content.
 function renderL1Plans() {
   const el = document.getElementById('l1PlansBody');
-  const subTabsHtml = `<div class="view-tabs" style="margin-bottom:16px">
-      <button class="view-tab ${l1PlansTab === 'plans' ? 'active' : ''}" onclick="setL1PlansTab('plans')"><i class="fa-solid fa-list"></i> Plans</button>
-      <button class="view-tab ${l1PlansTab === 'dashboard' ? 'active' : ''}" onclick="setL1PlansTab('dashboard')"><i class="fa-solid fa-gauge-high"></i> Dashboard</button>
-      <button class="view-tab ${l1PlansTab === 'unlinked' ? 'active' : ''}" onclick="setL1PlansTab('unlinked')"><i class="fa-solid fa-link-slash"></i> Unlinked</button>
-    </div>`;
   if (l1PlansTab === 'dashboard') {
-    el.innerHTML = subTabsHtml + renderL1PlansDashboardHtml();
+    el.innerHTML = renderL1PlansDashboardHtml();
     return;
   }
   if (l1PlansTab === 'unlinked') {
-    el.innerHTML = subTabsHtml + renderL1UnlinkedItemsHtml();
+    el.innerHTML = renderL1UnlinkedItemsHtml();
     return;
   }
-  const plans = allL1Plans();
+  // Narrowed by the search box/Reporting Level chips (see
+  // #l1PlansSearchToolbar) — the same "narrows what's listed, never
+  // navigates away" precedent Planning's own search+status chips already
+  // established. allPlans (unfiltered) is what a genuinely-empty-programme
+  // message needs to tell apart from "these filters just don't match
+  // anything" — the same distinction Planning's own search box draws.
+  const allPlans = allL1Plans();
+  const plans = allPlans.filter(p => matchesL1PlansSearch(p) && matchesL1PlansReportingLevelFilter(p));
+  const emptyMessage = !allPlans.length
+    ? 'No L1 Plans yet.'
+    : (l1PlansSearchQuery ? `No L1 Plans match "${esc(l1PlansSearchQuery)}".` : 'No L1 Plans match the selected Reporting Level filter.');
   const rows = plans.length ? plans.map(p => itemRowHtml(p)).join('') :
-    `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">No L1 Plans yet.</div>`;
+    `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">${emptyMessage}</div>`;
   const addRow = hasRole('editor')
     ? (l1PlanQuickAddOpen
         ? `<div class="ws-section-add"><input type="text" class="inline-quick-add-input" id="l1PlanQuickAddInput" placeholder="L1 Plan name" onkeydown="if(event.key==='Enter') saveL1PlanQuickAdd(); if(event.key==='Escape') cancelL1PlanQuickAdd();" onblur="saveL1PlanQuickAdd()"></div>`
         : `<div class="ws-section-add"><button class="btn btn-sm" onclick="openL1PlanQuickAdd()"><i class="fa-solid fa-plus"></i> Add L1 Plan</button></div>`)
     : '';
-  el.innerHTML = subTabsHtml + `
+  el.innerHTML = `
     <div class="admin-header">
       ${l1PlansExpandAllToggleHtml()}
       <h2><i class="fa-solid fa-bullseye" style="font-size:16px;color:var(--accent)"></i> L1 Plans</h2>
@@ -7412,7 +7611,19 @@ function openL1MilestoneModal(planId, milestoneId) {
   editingL1MilestoneId = milestoneId;
   document.getElementById('l1MilestoneModalTitle').textContent = m.name;
   document.getElementById('l1MilestoneDueInput').value = m.dueDate || '';
-  document.getElementById('l1MilestoneReportingLevelInput').value = m.reportingLevel || '';
+  // A fixed <select>, not free text — an explicit later user request
+  // ("Reporting Level should be a fixed selection... editable as admin in
+  // settings"), reversing this field's own brief run as a plain text input.
+  // A milestone's current value that isn't in the admin-managed list at
+  // all (imported from a file before this shipped, or set by hand before
+  // this reversal) is appended as its own extra, clearly-labeled option
+  // rather than silently dropped or force-changed — it stays selected
+  // until an Admin (or whoever's editing) deliberately picks a real one.
+  const current = m.reportingLevel;
+  const isOrphan = !!current && !reportingLevels.some(l => l.toLowerCase() === current.toLowerCase());
+  const options = isOrphan ? reportingLevels.concat([current]) : reportingLevels;
+  document.getElementById('l1MilestoneReportingLevelInput').innerHTML = `<option value=""${current ? '' : ' selected'}>—</option>` +
+    options.map(l => `<option value="${esc(l)}"${current && l.toLowerCase() === current.toLowerCase() ? ' selected' : ''}>${esc(l)}${isOrphan && l === current ? ' (not in the current list)' : ''}</option>`).join('');
   document.getElementById('l1MilestoneModalBg').classList.add('open');
 }
 function closeL1MilestoneModal() {
@@ -7431,7 +7642,7 @@ function saveL1MilestoneModal() {
   // the two UIs made it.
   const dueValue = document.getElementById('l1MilestoneDueInput').value || null;
   if (dueValue !== m.dueDate) updateL1MilestoneDateField(plan.id, m.id, dueValue);
-  const reportingLevelValue = document.getElementById('l1MilestoneReportingLevelInput').value.trim() || null;
+  const reportingLevelValue = document.getElementById('l1MilestoneReportingLevelInput').value || null;
   if (reportingLevelValue !== m.reportingLevel) {
     m.reportingLevel = reportingLevelValue;
     m.updatedAt = Date.now();
@@ -10009,7 +10220,84 @@ function renderAdmin() {
           </div>`;
       }).join('')}
     </div>
+    ${reportingLevelsSectionHtml()}
     ${rolePasswordsSectionHtml()}`;
+}
+// Admin-only, both to view and to manage — an explicit user request
+// ("Reporting Level should be a fixed selection... editable as admin in
+// settings"). Same "real modal, not live inputs directly in this section"
+// reasoning rolePasswordsSectionHtml() right below already documents —
+// renderAdmin() redraws on every render(), including background ones, so a
+// live input sitting directly in this section's own output would lose
+// in-progress keystrokes/focus out from under whoever's mid-typing.
+function reportingLevelsSectionHtml() {
+  if (!hasRole('admin')) return '';
+  return `
+    <div class="admin-header" style="margin-top:24px">
+      <h2>Reporting Levels</h2>
+      <button class="btn btn-primary" onclick="openReportingLevelsModal()"><i class="fa-solid fa-layer-group"></i> Manage</button>
+    </div>
+    <p style="margin-bottom:16px">The fixed list an L1 milestone's own Reporting Level is picked from. Currently: ${reportingLevels.map(esc).join(', ')}.</p>`;
+}
+function openReportingLevelsModal() {
+  if (!requireRole('admin')) return;
+  editingReportingLevels = reportingLevels.slice();
+  renderReportingLevelsEditor();
+  document.getElementById('reportingLevelsModalBg').classList.add('open');
+}
+function closeReportingLevelsModal() {
+  document.getElementById('reportingLevelsModalBg')?.classList.remove('open');
+}
+// Same plain-array-of-strings editor shape renderCategoryMilestonesEditor()
+// already established (see its own comment) — no drag-and-drop reordering
+// here, deliberately: this list is typically a handful of entries and
+// reordering it was never part of what was actually asked for, unlike the
+// category template's own row order (which directly drives a new item's
+// checklist sequence). oninput writes straight back into
+// editingReportingLevels, no re-render on every keystroke, so the input
+// never loses focus mid-edit — only addReportingLevelRow()/
+// removeReportingLevelRow() (structural changes) redraw.
+function renderReportingLevelsEditor() {
+  const editable = hasRole('admin');
+  document.getElementById('reportingLevelsEditor').innerHTML = editingReportingLevels.map((level, idx) => `
+    <div class="milestone-row">
+      <span></span>
+      <input type="text" value="${esc(level)}" ${editable ? '' : 'disabled'} oninput="editingReportingLevels[${idx}] = this.value">
+      ${editable ? `<button class="row-icon-btn" onclick="removeReportingLevelRow(${idx})" title="Remove"><i class="fa-solid fa-trash"></i></button>` : '<span></span>'}
+    </div>`).join('');
+}
+function addReportingLevelRow() {
+  if (!requireRole('admin')) return;
+  editingReportingLevels.push('');
+  renderReportingLevelsEditor();
+  document.querySelectorAll('#reportingLevelsEditor input')[editingReportingLevels.length - 1]?.focus();
+}
+function removeReportingLevelRow(idx) {
+  if (!requireRole('admin')) return;
+  editingReportingLevels.splice(idx, 1);
+  renderReportingLevelsEditor();
+}
+// Trims and drops blank rows, then de-duplicates case-insensitively (first
+// occurrence wins) — the identical coercion normalizeData() already applies
+// to reportingLevels itself, run here too so a save can never produce a
+// state the very next load would immediately have to self-heal away from.
+// Refuses to save down to zero entries — an L1 milestone edit modal with
+// nothing to pick from would be a real dead end (see
+// openL1MilestoneModal()'s own reportingLevel <select> below), the same
+// "always something to fall back to" invariant categories.length === 0
+// already enforces one section up.
+function saveReportingLevelsModal() {
+  if (!requireRole('admin')) return;
+  const seen = new Set();
+  const cleaned = editingReportingLevels
+    .map(l => (l || '').trim())
+    .filter(l => l)
+    .filter(l => { const key = l.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true; });
+  if (!cleaned.length) { showToast('Keep at least one Reporting Level', true); return; }
+  reportingLevels = cleaned;
+  save();
+  closeReportingLevelsModal();
+  render();
 }
 // Admin-only (both to view and to manage) — a Reviewer/Editor able to see
 // *which* roles are password-protected, even without the passwords
@@ -11423,6 +11711,19 @@ function mergeData(data, opts) {
     if (categories.find(c => c.id === ic.id || c.name.toLowerCase() === ic.name.toLowerCase())) return;
     categories.push(ic); wsOrCategoriesChanged = true;
   });
+  // reportingLevels merges the same additive, silent way categories do —
+  // plain strings with no id of their own to key on, so dedup is by value
+  // (case-insensitive) instead. An entry removed from one device's own
+  // admin-managed list can still be reintroduced by a merge from another
+  // device that still has it — the identical, already-accepted limitation
+  // categories themselves have (see that block's own comment: "not counted
+  // in {added, updated}", additive-only, no deletion propagation).
+  (data.reportingLevels || []).forEach(rl => {
+    if (typeof rl !== 'string' || !rl.trim()) return;
+    const trimmed = rl.trim();
+    if (reportingLevels.some(x => x.toLowerCase() === trimmed.toLowerCase())) return;
+    reportingLevels.push(trimmed); wsOrCategoriesChanged = true;
+  });
   // Review cycles: an id already known locally now merges per-field
   // (mergeReviewCycle()) rather than being skipped outright — see that
   // function's own comment for why the old "skip if known" behavior lost
@@ -11584,7 +11885,7 @@ function wsFileName(id, name) { return `pulse-ws-${slugify(name)}-${id.slice(-6)
 // whole multi-file split exists to shrink, for a field nothing reads back.
 function buildIndexPayload() {
   return {
-    programme, categories,
+    programme, categories, reportingLevels,
     workstreams: workstreams.map(w => ({ id: w.id, name: w.name, color: w.color, order: w.order, updatedAt: w.updatedAt })),
     items: items.filter(it => it.workstreamId === null),
     deletedWorkstreamIds, deletedItemIds, deletedMilestoneIds, deletedActionLogIds, deletedDecisionLogIds, deletedReviewCycleIds
@@ -11661,6 +11962,7 @@ function recombineSyncData(indexData, wsDataById) {
     workstreams: workstreamsOut,
     items: itemsOut,
     categories: indexData.categories || [],
+    reportingLevels: indexData.reportingLevels || [],
     reviewCycles: reviewCyclesOut,
     deletedWorkstreamIds: indexData.deletedWorkstreamIds || [],
     deletedItemIds: indexData.deletedItemIds || [],
@@ -13009,10 +13311,11 @@ wireModalBackdropClose(document.getElementById('roleModalBg'), closeRoleModal);
 wireModalBackdropClose(document.getElementById('helpModalBg'), closeHelpModal);
 wireModalBackdropClose(document.getElementById('aboutModalBg'), closeAboutModal);
 wireModalBackdropClose(document.getElementById('rolePasswordsModalBg'), closeRolePasswordsModal);
+wireModalBackdropClose(document.getElementById('reportingLevelsModalBg'), closeReportingLevelsModal);
 wireModalBackdropClose(document.getElementById('l1PickModalBg'), closeL1PickModal);
 wireModalBackdropClose(document.getElementById('l1MilestoneModalBg'), closeL1MilestoneModal);
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeL1ConnectModal(); closeL1PickModal(); closeL1MilestoneModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeHelpModal(); closeAboutModal(); }
+  if (e.key === 'Escape') { closeWorkstreamModal(); closeItemModal(); closeL1ConnectModal(); closeL1PickModal(); closeL1MilestoneModal(); closeCategoryModal(); closeMinutesModal(); closeConfirmModal(); closeImportModal(); closeBackupsModal(); closeSyncConflictsModal(); closeThemeModal(); closeRoleModal(); closeRolePasswordsModal(); closeReportingLevelsModal(); closeHelpModal(); closeAboutModal(); }
 });
 
 // A user-reported bug on some Chrome/Safari + macOS combinations: a modal's
