@@ -2686,7 +2686,7 @@ const MAX_BACKUPS = 7;
 // same "guardrail, not a gate" stance RBAC and everything else in this app
 // already takes — there's no server here to actually push an update, so the
 // most this can ever do is tell a device it's behind, never force it current.
-const APP_VERSION = 11;
+const APP_VERSION = 12;
 // Hand-updated alongside APP_VERSION, same manual-discipline convention —
 // purely informational (the About modal's own "Version X · <date>" line),
 // never compared/merged/read by anything else, unlike APP_VERSION itself.
@@ -4161,29 +4161,51 @@ function setL1PlansTab(t) { l1PlansTab = t; render(); }
 function matchesL1PlansSearch(plan) {
   return !l1PlansSearchQuery || plan.name.toLowerCase().includes(l1PlansSearchQuery);
 }
-// A plan passes once *either* its own rolled-up status or *any* of its
-// milestones' own effective status is in the selected set — the same
-// "matches if any selected chip matches, checked at both the item level
-// and the milestone level" shape matchesPlanningStatusFilter() already
-// established. computeL1PlanStatus()/(computedL1MilestoneStatus() || own)
-// are the exact effective-status values itemRowHtml()'s own status badge
-// and this row's own status badge already display — never a milestone's
-// raw, possibly-stale m.status directly, the identical "effective, not
-// raw" fix the "X/Y milestones" badge itself needed (see
-// effectiveMilestoneStatus() above).
-function matchesL1PlansStatusFilter(plan) {
-  if (!l1PlansStatusFilters.size) return true;
-  if (l1PlansStatusFilters.has(computeL1PlanStatus(plan.id) || 'not-started')) return true;
-  return plan.milestones.some(m => !m.notApplicable && l1PlansStatusFilters.has(computedL1MilestoneStatus(m.id) || m.status));
+// The status/Reporting Level chips filter which MILESTONE ROWS actually
+// display within an expanded L1 Plan, not just which whole plans are
+// listed — a user-reported correction to this feature's first cut, which
+// only ever decided plan visibility (mirroring matchesPlanningStatusFilter()'s
+// own item-or-any-milestone shape) while still rendering every milestone
+// underneath a passing plan regardless of whether that specific milestone
+// matched. With several milestones per plan spanning different statuses,
+// that first cut could look like "the filter does nothing at all", since
+// clicking almost any chip still left the exact same plan (and every one of
+// its milestones) on screen.
+//
+// matchesL1MilestoneFilterChips(m) is now the one real predicate, applied
+// per milestone: both active filter GROUPS must match on the SAME
+// milestone (an AND across status and Reporting Level), not "any milestone
+// matches status, any other milestone matches Reporting Level" the way the
+// old plan-level checks independently allowed. computedL1MilestoneStatus(m.id)
+// || m.status is still the exact effective-status value the row's own
+// status badge already displays — never a stale raw m.status alone. A
+// notApplicable milestone never matches an active status filter — its own
+// frozen "N/A" badge isn't one of the 6 real STATUSES values a chip can
+// even represent, and its raw, preserved-but-frozen m.status (whatever it
+// was before being marked N/A) must not spuriously satisfy a filter that
+// no longer applies to it once excluded from scope.
+function matchesL1MilestoneFilterChips(m) {
+  if (l1PlansStatusFilters.size) {
+    if (m.notApplicable || !l1PlansStatusFilters.has(computedL1MilestoneStatus(m.id) || m.status)) return false;
+  }
+  if (l1PlansReportingLevelFilters.size) {
+    if (!m.reportingLevel || !l1PlansReportingLevelFilters.has(m.reportingLevel)) return false;
+  }
+  return true;
 }
-// A plan passes once *any* of its own milestones carries a selected
-// Reporting Level — the same "matches if any selected chip matches
-// anywhere within it" shape matchesPlanningStatusFilter() already
-// established for an item's own milestones, just keyed on Reporting Level
-// instead of status.
-function matchesL1PlansReportingLevelFilter(plan) {
-  if (!l1PlansReportingLevelFilters.size) return true;
-  return plan.milestones.some(m => m.reportingLevel && l1PlansReportingLevelFilters.has(m.reportingLevel));
+function l1PlansFiltersActive() {
+  return l1PlansStatusFilters.size > 0 || l1PlansReportingLevelFilters.size > 0;
+}
+// Plan-level visibility: a plan shows once it has at least one milestone
+// satisfying the active filters together (per matchesL1MilestoneFilterChips
+// above) — or unconditionally, when no chip is active at all, so an
+// unfiltered view is untouched. l1MilestoneRowsHtml() applies the exact
+// same per-milestone predicate to decide which rows to actually render
+// underneath a passing plan, so "this plan is shown" and "this plan's
+// milestone rows are the ones that matched" always agree.
+function matchesL1PlansMilestoneFilters(plan) {
+  if (!l1PlansFiltersActive()) return true;
+  return plan.milestones.some(m => matchesL1MilestoneFilterChips(m));
 }
 // Lives in the static #l1PlansSearchToolbar, not #l1PlansBody, for the
 // identical reason setPlanningSearch() lives outside #main — so a
@@ -4527,7 +4549,7 @@ function renderStatusView(main) {
 // discipline expandAllToggleHtml() already established for Planning's own
 // per-section toggle.
 function l1PlansExpandAllIds() {
-  return allL1Plans().filter(p => matchesL1PlansSearch(p) && matchesL1PlansStatusFilter(p) && matchesL1PlansReportingLevelFilter(p)).map(p => p.id);
+  return allL1Plans().filter(p => matchesL1PlansSearch(p) && matchesL1PlansMilestoneFilters(p)).map(p => p.id);
 }
 function l1PlansExpandAllToggleHtml() {
   const ids = l1PlansExpandAllIds();
@@ -4805,7 +4827,7 @@ function renderL1Plans() {
   // message needs to tell apart from "these filters just don't match
   // anything" — the same distinction Planning's own search box draws.
   const allPlans = allL1Plans();
-  const plans = allPlans.filter(p => matchesL1PlansSearch(p) && matchesL1PlansStatusFilter(p) && matchesL1PlansReportingLevelFilter(p));
+  const plans = allPlans.filter(p => matchesL1PlansSearch(p) && matchesL1PlansMilestoneFilters(p));
   const emptyMessage = !allPlans.length
     ? 'No L1 Plans yet.'
     : (l1PlansSearchQuery ? `No L1 Plans match "${esc(l1PlansSearchQuery)}".` : 'No L1 Plans match the selected filters.');
@@ -7299,7 +7321,17 @@ function l1MilestoneRowsHtml(plan) {
   // touch or reconstruct. A `.slice()` copy, so sorting for display never
   // mutates the plan's own real array.
   const sortedMilestones = plan.milestones.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
-  return sortedMilestones.map(m => {
+  // Narrowed to just the milestones actually matching the active status/
+  // Reporting Level chips (matchesL1MilestoneFilterChips(), see its own
+  // comment above) — a later, user-reported correction: the first cut of
+  // this feature only ever decided whether the whole PLAN showed, then
+  // still rendered every one of its milestones regardless of whether any
+  // individual one matched, which could look like the filter did nothing
+  // at all on a plan with several differently-statused milestones. Only
+  // filtered down when a chip is actually active — an unfiltered view
+  // shows every milestone exactly as before, untouched.
+  const visibleMilestones = l1PlansFiltersActive() ? sortedMilestones.filter(m => matchesL1MilestoneFilterChips(m)) : sortedMilestones;
+  return visibleMilestones.map(m => {
     const linked = linkedWorkstreamMilestones(m.id);
     const linkedCount = linked.length;
     // Due is always the milestone's own manual/imported value, linked or
