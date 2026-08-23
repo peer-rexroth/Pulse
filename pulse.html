@@ -2073,7 +2073,7 @@
     <input type="text" id="l1PlansSearchInput" placeholder="Search L1 Plans by name..." oninput="setL1PlansSearch(this.value)">
     <button type="button" class="search-clear-btn" id="l1PlansSearchClearBtn" onclick="clearL1PlansSearch()" title="Clear search" style="display:none"><i class="fa-solid fa-xmark"></i></button>
   </div>
-  <div class="status-filter-chips" id="l1PlansReportingLevelChips"></div>
+  <div class="status-filter-chips" id="l1PlansFilterChips"></div>
 </div>
 
 <!-- L1 Plans mode — sidebar-less, same shape as adminBody, for the same
@@ -3134,20 +3134,29 @@ let dashboardTab = 'overview';
 // not-workstream-scoped ones). UI-only, not persisted, same shape as
 // dashboardTab/reviewTab.
 let l1PlansTab = 'plans';
-// Search + Reporting Level filter for the L1 Plans "Plans" sub-tab — an
-// explicit user request ("add search/filter options on L1. like on the
-// screenshot. instead of depencies, provide the different report levels a
-// filter... multi select, like in workstream planning"), mirroring
-// planningSearchQuery/planningStatusFilters above almost exactly: a plain
-// case-insensitive substring match against an L1 Plan's own name (see
-// matchesPlanningSearch()'s own "quick find one thing" scope), plus a
-// multi-select Set of Reporting Level strings a plan passes if *any* of its
-// own milestones carries one of the selected levels (matchesPlanningStatusFilter()'s
-// own "matches if any selected chip matches" shape) — there's no
-// Dependencies-style single boolean equivalent here, since Reporting Level
-// is itself a value to pick among, not an on/off flag. Both UI-only, not
-// persisted, reset on reload same as their Planning-mode counterparts.
+// Search + Status filter + Reporting Level filter for the L1 Plans "Plans"
+// sub-tab — an explicit user request ("add search/filter options on L1.
+// like on the screenshot. instead of depencies, provide the different
+// report levels a filter... multi select, like in workstream planning"),
+// extended by a later, explicit follow-up to also include the status chips
+// themselves, not just Reporting Level ("also provide status filter and
+// the with a seperator the reporting level. similar like this" — the
+// screenshot being Planning's own 6-status-chips-then-divider-then-
+// Dependencies row). Mirrors planningSearchQuery/planningStatusFilters
+// above almost exactly: a plain case-insensitive substring match against
+// an L1 Plan's own name (see matchesPlanningSearch()'s own "quick find one
+// thing" scope), plus two independent multi-select Sets — status and
+// Reporting Level — a plan passes each one if *any* of its own milestones
+// (or, for status, the plan's own rolled-up status) carries a selected
+// value (matchesPlanningStatusFilter()'s own "matches if any selected chip
+// matches" shape), composed together as a plain AND the same way Planning's
+// own search/status/Dependencies predicates already compose. There's no
+// Dependencies-style single boolean chip here at all, unlike Planning's own
+// row — both groups here are genuine multi-selects among several values,
+// never a plain on/off flag. All three UI-only, not persisted, reset on
+// reload same as their Planning-mode counterparts.
 let l1PlansSearchQuery = '';
+let l1PlansStatusFilters = new Set();
 let l1PlansReportingLevelFilters = new Set();
 const HISTORY_PAGE_SIZE = 5;
 
@@ -4090,7 +4099,7 @@ function render() {
   updateOutdatedVersionBanner();
   renderPlanningStatusChips();
   renderReviewLogFilterChips();
-  renderL1PlansReportingLevelChips();
+  renderL1PlansFilterChips();
   renderSidebar();
   if (mode === 'planning') {
     renderMain();
@@ -4152,6 +4161,21 @@ function setL1PlansTab(t) { l1PlansTab = t; render(); }
 function matchesL1PlansSearch(plan) {
   return !l1PlansSearchQuery || plan.name.toLowerCase().includes(l1PlansSearchQuery);
 }
+// A plan passes once *either* its own rolled-up status or *any* of its
+// milestones' own effective status is in the selected set — the same
+// "matches if any selected chip matches, checked at both the item level
+// and the milestone level" shape matchesPlanningStatusFilter() already
+// established. computeL1PlanStatus()/(computedL1MilestoneStatus() || own)
+// are the exact effective-status values itemRowHtml()'s own status badge
+// and this row's own status badge already display — never a milestone's
+// raw, possibly-stale m.status directly, the identical "effective, not
+// raw" fix the "X/Y milestones" badge itself needed (see
+// effectiveMilestoneStatus() above).
+function matchesL1PlansStatusFilter(plan) {
+  if (!l1PlansStatusFilters.size) return true;
+  if (l1PlansStatusFilters.has(computeL1PlanStatus(plan.id) || 'not-started')) return true;
+  return plan.milestones.some(m => !m.notApplicable && l1PlansStatusFilters.has(computedL1MilestoneStatus(m.id) || m.status));
+}
 // A plan passes once *any* of its own milestones carries a selected
 // Reporting Level — the same "matches if any selected chip matches
 // anywhere within it" shape matchesPlanningStatusFilter() already
@@ -4176,29 +4200,44 @@ function clearL1PlansSearch() {
   document.getElementById('l1PlansSearchClearBtn').style.display = 'none';
   renderL1Plans();
 }
-// Rebuilt from the live, admin-managed reportingLevels list (not a fixed
-// constant like STATUSES) — an Admin adding/removing a level in Settings
-// changes what chips show up here on the very next render(), with no
-// separate wiring needed. Called unconditionally from render() alongside
+// The whole chip row — 6 status chips, a small divider, then one chip per
+// admin-managed Reporting Level — an explicit later user request to add
+// the status half alongside the Reporting Level chips already there
+// ("also provide status filter and the with a seperator the reporting
+// level. similar like this", pointing at Planning's own status-chips-then-
+// divider-then-Dependencies row). The status half mirrors
+// renderPlanningStatusChips()'s own chips exactly (same STATUSES source,
+// same --chip-color/--chip-bg custom properties, same safe-to-embed
+// fixed `s.id` in the onclick). The Reporting Level half is rebuilt from
+// the live, admin-managed reportingLevels list (not a fixed constant like
+// STATUSES) — an Admin adding/removing a level in Settings changes what
+// chips show up here on the very next render(), with no separate wiring
+// needed — and is keyed by array index in the onclick, not the raw level
+// string, so a level name containing an apostrophe (an Admin could type
+// anything in reportingLevelsModalBg's own free-text rows) can never break
+// out of the handler's own quoting the way embedding the raw string would
+// risk. Called unconditionally from render() alongside
 // renderPlanningStatusChips(), the same "cheap enough, no mode check
 // needed" reasoning that function's own comment already documents.
-// Keyed by array index in the onclick, not the raw level string — the
-// established convention every other onclick in this app already follows
-// (a plain generated id, or an index, never free/admin-entered text
-// embedded directly in a JS string literal), so a level name containing an
-// apostrophe (an Admin could type anything in reportingLevelsModalBg's own
-// free-text rows) can never break out of the handler's own quoting.
-function renderL1PlansReportingLevelChips() {
-  const el = document.getElementById('l1PlansReportingLevelChips');
+function renderL1PlansFilterChips() {
+  const el = document.getElementById('l1PlansFilterChips');
   if (!el) return;
-  el.innerHTML = reportingLevels.map((l, idx) => `<button class="status-filter-chip ${l1PlansReportingLevelFilters.has(l) ? 'active' : ''}" style="--chip-color:var(--accent);--chip-bg:var(--accent-bg)" onclick="setL1PlansReportingLevelFilter(${idx})">${esc(l)}</button>`).join('');
+  const statusChips = STATUSES.map(s => `<button class="status-filter-chip ${l1PlansStatusFilters.has(s.id) ? 'active' : ''}" style="--chip-color:var(--stat-${s.id});--chip-bg:var(--stat-${s.id}-bg)" onclick="setL1PlansStatusFilter('${s.id}')">${esc(s.label)}</button>`).join('');
+  const levelChips = reportingLevels.map((l, idx) => `<button class="status-filter-chip ${l1PlansReportingLevelFilters.has(l) ? 'active' : ''}" style="--chip-color:var(--accent);--chip-bg:var(--accent-bg)" onclick="setL1PlansReportingLevelFilter(${idx})">${esc(l)}</button>`).join('');
+  el.innerHTML = statusChips + '<span class="chip-divider"></span>' + levelChips;
+}
+function setL1PlansStatusFilter(statusId) {
+  if (l1PlansStatusFilters.has(statusId)) l1PlansStatusFilters.delete(statusId);
+  else l1PlansStatusFilters.add(statusId);
+  renderL1PlansFilterChips();
+  renderL1Plans();
 }
 function setL1PlansReportingLevelFilter(idx) {
   const level = reportingLevels[idx];
   if (!level) return;
   if (l1PlansReportingLevelFilters.has(level)) l1PlansReportingLevelFilters.delete(level);
   else l1PlansReportingLevelFilters.add(level);
-  renderL1PlansReportingLevelChips();
+  renderL1PlansFilterChips();
   renderL1Plans();
 }
 
@@ -4482,13 +4521,13 @@ function renderStatusView(main) {
 // itemRowHtml()'s own isL1Plan comment) — only the expanded milestone list
 // underneath is bespoke (l1MilestoneHeaderHtml()/l1MilestoneRowsHtml()),
 // not the shared milestoneRowsHtml()/--item-grid-cols grid.
-// Scoped to whatever the search box/Reporting Level chips currently leave
-// visible — the same "a click only ever acts on what's actually on screen,
-// never a plan a filter is currently narrowing out" discipline
-// expandAllToggleHtml() already established for Planning's own per-section
-// toggle.
+// Scoped to whatever the search box/status chips/Reporting Level chips
+// currently leave visible — the same "a click only ever acts on what's
+// actually on screen, never a plan a filter is currently narrowing out"
+// discipline expandAllToggleHtml() already established for Planning's own
+// per-section toggle.
 function l1PlansExpandAllIds() {
-  return allL1Plans().filter(p => matchesL1PlansSearch(p) && matchesL1PlansReportingLevelFilter(p)).map(p => p.id);
+  return allL1Plans().filter(p => matchesL1PlansSearch(p) && matchesL1PlansStatusFilter(p) && matchesL1PlansReportingLevelFilter(p)).map(p => p.id);
 }
 function l1PlansExpandAllToggleHtml() {
   const ids = l1PlansExpandAllIds();
@@ -4759,17 +4798,17 @@ function renderL1Plans() {
     el.innerHTML = renderL1UnlinkedItemsHtml();
     return;
   }
-  // Narrowed by the search box/Reporting Level chips (see
+  // Narrowed by the search box/status chips/Reporting Level chips (see
   // #l1PlansSearchToolbar) — the same "narrows what's listed, never
   // navigates away" precedent Planning's own search+status chips already
   // established. allPlans (unfiltered) is what a genuinely-empty-programme
   // message needs to tell apart from "these filters just don't match
   // anything" — the same distinction Planning's own search box draws.
   const allPlans = allL1Plans();
-  const plans = allPlans.filter(p => matchesL1PlansSearch(p) && matchesL1PlansReportingLevelFilter(p));
+  const plans = allPlans.filter(p => matchesL1PlansSearch(p) && matchesL1PlansStatusFilter(p) && matchesL1PlansReportingLevelFilter(p));
   const emptyMessage = !allPlans.length
     ? 'No L1 Plans yet.'
-    : (l1PlansSearchQuery ? `No L1 Plans match "${esc(l1PlansSearchQuery)}".` : 'No L1 Plans match the selected Reporting Level filter.');
+    : (l1PlansSearchQuery ? `No L1 Plans match "${esc(l1PlansSearchQuery)}".` : 'No L1 Plans match the selected filters.');
   const rows = plans.length ? plans.map(p => itemRowHtml(p)).join('') :
     `<div class="item-row" style="grid-template-columns:1fr;color:var(--text-faint)">${emptyMessage}</div>`;
   const addRow = hasRole('editor')
