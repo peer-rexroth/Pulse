@@ -2767,27 +2767,27 @@ test('saveReportingLevelsModal is blocked below Admin', function () {
   assertDeepEqual(reportingLevels, ['Programme']);
 });
 
-// ---------- L1 Plans search + status/Reporting Level filter chips ----------
+// ---------- L1 Plans search + Reporting Level filter chips ----------
 // An explicit user request ("add search/filter options on L1... instead of
 // depencies, provide the different report levels a filter... multi select,
-// like in workstream planning"), later extended with a matching status
-// filter ("also provide status filter and the with a seperator the
-// reporting level. similar like this").
+// like in workstream planning"). A matching status filter row briefly
+// existed alongside this one too (a later, explicit user request), then
+// was removed again by a further, separate explicit user request ("remove
+// the status filter options on l1. only reporting level") — Reporting
+// Level is the only filter dimension here.
 //
-// A user report ("looks like the filter does not work at all", clarified as
-// "chip highlights but list doesn't change") surfaced a real design gap in
-// this feature's first cut: the chips only ever decided whether a whole
-// PLAN showed (matching at the plan's own rolled-up status OR any
-// milestone, mirroring matchesPlanningStatusFilter()'s own shape), then
-// still rendered every one of that plan's milestones underneath regardless
-// of whether any individual one matched — which, on a plan with several
-// differently-statused milestones, could look exactly like the filter did
+// A user report ("looks like the filter does not work at all", clarified
+// as "chip highlights but list doesn't change") surfaced a real design gap
+// in this feature's first cut: the chips only ever decided whether a whole
+// PLAN showed (any milestone matching), then still rendered every one of
+// that plan's milestones underneath regardless of whether any individual
+// one matched — which, on a plan with several milestones carrying
+// different Reporting Levels, could look exactly like the filter did
 // nothing at all, since the same plan (and all its milestones) stayed on
-// screen no matter which chip was clicked. matchesL1MilestoneFilterChips(m)
-// is the real, corrected predicate now — both active filter groups (status
-// AND Reporting Level) must match the SAME milestone — and
+// screen no matter which chip was clicked. matchesL1MilestoneReportingLevel(m)
+// is the real, corrected predicate now, applied per milestone — and
 // l1MilestoneRowsHtml() itself only renders the milestones that pass it
-// (see its own tests further below); matchesL1PlansMilestoneFilters(plan)
+// (see its own tests further below); matchesL1PlansReportingLevelFilter(plan)
 // is just the plan-level wrapper used by renderL1Plans()/l1PlansExpandAllIds().
 
 test('matchesL1PlansSearch matches an L1 Plan\'s own name, case-insensitively, and passes everything when the query is empty', function () {
@@ -2800,82 +2800,38 @@ test('matchesL1PlansSearch matches an L1 Plan\'s own name, case-insensitively, a
   assertFalse(matchesL1PlansSearch(p));
 });
 
-test('matchesL1MilestoneFilterChips passes every milestone when no chip is selected, and otherwise matches by its own effective status', function () {
+test('matchesL1MilestoneReportingLevel passes every milestone when no chip is selected, and otherwise only one carrying a selected Reporting Level', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
-  m.status = 'red';
-  l1PlansStatusFilters = new Set();
-  l1PlansReportingLevelFilters = new Set();
-  assertTrue(matchesL1MilestoneFilterChips(m));
-  l1PlansStatusFilters = new Set(['red']);
-  assertTrue(matchesL1MilestoneFilterChips(m));
-  l1PlansStatusFilters = new Set(['green']);
-  assertFalse(matchesL1MilestoneFilterChips(m));
-});
-
-test('matchesL1MilestoneFilterChips matches via a linked milestone\'s own rolled-up (computed) status, not just its stale raw field', function () {
-  const p = addL1Plan();
-  const m = addL1Milestone(p.id);
-  assertEqual(m.status, 'not-started', 'sanity check — the L1 milestone\'s own raw status is never touched by linking');
-  const item = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Off track', dueDate: null, actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
-  item.milestones.push(wm);
-  openL1ConnectModal(p.id, m.id);
-  toggleL1MilestoneLink(item.id, wm.id, true);
-  l1PlansStatusFilters = new Set(['red']);
-  assertTrue(matchesL1MilestoneFilterChips(m), 'must match via the rolled-up status, even though m.status itself is still "not-started"');
-});
-
-test('matchesL1MilestoneFilterChips is a genuine multi-select within the status group — any selected status matches', function () {
-  const p = addL1Plan();
-  const m = addL1Milestone(p.id);
-  m.status = 'amber';
-  l1PlansStatusFilters = new Set(['green', 'amber']);
-  assertTrue(matchesL1MilestoneFilterChips(m));
-});
-
-test('matchesL1MilestoneFilterChips never matches an active status filter for a notApplicable milestone, even when its frozen raw status happens to equal the selected chip', function () {
-  const p = addL1Plan();
-  const m = addL1Milestone(p.id);
-  m.status = 'green';
-  m.notApplicable = true;
-  l1PlansStatusFilters = new Set(['green']);
-  assertFalse(matchesL1MilestoneFilterChips(m));
-});
-
-test('matchesL1MilestoneFilterChips requires BOTH an active status filter and an active Reporting Level filter to match the SAME milestone — an AND across the two groups, not independent ORs', function () {
-  const p = addL1Plan();
-  const m = addL1Milestone(p.id);
-  m.status = 'red';
   m.reportingLevel = 'Programme';
-  l1PlansStatusFilters = new Set(['red']);
-  l1PlansReportingLevelFilters = new Set(['Board']);
-  assertFalse(matchesL1MilestoneFilterChips(m), 'status matches but Reporting Level does not — the milestone must not pass');
+  l1PlansReportingLevelFilters = new Set();
+  assertTrue(matchesL1MilestoneReportingLevel(m));
   l1PlansReportingLevelFilters = new Set(['Programme']);
-  assertTrue(matchesL1MilestoneFilterChips(m), 'both groups now match this one milestone');
+  assertTrue(matchesL1MilestoneReportingLevel(m));
+  l1PlansReportingLevelFilters = new Set(['Board']);
+  assertFalse(matchesL1MilestoneReportingLevel(m));
 });
 
-test('setL1PlansStatusFilter toggles membership, same as Planning\'s own status chips', function () {
-  l1PlansStatusFilters = new Set();
-  setL1PlansStatusFilter('red');
-  assertTrue(l1PlansStatusFilters.has('red'));
-  setL1PlansStatusFilter('red');
-  assertFalse(l1PlansStatusFilters.has('red'));
+test('matchesL1MilestoneReportingLevel is a genuine multi-select — any selected level matches', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  m.reportingLevel = 'Board';
+  l1PlansReportingLevelFilters = new Set(['Programme', 'Board']);
+  assertTrue(matchesL1MilestoneReportingLevel(m));
 });
 
-test('renderL1PlansFilterChips renders all 6 status chips, a divider, then one chip per admin-managed Reporting Level', function () {
+test('renderL1PlansReportingLevelChips renders one chip per admin-managed Reporting Level, and nothing else (no status chips, no divider)', function () {
   reportingLevels = ['Programme', 'Board'];
   setMode('l1plans');
-  renderL1PlansFilterChips();
+  renderL1PlansReportingLevelChips();
   const html = document.getElementById('l1PlansFilterChips').innerHTML;
-  STATUSES.forEach(s => assertIncludes(html, esc(s.label)));
-  assertIncludes(html, 'chip-divider');
   assertIncludes(html, 'Programme');
   assertIncludes(html, 'Board');
-  assertTrue(html.indexOf('chip-divider') > html.indexOf(esc(STATUSES[STATUSES.length - 1].label)), 'the divider must come after the status chips, before the Reporting Level chips');
+  assertNotIncludes(html, 'chip-divider');
+  STATUSES.forEach(s => assertNotIncludes(html, esc(s.label)));
 });
 
-test('matchesL1PlansMilestoneFilters passes every plan when no chip is selected, and otherwise only a plan with at least one matching milestone', function () {
+test('matchesL1PlansReportingLevelFilter passes every plan when no chip is selected, and otherwise only a plan with at least one matching milestone', function () {
   const p1 = addL1Plan('Has Programme');
   addL1Milestone(p1.id).reportingLevel = 'Programme';
   const p2 = addL1Plan('Has Board');
@@ -2883,47 +2839,34 @@ test('matchesL1PlansMilestoneFilters passes every plan when no chip is selected,
   const p3 = addL1Plan('No level set');
   addL1Milestone(p3.id);
   l1PlansReportingLevelFilters = new Set();
-  assertTrue(matchesL1PlansMilestoneFilters(p1) && matchesL1PlansMilestoneFilters(p2) && matchesL1PlansMilestoneFilters(p3));
+  assertTrue(matchesL1PlansReportingLevelFilter(p1) && matchesL1PlansReportingLevelFilter(p2) && matchesL1PlansReportingLevelFilter(p3));
   l1PlansReportingLevelFilters = new Set(['Programme']);
-  assertTrue(matchesL1PlansMilestoneFilters(p1));
-  assertFalse(matchesL1PlansMilestoneFilters(p2));
-  assertFalse(matchesL1PlansMilestoneFilters(p3));
+  assertTrue(matchesL1PlansReportingLevelFilter(p1));
+  assertFalse(matchesL1PlansReportingLevelFilter(p2));
+  assertFalse(matchesL1PlansReportingLevelFilter(p3));
 });
 
-test('matchesL1PlansMilestoneFilters is a genuine multi-select — a plan matches if any selected level matches any of its milestones', function () {
+test('matchesL1PlansReportingLevelFilter is a genuine multi-select — a plan matches if any selected level matches any of its milestones', function () {
   const p = addL1Plan();
   addL1Milestone(p.id).reportingLevel = 'Board';
   l1PlansReportingLevelFilters = new Set(['Programme', 'Board']);
-  assertTrue(matchesL1PlansMilestoneFilters(p));
+  assertTrue(matchesL1PlansReportingLevelFilter(p));
 });
 
 test('l1MilestoneRowsHtml renders every milestone when no filter chip is active', function () {
   const p = addL1Plan();
-  addL1Milestone(p.id, 'Kickoff').status = 'red';
-  addL1Milestone(p.id, 'Go-Live').status = 'green';
-  l1PlansStatusFilters = new Set();
+  addL1Milestone(p.id, 'Kickoff').reportingLevel = 'Programme';
+  addL1Milestone(p.id, 'Go-Live').reportingLevel = 'Board';
   l1PlansReportingLevelFilters = new Set();
   const html = l1MilestoneRowsHtml(p);
   assertIncludes(html, 'Kickoff');
   assertIncludes(html, 'Go-Live');
 });
 
-test('l1MilestoneRowsHtml renders only the milestone rows matching an active status filter — this is the actual fix for the user-reported "chip highlights but list doesn\'t change" bug', function () {
-  const p = addL1Plan();
-  addL1Milestone(p.id, 'Kickoff').status = 'red';
-  addL1Milestone(p.id, 'Go-Live').status = 'green';
-  l1PlansStatusFilters = new Set(['red']);
-  l1PlansReportingLevelFilters = new Set();
-  const html = l1MilestoneRowsHtml(p);
-  assertIncludes(html, 'Kickoff');
-  assertNotIncludes(html, 'Go-Live');
-});
-
-test('l1MilestoneRowsHtml renders only the milestone rows matching an active Reporting Level filter', function () {
+test('l1MilestoneRowsHtml renders only the milestone rows matching an active Reporting Level filter — this is the actual fix for the user-reported "chip highlights but list doesn\'t change" bug', function () {
   const p = addL1Plan();
   addL1Milestone(p.id, 'Kickoff').reportingLevel = 'Programme';
   addL1Milestone(p.id, 'Go-Live').reportingLevel = 'Board';
-  l1PlansStatusFilters = new Set();
   l1PlansReportingLevelFilters = new Set(['Programme']);
   const html = l1MilestoneRowsHtml(p);
   assertIncludes(html, 'Kickoff');
