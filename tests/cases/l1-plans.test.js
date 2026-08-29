@@ -2508,13 +2508,9 @@ test('Import/Export/expand-all only render on the Plans tab, not on Unlinked eit
 // here entirely on a later, explicit user request ("move the l1 gant
 // under L1 as a seperte tab").
 
-test('setL1PlansTab(\'gantt\') switches the fourth sub-tab active and renders a flat, header-less L1 Plans timeline', function () {
+test('setL1PlansTab(\'gantt\') switches the fourth sub-tab active and renders one milestone row per plan, grouped under a per-plan section header', function () {
   const p = addL1Plan('Digital Transformation');
   const m = addL1Milestone(p.id, 'Kickoff');
-  // Routed through updateL1MilestoneDateField() rather than setting
-  // m.dueDate directly, since that's the one path (alongside the Excel
-  // importer) that actually recomputes the plan's own startDate/dueDate —
-  // see ganttL1Rows()'s own comment above.
   updateL1MilestoneDateField(p.id, m.id, '2026-01-15');
   mode = 'l1plans';
   setL1PlansTab('plans');
@@ -2526,18 +2522,20 @@ test('setL1PlansTab(\'gantt\') switches the fourth sub-tab active and renders a 
   assertFalse(document.getElementById('tabL1PlansPlans').classList.contains('active'));
   const html = document.getElementById('l1PlansBody').innerHTML;
   assertIncludes(html, 'gantt-chart');
-  assertIncludes(html, 'gantt-bar');
-  assertIncludes(html, 'Digital Transformation');
-  assertNotIncludes(html, 'gantt-section-header', 'a single flat list of L1 Plans needs no repeated "L1 Plans" section header');
+  assertIncludes(html, 'gantt-marker', 'a milestone row is marker-only, no bar');
+  assertIncludes(html, 'gantt-section-header', 'grouped into a real section per plan, unlike the old flat list');
+  assertIncludes(html, 'Digital Transformation', 'the plan name is the section header');
+  assertIncludes(html, 'Kickoff', 'the milestone itself is the row');
+  assertIncludes(html, `onclick="openL1MilestoneFromDashboard('${p.id}','${m.id}')"`);
   assertNotIncludes(html, 'l1-plans-list', 'the Plans tab\'s own list container should not render on the Gantt tab');
 });
 
 test('renderL1GanttHtml shows its own empty-state message when no L1 Plan has anything dateable', function () {
-  addL1Plan('Empty plan'); // has zero milestones — dropped by ganttL1Rows()
+  addL1Plan('Empty plan'); // has zero milestones — dropped by ganttL1MilestoneSections()
   mode = 'l1plans';
   setL1PlansTab('gantt');
   const html = document.getElementById('l1PlansBody').innerHTML;
-  assertIncludes(html, 'No dated L1 Plans to show yet.');
+  assertIncludes(html, 'No dated L1 milestones to show yet.');
 });
 
 test('Import/Export/expand-all only render on the Plans tab, not on Gantt either', function () {

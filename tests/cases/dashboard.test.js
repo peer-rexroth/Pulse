@@ -754,10 +754,10 @@ test('ganttWorkstreamSections excludes Unassigned items and, when filterWorkstre
   filterWorkstreamId = workstreams[0].id;
   sections = ganttWorkstreamSections();
   assertEqual(sections.length, 1);
-  assertEqual(sections[0].id, workstreams[0].id);
+  assertEqual(sections[0].name, workstreams[0].name);
 });
 
-test('ganttL1Rows builds one row per L1 Plan, using each milestone\'s own effective (rolled-up-or-manual) status', function () {
+test('ganttL1MilestoneSections builds one row per L1 milestone, grouped into a section per plan, using each milestone\'s own effective (rolled-up-or-manual) status', function () {
   const p = addL1Plan('Digital Transformation');
   const m = addL1Milestone(p.id, 'Kickoff');
   m.dueDate = '2026-06-01';
@@ -765,16 +765,35 @@ test('ganttL1Rows builds one row per L1 Plan, using each milestone\'s own effect
   const wsItem = addItem({ name: 'Deliverable' });
   const wm = { id: genId(), name: 'Ship it', dueDate: '2026-06-01', actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
   wsItem.milestones.push(wm);
-  const rows = ganttL1Rows();
-  assertEqual(rows.length, 1);
-  assertEqual(rows[0].name, 'Digital Transformation');
-  assertEqual(rows[0].milestones[0].status, 'red', 'must reflect the rolled-up status from the linked workstream milestone, not the L1 milestone\'s own stale manual status');
+  const sections = ganttL1MilestoneSections();
+  assertEqual(sections.length, 1);
+  assertEqual(sections[0].name, 'Digital Transformation');
+  assertEqual(sections[0].rows.length, 1);
+  const row = sections[0].rows[0];
+  assertEqual(row.name, 'Kickoff', 'the row is the milestone itself, not the plan');
+  assertEqual(row.status, 'red', 'must reflect the rolled-up status from the linked workstream milestone, not the L1 milestone\'s own stale manual status');
+  assertEqual(row.milestones[0].status, 'red');
+  assertEqual(row.start, null, 'a milestone row has no bar of its own — only a marker');
+  assertEqual(row.onclick, `openL1MilestoneFromDashboard('${p.id}','${m.id}')`);
 });
 
-test('ganttL1Rows drops a plan with no dateable milestones and no computed Start/Due range', function () {
-  const p = addL1Plan('Empty plan');
-  const rows = ganttL1Rows();
-  assertFalse(rows.some(r => r.id === p.id));
+test('ganttL1MilestoneSections drops a plan with no dateable milestones at all', function () {
+  addL1Plan('Empty plan');
+  const sections = ganttL1MilestoneSections();
+  assertEqual(sections.length, 0);
+});
+
+test('ganttL1MilestoneSections excludes a notApplicable or undated milestone, same as the workstream side', function () {
+  const p = addL1Plan('Digital Transformation');
+  const m1 = addL1Milestone(p.id, 'Real');
+  m1.dueDate = '2026-01-15';
+  const m2 = addL1Milestone(p.id, 'N/A');
+  m2.dueDate = '2026-01-20';
+  m2.notApplicable = true;
+  addL1Milestone(p.id, 'Undated'); // dueDate stays null
+  const sections = ganttL1MilestoneSections();
+  assertEqual(sections[0].rows.length, 1);
+  assertEqual(sections[0].rows[0].name, 'Real');
 });
 
 // Dashboard's own Gantt tab is Workstreams-only now — it originally also

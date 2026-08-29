@@ -3178,10 +3178,10 @@ let reviewTab = 'scope';
 let dashboardTab = 'overview';
 // L1 Plans' own sub-tabs — 'plans' (the management list, the original and
 // still-default content), 'dashboard' (a status breakdown + Delayed list
-// across every L1 Plan — see l1PlansTab's own render function), 'gantt' (a
-// flat timeline of every L1 Plan's own bar plus its milestones as markers —
-// reuses the exact same renderGanttChartHtml()/ganttRowHtml() machinery
-// Dashboard's own Gantt tab is built on, just fed ganttL1Rows() instead of
+// across every L1 Plan — see l1PlansTab's own render function), 'gantt' (one
+// row per L1 milestone, grouped into a section per plan — reuses the exact
+// same renderGanttChartHtml()/ganttRowHtml() machinery Dashboard's own Gantt
+// tab is built on, just fed ganttL1MilestoneSections() instead of
 // ganttWorkstreamSections() — see "Dashboard: Gantt chart" in CLAUDE.md;
 // this started as an internal scope toggle inside Dashboard's own Gantt tab,
 // then moved here outright on a later, explicit user request, "move the l1
@@ -4773,22 +4773,22 @@ function renderL1PlansDashboardHtml() {
     <div class="section-label">Delayed</div>
     <div class="category-list">${delayedHtml}</div>`;
 }
-// L1 Plans' own Gantt sub-tab — a flat timeline of every L1 Plan's own bar
-// (its computed Start→Due range) with its milestones layered on top as
-// markers, reusing the exact same renderGanttChartHtml()/ganttRowHtml()
-// machinery Dashboard's own Gantt tab is built on (see "Dashboard: Gantt
-// chart" in CLAUDE.md) — the only difference is which data-gathering
-// function feeds it (ganttL1Rows() here, ganttWorkstreamSections() there)
-// and that this page has no per-section grouping to do (there's only ever
-// one kind of row here, so the section carries no `name` at all —
-// renderGanttChartHtml() renders that as a header-less section, one flat
-// list of rows). This started as an internal scope toggle living inside
-// Dashboard's own Gantt tab, then moved out to its own tab here entirely on
-// a later, explicit user request ("move the l1 gant under L1 as a seperte
-// tab") — L1 Plans already has its own tab bar (Plans/Dashboard/Gantt/
-// Unlinked), which is scope selection enough on its own.
+// L1 Plans' own Gantt sub-tab — one row per L1 milestone, grouped into a
+// section per plan, reusing the exact same renderGanttChartHtml()/
+// ganttRowHtml() machinery Dashboard's own Gantt tab is built on (see
+// "Dashboard: Gantt chart" in CLAUDE.md) — the only difference is which
+// data-gathering function feeds it (ganttL1MilestoneSections() here,
+// ganttWorkstreamSections() there). This started as an internal scope
+// toggle living inside Dashboard's own Gantt tab, then moved out to its
+// own tab here entirely on a later, explicit user request ("move the l1
+// gant under L1 as a seperte tab") — L1 Plans already has its own tab bar
+// (Plans/Dashboard/Gantt/Unlinked), which is scope selection enough on its
+// own. A further, later user report ("l1 plan gant is showing only one
+// item. show l1 milestones") corrected the original one-row-per-plan shape
+// to one-row-per-milestone instead — see ganttL1MilestoneSections()'s own
+// comment for the full reasoning.
 function renderL1GanttHtml() {
-  return renderGanttChartHtml([{ name: null, color: null, rows: ganttL1Rows() }], 'No dated L1 Plans to show yet.');
+  return renderGanttChartHtml(ganttL1MilestoneSections(), 'No dated L1 milestones to show yet.');
 }
 // The "Unlinked" sub-tab itself — a real 5-column table (Workstream / Scope
 // Item / Milestone / Due / Link), mirroring l1ConnectRowHtml()'s own
@@ -10266,35 +10266,53 @@ function ganttWorkstreamSections() {
       const milestones = it.milestones.filter(m => !m.notApplicable && m.dueDate)
         .map(m => ({ id: m.id, name: m.name, date: m.dueDate, status: m.status }));
       if (!(it.startDate && it.dueDate) && !milestones.length) return null;
-      return { id: it.id, name: it.name, start: it.startDate, end: it.dueDate, status: it.status, milestones };
+      return { name: it.name, start: it.startDate, end: it.dueDate, status: it.status, milestones, onclick: `openItemModal('${it.id}')` };
     }).filter(Boolean);
-    return { id: w.id, name: w.name, color: w.color, rows };
+    return { name: w.name, color: w.color, rows };
   }).filter(sec => sec.rows.length);
 }
-// L1 Plans' own flat counterpart, feeding L1 Plans' own Gantt tab
+// L1 Plans' own counterpart, feeding L1 Plans' own Gantt tab
 // (renderL1GanttHtml(), see "L1 Plans" below) rather than the shared
 // sidebar filter — L1 Plans are never workstream-scoped at all (see "L1
 // Plans" in CLAUDE.md), so there's nothing for the sidebar to narrow them
-// by. Each plan's own bar uses its
-// already-computed date range (startDate/dueDate, rolled up from its
-// milestones); each L1 milestone's marker uses its own effective status
-// (computedL1MilestoneStatus()'s rollup when linked, its own manual status
-// otherwise) — the identical fallback every other L1 milestone status
-// display in this app already uses.
-function ganttL1Rows() {
+// by. One row per L1 MILESTONE (not one row per plan, grouped into a
+// section per plan) — a later, user-reported correction ("l1 plan gant is
+// showing only one item. show l1 milestones"): the original shape mirrored
+// ganttWorkstreamSections()'s own "one row per item, milestones as
+// markers within it" pattern applied one level up (one row per PLAN, its
+// milestones as markers on the plan's own bar) — but a plan's own
+// milestones are the actually load-bearing content here (the Plans tab's
+// own list already breaks a plan down into one row per milestone, for the
+// identical reason), and a programme with few L1 Plans but many
+// milestones on each showed almost nothing useful under the old shape. A
+// milestone row is marker-only (no bar at all — an L1 milestone has only
+// its own due date, never a range of its own), using its own effective
+// status (computedL1MilestoneStatus()'s rollup when linked, its own
+// manual status otherwise) — the identical fallback every other L1
+// milestone status display in this app already uses. Clicking a row calls
+// openL1MilestoneFromDashboard(planId, milestoneId) — the exact same
+// jump-to-the-real-editable-row navigation the L1 Plans Dashboard's own
+// Delayed list already uses for the identical "click a milestone-shaped
+// row elsewhere, land on it in the real Plans tab" reason, and — unlike
+// the edit modal itself — not role-gated, so every role can at least jump
+// to look at it.
+function ganttL1MilestoneSections() {
   return allL1Plans().map(p => {
-    const milestones = p.milestones.filter(m => !m.notApplicable && m.dueDate)
-      .map(m => ({ id: m.id, name: m.name, date: m.dueDate, status: computedL1MilestoneStatus(m.id) || m.status }));
-    if (!(p.startDate && p.dueDate) && !milestones.length) return null;
-    return { id: p.id, name: p.name, start: p.startDate, end: p.dueDate, status: computeL1PlanStatus(p.id) || 'not-started', milestones };
-  }).filter(Boolean);
+    const rows = p.milestones.filter(m => !m.notApplicable && m.dueDate).map(m => {
+      const status = computedL1MilestoneStatus(m.id) || m.status;
+      return { name: m.name, start: null, end: null, status, milestones: [{ id: m.id, name: m.name, date: m.dueDate, status }], onclick: `openL1MilestoneFromDashboard('${p.id}','${m.id}')` };
+    });
+    return { name: p.name, color: null, rows };
+  }).filter(sec => sec.rows.length);
 }
-// One row's own markup — a fixed-width label column (clickable, opening
-// the same item modal every other Dashboard row already links to) plus a
-// flexible track column holding the bar (if any) and every milestone
-// marker, all positioned by the exact same range every other row and the
-// axis header share. todayPct is threaded through from the caller (computed
-// once for the whole chart) rather than recomputed per row.
+// One row's own markup — a fixed-width label column (clickable, via
+// row.onclick — set by whichever data-gathering function built this row,
+// since a workstream item row and an L1 milestone row jump to genuinely
+// different places) plus a flexible track column holding the bar (if any)
+// and every milestone marker, all positioned by the exact same range
+// every other row and the axis header share. todayPct is threaded through
+// from the caller (computed once for the whole chart) rather than
+// recomputed per row.
 function ganttRowHtml(row, range, todayPct) {
   const hasBar = !!(row.start && row.end);
   const bar = hasBar ? ganttBarRect(row.start, row.end, range) : null;
@@ -10304,7 +10322,7 @@ function ganttRowHtml(row, range, todayPct) {
   const markersHtml = row.milestones.map(m => `<div class="gantt-marker" style="left:${ganttPercent(m.date, range)}%;background:var(--stat-${m.status})" title="${esc(m.name)} — ${esc(statusLabel(m.status))} — ${fmtDateY(m.date)}"></div>`).join('');
   const todayHtml = todayPct === null ? '' : `<div class="gantt-today-line" style="left:${todayPct}%"></div>`;
   return `<div class="gantt-row">
-      <div class="gantt-row-label attention-row-link" onclick="openItemModal('${row.id}')" title="${esc(row.name)}">${esc(row.name)}</div>
+      <div class="gantt-row-label attention-row-link" onclick="${row.onclick}" title="${esc(row.name)}">${esc(row.name)}</div>
       <div class="gantt-row-track">${todayHtml}${barHtml}${markersHtml}</div>
     </div>`;
 }
@@ -10319,10 +10337,12 @@ function ganttRowHtml(row, range, todayPct) {
 // as a seperte tab"): each page's own tab bar is already the scope
 // selector, so a second, internal one inside the chart itself was
 // redundant once the two lived on separate pages — see "Dashboard: Gantt
-// chart" in CLAUDE.md. A section with no `name` at all (L1 Plans' own flat
-// list — there's only ever one kind of row on that page, so repeating "L1
-// Plans" as its own section header would be redundant) renders with no
-// header, just its rows.
+// chart" in CLAUDE.md. A section with a `name` but no `color` (L1 Plans'
+// own per-plan sections, from ganttL1MilestoneSections()) gets a plain
+// bullseye icon in place of a workstream's own colored dot, since a plan
+// has no color of its own to show; a section with neither at all would
+// render with no header, just its rows (not currently used by either
+// caller, but supported for a future header-less list).
 function renderGanttChartHtml(sections, emptyMessage) {
   const allRows = sections.flatMap(s => s.rows);
   if (!allRows.length) {
@@ -10333,12 +10353,8 @@ function renderGanttChartHtml(sections, emptyMessage) {
   const todayPct = ganttPercentOrNull(todayStr(), range);
   const axisTicksHtml = ticks.map(t => `<div class="gantt-axis-tick" style="left:${t.pct}%">${esc(t.label)}</div>`).join('');
   const todayAxisHtml = todayPct === null ? '' : `<div class="gantt-today-line" style="left:${todayPct}%"></div>`;
-  // A section always carries both name+color together (a real workstream
-  // section, from ganttWorkstreamSections()) or neither at all (L1 Plans'
-  // own flat, header-less list, from renderL1GanttHtml()) — never a name
-  // with no color to render its dot from, so this needs no icon fallback.
   const sectionsHtml = sections.filter(sec => sec.rows.length).map(sec => {
-    const header = sec.name ? `<div class="gantt-section-header"><span class="ws-dot" style="background:var(--ws-${sec.color})"></span> ${esc(sec.name)}</div>` : '';
+    const header = sec.name ? `<div class="gantt-section-header">${sec.color ? `<span class="ws-dot" style="background:var(--ws-${sec.color})"></span>` : `<i class="fa-solid fa-bullseye" style="color:var(--accent)"></i>`} ${esc(sec.name)}</div>` : '';
     return `<div class="gantt-section">${header}${sec.rows.map(r => ganttRowHtml(r, range, todayPct)).join('')}</div>`;
   }).join('');
   return `<div class="gantt-chart" style="min-width:${ganttChartMinWidth(ticks.length)}px">
@@ -10507,9 +10523,9 @@ function renderDashboard() {
     return;
   }
   // Dispatched before computeDashboardData() even runs — the Gantt tab
-  // reads straight from visibleWorkstreams()/allL1Plans() via its own
-  // ganttWorkstreamSections()/ganttL1Rows(), so there's nothing here it
-  // actually needs from that computation.
+  // reads straight from visibleWorkstreams() via its own
+  // ganttWorkstreamSections(), so there's nothing here it actually needs
+  // from that computation.
   if (dashboardTab === 'gantt') {
     el.innerHTML = renderGanttHtml();
     return;
