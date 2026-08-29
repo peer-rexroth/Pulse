@@ -1844,7 +1844,34 @@
      .ws-section-header/.action-log-header already went through. */
   .gantt-chart { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
   .gantt-axis-row, .gantt-row { display: grid; grid-template-columns: 220px 1fr; align-items: center; }
-  .gantt-axis-row { border-bottom: 1px solid var(--border); background: var(--panel-2); position: sticky; top: 0; z-index: 3; border-radius: var(--radius) var(--radius) 0 0; }
+  /* top: -16px, not top: 0 — a user-reported follow-up ("scope items now
+     appear between fixed and upper navigation bar if horizontal scroll").
+     Dashboard's own #main sits inside .planning-main, which overrides
+     #main's own padding-top from 20px down to 16px (see ".planning-main
+     .main" above) — sticky's own `top` offset is resolved against the
+     scrollport's PADDING edge, not its border edge, so with `top: 0` the
+     "stuck" axis row sits flush 16px below #main's own true top (its own
+     border-box, which is also #main's own overflow:auto clip boundary) —
+     leaving a genuine 16px strip of #main's own content area that's inside
+     its clip boundary (so overflow:auto never hides anything there) but
+     above where the sticky row's own opaque background starts (so nothing
+     covers it either). A row scrolled far enough to normally be fully
+     hidden behind the sticky header can have its own marker/bar land in
+     exactly that uncovered strip and render visibly there — confirmed both
+     via getBoundingClientRect() (an offending row's own marker measured
+     inside that 16px band) and, once triggered with real diagonal-scroll
+     wheel events (not just a scripted .scrollTop/.scrollLeft assignment,
+     which didn't reliably reproduce it), via a live screenshot showing a
+     milestone diamond genuinely poking out above the "stuck" tick row.
+     `top: -16px` cancels exactly that 16px padding offset, so the stuck
+     axis row sits flush with #main's own true top (verified live:
+     getBoundingClientRect() puts the axis row's own top exactly at #main's
+     own top once scrolled) — closing the gap entirely, with no change to
+     the resting (unscrolled) layout, since a sticky element's own `top`
+     only affects where it engages "stuck", never its normal-flow position.
+     This 16px must stay in sync with `.planning-main .main`'s own
+     padding-top by hand if that value ever changes. */
+  .gantt-axis-row { border-bottom: 1px solid var(--border); background: var(--panel-2); position: sticky; top: -16px; z-index: 3; border-radius: var(--radius) var(--radius) 0 0; }
   .gantt-axis-label-spacer { padding: 8px 14px; }
   .gantt-row { border-bottom: 1px solid var(--border); }
   .gantt-section:last-child .gantt-row:last-child { border-bottom: none; border-radius: 0 0 var(--radius) var(--radius); }
