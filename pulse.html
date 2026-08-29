@@ -1240,11 +1240,21 @@
      delta as the column itself grew, so Milestone's own flexible track
      keeps the identical ~233px of comfortable room it already had rather
      than getting squeezed back down toward its bare 160px floor each time
-     Scope Item grows. Due is narrower (90px) than elsewhere in this app
-     since it only ever needs to fit a short date, not also double as an
-     editable pill. */
+     Scope Item grows. Once real Workstream names started truncating too
+     ("Platform & Product Setup"), Workstream was widened 130px → 195px
+     (1.5x, "increase workstream size to 150%") — and, since Scope Item's
+     own 450px had already turned out to be more room than it strictly
+     needed once repeated-row collapsing + wrapping (see the Workstream
+     filter dropdown's own comment above, "is this ui design good") meant
+     it was no longer racing to fit a name on one line, it was reduced by
+     that identical +65px Workstream grew by ("reduze scope item size") —
+     450px → 385px, so the modal's own overall width (and Milestone's own
+     ~233px) stay exactly where they already were; only the split between
+     the two fixed columns moved. Due is narrower (90px) than elsewhere in
+     this app since it only ever needs to fit a short date, not also double
+     as an editable pill. */
   .l1-connect-header, .l1-connect-row {
-    display: grid; grid-template-columns: 130px 450px minmax(160px,1fr) 90px 32px;
+    display: grid; grid-template-columns: 195px 385px minmax(160px,1fr) 90px 32px;
     align-items: center; gap: 10px; padding: 7px 10px; border-bottom: 1px solid var(--border);
   }
   .l1-connect-header {
@@ -1255,7 +1265,31 @@
   .l1-connect-row:last-child { border-bottom: none; }
   .l1-connect-row:hover { background: var(--panel-2); }
   .l1-connect-row input[type="checkbox"] { cursor: pointer; }
-  .l1-connect-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Real programme data surfaced two problems no amount of column-widening
+     alone was ever going to fix — a user-reported design review ("is this
+     ui design good"), confirmed and acted on directly rather than bumping
+     the width a third time: (1) one scope item with several milestones
+     repeated its own, often long, Workstream/Scope Item text identically on
+     every one of those rows, which read as noisy and made it harder, not
+     easier, to spot what actually differed row to row (the milestone name);
+     (2) a genuinely long name (this app has no control over how a real
+     programme names its scope items) still truncated even at a generously
+     widened column, since ellipsis-truncation has no upper bound on how
+     long a real name can be. renderL1ConnectList() now collapses the
+     Workstream/Scope Item text to blank on every row after the first in a
+     run of consecutive rows sharing the same item (still real, present
+     `.l1-connect-source` spans — the usual "never omit a grid cell, or
+     later columns silently shift" discipline this app's other grids follow
+     — just empty ones), and .l1-connect-source itself wraps instead of
+     truncating, so a genuinely long name is fully readable across two (or
+     more) lines rather than hidden behind an ellipsis with only the title
+     tooltip as a hover-only escape hatch. `.l1-connect-row-grouped` (set on
+     every row except the last one in its own group) drops that row's own
+     border-bottom, so a multi-milestone item's own rows visually read as
+     one connected block, with the border reappearing only once the next
+     item's own group actually starts. */
+  .l1-connect-source { overflow-wrap: break-word; }
+  .l1-connect-row.l1-connect-row-grouped { border-bottom: none; }
   /* The Unlinked tab's own real table (Workstream / Scope Item / Milestone /
      Due / Link) — a later, explicit user request reshaping this tab from a
      per-item "attention row" list into the same flat, per-milestone table
@@ -7902,8 +7936,13 @@ function closeL1ConnectModal() {
 // name-only row per milestone with no Due shown at all). Rows are sorted by
 // workstream display order (Unassigned last, matching every other
 // Unassigned-last convention in this app), then by scope item name within
-// each, so related milestones still read together even without the old
-// grouping's visual headers. Every workstream milestone is a real
+// each, so related milestones read together even without the old grouping's
+// visual headers — real programme data later showed that ordering alone
+// wasn't quite enough on its own (a busy multi-milestone item still
+// repeated its own long Workstream/Scope Item text on every one of its
+// rows), so renderL1ConnectList()/l1ConnectRowHtml() also collapse that
+// repeated text and merge those rows' own borders — see their own comments
+// for the fuller reasoning. Every workstream milestone is a real
 // candidate here regardless of what it's already linked to — a later,
 // explicit user request ("allow linking to multiple l1 milestones")
 // reversed this feature's own original many-to-one design, so a milestone
@@ -7918,12 +7957,24 @@ function l1ConnectHeaderHtml() {
       <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span></span>
     </div>`;
 }
-function l1ConnectRowHtml(item, milestone, checked) {
+// showSource/isLastInGroup are computed by renderL1ConnectList() from the
+// row's own position among consecutive candidates sharing the same item —
+// see its own comment for why (real programme data made the old
+// always-repeat-every-row shape genuinely hard to scan). showSource false
+// still renders two real, empty .l1-connect-source spans rather than
+// omitting them — the usual "never omit a grid cell" discipline this app's
+// other grids already follow, since an omitted cell would silently shift
+// every later column in that one row. isLastInGroup false drops the row's
+// own border-bottom (.l1-connect-row-grouped), so a multi-milestone item's
+// own rows read as one visually connected block.
+function l1ConnectRowHtml(item, milestone, checked, showSource, isLastInGroup) {
   const ws = item.workstreamId ? workstreams.find(w => w.id === item.workstreamId) : null;
   const wsLabel = ws ? ws.name : 'Unassigned';
-  return `<label class="l1-connect-row" title="${esc(wsLabel)} — ${esc(item.name)}">
-      <span class="l1-connect-source">${esc(wsLabel)}</span>
-      <span class="l1-connect-source">${esc(item.name)}</span>
+  const sourceHtml = showSource
+    ? `<span class="l1-connect-source">${esc(wsLabel)}</span><span class="l1-connect-source">${esc(item.name)}</span>`
+    : `<span class="l1-connect-source"></span><span class="l1-connect-source"></span>`;
+  return `<label class="l1-connect-row${isLastInGroup ? '' : ' l1-connect-row-grouped'}" title="${esc(wsLabel)} — ${esc(item.name)}">
+      ${sourceHtml}
       <span>${esc(milestone.name)}</span>
       <span>${milestone.dueDate ? esc(fmtDate(milestone.dueDate)) : '—'}</span>
       <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleL1MilestoneLink('${item.id}','${milestone.id}', this.checked)">
@@ -7932,7 +7983,18 @@ function l1ConnectRowHtml(item, milestone, checked) {
 function renderL1ConnectList() {
   const milestoneId = l1ConnectMilestoneId;
   if (!milestoneId) return;
-  const query = (document.getElementById('l1ConnectSearchInput').value || '').trim().toLowerCase();
+  // Multiple words, each independently free to match either field — an
+  // explicit user request ("use multiple words. one could match from scope
+  // item, one could match in milestone"). Every word must match SOMEWHERE
+  // (an AND across words — a query that doesn't fully match narrows to
+  // nothing, same as a plain single-word search always did), but each word
+  // is checked against the item name OR the milestone name independently
+  // (an OR across fields per word) — so "cutover finance" finds a
+  // "Cutover" milestone belonging to a "Finance Migration" item even
+  // though neither field alone contains that two-word phrase. A
+  // single-word query (still the common case) behaves exactly as before,
+  // since one word trivially satisfies "every word matches".
+  const queryWords = (document.getElementById('l1ConnectSearchInput').value || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
   // '' (default) = every workstream; 'unassigned' = only items with no
   // workstream at all; any other value is a real workstream's own id.
   // Composes with the search box as a plain AND, the same "narrows the
@@ -7943,8 +8005,9 @@ function renderL1ConnectList() {
   items.forEach(it => {
     if (it.itemType === 'l1plan') return;
     if (wsFilter === 'unassigned' ? it.workstreamId != null : (wsFilter && it.workstreamId !== wsFilter)) return;
+    const itemNameLower = it.name.toLowerCase();
     it.milestones.forEach(m => {
-      if (query && !(m.name.toLowerCase().includes(query) || it.name.toLowerCase().includes(query))) return;
+      if (queryWords.length && !queryWords.every(w => itemNameLower.includes(w) || m.name.toLowerCase().includes(w))) return;
       candidates.push({ item: it, milestone: m });
     });
   });
@@ -7958,8 +8021,23 @@ function renderL1ConnectList() {
     const orderB = b.item.workstreamId == null ? Infinity : (wsOrder.get(b.item.workstreamId) ?? Infinity);
     return orderA !== orderB ? orderA - orderB : a.item.name.localeCompare(b.item.name);
   });
+  // Every milestone belonging to the same item already sorts contiguously
+  // (Array.prototype.sort is a stable sort, and two candidates from the
+  // same item always tie on both sort keys above — same workstream order,
+  // same item name — so they keep their original, already-item-grouped
+  // relative order from the items.forEach() pass that built `candidates`).
+  // That's what makes this simple "compare to the previous/next entry by
+  // index" check enough to detect a run's own start/end, with no separate
+  // grouping pass needed — see l1ConnectRowHtml()'s own comment for why
+  // this matters (real programme data revealed the old "repeat the full
+  // Workstream/Scope Item text on every row" shape as genuinely hard to
+  // scan once one item had several milestones).
   document.getElementById('l1ConnectList').innerHTML = l1ConnectHeaderHtml() +
-    candidates.map(({ item, milestone }) => l1ConnectRowHtml(item, milestone, (milestone.l1MilestoneIds || []).includes(milestoneId))).join('');
+    candidates.map(({ item, milestone }, i) => {
+      const showSource = i === 0 || candidates[i - 1].item.id !== item.id;
+      const isLastInGroup = i === candidates.length - 1 || candidates[i + 1].item.id !== item.id;
+      return l1ConnectRowHtml(item, milestone, (milestone.l1MilestoneIds || []).includes(milestoneId), showSource, isLastInGroup);
+    }).join('');
 }
 // Adds/removes l1ConnectMilestoneId from this one workstream milestone's own
 // l1MilestoneIds array — never overwrites the whole array, since a

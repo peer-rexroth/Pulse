@@ -1673,6 +1673,51 @@ test('renderL1ConnectList\'s search box narrows candidates by milestone or scope
   assertNotIncludes(html, 'Unrelated step');
 });
 
+// ---------- Multi-word search — a later, explicit user request ----------
+// ("use multiple words. one could match from scope item, one could match in
+// milestone"). Every word must match somewhere (an AND across words), but
+// each word independently checks the item name OR the milestone name (an OR
+// across fields per word) — so a query naming both halves of a candidate
+// finds it even though neither field alone contains the whole phrase.
+
+test('a two-word search matches when one word is only in the scope item name and the other only in the milestone name', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Finance Migration' });
+  const wm = { id: genId(), name: 'Cutover complete', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  document.getElementById('l1ConnectSearchInput').value = 'cutover finance';
+  renderL1ConnectList();
+  assertIncludes(document.getElementById('l1ConnectList').innerHTML, 'Cutover complete');
+});
+
+test('a two-word search excludes a candidate matching only one of the words', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item1 = addItem({ name: 'Finance Migration' });
+  item1.milestones.push({ id: genId(), name: 'Cutover complete', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] });
+  const item2 = addItem({ name: 'HR Migration' });
+  item2.milestones.push({ id: genId(), name: 'Cutover complete', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] });
+  openL1ConnectModal(p.id, m.id);
+  document.getElementById('l1ConnectSearchInput').value = 'cutover finance';
+  renderL1ConnectList();
+  const html = document.getElementById('l1ConnectList').innerHTML;
+  assertIncludes(html, 'Finance Migration');
+  assertNotIncludes(html, 'HR Migration');
+});
+
+test('a multi-word search with extra whitespace between words is treated the same as single-spaced', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Finance Migration' });
+  item.milestones.push({ id: genId(), name: 'Cutover complete', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] });
+  openL1ConnectModal(p.id, m.id);
+  document.getElementById('l1ConnectSearchInput').value = '  cutover   finance  ';
+  renderL1ConnectList();
+  assertIncludes(document.getElementById('l1ConnectList').innerHTML, 'Cutover complete');
+});
+
 // ---------- The workstream filter dropdown — a later, explicit user ----------
 // request ("provide a dropdown filter to select the workstream"),
 // composing with the search box as a plain AND, the same "narrows the
@@ -1787,6 +1832,60 @@ test('renderL1ConnectList shows an em dash for a candidate with no Due date set'
   assertIncludes(document.getElementById('l1ConnectList').innerHTML, '—');
 });
 
+// ---------- Collapsing repeated Workstream/Scope Item text ----------
+// A user-reported design review ("is this ui design good") against real
+// programme data: a scope item with several milestones repeated its own,
+// often long, Workstream/Scope Item text identically on every one of those
+// rows — genuinely hard to scan, and no amount of column-widening on its
+// own was ever going to fix a genuinely long real name truncating. Fixed by
+// collapsing that repeated text to blank on every row after the first in a
+// run sharing the same item, letting the (now un-truncated) text wrap
+// instead of ellipsis-truncating, and merging those rows' own borders so
+// the group reads as one visual block.
+
+test('renderL1ConnectList shows Workstream/Scope Item text only on the first row of a run sharing the same item, blank on the rest', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item = addItem({ name: 'Migrate Database' });
+  item.milestones.push(
+    { id: genId(), name: 'Schema Design', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] },
+    { id: genId(), name: 'Cutover', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] }
+  );
+  openL1ConnectModal(p.id, m.id);
+  const html = document.getElementById('l1ConnectList').innerHTML;
+  const rows = html.split('<label class="l1-connect-row').slice(1); // drop the header
+  assertEqual(rows.length, 2);
+  // Both rows still carry "Migrate Database" in their own title tooltip
+  // (deliberately unconditional, so even a blank row still orients on
+  // hover) — the real signal is the .l1-connect-source spans themselves.
+  assertIncludes(rows[0], '<span class="l1-connect-source">Migrate Database</span>', 'the first row of the group shows the item name');
+  assertIncludes(rows[1], '<span class="l1-connect-source"></span><span class="l1-connect-source"></span>', 'the second row of the same group leaves both source spans blank');
+});
+
+test('renderL1ConnectList shows Workstream/Scope Item text again once a new item\'s own group starts', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item1 = addItem({ name: 'Alpha Item' });
+  item1.milestones.push({ id: genId(), name: 'M1', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] });
+  const item2 = addItem({ name: 'Beta Item' });
+  item2.milestones.push({ id: genId(), name: 'M2', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] });
+  openL1ConnectModal(p.id, m.id);
+  const html = document.getElementById('l1ConnectList').innerHTML;
+  const rows = html.split('<label class="l1-connect-row').slice(1);
+  assertEqual(rows.length, 2);
+  assertIncludes(rows[0], 'Alpha Item');
+  assertIncludes(rows[1], 'Beta Item', 'a new item always shows its own text on its own first row, regardless of the previous group');
+});
+
+test('l1ConnectRowHtml drops the row\'s own border-bottom (.l1-connect-row-grouped) on every row except the last one in its group', function () {
+  const item = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  const middleOfGroup = l1ConnectRowHtml(item, wm, false, false, false);
+  const lastOfGroup = l1ConnectRowHtml(item, wm, false, false, true);
+  assertIncludes(middleOfGroup, 'l1-connect-row-grouped');
+  assertNotIncludes(lastOfGroup, 'l1-connect-row-grouped');
+});
+
 test('renderL1ConnectList labels a candidate from an Unassigned scope item as "Unassigned", not a stale/missing workstream name', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
@@ -1823,7 +1922,7 @@ test('renderL1ConnectList sorts candidates by workstream display order, Unassign
 test('l1ConnectRowHtml renders the whole row as one clickable label wrapping the checkbox, not just the checkbox itself', function () {
   const item = addItem({ name: 'Deliverable' });
   const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
-  const html = l1ConnectRowHtml(item, wm, false);
+  const html = l1ConnectRowHtml(item, wm, false, true, true);
   assertIncludes(html, '<label class="l1-connect-row"');
   assertIncludes(html, '<input type="checkbox"');
 });
