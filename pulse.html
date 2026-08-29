@@ -1829,12 +1829,25 @@
      between them; a mismatched column width here would misalign the whole
      chart the same way an unmatched header/row grid already does elsewhere
      in this app (see "Column layout is a real CSS grid" in CLAUDE.md). */
-  .gantt-chart { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  /* No overflow:hidden here — .gantt-axis-row below is position:sticky so it
+     stays visible while #main scrolls vertically (an explicit user request:
+     "keep the timeline row fixed in case of vertical scrolling"), and sticky
+     positioning is computed relative to the nearest ancestor with a real
+     scrolling mechanism — an overflow:hidden .gantt-chart would itself count
+     as that ancestor (even though it never actually scrolls, since its own
+     height is always auto/content-sized), which would pin the axis row to
+     the top of .gantt-chart instead of the top of #main's own viewport,
+     making it scroll away immediately rather than staying fixed. Losing the
+     clip means .gantt-axis-row needs its own top border-radius instead (see
+     just below) — the same "give the header its own corner radius rather
+     than relying on the parent's overflow:hidden to clip it" fix this app's
+     .ws-section-header/.action-log-header already went through. */
+  .gantt-chart { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
   .gantt-axis-row, .gantt-row { display: grid; grid-template-columns: 220px 1fr; align-items: center; }
-  .gantt-axis-row { border-bottom: 1px solid var(--border); background: var(--panel-2); }
+  .gantt-axis-row { border-bottom: 1px solid var(--border); background: var(--panel-2); position: sticky; top: 0; z-index: 3; border-radius: var(--radius) var(--radius) 0 0; }
   .gantt-axis-label-spacer { padding: 8px 14px; }
   .gantt-row { border-bottom: 1px solid var(--border); }
-  .gantt-section:last-child .gantt-row:last-child { border-bottom: none; }
+  .gantt-section:last-child .gantt-row:last-child { border-bottom: none; border-radius: 0 0 var(--radius) var(--radius); }
   .gantt-section-header { padding: 8px 14px; font-size: 12.5px; font-weight: 700; background: var(--panel-2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
   .gantt-row-label { padding: 9px 14px; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
   .gantt-row-label:hover { text-decoration: underline; }
