@@ -1228,14 +1228,23 @@
      Checkbox) — an explicit user request replacing the original grouped
      layout (one heading per workstream, a bold sub-heading per scope item,
      then a plain name-only row per milestone, no Due shown at all). Widths
-     roughly mirror l1LinkedRowHtml()'s own Workstream/Scope Item columns
-     one page over, loosened slightly (130px/150px vs 110px/140px) since
-     this modal has real room to spare and no cross-row alignment
-     constraint with anything else to respect. Due is narrower (90px) than
-     elsewhere in this app since it only ever needs to fit a short date, not
-     also double as an editable pill. */
+     originally roughly mirrored l1LinkedRowHtml()'s own Workstream/Scope
+     Item columns one page over, loosened slightly (130px/150px vs
+     110px/140px) since this modal has real room to spare and no cross-row
+     alignment constraint with anything else to respect. Scope Item was
+     later widened twice more, in quick succession — 150px → 375px (2.5x,
+     "increase the width of this modal. scope item needs 2,5x the size"),
+     then 375px → 450px ("increase scope item width to 450px") — with the
+     modal's own fixed width (see l1ConnectModalBg's own inline style)
+     bumped to match each time (760px → 960px → 1035px), always by the same
+     delta as the column itself grew, so Milestone's own flexible track
+     keeps the identical ~233px of comfortable room it already had rather
+     than getting squeezed back down toward its bare 160px floor each time
+     Scope Item grows. Due is narrower (90px) than elsewhere in this app
+     since it only ever needs to fit a short date, not also double as an
+     editable pill. */
   .l1-connect-header, .l1-connect-row {
-    display: grid; grid-template-columns: 130px 150px minmax(160px,1fr) 90px 32px;
+    display: grid; grid-template-columns: 130px 450px minmax(160px,1fr) 90px 32px;
     align-items: center; gap: 10px; padding: 7px 10px; border-bottom: 1px solid var(--border);
   }
   .l1-connect-header {
@@ -2354,7 +2363,7 @@
      workstream") — narrowing the same candidate list by a second,
      independent axis. See "L1 Plans" in CLAUDE.md. -->
 <div class="modal-bg" id="l1ConnectModalBg">
-  <div class="modal modal-wide" style="width:760px">
+  <div class="modal modal-wide" style="width:1035px">
     <h3 id="l1ConnectModalTitle">Connect workstream milestones</h3>
     <p style="margin-top:0;color:var(--text-dim);font-size:13px">Pick which workstream milestones feed into this L1 milestone. Its Status rolls up from these once linked; the linked milestones' own Due/Actual are never changed by linking.</p>
     <div style="display:flex;gap:8px;margin-bottom:10px">
