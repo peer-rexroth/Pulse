@@ -2124,7 +2124,7 @@
 <div class="planning-toolbar" id="l1PlansSearchToolbar" style="display:none">
   <div class="search-box">
     <i class="fa-solid fa-magnifying-glass"></i>
-    <input type="text" id="l1PlansSearchInput" placeholder="Search L1 Plans by name..." oninput="setL1PlansSearch(this.value)">
+    <input type="text" id="l1PlansSearchInput" placeholder="Search L1 milestones by name..." oninput="setL1PlansSearch(this.value)">
     <button type="button" class="search-clear-btn" id="l1PlansSearchClearBtn" onclick="clearL1PlansSearch()" title="Clear search" style="display:none"><i class="fa-solid fa-xmark"></i></button>
   </div>
   <div class="status-filter-chips" id="l1PlansFilterChips"></div>
@@ -4217,8 +4217,26 @@ function setMode(m) {
 // Dashboard's own Overview/Dependencies sub-tabs — see dashboardTab's own
 // declaration comment above. Same shape as setReviewTab().
 function setDashboardTab(t) { dashboardTab = t; render(); }
+// matchesL1MilestoneSearch(m) — a plain, case-insensitive substring match
+// against a MILESTONE's own name, not the plan's — a later, explicit user
+// correction ("l1 search should search for l1 milestones, no l1 plans").
+// The search box originally matched the plan's own name only
+// (matchesPlanningSearch()'s exact counterpart, just aimed at the wrong
+// field) — but a plan is really just a container for its milestones, and
+// searching for one of those by name (the thing someone's actually
+// scanning for once a plan holds several) found nothing at all. Mirrors
+// matchesL1MilestoneReportingLevel()'s own shape exactly, one predicate
+// down: matchesL1PlansSearch(plan) below is the plan-level wrapper (shows
+// the plan once ANY of its own milestones matches), built on this exact
+// same per-milestone check, so "this plan is shown" and "this plan's
+// milestone rows are the ones that matched" always agree — the identical
+// invariant the Reporting Level filter already established for itself.
+function matchesL1MilestoneSearch(m) {
+  return !l1PlansSearchQuery || m.name.toLowerCase().includes(l1PlansSearchQuery);
+}
 function matchesL1PlansSearch(plan) {
-  return !l1PlansSearchQuery || plan.name.toLowerCase().includes(l1PlansSearchQuery);
+  if (!l1PlansSearchQuery) return true;
+  return plan.milestones.some(m => matchesL1MilestoneSearch(m));
 }
 // The Reporting Level chips filter which MILESTONE ROWS actually display
 // within an expanded L1 Plan, not just which whole plans are listed — a
@@ -7102,16 +7120,21 @@ function l1MilestoneRowsHtml(plan) {
   // touch or reconstruct. A `.slice()` copy, so sorting for display never
   // mutates the plan's own real array.
   const sortedMilestones = plan.milestones.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
-  // Narrowed to just the milestones actually matching the active Reporting
-  // Level chips (matchesL1MilestoneReportingLevel(), see its own comment
-  // above) — a later, user-reported correction: the first cut of this
-  // feature only ever decided whether the whole PLAN showed, then still
-  // rendered every one of its milestones regardless of whether any
-  // individual one matched, which could look like the filter did nothing
-  // at all on a plan with several milestones carrying different Reporting
-  // Levels. Only filtered down when a chip is actually active — an
-  // unfiltered view shows every milestone exactly as before, untouched.
-  const visibleMilestones = l1PlansReportingLevelFilters.size ? sortedMilestones.filter(m => matchesL1MilestoneReportingLevel(m)) : sortedMilestones;
+  // Narrowed to just the milestones actually matching the search box
+  // (matchesL1MilestoneSearch()) AND the active Reporting Level chips
+  // (matchesL1MilestoneReportingLevel()) — see each one's own comment
+  // above. The Reporting Level half of this was a user-reported
+  // correction: the first cut of that feature only ever decided whether
+  // the whole PLAN showed, then still rendered every one of its milestones
+  // regardless of whether any individual one matched, which could look
+  // like the filter did nothing at all on a plan with several milestones
+  // carrying different Reporting Levels — the search box got the identical
+  // per-milestone treatment from the outset once it was retargeted at
+  // milestone names instead of the plan's own. Both predicates are already
+  // no-ops when their own filter is inactive, so this always applies
+  // cleanly with no conditional needed — an unfiltered view still shows
+  // every milestone exactly as before.
+  const visibleMilestones = sortedMilestones.filter(m => matchesL1MilestoneSearch(m) && matchesL1MilestoneReportingLevel(m));
   return visibleMilestones.map(m => {
     const linked = linkedWorkstreamMilestones(m.id);
     const linkedCount = linked.length;

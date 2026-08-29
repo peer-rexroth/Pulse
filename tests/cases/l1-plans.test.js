@@ -2427,14 +2427,50 @@ test('saveReportingLevelsModal is blocked below Admin', function () {
 // (see its own tests further below); matchesL1PlansReportingLevelFilter(plan)
 // is just the plan-level wrapper used by renderL1Plans()/l1PlansExpandAllIds().
 
-test('matchesL1PlansSearch matches an L1 Plan\'s own name, case-insensitively, and passes everything when the query is empty', function () {
+// The search box matches MILESTONE names, not the plan's own — a later,
+// explicit user correction ("l1 search should search for l1 milestones, no
+// l1 plans"), reversing this feature's original design (a plain match
+// against the plan's own name). matchesL1MilestoneSearch(m) is the real,
+// per-milestone predicate; matchesL1PlansSearch(plan) is just the
+// plan-level wrapper (shows the plan once ANY of its own milestones
+// matches) — the identical shape matchesL1MilestoneReportingLevel()/
+// matchesL1PlansReportingLevelFilter() already established for the
+// Reporting Level filter below.
+
+test('matchesL1MilestoneSearch matches a milestone\'s own name, case-insensitively, and passes everything when the query is empty', function () {
   const p = addL1Plan('Digital Transformation');
+  const m = addL1Milestone(p.id, 'Go-Live');
+  l1PlansSearchQuery = '';
+  assertTrue(matchesL1MilestoneSearch(m));
+  l1PlansSearchQuery = 'go-live';
+  assertTrue(matchesL1MilestoneSearch(m));
+  l1PlansSearchQuery = 'kickoff';
+  assertFalse(matchesL1MilestoneSearch(m));
+});
+
+test('matchesL1PlansSearch is not searching the plan\'s own name at all — a plan named after the query still fails to match if none of its milestones do', function () {
+  const p = addL1Plan('Digital Transformation');
+  addL1Milestone(p.id, 'Kickoff');
+  l1PlansSearchQuery = 'digital';
+  assertFalse(matchesL1PlansSearch(p), 'the plan\'s own name should no longer be searched');
+});
+
+test('matchesL1PlansSearch shows a plan once at least one of its milestones matches, and passes everything when the query is empty', function () {
+  const p = addL1Plan('Digital Transformation');
+  addL1Milestone(p.id, 'Kickoff');
+  addL1Milestone(p.id, 'Go-Live');
   l1PlansSearchQuery = '';
   assertTrue(matchesL1PlansSearch(p));
-  l1PlansSearchQuery = 'digital';
-  assertTrue(matchesL1PlansSearch(p));
-  l1PlansSearchQuery = 'finance';
+  l1PlansSearchQuery = 'go-live';
+  assertTrue(matchesL1PlansSearch(p), 'one matching milestone is enough');
+  l1PlansSearchQuery = 'nothing here matches';
   assertFalse(matchesL1PlansSearch(p));
+});
+
+test('matchesL1PlansSearch is false for a plan with no milestones at all once a query is active', function () {
+  const p = addL1Plan('Empty plan');
+  l1PlansSearchQuery = 'empty';
+  assertFalse(matchesL1PlansSearch(p), 'there is nothing here for the query to match against');
 });
 
 test('matchesL1MilestoneReportingLevel passes every milestone when no chip is selected, and otherwise only one carrying a selected Reporting Level', function () {
@@ -2510,6 +2546,27 @@ test('l1MilestoneRowsHtml renders only the milestone rows matching an active Rep
   assertNotIncludes(html, 'Go-Live');
 });
 
+test('l1MilestoneRowsHtml renders only the milestone rows matching an active search query', function () {
+  const p = addL1Plan();
+  addL1Milestone(p.id, 'Kickoff');
+  addL1Milestone(p.id, 'Go-Live');
+  l1PlansSearchQuery = 'go';
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'Go-Live');
+  assertNotIncludes(html, 'Kickoff');
+});
+
+test('l1MilestoneRowsHtml combines the search query and the Reporting Level filter as a plain AND', function () {
+  const p = addL1Plan();
+  addL1Milestone(p.id, 'Go-Live A').reportingLevel = 'Programme';
+  addL1Milestone(p.id, 'Go-Live B').reportingLevel = 'Board';
+  l1PlansSearchQuery = 'go-live';
+  l1PlansReportingLevelFilters = new Set(['Programme']);
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'Go-Live A');
+  assertNotIncludes(html, 'Go-Live B');
+});
+
 test('setL1PlansReportingLevelFilter toggles by array index, not raw value — safe against a level name containing a quote', function () {
   reportingLevels = ["Steering Co'ee"];
   l1PlansReportingLevelFilters = new Set();
@@ -2519,11 +2576,11 @@ test('setL1PlansReportingLevelFilter toggles by array index, not raw value — s
   assertFalse(l1PlansReportingLevelFilters.has("Steering Co'ee"));
 });
 
-test('renderL1Plans narrows the list by both the search box and the Reporting Level chips together', function () {
+test('renderL1Plans narrows the list by both the search box (matching milestone names) and the Reporting Level chips together', function () {
   const p1 = addL1Plan('Digital Transformation');
-  addL1Milestone(p1.id).reportingLevel = 'Programme';
+  addL1Milestone(p1.id, 'Digital Kickoff').reportingLevel = 'Programme';
   const p2 = addL1Plan('Finance Overhaul');
-  addL1Milestone(p2.id).reportingLevel = 'Programme';
+  addL1Milestone(p2.id, 'Finance Kickoff').reportingLevel = 'Programme';
   l1PlansSearchQuery = 'digital';
   l1PlansReportingLevelFilters = new Set(['Programme']);
   setMode('l1plans');
@@ -2534,7 +2591,8 @@ test('renderL1Plans narrows the list by both the search box and the Reporting Le
 });
 
 test('renderL1Plans shows a distinct "no match" message once filters narrow a real, non-empty list down to nothing', function () {
-  addL1Plan('Digital Transformation');
+  const p = addL1Plan('Digital Transformation');
+  addL1Milestone(p.id, 'Kickoff');
   l1PlansSearchQuery = 'nothing matches this';
   setMode('l1plans');
   renderL1Plans();
@@ -2545,7 +2603,9 @@ test('renderL1Plans shows a distinct "no match" message once filters narrow a re
 
 test('l1PlansExpandAllIds only includes plans currently passing the search/filter, not every L1 Plan', function () {
   const p1 = addL1Plan('Digital Transformation');
+  addL1Milestone(p1.id, 'Digital Kickoff');
   const p2 = addL1Plan('Finance Overhaul');
+  addL1Milestone(p2.id, 'Finance Kickoff');
   l1PlansSearchQuery = 'digital';
   const ids = l1PlansExpandAllIds();
   assertDeepEqual(ids, [p1.id]);
