@@ -630,14 +630,70 @@ test('ganttBarRect computes left/width from start/end, with a minimum visible wi
   assertTrue(zeroWidth.width >= 0.6, 'a single-day bar must still render as a visible sliver, not collapse to nothing');
 });
 
-test('ganttMonthTicks produces one tick per calendar month boundary actually inside the range, with a "Mon YYYY" label', function () {
+// ganttTicks()/ganttTickGranularity() — a later, user-reported fix
+// ("timeline does not look to nice. maybe scale to quarters?"): a real,
+// multi-year "All Workstreams" chart rendered one label per calendar month
+// packed into the same fixed axis width, overlapping every one of them
+// into unreadable, garbled text. The axis now auto-picks month/quarter/year
+// granularity from the range's own total span instead of always using
+// month.
+
+test('ganttTickGranularity picks month for a short scope, quarter for a multi-year one, year for a much longer one', function () {
+  assertEqual(ganttTickGranularity({ start: ganttDayNumber('2026-01-01'), end: ganttDayNumber('2026-06-01') }), 'month');
+  assertEqual(ganttTickGranularity({ start: ganttDayNumber('2026-01-01'), end: ganttDayNumber('2028-06-01') }), 'quarter');
+  assertEqual(ganttTickGranularity({ start: ganttDayNumber('2020-01-01'), end: ganttDayNumber('2030-01-01') }), 'year');
+});
+
+test('ganttTicks produces one tick per calendar month boundary actually inside a short range, with a "Mon YYYY" label', function () {
   // Range starts mid-December, so Dec 1 itself falls just before range.start
   // and is correctly excluded — only the three later month boundaries the
   // range genuinely spans (Jan 1, Feb 1, Mar 1) get a tick.
   const range = { start: ganttDayNumber('2025-12-15'), end: ganttDayNumber('2026-03-10') };
-  const ticks = ganttMonthTicks(range);
+  const ticks = ganttTicks(range);
   assertEqual(ticks.length, 3, 'Jan 1, Feb 1, Mar 1');
   assertIncludes(ticks[0].label, '2026');
+});
+
+test('ganttTicks produces one tick per calendar quarter, aligned to real Q1/Q2/Q3/Q4 boundaries, for a multi-year range', function () {
+  const range = { start: ganttDayNumber('2026-02-15'), end: ganttDayNumber('2028-08-01') };
+  const ticks = ganttTicks(range);
+  // Q1 2026 (starting Jan 1, before range.start) is excluded — the range
+  // is already partway through it — so this starts at Q2 2026.
+  assertEqual(ticks[0].label, 'Q2 2026');
+  assertTrue(ticks.every(t => /^Q[1-4] \d{4}$/.test(t.label)), 'every label reads as a real "QN YYYY" boundary');
+  assertTrue(ticks.length < 12, 'quarterly, not one per month, across this ~2.5 year span');
+});
+
+test('ganttTicks produces one tick per calendar year, for a much longer range', function () {
+  const range = { start: ganttDayNumber('2015-06-01'), end: ganttDayNumber('2030-01-01') };
+  const ticks = ganttTicks(range);
+  assertTrue(ticks.every(t => /^\d{4}$/.test(t.label)), 'every label is a bare year');
+  assertTrue(ticks.length <= 15, 'yearly, not quarterly, across this ~15 year span');
+});
+
+// ganttChartMinWidth() — a later, separate user-reported fix ("timeline
+// does not look to nice") to a second bug the granularity fix above didn't
+// cover on its own: even with the coarsest sensible granularity, a real
+// multi-year range can still produce more ticks than comfortably fit in
+// whatever width the chart's own container happens to have, so the labels
+// just run together with no gap. Pinning a real min-width (the same
+// pin-a-width-and-let-overflow-x:auto-scroll-the-rest convention this app
+// already uses everywhere else) is the fix, computed from the actual tick
+// count rather than a single fixed constant.
+
+test('ganttChartMinWidth grows with the number of ticks, and never drops below a sane floor for a short scope', function () {
+  const short = ganttChartMinWidth(3);
+  const long = ganttChartMinWidth(20);
+  assertTrue(long > short, 'more ticks need more room');
+  assertTrue(short >= GANTT_LABEL_COL_WIDTH + 400, 'never below the floor, even for very few ticks');
+});
+
+test('renderGanttChartHtml pins the chart\'s own min-width from its actual tick count, so a long multi-year range gets real breathing room instead of overlapping labels', function () {
+  const rows = [{ id: 'i1', name: 'Long-running item', start: '2020-01-01', end: '2029-01-01', status: 'green', milestones: [] }];
+  const html = renderGanttChartHtml([{ name: null, color: null, rows }], 'empty');
+  const ticks = ganttTicks(ganttDateRange(ganttRowDates(rows)));
+  const expected = ganttChartMinWidth(ticks.length);
+  assertIncludes(html, `min-width:${expected}px`);
 });
 
 test('ganttRowDates flattens every row\'s own bar start/end and milestone dates into one array', function () {

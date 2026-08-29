@@ -10152,29 +10152,84 @@ function ganttBarRect(startIso, endIso, range) {
   const width = Math.max(0.6, ganttPercent(endIso, range) - left);
   return { left, width };
 }
-// One month-boundary tick per calendar month the range touches, each
-// carrying its own left% (computed against the exact same range every
-// bar/marker uses, so the axis and the data always agree) and a locale-
-// formatted "Mon YYYY" label — the same toLocaleDateString() approach
-// fmtDate()/fmtDateY() already use elsewhere in this app, just for a
-// month+year label instead of a day. Capped at 240 iterations (20 years)
-// as a cheap safety net against an unbounded loop — a real Gantt scope
-// spanning that many months would already be a degenerate, useless chart
-// long before this cap is ever reached.
-function ganttMonthTicks(range) {
+// Picks the axis's own tick granularity from the range's total span — a
+// later, user-reported fix ("timeline does not look to nice. maybe scale
+// to quarters?"): a month tick for every single month of a genuinely
+// multi-year scope (the common shape once real, messy programme data is
+// in play — several workstreams' worth of items spanning a few years)
+// packed each of those labels into the same fixed axis width, overlapping
+// them into unreadable, garbled text. `months` is a plain average-days-
+// per-month approximation (365.25/12) — precise enough for picking a
+// granularity tier, not meant to be an exact calendar month count.
+// Thresholds: month ticks up to ~14 months (a short scope reads best at
+// full month detail, and 14 rather than a flat 12 gives a same-day-next-
+// year range a little slack before demoting); quarter ticks from there up
+// to 4 years; year ticks beyond that — the same "zoom out the label
+// granularity as the visible span grows" idiom every real timeline/chart
+// UI already uses, just with fixed tiers instead of continuous zoom, since
+// this chart has no interactive zoom control of its own.
+function ganttTickGranularity(range) {
+  const months = (range.end - range.start) / (365.25 / 12);
+  if (months > 48) return 'year';
+  if (months > 14) return 'quarter';
+  return 'month';
+}
+// One tick per calendar boundary of the chosen granularity that the range
+// actually touches (never a boundary that falls before the range's own
+// visible start — a range starting mid-month/quarter correctly has no tick
+// for the one it's already partway through), each carrying its own left%
+// (computed against the exact same range every bar/marker uses, so the
+// axis and the data always agree) and a granularity-appropriate label:
+// "Mon YYYY" for month (the same toLocaleDateString() approach fmtDate()/
+// fmtDateY() already use elsewhere in this app, just for a month+year
+// label instead of a day), "QN YYYY" for quarter, or a bare "YYYY" for
+// year. Quarter/year ticks are aligned to their own real calendar
+// boundaries (Jan/Apr/Jul/Oct for quarter, always Jan for year) rather
+// than whatever month the range happens to start mid-way through, so they
+// read as genuine "Q1 2026"/"2026" boundaries, not an arbitrary offset
+// grid. Capped at 240 iterations as a cheap safety net against an
+// unbounded loop — generous enough at every granularity (20 years of
+// month ticks, 60 years of quarter ticks, 240 years of year ticks) that a
+// real Gantt scope would already be a degenerate, useless chart long
+// before this cap is ever actually reached.
+function ganttTicks(range) {
+  const granularity = ganttTickGranularity(range);
+  const step = granularity === 'year' ? 12 : granularity === 'quarter' ? 3 : 1;
   const ticks = [];
   let y = new Date(range.start * DAY_MS).getUTCFullYear();
-  let m = new Date(range.start * DAY_MS).getUTCMonth();
+  let m = step > 1 ? Math.floor(new Date(range.start * DAY_MS).getUTCMonth() / step) * step : new Date(range.start * DAY_MS).getUTCMonth();
   for (let i = 0; i < 240; i++) {
     const dayNum = Math.floor(Date.UTC(y, m, 1) / DAY_MS);
     if (dayNum > range.end) break;
     if (dayNum >= range.start) {
-      const label = new Date(Date.UTC(y, m, 1)).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+      const label = granularity === 'year' ? String(y)
+        : granularity === 'quarter' ? `Q${Math.floor(m / 3) + 1} ${y}`
+        : new Date(Date.UTC(y, m, 1)).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
       ticks.push({ pct: (dayNum - range.start) / (range.end - range.start) * 100, label });
     }
-    m++; if (m > 11) { m = 0; y++; }
+    m += step; while (m > 11) { m -= 12; y++; }
   }
   return ticks;
+}
+const GANTT_LABEL_COL_WIDTH = 220; // matches .gantt-axis-row/.gantt-row's own grid-template-columns first track
+const GANTT_MIN_PX_PER_TICK = 80; // enough for the longest realistic label ("Sept. 2026"/"Q4 2026") without touching its neighbor
+// The chart's own overall min-width, pinned so axis ticks always have real
+// breathing room — a later, user-reported fix ("timeline does not look to
+// nice") to a second, distinct bug ganttTicks()'s own granularity fix
+// didn't cover on its own: even at the coarsest sensible granularity
+// (quarter, or year for a genuinely long scope), a real multi-year "All
+// Workstreams" range can still produce more ticks than comfortably fit in
+// whatever width the container happens to have — and since no tick label
+// is otherwise width- or spacing-constrained, they just run together into
+// unreadable overlapping text once there isn't room. Matches this app's
+// own established "pin a real, hand-computed min-width and let
+// overflow-x:auto/.main's own scroll reach the rest" convention already
+// used throughout (see "Column layout is a real CSS grid" in CLAUDE.md)
+// rather than trying to cram an unbounded number of ticks into a fixed
+// width. 400px floor keeps a short, few-tick chart from claiming an
+// oddly wide minimum it doesn't need.
+function ganttChartMinWidth(tickCount) {
+  return GANTT_LABEL_COL_WIDTH + Math.max(400, tickCount * GANTT_MIN_PX_PER_TICK);
 }
 // Every ISO date string a set of rows contributes to the timeline — each
 // row's own bar start/end (if it has one) plus every one of its milestone
@@ -10274,7 +10329,7 @@ function renderGanttChartHtml(sections, emptyMessage) {
     return `<div class="attention-empty">${esc(emptyMessage)}</div>`;
   }
   const range = ganttDateRange(ganttRowDates(allRows));
-  const ticks = ganttMonthTicks(range);
+  const ticks = ganttTicks(range);
   const todayPct = ganttPercentOrNull(todayStr(), range);
   const axisTicksHtml = ticks.map(t => `<div class="gantt-axis-tick" style="left:${t.pct}%">${esc(t.label)}</div>`).join('');
   const todayAxisHtml = todayPct === null ? '' : `<div class="gantt-today-line" style="left:${todayPct}%"></div>`;
@@ -10286,7 +10341,7 @@ function renderGanttChartHtml(sections, emptyMessage) {
     const header = sec.name ? `<div class="gantt-section-header"><span class="ws-dot" style="background:var(--ws-${sec.color})"></span> ${esc(sec.name)}</div>` : '';
     return `<div class="gantt-section">${header}${sec.rows.map(r => ganttRowHtml(r, range, todayPct)).join('')}</div>`;
   }).join('');
-  return `<div class="gantt-chart">
+  return `<div class="gantt-chart" style="min-width:${ganttChartMinWidth(ticks.length)}px">
       <div class="gantt-axis-row">
         <div class="gantt-axis-label-spacer"></div>
         <div class="gantt-row-track">${todayAxisHtml}${axisTicksHtml}</div>
