@@ -244,27 +244,35 @@ test('renderSidebar sets a title tooltip on the whole workstream row (not just t
   assertIncludes(html, `onclick="selectWorkstreamFromSidebar('${w.id}')" title="${w.name}"`, 'the title must sit on the row div itself, not buried on an inner span the hover-reveal reflow can shift the cursor off of');
 });
 
-// ---------- Sidebar workstream rows always land on Planning ----------
+// ---------- Sidebar workstream rows keep whichever mode was already showing ----------
+// Used to always land on Planning (and, before that, always Dashboard) —
+// reversed by a later, explicit user request ("if i am in Dashboard, also
+// jump into dashboard of that other workstream"): switching workstream via
+// the sidebar no longer changes mode at all, matching the plain
+// setFilterWorkstream() every other caller already uses.
 
-test('selectWorkstreamFromSidebar sets the filter and switches to Planning, regardless of the current mode', function () {
+test('selectWorkstreamFromSidebar sets the filter without changing whatever mode was already active', function () {
   const w = workstreams[0];
   setMode('review');
   selectWorkstreamFromSidebar(w.id);
-  assertEqual(mode, 'planning');
+  assertEqual(mode, 'review', 'picking a workstream from the sidebar must not bounce mode to Planning any more');
   assertEqual(filterWorkstreamId, w.id);
+  setMode('dashboard');
+  selectWorkstreamFromSidebar(w.id);
+  assertEqual(mode, 'dashboard');
 });
 
-test('selectWorkstreamFromSidebar(null) ("All Workstreams") switches to Planning too, clearing the filter', function () {
-  setMode('review'); filterWorkstreamId = workstreams[0].id;
+test('selectWorkstreamFromSidebar(null) ("All Workstreams") clears the filter without changing mode', function () {
+  setMode('dashboard'); filterWorkstreamId = workstreams[0].id;
   selectWorkstreamFromSidebar(null);
-  assertEqual(mode, 'planning');
+  assertEqual(mode, 'dashboard');
   assertEqual(filterWorkstreamId, null);
 });
 
-test('plain setFilterWorkstream (used by reviewDatesOverviewHtml and tests) never changes mode — only the sidebar\'s own rows do', function () {
+test('setFilterWorkstream (used by the sidebar, reviewDatesOverviewHtml, and tests) never changes mode', function () {
   setMode('review');
   setFilterWorkstream(workstreams[0].id);
-  assertEqual(mode, 'review', 'setFilterWorkstream must stay mode-agnostic so non-sidebar callers are unaffected');
+  assertEqual(mode, 'review', 'setFilterWorkstream must stay mode-agnostic');
   assertEqual(filterWorkstreamId, workstreams[0].id);
 });
 
