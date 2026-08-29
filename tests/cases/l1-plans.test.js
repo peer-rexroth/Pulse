@@ -2498,6 +2498,64 @@ test('Import/Export/expand-all only render on the Plans tab, not on Unlinked eit
   assertNotIncludes(html, 'exportL1PlansToExcel');
 });
 
+// ---------- L1 Plans' own Gantt tab (renderL1GanttHtml()) ----------
+// A flat timeline of every L1 Plan's own bar plus its milestones as
+// markers, built on the exact same renderGanttChartHtml()/ganttRowHtml()
+// core Dashboard's own Gantt tab uses (see "Dashboard: Gantt chart" in
+// CLAUDE.md, and tests/cases/dashboard.test.js for ganttL1Rows()'s own
+// data-gathering coverage). This started as an internal scope toggle
+// living inside Dashboard's own Gantt tab, then moved out to its own tab
+// here entirely on a later, explicit user request ("move the l1 gant
+// under L1 as a seperte tab").
+
+test('setL1PlansTab(\'gantt\') switches the fourth sub-tab active and renders a flat, header-less L1 Plans timeline', function () {
+  const p = addL1Plan('Digital Transformation');
+  const m = addL1Milestone(p.id, 'Kickoff');
+  // Routed through updateL1MilestoneDateField() rather than setting
+  // m.dueDate directly, since that's the one path (alongside the Excel
+  // importer) that actually recomputes the plan's own startDate/dueDate —
+  // see ganttL1Rows()'s own comment above.
+  updateL1MilestoneDateField(p.id, m.id, '2026-01-15');
+  mode = 'l1plans';
+  setL1PlansTab('plans');
+  render();
+  assertFalse(document.getElementById('tabL1PlansGantt').classList.contains('active'));
+  setL1PlansTab('gantt');
+  assertEqual(l1PlansTab, 'gantt');
+  assertTrue(document.getElementById('tabL1PlansGantt').classList.contains('active'));
+  assertFalse(document.getElementById('tabL1PlansPlans').classList.contains('active'));
+  const html = document.getElementById('l1PlansBody').innerHTML;
+  assertIncludes(html, 'gantt-chart');
+  assertIncludes(html, 'gantt-bar');
+  assertIncludes(html, 'Digital Transformation');
+  assertNotIncludes(html, 'gantt-section-header', 'a single flat list of L1 Plans needs no repeated "L1 Plans" section header');
+  assertNotIncludes(html, 'l1-plans-list', 'the Plans tab\'s own list container should not render on the Gantt tab');
+});
+
+test('renderL1GanttHtml shows its own empty-state message when no L1 Plan has anything dateable', function () {
+  addL1Plan('Empty plan'); // has zero milestones — dropped by ganttL1Rows()
+  mode = 'l1plans';
+  setL1PlansTab('gantt');
+  const html = document.getElementById('l1PlansBody').innerHTML;
+  assertIncludes(html, 'No dated L1 Plans to show yet.');
+});
+
+test('Import/Export/expand-all only render on the Plans tab, not on Gantt either', function () {
+  mode = 'l1plans';
+  setL1PlansTab('gantt');
+  render();
+  const html = document.getElementById('l1PlansBody').innerHTML;
+  assertNotIncludes(html, 'triggerL1PlanImport');
+  assertNotIncludes(html, 'exportL1PlansToExcel');
+});
+
+test('the L1 Plans search+filter toolbar is hidden on the Gantt tab, same as every non-Plans sub-tab', function () {
+  mode = 'l1plans';
+  setL1PlansTab('gantt');
+  render();
+  assertEqual(document.getElementById('l1PlansSearchToolbar').style.display, 'none');
+});
+
 // ---------- The L1 milestone picker (l1PickModalBg) ----------
 // The Unlinked tab's own Link icon — a later, explicit user request
 // ("instead of the checkmark icon, add a link button wich opens a modal to

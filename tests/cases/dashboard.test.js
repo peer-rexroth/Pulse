@@ -381,20 +381,30 @@ test('render toggles dashboardModeToolbar only for Dashboard mode, and dashboard
   render();
   assertEqual(document.getElementById('dashboardModeToolbar').style.display, '', 'the sub-tab row itself stays visible on both tabs');
   assertEqual(document.getElementById('dashboardToolbar').style.display, 'none', 'Exec Summary export doesn\'t cover the Dependencies tab\'s own content');
+  dashboardTab = 'gantt';
+  render();
+  assertEqual(document.getElementById('dashboardModeToolbar').style.display, '', 'the sub-tab row itself stays visible on the Gantt tab too');
+  assertEqual(document.getElementById('dashboardToolbar').style.display, 'none', 'Exec Summary export doesn\'t cover the Gantt tab\'s own content either');
   mode = 'planning';
   render();
   assertEqual(document.getElementById('dashboardModeToolbar').style.display, 'none');
 });
 
-test('setDashboardTab switches dashboardTab and toggles each tab button\'s active class', function () {
+test('setDashboardTab switches dashboardTab and toggles each tab button\'s active class, including the Gantt tab', function () {
   mode = 'dashboard';
   setDashboardTab('dependencies');
   assertEqual(dashboardTab, 'dependencies');
   assertTrue(document.getElementById('tabDashboardDependencies').classList.contains('active'));
   assertFalse(document.getElementById('tabDashboardOverview').classList.contains('active'));
+  assertFalse(document.getElementById('tabDashboardGantt').classList.contains('active'));
+  setDashboardTab('gantt');
+  assertEqual(dashboardTab, 'gantt');
+  assertTrue(document.getElementById('tabDashboardGantt').classList.contains('active'));
+  assertFalse(document.getElementById('tabDashboardDependencies').classList.contains('active'));
   setDashboardTab('overview');
   assertEqual(dashboardTab, 'overview');
   assertTrue(document.getElementById('tabDashboardOverview').classList.contains('active'));
+  assertFalse(document.getElementById('tabDashboardGantt').classList.contains('active'));
 });
 
 test('renderDashboard shows the Overview content (cards, per-workstream summary) only on the Overview tab', function () {
@@ -569,4 +579,182 @@ test('execSummaryFeedRowCount caps at EXEC_SUMMARY_FEED_CAP + 1 (the "+N more" l
   assertEqual(execSummaryFeedRowCount([{ label: 'a', date: '2026-01-01' }]), 1);
   const many = Array.from({ length: EXEC_SUMMARY_FEED_CAP + 5 }, (_, i) => ({ label: 'e' + i, date: '2026-01-01' }));
   assertEqual(execSummaryFeedRowCount(many), EXEC_SUMMARY_FEED_CAP + 1);
+});
+
+// ---------- Dashboard: Gantt chart ----------
+// A timeline view — an explicit user request ("build a gant chart view per
+// workstream, all workstream and l1 level"), landing as Dashboard's third
+// sub-tab (dashboardTab === 'gantt'). Each row's bar spans an item's own
+// Start→Due range, with its milestones layered on top as markers; "per
+// workstream"/"all workstreams" reuses the shared sidebar filter exactly
+// like Overview/Dependencies already do, with ganttScope as a separate
+// internal toggle for switching to L1 Plans (never workstream-scoped).
+
+test('ganttDayNumber returns a stable, UTC-based day count for an ISO date', function () {
+  assertEqual(ganttDayNumber('1970-01-01'), 0);
+  assertEqual(ganttDayNumber('1970-01-02'), 1);
+  assertEqual(ganttDayNumber('2026-01-01') - ganttDayNumber('2025-01-01'), 365, '2025 is not a leap year');
+});
+
+test('ganttDateRange returns null for an empty scope, and a real, padded range otherwise', function () {
+  assertEqual(ganttDateRange([]), null);
+  const range = ganttDateRange(['2026-03-01', '2026-03-10']);
+  assertTrue(range.start < ganttDayNumber('2026-03-01'), 'padded before the earliest date');
+  assertTrue(range.end > ganttDayNumber('2026-03-10'), 'padded after the latest date');
+});
+
+test('ganttDateRange never collapses to a zero-width range, even for a single repeated date', function () {
+  const range = ganttDateRange(['2026-03-01', '2026-03-01']);
+  assertTrue(range.end > range.start);
+});
+
+test('ganttPercent positions a date proportionally within the range, clamped to [0,100]', function () {
+  const range = { start: ganttDayNumber('2026-01-01'), end: ganttDayNumber('2026-01-11') };
+  assertEqual(ganttPercent('2026-01-01', range), 0);
+  assertEqual(ganttPercent('2026-01-11', range), 100);
+  assertEqual(ganttPercent('2026-01-06', range), 50);
+});
+
+test('ganttPercentOrNull returns null for a date outside the range, instead of clamping it to an edge', function () {
+  const range = { start: ganttDayNumber('2026-01-01'), end: ganttDayNumber('2026-01-11') };
+  assertEqual(ganttPercentOrNull('2025-06-01', range), null);
+  assertEqual(ganttPercentOrNull('2026-01-06', range), 50);
+});
+
+test('ganttBarRect computes left/width from start/end, with a minimum visible width for a same-day bar', function () {
+  const range = { start: ganttDayNumber('2026-01-01'), end: ganttDayNumber('2026-01-11') };
+  const rect = ganttBarRect('2026-01-01', '2026-01-11', range);
+  assertEqual(rect.left, 0);
+  assertEqual(rect.width, 100);
+  const zeroWidth = ganttBarRect('2026-01-06', '2026-01-06', range);
+  assertTrue(zeroWidth.width >= 0.6, 'a single-day bar must still render as a visible sliver, not collapse to nothing');
+});
+
+test('ganttMonthTicks produces one tick per calendar month boundary actually inside the range, with a "Mon YYYY" label', function () {
+  // Range starts mid-December, so Dec 1 itself falls just before range.start
+  // and is correctly excluded — only the three later month boundaries the
+  // range genuinely spans (Jan 1, Feb 1, Mar 1) get a tick.
+  const range = { start: ganttDayNumber('2025-12-15'), end: ganttDayNumber('2026-03-10') };
+  const ticks = ganttMonthTicks(range);
+  assertEqual(ticks.length, 3, 'Jan 1, Feb 1, Mar 1');
+  assertIncludes(ticks[0].label, '2026');
+});
+
+test('ganttRowDates flattens every row\'s own bar start/end and milestone dates into one array', function () {
+  const rows = [
+    { start: '2026-01-01', end: '2026-02-01', milestones: [{ date: '2026-01-15' }] },
+    { start: null, end: null, milestones: [{ date: '2026-03-01' }] }
+  ];
+  const dates = ganttRowDates(rows);
+  assertDeepEqual(dates.slice().sort(), ['2026-01-01', '2026-01-15', '2026-02-01', '2026-03-01']);
+});
+
+test('ganttWorkstreamSections groups rows by workstream, and drops an item with no dateable data at all', function () {
+  addDashItem({ name: 'Dated item', startDate: '2026-01-01', dueDate: '2026-02-01' });
+  addDashItem({ name: 'Undated item', startDate: null, dueDate: null, milestones: [] });
+  filterWorkstreamId = null;
+  const sections = ganttWorkstreamSections();
+  assertEqual(sections.length, 1);
+  assertEqual(sections[0].rows.length, 1);
+  assertEqual(sections[0].rows[0].name, 'Dated item');
+});
+
+test('ganttWorkstreamSections includes a row driven only by milestone dates, with no item-level Start/Due of its own', function () {
+  addDashItem({ name: 'Milestone-only item', startDate: null, dueDate: null, milestones: [{ id: 'm1', name: 'M', dueDate: '2026-05-01', status: 'green' }] });
+  const sections = ganttWorkstreamSections();
+  const row = sections[0].rows.find(r => r.name === 'Milestone-only item');
+  assertTrue(!!row);
+  assertEqual(row.start, null);
+  assertEqual(row.milestones.length, 1);
+});
+
+test('ganttWorkstreamSections excludes a notApplicable or undated milestone from a row\'s own markers', function () {
+  addDashItem({ name: 'Item', startDate: '2026-01-01', dueDate: '2026-02-01', milestones: [
+    { id: 'm1', name: 'Real', dueDate: '2026-01-15', status: 'green', notApplicable: false },
+    { id: 'm2', name: 'N/A', dueDate: '2026-01-20', status: 'green', notApplicable: true },
+    { id: 'm3', name: 'Undated', dueDate: null, status: 'green', notApplicable: false }
+  ] });
+  const sections = ganttWorkstreamSections();
+  const row = sections[0].rows.find(r => r.name === 'Item');
+  assertEqual(row.milestones.length, 1);
+  assertEqual(row.milestones[0].name, 'Real');
+});
+
+test('ganttWorkstreamSections excludes Unassigned items and, when filterWorkstreamId narrows to one workstream, only that workstream\'s own section', function () {
+  addDashItem({ name: 'Assigned', workstreamId: workstreams[0].id, startDate: '2026-01-01', dueDate: '2026-02-01' });
+  addDashItem({ name: 'Unassigned', workstreamId: null, startDate: '2026-01-01', dueDate: '2026-02-01' });
+  document.getElementById('wsNameInput').value = 'Second';
+  wsColorChoice = 'teal';
+  saveWorkstream();
+  const secondWs = workstreams[workstreams.length - 1];
+  addDashItem({ name: 'Other workstream item', workstreamId: secondWs.id, startDate: '2026-01-01', dueDate: '2026-02-01' });
+
+  filterWorkstreamId = null;
+  let sections = ganttWorkstreamSections();
+  const allNames = sections.flatMap(s => s.rows.map(r => r.name));
+  assertIncludes(allNames.join(','), 'Assigned');
+  assertNotIncludes(allNames.join(','), 'Unassigned');
+
+  filterWorkstreamId = workstreams[0].id;
+  sections = ganttWorkstreamSections();
+  assertEqual(sections.length, 1);
+  assertEqual(sections[0].id, workstreams[0].id);
+});
+
+test('ganttL1Rows builds one row per L1 Plan, using each milestone\'s own effective (rolled-up-or-manual) status', function () {
+  const p = addL1Plan('Digital Transformation');
+  const m = addL1Milestone(p.id, 'Kickoff');
+  m.dueDate = '2026-06-01';
+  m.status = 'not-started';
+  const wsItem = addItem({ name: 'Deliverable' });
+  const wm = { id: genId(), name: 'Ship it', dueDate: '2026-06-01', actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
+  wsItem.milestones.push(wm);
+  const rows = ganttL1Rows();
+  assertEqual(rows.length, 1);
+  assertEqual(rows[0].name, 'Digital Transformation');
+  assertEqual(rows[0].milestones[0].status, 'red', 'must reflect the rolled-up status from the linked workstream milestone, not the L1 milestone\'s own stale manual status');
+});
+
+test('ganttL1Rows drops a plan with no dateable milestones and no computed Start/Due range', function () {
+  const p = addL1Plan('Empty plan');
+  const rows = ganttL1Rows();
+  assertFalse(rows.some(r => r.id === p.id));
+});
+
+// Dashboard's own Gantt tab is Workstreams-only now — it originally also
+// had an internal scope toggle to switch to a flat L1 Plans timeline, moved
+// out to its own tab under L1 Plans instead on a later, explicit user
+// request ("move the l1 gant under L1 as a seperte tab" — see
+// tests/cases/l1-plans.test.js for renderL1GanttHtml()'s own coverage).
+
+test('renderDashboard\'s Gantt tab renders a bar for a dated item and a marker per milestone, with no scope toggle', function () {
+  const it = addDashItem({ name: 'Migrate Database', startDate: '2026-01-01', dueDate: '2026-03-01', milestones: [
+    { id: 'm1', name: 'Schema', dueDate: '2026-01-20', status: 'green' }
+  ] });
+  dashboardTab = 'gantt';
+  renderDashboard();
+  const html = document.getElementById('main').innerHTML;
+  assertNotIncludes(html, 'gantt-scope-toggle', 'the scope toggle moved to its own tab under L1 Plans — Dashboard\'s own Gantt tab is Workstreams-only');
+  assertIncludes(html, 'gantt-bar');
+  assertIncludes(html, 'gantt-marker');
+  assertIncludes(html, 'Migrate Database');
+  assertIncludes(html, `onclick="openItemModal('${it.id}')"`);
+});
+
+test('renderDashboard\'s Gantt tab shows its own empty-state message when nothing is dateable', function () {
+  items = [];
+  dashboardTab = 'gantt';
+  renderDashboard();
+  assertIncludes(document.getElementById('main').innerHTML, 'No dated items to show yet.');
+});
+
+test('renderDashboard\'s Gantt tab draws a today-line only when today actually falls within the visible range', function () {
+  addDashItem({ name: 'Old item', startDate: isoDaysFromNow(-500), dueDate: isoDaysFromNow(-400) });
+  dashboardTab = 'gantt';
+  renderDashboard();
+  assertNotIncludes(document.getElementById('main').innerHTML, 'gantt-today-line', 'today is nowhere near this far-past range');
+  items = [];
+  addDashItem({ name: 'Current item', startDate: isoDaysFromNow(-5), dueDate: isoDaysFromNow(5) });
+  renderDashboard();
+  assertIncludes(document.getElementById('main').innerHTML, 'gantt-today-line');
 });
