@@ -727,6 +727,70 @@ test('the last axis tick anchors from the right (not the left), so its own label
   assertNotIncludes(lastDiv, 'style="left:');
 });
 
+// A follow-up user report on the fix above ("this does not look right. if
+// there is not enought space on the last part, remove the name" / "why is
+// Q1 2028 included in the Q4 2027 segment? ... show the segment without
+// name"): the right-anchor trick only actually avoids a collision when
+// there's real room to grow into, and for tightly-packed ticks (quarterly,
+// in the reported case) there usually isn't — ganttChartMinWidth()'s own
+// per-tick budget assumes each tick's date-to-date interval gets an equal
+// share of the track, but ganttDateRange()'s own padding eats into that
+// same percentage without the tick-count math accounting for it, so the
+// real pixel gap between adjacent ticks' own *anchors* is consistently
+// smaller than the nominal budget. A first cut of this fix compared that
+// anchor-to-anchor gap against the single-tick GANTT_MIN_PX_PER_TICK
+// budget and wrongly judged a real, colliding case "safe" — the anchor gap
+// alone isn't the free space between the two rendered boxes, since *both*
+// labels grow toward each other from opposite ends of it; the real
+// requirement is double that. Confirmed live: a real 10-tick quarterly
+// chart's last two tick anchors sat ~85px apart (just over the single-tick
+// budget) while their own rendered boxes (~54px each, measured directly)
+// still collided by ~23px, since 54+54 > 85.
+
+test('the last axis tick drops its own label (keeping just its tick-mark line) when there is not enough room, rather than colliding with its neighbor', function () {
+  // The exact shape that reproduced the real, reported collision live: a
+  // ~26-month range (quarter granularity) with a real milestone at each end.
+  const rows = [{
+    id: 'i1', name: 'Tight quarterly item', start: '2026-01-01', end: '2028-03-01', status: 'green',
+    milestones: [{ id: 'm1', date: '2026-01-01', name: 'M1', status: 'not-started' }, { id: 'm2', date: '2028-03-01', name: 'M2', status: 'not-started' }]
+  }];
+  const html = renderGanttChartHtml([{ name: null, color: null, rows }], 'empty');
+  const range = ganttDateRange(ganttRowDates(rows));
+  const ticks = ganttTicks(range);
+  assertTrue(ticks.length >= 2, 'this range should produce several closely-spaced quarter ticks');
+  const trackWidthPx = ganttChartMinWidth(ticks.length) - GANTT_LABEL_COL_WIDTH;
+  const lastGapPct = ticks[ticks.length - 1].pct - ticks[ticks.length - 2].pct;
+  assertTrue((lastGapPct / 100) * trackWidthPx < 2 * GANTT_MIN_PX_PER_TICK, 'this fixture must genuinely reproduce a too-tight gap, or the rest of this test proves nothing');
+  const tickDivs = html.match(/<div class="gantt-axis-tick[^>]*>[^<]*<\/div>/g);
+  const lastDiv = tickDivs[tickDivs.length - 1];
+  // The tick mark itself (right-anchored, at the correct true date
+  // position) is still there — only its own visible label text is gone.
+  assertIncludes(lastDiv, 'gantt-axis-tick-last');
+  assertIncludes(lastDiv, `right:${100 - ticks[ticks.length - 1].pct}%`);
+  assertEqual(lastDiv.slice(lastDiv.indexOf('>') + 1, lastDiv.indexOf('</div>')), '', 'the label text itself should be empty');
+  // Its true date is still reachable via title, even with no visible label.
+  assertIncludes(lastDiv, `title="${ticks[ticks.length - 1].label}"`);
+});
+
+test('the last axis tick keeps its own label when there is genuinely enough room (few, widely-spaced ticks)', function () {
+  // A short, 2-month-spanning range — few enough ticks that
+  // ganttChartMinWidth()'s own 400px floor spreads generously across them,
+  // leaving real anchor-to-anchor room even after ganttDateRange()'s own
+  // padding is accounted for (verified live: ~172px, comfortably over the
+  // 160px two-label threshold above).
+  const rows = [{ id: 'i1', name: 'Short item', start: '2026-01-01', end: '2026-03-01', status: 'green', milestones: [] }];
+  const html = renderGanttChartHtml([{ name: null, color: null, rows }], 'empty');
+  const range = ganttDateRange(ganttRowDates(rows));
+  const ticks = ganttTicks(range);
+  assertTrue(ticks.length >= 2, 'this fixture should produce a genuine last-tick/neighbor pair to check');
+  const trackWidthPx = ganttChartMinWidth(ticks.length) - GANTT_LABEL_COL_WIDTH;
+  const lastGapPct = ticks[ticks.length - 1].pct - ticks[ticks.length - 2].pct;
+  assertTrue((lastGapPct / 100) * trackWidthPx >= 2 * GANTT_MIN_PX_PER_TICK, 'this fixture must genuinely have enough room, or the rest of this test proves nothing');
+  const tickDivs = html.match(/<div class="gantt-axis-tick[^>]*>[^<]*<\/div>/g);
+  const lastDiv = tickDivs[tickDivs.length - 1];
+  assertIncludes(lastDiv, `>${ticks[ticks.length - 1].label}<`);
+});
+
 test('a chart with only one tick still anchors it from the right, as the (only, and therefore last) tick', function () {
   const rows = [{ id: 'i1', name: 'Short item', start: '2026-01-01', end: '2026-01-15', status: 'green', milestones: [] }];
   const html = renderGanttChartHtml([{ name: null, color: null, rows }], 'empty');

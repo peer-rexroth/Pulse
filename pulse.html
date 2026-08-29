@@ -10208,6 +10208,48 @@ function renderGanttChartHtml(sections, emptyMessage) {
   const range = ganttDateRange(ganttRowDates(allRows));
   const ticks = ganttTicks(range);
   const todayPct = ganttPercentOrNull(todayStr(), range);
+  const chartMinWidth = ganttChartMinWidth(ticks.length);
+  // Right-anchoring the last tick (below) only actually avoids a collision
+  // when there's real room for its own label to grow into — and there
+  // often isn't. `ganttChartMinWidth()`'s own per-tick budget (tickCount *
+  // GANTT_MIN_PX_PER_TICK) assumes each tick's own date-to-date interval
+  // gets an equal share of the track's width, but `ganttDateRange()`'s own
+  // padding (a few percent of the *whole* range, on each end — see its own
+  // comment) eats into that same percentage budget without the tick-count
+  // math ever accounting for it — so the *real* pixel gap between two
+  // adjacent ticks' own anchors is consistently smaller than the nominal
+  // per-tick budget, sometimes by a lot. Confirmed live: a real 10-tick
+  // quarterly chart's own last two tick anchors sat only ~85px apart even
+  // though GANTT_MIN_PX_PER_TICK budgets 80px per tick per anchor-to-anchor
+  // — and since both labels grow *toward* each other from opposite ends of
+  // that same 85px gap (each one's own rendered box ~54px wide, measured
+  // directly — not just the anchor-to-anchor distance itself, which is
+  // what a first, incorrect cut of this fix compared against a
+  // single-sided threshold and wrongly judged safe), the two collided by
+  // ~23px — a user-reported "does not look right" ("why is Q1 2028
+  // included in the Q4 2027 segment").
+  //
+  // Comparing raw anchor-to-anchor distance against `2 *
+  // GANTT_MIN_PX_PER_TICK` (not the single-tick budget alone) accounts for
+  // both boxes needing their own share of that same gap — real, measured
+  // combined box widths for two adjacent "QN YYYY"-style labels come to
+  // ~108px, comfortably under the doubled 160px threshold, leaving real
+  // margin either way it resolves. Below it, the user's own explicit,
+  // twice-repeated call: rather than trying to out-clever a fixed
+  // collision (there's no render-time text measurement available to do
+  // better — this is pure HTML-string building, no live layout to check
+  // against), the last tick's own label is dropped outright, keeping just
+  // its tick-mark line — its true date is still reachable via `title`. In
+  // practice this means the last tick's own label is absent more often
+  // than not for a realistic, tightly-packed chart — an accepted,
+  // deliberate trade-off per the user's own request, not a compromise.
+  let omitLastTickLabel = false;
+  if (ticks.length >= 2) {
+    const trackWidthPx = chartMinWidth - GANTT_LABEL_COL_WIDTH;
+    const lastGapPct = ticks[ticks.length - 1].pct - ticks[ticks.length - 2].pct;
+    const anchorToAnchorPx = (lastGapPct / 100) * trackWidthPx;
+    omitLastTickLabel = anchorToAnchorPx < 2 * GANTT_MIN_PX_PER_TICK;
+  }
   const axisTicksHtml = ticks.map((t, i) => {
     // The last tick's own text has no neighbor to its right to grow into
     // the way every other tick does (see GANTT_MIN_PX_PER_TICK's own
@@ -10226,14 +10268,18 @@ function renderGanttChartHtml(sections, emptyMessage) {
     const isLast = i === ticks.length - 1;
     const posStyle = isLast ? `right:${100 - t.pct}%` : `left:${t.pct}%`;
     const cls = isLast ? 'gantt-axis-tick gantt-axis-tick-last' : 'gantt-axis-tick';
-    return `<div class="${cls}" style="${posStyle}">${esc(t.label)}</div>`;
+    const showLabel = !(isLast && omitLastTickLabel);
+    // A dropped label still carries its own real date as a `title` — the
+    // tick mark's own position never lies about what it represents, only
+    // the always-visible text is what's traded away for room.
+    return `<div class="${cls}" style="${posStyle}" title="${esc(t.label)}">${showLabel ? esc(t.label) : ''}</div>`;
   }).join('');
   const todayAxisHtml = todayPct === null ? '' : `<div class="gantt-today-line" style="left:${todayPct}%"></div>`;
   const sectionsHtml = sections.filter(sec => sec.rows.length).map(sec => {
     const header = sec.name ? `<div class="gantt-section-header"><span class="ws-dot" style="background:var(--ws-${sec.color})"></span> ${esc(sec.name)}</div>` : '';
     return `<div class="gantt-section">${header}${sec.rows.map(r => ganttRowHtml(r, range, todayPct)).join('')}</div>`;
   }).join('');
-  return `<div class="gantt-chart" style="min-width:${ganttChartMinWidth(ticks.length)}px">
+  return `<div class="gantt-chart" style="min-width:${chartMinWidth}px">
       <div class="gantt-axis-row">
         <div class="gantt-axis-label-spacer"></div>
         <div class="gantt-row-track">${todayAxisHtml}${axisTicksHtml}</div>
@@ -11054,8 +11100,20 @@ function excelSafeSheetName(name, used) {
 // so it's directly unit-tested.
 function categoryMilestoneColumnNames(cat, catItems) {
   const template = (cat && Array.isArray(cat.milestones)) ? cat.milestones : [];
-  const seen = new Set(template);
-  const names = template.slice();
+  const seen = new Set();
+  const names = [];
+  // A user-reported bug: `names = template.slice()` (this function's first
+  // cut) copied the template's own entries as-is, duplicates included —
+  // `seen` was seeded from the same template so it correctly stopped a
+  // THIRD copy ever being added from a real item's milestones, but did
+  // nothing about a template that already had the same name listed twice
+  // on its own (a category's milestones array is a plain, hand-editable
+  // string list — see "Categories (Admin mode)" above — nothing stops one
+  // from ending up with an accidental duplicate over time). Deduping the
+  // template itself here too, first occurrence wins, is the same
+  // "hand-maintained list, first occurrence wins" convention this app's
+  // own reportingLevels coercion already applies.
+  template.forEach(name => { if (!seen.has(name)) { seen.add(name); names.push(name); } });
   catItems.forEach(it => {
     it.milestones.forEach(m => {
       if (!seen.has(m.name)) { seen.add(m.name); names.push(m.name); }

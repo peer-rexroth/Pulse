@@ -476,6 +476,24 @@ test('categoryMilestoneColumnNames returns just the template, unchanged, when no
   assertDeepEqual(categoryMilestoneColumnNames(cat, []), ['A', 'B']);
 });
 
+// A user-reported bug: a category whose own milestone template happened to
+// list the same name twice ("there are double columns like 'Requirements
+// Defined'") produced two identical columns in its own Excel sheet — the
+// dedup guard only ever protected against a real item's milestone re-adding
+// a name already in the template, not against the template itself already
+// carrying a duplicate.
+test('categoryMilestoneColumnNames dedupes a template that already has the same name listed twice, keeping only the first', function () {
+  const cat = { milestones: ['Requirements Defined', 'Design Defined', 'Requirements Defined'] };
+  assertDeepEqual(categoryMilestoneColumnNames(cat, []), ['Requirements Defined', 'Design Defined']);
+});
+
+test('categoryMilestoneColumnNames still ignores a real item milestone whose name duplicates an already-deduped template entry', function () {
+  const cat = { milestones: ['Requirements Defined', 'Requirements Defined'] };
+  const it = addItem({ name: 'It' });
+  it.milestones = [{ id: 'm1', name: 'Requirements Defined' }];
+  assertDeepEqual(categoryMilestoneColumnNames(cat, [it]), ['Requirements Defined']);
+});
+
 test('applyImport merge mode adds new data and ignores tombstones (manual import intent)', function () {
   tombstone(deletedItemIds, 'import-1');
   pendingImportData = {
