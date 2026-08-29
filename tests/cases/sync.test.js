@@ -131,7 +131,7 @@ test('mergeData with respectTombstones:false lets a tombstoned item back in rega
   assertEqual(items.length, 1);
 });
 
-// ---------- Scope items now get the same proactive sweep action items
+// ---------- Delivery items now get the same proactive sweep action items
 // got — a user-reported parallel to the same bug. Every test above this
 // point only ever covered the "incoming copy resurrects a deletion"
 // direction; none of them cover a device that already had its own local
@@ -168,7 +168,7 @@ test('mergeData sweeps a locally-existing Unassigned item (workstreamId:null) th
   assertEqual(items.length, 0, 'the sweep works on all of `items` regardless of workstreamId and never needs to know or care about it');
 });
 
-test('the actual fix for the reported bug: a device that already had its own local copy of a scope item drops it once the deleting device\'s tombstone merges in', function () {
+test('the actual fix for the reported bug: a device that already had its own local copy of a delivery item drops it once the deleting device\'s tombstone merges in', function () {
   const local = { id: 'race-item', workstreamId: workstreams[0].id, name: 'Already deleted on device A', owner: '', notes: '', status: 'green', startDate: todayStr(), dueDate: todayStr(), milestones: [], updatedAt: 1000 };
   items.push(local);
   // Device A's own recombined data (index + its own workstream file) simply
@@ -416,8 +416,8 @@ test('exportToExcelReport shows a clear toast instead of throwing when ExcelJS h
   assertIncludes(document.getElementById('toastMsg').textContent, 'Excel export needs an internet connection');
 });
 
-// buildScopeItemsSheets() — a later, explicit user request ("create one tab
-// in the excel per category") reshaped the Scope Items sheet into one
+// buildDeliveryItemsSheets() — a later, explicit user request ("create one tab
+// in the excel per category") reshaped the Delivery Items sheet into one
 // worksheet per category, each with a real, per-distinct-milestone-name
 // pivot column (an earlier, different "move milestones into a column"
 // attempt — one shared, wrapped text cell per item — was reverted once the

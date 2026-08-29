@@ -140,7 +140,7 @@ test('openL1MilestoneQuickAdd/saveL1MilestoneQuickAdd adds a real, hand-added mi
   assertDeepEqual(m.l1MilestoneIds, [], 'an L1 milestone never links to another L1 milestone');
 });
 
-test('saveL1MilestoneQuickAdd supports adding several milestones to the same L1 Plan, like a scope item\'s own checklist', function () {
+test('saveL1MilestoneQuickAdd supports adding several milestones to the same L1 Plan, like a delivery item\'s own checklist', function () {
   const p = addL1Plan();
   addL1Milestone(p.id, 'Kickoff');
   addL1Milestone(p.id, 'Pilot live');
@@ -368,7 +368,7 @@ test('Connect and Delete share one .l1-milestone-actions cluster, not two separa
 
 test('l1LinkedHeaderHtml/l1LinkedRowHtml carry exactly one small, deliberately blank trailing cell, directly after Status — matching .l1-milestone-row\'s own real Actions width, no spacer', function () {
   const headerHtml = l1LinkedHeaderHtml();
-  assertEqual((headerHtml.match(/<span/g) || []).length, 7, 'six real columns (Workstream/Scope Item/Milestone/Due/Actual/Status) plus one blank alignment cell');
+  assertEqual((headerHtml.match(/<span/g) || []).length, 7, 'six real columns (Workstream/Delivery Item/Milestone/Due/Actual/Status) plus one blank alignment cell');
   const item = addItem({ name: 'Deliverable' });
   const wm = { id: genId(), name: 'Ship it', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
   item.milestones.push(wm);
@@ -512,7 +512,7 @@ test('toggleL1MilestoneExpanded reveals the linked workstream milestone undernea
   assertIncludes(html, 'l1-linked-row');
   assertIncludes(html, 'Cutover complete');
   assertIncludes(html, workstreams[0].name, 'names the source workstream, since a linked list can span several');
-  assertIncludes(html, 'Finance Deliverable', 'names the source scope item too');
+  assertIncludes(html, 'Finance Deliverable', 'names the source delivery item too');
   toggleL1MilestoneExpanded(m.id);
   html = l1MilestoneRowsHtml(p);
   assertNotIncludes(html, 'Cutover complete', 'collapses back on a second toggle');
@@ -530,7 +530,7 @@ test('l1LinkedRowHtml never renders the linked milestone\'s status/due as an edi
   assertNotIncludes(html, '<input', 'no editable date field here either');
 });
 
-test('l1LinkedRowHtml renders Workstream and Scope Item as two separate cells, not one combined "source" cell', function () {
+test('l1LinkedRowHtml renders Workstream and Delivery Item as two separate cells, not one combined "source" cell', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Finance Deliverable' });
@@ -538,15 +538,15 @@ test('l1LinkedRowHtml renders Workstream and Scope Item as two separate cells, n
   item.milestones.push(wm);
   const html = l1LinkedRowHtml(item, wm);
   const matches = html.match(/<span class="l1-linked-source">/g) || [];
-  assertEqual(matches.length, 2, 'Workstream and Scope Item each get their own l1-linked-source span');
+  assertEqual(matches.length, 2, 'Workstream and Delivery Item each get their own l1-linked-source span');
   assertIncludes(html, `<span class="l1-linked-source">${workstreams[0].name}</span>`);
   assertIncludes(html, `<span class="l1-linked-source">Finance Deliverable</span>`);
 });
 
-test('l1LinkedHeaderHtml labels all six columns: Workstream, Scope Item, Milestone, Due, Actual, Status', function () {
+test('l1LinkedHeaderHtml labels all six columns: Workstream, Delivery Item, Milestone, Due, Actual, Status', function () {
   const html = l1LinkedHeaderHtml();
   assertIncludes(html, 'l1-linked-header');
-  ['Workstream', 'Scope Item', 'Milestone', 'Due', 'Actual', 'Status'].forEach(label => assertIncludes(html, `<span>${label}</span>`));
+  ['Workstream', 'Delivery Item', 'Milestone', 'Due', 'Actual', 'Status'].forEach(label => assertIncludes(html, `<span>${label}</span>`));
 });
 
 test('l1MilestoneRowsHtml renders the linked-milestone header row once expanded, and omits it while collapsed', function () {
@@ -580,7 +580,7 @@ test('l1MilestoneRowsHtml orders the expanded linked-milestones list by due date
   for (let i = 1; i < order.length; i++) assertTrue(order[i - 1] < order[i], `expected ${names[i-1]} before ${names[i]}`);
 });
 
-test('l1LinkedRowHtml labels a linked milestone from an Unassigned scope item as "Unassigned", not a stale/missing workstream name', function () {
+test('l1LinkedRowHtml labels a linked milestone from an Unassigned delivery item as "Unassigned", not a stale/missing workstream name', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Unassigned deliverable', workstreamId: null });
@@ -1329,7 +1329,7 @@ test('computedL1MilestoneActualDate excludes a notApplicable linked milestone\'s
 // request reversing the row-tint feature above from a status rollup to a
 // pure "how late are the linked dates against my own Due" fact check
 // ("Color should be determined by fact, if the due date or actual date of
-// all linked scope item milestones is matching with the target date of the
+// all linked delivery item milestones is matching with the target date of the
 // l1 milestones. If all dates are before or on the date, set to green. if
 // its within 1 month after the date, set to amber, if its longer, set to
 // red"). computedL1MilestoneStatus() itself is untouched — it still drives
@@ -1658,7 +1658,7 @@ test('renderL1ConnectList still includes a milestone already linked to the *same
   assertIncludes(html, 'checked');
 });
 
-test('renderL1ConnectList\'s search box narrows candidates by milestone or scope item name', function () {
+test('renderL1ConnectList\'s search box narrows candidates by milestone or delivery item name', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Finance Migration' });
@@ -1680,7 +1680,7 @@ test('renderL1ConnectList\'s search box narrows candidates by milestone or scope
 // across fields per word) — so a query naming both halves of a candidate
 // finds it even though neither field alone contains the whole phrase.
 
-test('a two-word search matches when one word is only in the scope item name and the other only in the milestone name', function () {
+test('a two-word search matches when one word is only in the delivery item name and the other only in the milestone name', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Finance Migration' });
@@ -1798,16 +1798,16 @@ test('renderL1ConnectList\'s workstream filter composes with the search box as a
 
 // ---------- The connect list as a flat 5-column table — an explicit user ----------
 // request replacing the original grouped layout (one heading per
-// workstream, a bold sub-heading per scope item, a plain name-only row per
+// workstream, a bold sub-heading per delivery item, a plain name-only row per
 // milestone with no Due shown at all).
 
-test('l1ConnectHeaderHtml labels all five columns: Workstream, Scope Item, Milestone, Due, and a blank checkbox column', function () {
+test('l1ConnectHeaderHtml labels all five columns: Workstream, Delivery Item, Milestone, Due, and a blank checkbox column', function () {
   const html = l1ConnectHeaderHtml();
   assertIncludes(html, 'l1-connect-header');
-  ['Workstream', 'Scope Item', 'Milestone', 'Due'].forEach(label => assertIncludes(html, `<span>${label}</span>`));
+  ['Workstream', 'Delivery Item', 'Milestone', 'Due'].forEach(label => assertIncludes(html, `<span>${label}</span>`));
 });
 
-test('renderL1ConnectList shows each candidate\'s Workstream, Scope Item, and Due date as real columns, not just the milestone name', function () {
+test('renderL1ConnectList shows each candidate\'s Workstream, Delivery Item, and Due date as real columns, not just the milestone name', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const w2 = { id: genId(), name: 'Data Platform', color: 'teal', order: 1 };
@@ -1818,7 +1818,7 @@ test('renderL1ConnectList shows each candidate\'s Workstream, Scope Item, and Du
   openL1ConnectModal(p.id, m.id);
   const html = document.getElementById('l1ConnectList').innerHTML;
   assertIncludes(html, 'Data Platform', 'the candidate\'s own workstream name');
-  assertIncludes(html, 'Warehouse migration', 'the candidate\'s own scope item name');
+  assertIncludes(html, 'Warehouse migration', 'the candidate\'s own delivery item name');
   assertIncludes(html, fmtDate('2027-04-01'), 'the candidate\'s own Due date');
 });
 
@@ -1832,10 +1832,10 @@ test('renderL1ConnectList shows an em dash for a candidate with no Due date set'
   assertIncludes(document.getElementById('l1ConnectList').innerHTML, '—');
 });
 
-// ---------- Collapsing repeated Workstream/Scope Item text ----------
+// ---------- Collapsing repeated Workstream/Delivery Item text ----------
 // A user-reported design review ("is this ui design good") against real
-// programme data: a scope item with several milestones repeated its own,
-// often long, Workstream/Scope Item text identically on every one of those
+// programme data: a delivery item with several milestones repeated its own,
+// often long, Workstream/Delivery Item text identically on every one of those
 // rows — genuinely hard to scan, and no amount of column-widening on its
 // own was ever going to fix a genuinely long real name truncating. Fixed by
 // collapsing that repeated text to blank on every row after the first in a
@@ -1843,7 +1843,7 @@ test('renderL1ConnectList shows an em dash for a candidate with no Due date set'
 // instead of ellipsis-truncating, and merging those rows' own borders so
 // the group reads as one visual block.
 
-test('renderL1ConnectList shows Workstream/Scope Item text only on the first row of a run sharing the same item, blank on the rest', function () {
+test('renderL1ConnectList shows Workstream/Delivery Item text only on the first row of a run sharing the same item, blank on the rest', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Migrate Database' });
@@ -1862,7 +1862,7 @@ test('renderL1ConnectList shows Workstream/Scope Item text only on the first row
   assertIncludes(rows[1], '<span class="l1-connect-source"></span><span class="l1-connect-source"></span>', 'the second row of the same group leaves both source spans blank');
 });
 
-test('renderL1ConnectList shows Workstream/Scope Item text again once a new item\'s own group starts', function () {
+test('renderL1ConnectList shows Workstream/Delivery Item text again once a new item\'s own group starts', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item1 = addItem({ name: 'Alpha Item' });
@@ -1886,7 +1886,7 @@ test('l1ConnectRowHtml drops the row\'s own border-bottom (.l1-connect-row-group
   assertNotIncludes(lastOfGroup, 'l1-connect-row-grouped');
 });
 
-test('renderL1ConnectList labels a candidate from an Unassigned scope item as "Unassigned", not a stale/missing workstream name', function () {
+test('renderL1ConnectList labels a candidate from an Unassigned delivery item as "Unassigned", not a stale/missing workstream name', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const item = addItem({ name: 'Orphan item', workstreamId: null });
@@ -1896,7 +1896,7 @@ test('renderL1ConnectList labels a candidate from an Unassigned scope item as "U
   assertIncludes(document.getElementById('l1ConnectList').innerHTML, 'Unassigned');
 });
 
-test('renderL1ConnectList sorts candidates by workstream display order, Unassigned last, then by scope item name within each', function () {
+test('renderL1ConnectList sorts candidates by workstream display order, Unassigned last, then by delivery item name within each', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id);
   const wsB = { id: genId(), name: 'B Stream', color: 'teal', order: 1 };
@@ -2448,6 +2448,52 @@ test('matchesL1MilestoneSearch matches a milestone\'s own name, case-insensitive
   assertFalse(matchesL1MilestoneSearch(m));
 });
 
+// A further, later, explicit user request ("l1 search should also search
+// for linked delivery items") extended matchesL1MilestoneSearch() to also
+// match any linked workstream milestone's own delivery item name, via the
+// exact same linkedWorkstreamMilestones(m.id) lookup l1LinkIndicatorHtml()/
+// the connect modal already use.
+
+test('matchesL1MilestoneSearch also matches the name of a linked workstream milestone\'s own delivery item', function () {
+  const p = addL1Plan('Digital Transformation');
+  const m = addL1Milestone(p.id, 'Kickoff');
+  const item = addItem({ name: 'Ledger Migration' });
+  const wm = { id: genId(), name: 'Data cutover', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  item.milestones.push(wm);
+  l1PlansSearchQuery = 'ledger';
+  assertFalse(matchesL1MilestoneSearch(m), 'not linked yet, so the delivery item name should not match');
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  assertTrue(matchesL1MilestoneSearch(m), 'now linked, its delivery item\'s own name should match');
+});
+
+test('matchesL1MilestoneSearch does not match a linked workstream milestone\'s own name — only its delivery item\'s', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  const item = addItem({ name: 'Ledger Migration' });
+  const wm = { id: genId(), name: 'Data cutover', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  l1PlansSearchQuery = 'cutover';
+  assertFalse(matchesL1MilestoneSearch(m));
+});
+
+test('matchesL1PlansSearch shows a plan once a linked delivery item on any of its milestones matches', function () {
+  const p1 = addL1Plan('Alpha Programme');
+  const m1 = addL1Milestone(p1.id, 'Kickoff');
+  const p2 = addL1Plan('Beta Programme');
+  addL1Milestone(p2.id, 'Kickoff');
+  const item = addItem({ name: 'Ledger Migration' });
+  const wm = { id: genId(), name: 'Data cutover', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  item.milestones.push(wm);
+  openL1ConnectModal(p1.id, m1.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  l1PlansSearchQuery = 'ledger';
+  assertTrue(matchesL1PlansSearch(p1));
+  assertFalse(matchesL1PlansSearch(p2));
+});
+
 test('matchesL1PlansSearch is not searching the plan\'s own name at all — a plan named after the query still fails to match if none of its milestones do', function () {
   const p = addL1Plan('Digital Transformation');
   addL1Milestone(p.id, 'Kickoff');
@@ -2554,6 +2600,21 @@ test('l1MilestoneRowsHtml renders only the milestone rows matching an active sea
   const html = l1MilestoneRowsHtml(p);
   assertIncludes(html, 'Go-Live');
   assertNotIncludes(html, 'Kickoff');
+});
+
+test('l1MilestoneRowsHtml keeps a milestone row visible when the search query matches one of its linked delivery items, not its own name', function () {
+  const p = addL1Plan();
+  const m1 = addL1Milestone(p.id, 'Kickoff');
+  addL1Milestone(p.id, 'Go-Live');
+  const item = addItem({ name: 'Ledger Migration' });
+  const wm = { id: genId(), name: 'Data cutover', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] };
+  item.milestones.push(wm);
+  openL1ConnectModal(p.id, m1.id);
+  toggleL1MilestoneLink(item.id, wm.id, true);
+  l1PlansSearchQuery = 'ledger';
+  const html = l1MilestoneRowsHtml(p);
+  assertIncludes(html, 'Kickoff');
+  assertNotIncludes(html, 'Go-Live');
 });
 
 test('l1MilestoneRowsHtml combines the search query and the Reporting Level filter as a plain AND', function () {

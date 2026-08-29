@@ -37,7 +37,7 @@ Right after that (or right after this, the first time), Pulse will ask you to **
 3. Make sure you're on the first sub-tab (it's labeled **Review**, or **Review Status** if you're on "All Workstreams" — go back and pick a real workstream if you see that).
 4. Click **Start review cycle**.
 
-That opens the live checklist: every scope item in that workstream, with its milestones listed underneath. For each one:
+That opens the live checklist: every delivery item in that workstream, with its milestones listed underneath. For each one:
 
 - Click the small circle on a milestone's row (or an item's own row, if it has no milestones) to **confirm** it. Confirming an item with several milestones confirms all of them at once — click again to un-confirm.
 - Anything already marked Complete is automatically treated as confirmed — no need to click through work that's already finished.
@@ -54,7 +54,7 @@ Optional: once you've wrapped up, you can attach meeting minutes to the cycle fr
 
 - Every workstream in the sidebar shows a small badge: amber **"In review"** while a cycle's active, red **"Overdue"** if it's gone stale (or was never reviewed). That's your at-a-glance cue for what needs attention.
 - Review mode has its own sub-tabs beyond the checklist: **Action Log**, **Decision Log**, and **Change Log** — running logs of what got tracked and changed across every review cycle for that workstream (or across all of them, if you're on "All Workstreams").
-- As a Reviewer, you can't restructure the plan itself — adding/removing workstreams, scope items, or milestones is one tier up (Editor). If something needs restructuring rather than correcting, flag it to whoever holds that role.
+- As a Reviewer, you can't restructure the plan itself — adding/removing workstreams, delivery items, or milestones is one tier up (Editor). If something needs restructuring rather than correcting, flag it to whoever holds that role.
 
 ## Troubleshooting
 

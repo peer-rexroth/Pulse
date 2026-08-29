@@ -113,7 +113,7 @@ test('the same item-level/milestone-level dedup applies to the Upcoming feed', f
   assertTrue(upcoming.some(e => e.label === 'Upcoming Milestone Task — Soon Milestone'));
 });
 
-// A user-reported bug: a scope item whose milestones are all still Pending
+// A user-reported bug: a delivery item whose milestones are all still Pending
 // (nothing planned yet) had its own dueDate silently defaulted to today's
 // date at creation time (see saveItem()/saveInlineQuickAddItem()'s own
 // comments in pulse.html) — which then read as genuinely Overdue on the
@@ -128,9 +128,9 @@ test('a Pending item with no date planned at all (dueDate: null) never appears i
 });
 
 test('a Pending milestone with no date planned at all (dueDate: null) never appears in the Overdue feed', function () {
-  addDashItem({ name: 'Parent item', status: 'pending', milestones: [{ id: 'm1', name: 'Scope Item Confirmed', dueDate: null, status: 'pending', actualDate: null }] });
+  addDashItem({ name: 'Parent item', status: 'pending', milestones: [{ id: 'm1', name: 'Delivery Item Confirmed', dueDate: null, status: 'pending', actualDate: null }] });
   renderDashboard();
-  assertNotIncludes(document.getElementById('main').innerHTML, 'Scope Item Confirmed');
+  assertNotIncludes(document.getElementById('main').innerHTML, 'Delivery Item Confirmed');
 });
 
 test('an item due within the next 30 days appears in the Upcoming feed', function () {
@@ -311,11 +311,11 @@ test('completing a review cycle removes the workstream from the overdue-for-revi
   // Scoped to the "Overdue for Review" card's own sub-stat text (its zero-count
   // branch reads "of N workstream(s)") rather than a blind '>1<' search — the
   // dashboard's unrelated "Item Status" card also legitimately shows "1" here
-  // (one scope item exists), which a bare '>1<' substring check can't tell apart.
+  // (one delivery item exists), which a bare '>1<' substring check can't tell apart.
   assertIncludes(document.getElementById('main').innerHTML, 'of 1 workstream');
 });
 
-test('a workstream with no scope items yet is not counted in the Overdue for Review card — nothing to review yet', function () {
+test('a workstream with no delivery items yet is not counted in the Overdue for Review card — nothing to review yet', function () {
   renderDashboard();
   assertNotIncludes(document.getElementById('main').innerHTML, '>1<');
 });
@@ -350,7 +350,7 @@ test('selecting a specific workstream scopes the item count, RAG breakdown, and 
 });
 
 test('selecting a specific workstream narrows the per-workstream summary and overdue-for-review count to it', function () {
-  addDashItem({}); // gives workstreams[0] a scope item so it still counts as overdue for review below
+  addDashItem({}); // gives workstreams[0] a delivery item so it still counts as overdue for review below
   document.getElementById('wsNameInput').value = 'Second';
   wsColorChoice = 'teal';
   saveWorkstream();
@@ -630,28 +630,31 @@ test('ganttBarRect computes left/width from start/end, with a minimum visible wi
   assertTrue(zeroWidth.width >= 0.6, 'a single-day bar must still render as a visible sliver, not collapse to nothing');
 });
 
-// ganttTicks()/ganttTickGranularity() — a later, user-reported fix
-// ("timeline does not look to nice. maybe scale to quarters?"): a real,
-// multi-year "All Workstreams" chart rendered one label per calendar month
-// packed into the same fixed axis width, overlapping every one of them
-// into unreadable, garbled text. The axis now auto-picks month/quarter/year
-// granularity from the range's own total span instead of always using
-// month.
+// ganttTicks()/ganttTickGranularity() — originally a later, user-reported
+// fix ("timeline does not look to nice. maybe scale to quarters?"): a
+// real, multi-year "All Workstreams" chart rendered one label per calendar
+// month packed into the same fixed axis width, overlapping every one of
+// them into unreadable, garbled text, so the axis auto-picked
+// month/quarter/year granularity from the range's own total span instead
+// of always using month. A further, later, explicit user request ("all
+// gantt charts should have the quarter steps as timeline") removed that
+// auto-select entirely — every range, short or long, always ticks by
+// quarter now.
 
-test('ganttTickGranularity picks month for a short scope, quarter for a multi-year one, year for a much longer one', function () {
-  assertEqual(ganttTickGranularity({ start: ganttDayNumber('2026-01-01'), end: ganttDayNumber('2026-06-01') }), 'month');
+test('ganttTickGranularity always returns quarter, regardless of the range\'s own span', function () {
+  assertEqual(ganttTickGranularity({ start: ganttDayNumber('2026-01-01'), end: ganttDayNumber('2026-06-01') }), 'quarter', 'a short scope no longer gets month ticks');
   assertEqual(ganttTickGranularity({ start: ganttDayNumber('2026-01-01'), end: ganttDayNumber('2028-06-01') }), 'quarter');
-  assertEqual(ganttTickGranularity({ start: ganttDayNumber('2020-01-01'), end: ganttDayNumber('2030-01-01') }), 'year');
+  assertEqual(ganttTickGranularity({ start: ganttDayNumber('2020-01-01'), end: ganttDayNumber('2030-01-01') }), 'quarter', 'a much longer scope no longer gets year ticks');
 });
 
-test('ganttTicks produces one tick per calendar month boundary actually inside a short range, with a "Mon YYYY" label', function () {
-  // Range starts mid-December, so Dec 1 itself falls just before range.start
-  // and is correctly excluded — only the three later month boundaries the
-  // range genuinely spans (Jan 1, Feb 1, Mar 1) get a tick.
+test('ganttTicks produces one tick per calendar quarter, aligned to real Q1/Q2/Q3/Q4 boundaries, even for a short range', function () {
+  // Range starts mid-December, so Q4 2025 (starting Oct 1, before
+  // range.start) is correctly excluded — only the one later quarter
+  // boundary the range genuinely spans (Q1 2026, Jan 1) gets a tick.
   const range = { start: ganttDayNumber('2025-12-15'), end: ganttDayNumber('2026-03-10') };
   const ticks = ganttTicks(range);
-  assertEqual(ticks.length, 3, 'Jan 1, Feb 1, Mar 1');
-  assertIncludes(ticks[0].label, '2026');
+  assertEqual(ticks.length, 1, 'Q1 2026 only');
+  assertEqual(ticks[0].label, 'Q1 2026');
 });
 
 test('ganttTicks produces one tick per calendar quarter, aligned to real Q1/Q2/Q3/Q4 boundaries, for a multi-year range', function () {
@@ -664,11 +667,10 @@ test('ganttTicks produces one tick per calendar quarter, aligned to real Q1/Q2/Q
   assertTrue(ticks.length < 12, 'quarterly, not one per month, across this ~2.5 year span');
 });
 
-test('ganttTicks produces one tick per calendar year, for a much longer range', function () {
+test('ganttTicks still produces quarter ticks (not year) for a much longer range, now that auto-select to year is gone', function () {
   const range = { start: ganttDayNumber('2015-06-01'), end: ganttDayNumber('2030-01-01') };
   const ticks = ganttTicks(range);
-  assertTrue(ticks.every(t => /^\d{4}$/.test(t.label)), 'every label is a bare year');
-  assertTrue(ticks.length <= 15, 'yearly, not quarterly, across this ~15 year span');
+  assertTrue(ticks.every(t => /^Q[1-4] \d{4}$/.test(t.label)), 'every label reads as a real "QN YYYY" boundary, never a bare year');
 });
 
 // ganttChartMinWidth() — a later, separate user-reported fix ("timeline
@@ -773,12 +775,13 @@ test('the last axis tick drops its own label (keeping just its tick-mark line) w
 });
 
 test('the last axis tick keeps its own label when there is genuinely enough room (few, widely-spaced ticks)', function () {
-  // A short, 2-month-spanning range — few enough ticks that
-  // ganttChartMinWidth()'s own 400px floor spreads generously across them,
-  // leaving real anchor-to-anchor room even after ganttDateRange()'s own
-  // padding is accounted for (verified live: ~172px, comfortably over the
-  // 160px two-label threshold above).
-  const rows = [{ id: 'i1', name: 'Short item', start: '2026-01-01', end: '2026-03-01', status: 'green', milestones: [] }];
+  // A ~6-month-spanning range — since every Gantt chart now always ticks by
+  // quarter (see ganttTickGranularity()'s own comment), this produces
+  // exactly 3 quarter ticks (Q1/Q2/Q3 2026) at ganttChartMinWidth()'s own
+  // 400px floor, leaving real anchor-to-anchor room even after
+  // ganttDateRange()'s own padding is accounted for (computed: ~187px,
+  // comfortably over the 160px two-label threshold above).
+  const rows = [{ id: 'i1', name: 'Short item', start: '2026-01-01', end: '2026-07-01', status: 'green', milestones: [] }];
   const html = renderGanttChartHtml([{ name: null, color: null, rows }], 'empty');
   const range = ganttDateRange(ganttRowDates(rows));
   const ticks = ganttTicks(range);
@@ -866,6 +869,31 @@ test('ganttWorkstreamSections excludes Unassigned items and, when filterWorkstre
 // (a scope toggle, then its own sub-tab, then a milestone-row redesign)
 // shipped and was later removed again entirely on a further, later,
 // explicit user request ("remove gantt for l1").
+
+// ganttStatusColor() — a user-reported fix ("in gantt view, amber timeline
+// looks brownish, can you change that to amber?"): --stat-amber is
+// deliberately darkened for legible text on its own --stat-amber-bg
+// background, which reads as muddy brown once stretched across a large,
+// unpaired Gantt bar fill instead. Amber gets its own dedicated
+// --gantt-amber-fill token (defined once, theme-invariant, the same
+// EXCEL_RAG_COLORS-style stance) — every other status is untouched, since
+// green/red are already vivid enough to read correctly as a solid fill.
+test('ganttStatusColor uses the dedicated Gantt fill token for amber, and the plain shared token for every other status', function () {
+  assertEqual(ganttStatusColor('amber'), 'var(--gantt-amber-fill)');
+  assertEqual(ganttStatusColor('green'), 'var(--stat-green)');
+  assertEqual(ganttStatusColor('red'), 'var(--stat-red)');
+  assertEqual(ganttStatusColor('not-started'), 'var(--stat-not-started)');
+  assertEqual(ganttStatusColor('complete'), 'var(--stat-complete)');
+});
+
+test('ganttRowHtml uses the amber fill token for both the bar and its own milestone markers when amber', function () {
+  const range = { start: ganttDayNumber('2026-01-01'), end: ganttDayNumber('2026-03-01') };
+  const row = { id: 'i1', name: 'Amber item', start: '2026-01-05', end: '2026-02-20', status: 'amber',
+    milestones: [{ id: 'm1', name: 'M1', date: '2026-01-15', status: 'amber' }] };
+  const html = ganttRowHtml(row, range, null);
+  assertIncludes(html, 'background:var(--gantt-amber-fill)');
+  assertNotIncludes(html, 'background:var(--stat-amber)', 'amber must never fall back to the muddy badge-tuned token in the Gantt view');
+});
 
 test('renderDashboard\'s Gantt tab renders a bar for a dated item and a marker per milestone, with no scope toggle', function () {
   const it = addDashItem({ name: 'Migrate Database', startDate: '2026-01-01', dueDate: '2026-03-01', milestones: [

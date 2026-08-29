@@ -32,11 +32,11 @@ test('render() marks the active mode tab active and the others inactive', functi
   assertFalse(document.getElementById('tabPlanning').classList.contains('active'));
 });
 
-// Neither #tabReview nor its Scope Item Review sub-tab are ever disabled —
+// Neither #tabReview nor its Delivery Item Review sub-tab are ever disabled —
 // every one of Review's sub-tabs has something sensible to show with "All
 // workstreams" selected: Action Log/Decision Log show their own rollups,
-// and Scope Item Review shows reviewDatesOverviewHtml().
-test('render() never marks the Scope Item Review sub-tab disabled, with or without a workstream selected', function () {
+// and Delivery Item Review shows reviewDatesOverviewHtml().
+test('render() never marks the Delivery Item Review sub-tab disabled, with or without a workstream selected', function () {
   setMode('review');
   assertFalse(document.getElementById('tabReviewScope').classList.contains('disabled'));
   setFilterWorkstream(workstreams[0].id);

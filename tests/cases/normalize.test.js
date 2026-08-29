@@ -87,7 +87,7 @@ test('normalizeData rejects an unknown status value on an item and on a mileston
   assertEqual(items[0].milestones[0].status, 'not-started');
 });
 
-test('normalizeData migrates a legacy standalone milestone item into its own single-milestone scope item', function () {
+test('normalizeData migrates a legacy standalone milestone item into its own single-milestone delivery item', function () {
   items.push({ id: 'legacy1', workstreamId: workstreams[0].id, type: 'milestone', name: 'Go-live', status: 'green', dueDate: '2026-10-01' });
   normalizeData();
   assertEqual(items.length, 1);

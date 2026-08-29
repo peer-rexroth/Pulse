@@ -9,9 +9,9 @@ function addItem(overrides) {
   return it;
 }
 
-// ---------- Planning's own scope-item search box ----------
+// ---------- Planning's own delivery-item search box ----------
 // An explicit user request ("suggest UI improvements" -> "search/filter for
-// scope items"): a plain, case-insensitive substring match against the
+// delivery items"): a plain, case-insensitive substring match against the
 // item's own name, narrowing renderStatusView()'s output live.
 
 test('render toggles the planning search toolbar only for Planning mode', function () {
@@ -273,9 +273,9 @@ test('renderStatusView groups items under the correct workstream and shows RAG c
 });
 
 // ---------- Dependency items get their own sub-section (renderStatusView()) ----------
-// An explicit user request: "show scope items which are flagged as
-// external separate from the scope item list ... similar like unassigned
-// scope items ... under the scope items list. Show also the External SPOC
+// An explicit user request: "show delivery items which are flagged as
+// external separate from the delivery item list ... similar like unassigned
+// delivery items ... under the delivery items list. Show also the External SPOC
 // in the view." (The feature — and its data-model field, dependency/
 // dependencySpoc — was itself later renamed from "External Delivery"/
 // externalDelivery to "Dependency"/dependency, an explicit user request to
@@ -1127,7 +1127,7 @@ test('an item whose milestones are all Pending (no date planned at all) shows a 
   addItem({
     name: 'Nothing planned yet',
     status: 'pending', startDate: null, dueDate: null,
-    milestones: [{ id: 'm1', name: 'Scope Item Confirmed', dueDate: null, status: 'pending', actualDate: null }]
+    milestones: [{ id: 'm1', name: 'Delivery Item Confirmed', dueDate: null, status: 'pending', actualDate: null }]
   });
   renderMain();
   const html = document.getElementById('main').innerHTML;

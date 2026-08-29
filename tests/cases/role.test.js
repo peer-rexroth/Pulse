@@ -625,7 +625,7 @@ test('saveRolePasswords shows a clear error instead of throwing when crypto.subt
   }
 });
 
-// ---------- Editor-tier gating: workstreams, scope items, milestones, categories ----------
+// ---------- Editor-tier gating: workstreams, delivery items, milestones, categories ----------
 
 test('saveWorkstream is blocked below Editor and leaves workstreams untouched', function () {
   userRole = 'visitor';

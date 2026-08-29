@@ -13,7 +13,7 @@ test('a workstream with no completed review cycle is overdue for review', functi
   assertTrue(isReviewOverdue(workstreams[0].id));
 });
 
-test('a workstream with no scope items yet is never overdue for review — there is nothing to review', function () {
+test('a workstream with no delivery items yet is never overdue for review — there is nothing to review', function () {
   assertEqual(items.filter(it => it.workstreamId === workstreams[0].id).length, 0, 'sanity check — a fresh workstream starts with no items');
   assertFalse(isReviewOverdue(workstreams[0].id));
 });
@@ -303,7 +303,7 @@ test('reviewCyclesForWs returns every cycle (active and completed) for that work
 // ---------- Shared workstream selector: Review mode's own gating ----------
 
 // All three of Review's sub-tabs have something sensible to show with no
-// workstream selected — Scope Item Review shows reviewDatesOverviewHtml(),
+// workstream selected — Delivery Item Review shows reviewDatesOverviewHtml(),
 // Action Log/Decision Log show their own "all workstreams" rollups — so
 // entering Review mode (or clearing the workstream filter while already in
 // it) never needs to bail out to Planning or hop reviewTab to a different
@@ -313,7 +313,7 @@ test('setMode("review") stays on the Scope tab (its default) while "All Workstre
   assertEqual(filterWorkstreamId, null);
   setMode('review');
   assertEqual(mode, 'review');
-  assertEqual(reviewTab, 'scope', 'Scope Item Review now has the all-workstreams review-dates overview to show, so there is nothing left to hop away from');
+  assertEqual(reviewTab, 'scope', 'Delivery Item Review now has the all-workstreams review-dates overview to show, so there is nothing left to hop away from');
 });
 
 test('setFilterWorkstream selects a workstream, which setMode("review") then shows on the Scope tab', function () {
@@ -616,7 +616,7 @@ test('cycleMilestoneStatus logs a statusChange {oldValue, newValue}, rendered as
   assertIncludes(html, 'Call Money — Design defined');
 });
 
-test('history reorders changes to match the scope item\'s own milestone order, not the order they were logged in', function () {
+test('history reorders changes to match the delivery item\'s own milestone order, not the order they were logged in', function () {
   const mA = { id: genId(), name: 'A', dueDate: todayStr(), status: 'not-started', actualDate: null };
   const mB = { id: genId(), name: 'B', dueDate: todayStr(), status: 'not-started', actualDate: null };
   const mC = { id: genId(), name: 'C', dueDate: todayStr(), status: 'not-started', actualDate: null };
@@ -822,7 +822,7 @@ test('renderReview shows a collapsed history entry with a chevron, expanding to 
   renderReview();
   html = document.getElementById('main').innerHTML;
   assertIncludes(html, 'review-change-row');
-  assertIncludes(html, 'Call Money — Development completed', 'a milestone-level change should be labeled with its scope item name first');
+  assertIncludes(html, 'Call Money — Development completed', 'a milestone-level change should be labeled with its delivery item name first');
   assertIncludes(html, 'Actual:');
 });
 
@@ -2715,7 +2715,7 @@ test('#tabReviewScope always sorts leftmost (order -1), whether it reads "Review
   assertEqual(tab.style.order, '-1', 'position must stay leftmost even once the label switches to "Review Status"');
 });
 
-test('setReviewTab switches renderReview between the Scope Item Review checklist and the Action Log', function () {
+test('setReviewTab switches renderReview between the Delivery Item Review checklist and the Action Log', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
   addMinutesActionItemRow();
@@ -2724,9 +2724,9 @@ test('setReviewTab switches renderReview between the Scope Item Review checklist
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
 
-  assertEqual(reviewTab, 'scope', 'Review should default to the Scope Item Review tab');
+  assertEqual(reviewTab, 'scope', 'Review should default to the Delivery Item Review tab');
   let html = document.getElementById('main').innerHTML;
-  assertIncludes(html, 'Start review cycle', 'the completed cycle from addCompletedReviewCycle() has no active cycle left, so Scope Item Review falls back to its "start a new one" state');
+  assertIncludes(html, 'Start review cycle', 'the completed cycle from addCompletedReviewCycle() has no active cycle left, so Delivery Item Review falls back to its "start a new one" state');
   assertNotIncludes(html, 'action-log-list');
 
   setReviewTab('actionLog');
@@ -2921,7 +2921,7 @@ test('sortedActionLog\'s keyFn param sorts a list of wrapped {w, a} pairs by the
 // Reachable from Review mode's Action Log tab with "All Workstreams"
 // selected in the sidebar — see setMode()/setFilterWorkstream()'s own
 // comments for why Review mode no longer requires a specific workstream
-// the way it used to (Scope Item Review still does; the Action Log doesn't).
+// the way it used to (Delivery Item Review still does; the Action Log doesn't).
 
 function addSecondWorkstreamWithCompletedCycle() {
   document.getElementById('wsNameInput').value = 'Second Stream';
@@ -3244,7 +3244,7 @@ test('normalizeData backfills a missing/malformed workstream.decisionLog to an e
   assertEqual(d.flagged, false, 'a hand-built row missing flagged backfills to false');
 });
 
-test('setReviewTab switches renderReview to the Decision Log, alongside Scope Item Review and Action Log', function () {
+test('setReviewTab switches renderReview to the Decision Log, alongside Delivery Item Review and Action Log', function () {
   const cycle = addCompletedReviewCycle();
   openMinutesModal(cycle.id);
   document.getElementById('minutesDecisionsInput').value = 'Go live on the 15th.';
@@ -3391,7 +3391,7 @@ test('renderReview shows the "All Workstreams" Decision Log when no workstream i
   assertIncludes(html, 'Decision two');
 });
 
-// ---------- "All Workstreams" review-dates overview (Scope Item Review's
+// ---------- "All Workstreams" review-dates overview (Delivery Item Review's
 // own landing view with no workstream selected — an explicit user request;
 // see reviewDatesOverviewHtml()) ----------
 
@@ -3416,7 +3416,7 @@ test('reviewDatesOverviewHtml shows "Never reviewed" and red styling for a works
   assertIncludes(html, 'stale-red');
 });
 
-test('reviewDatesOverviewHtml applies no color coding to a workstream with no scope items yet, even though it is technically never reviewed', function () {
+test('reviewDatesOverviewHtml applies no color coding to a workstream with no delivery items yet, even though it is technically never reviewed', function () {
   assertEqual(items.filter(it => it.workstreamId === workstreams[0].id).length, 0, 'sanity check — a fresh workstream starts with no items');
   const html = reviewDatesOverviewHtml();
   assertIncludes(html, 'Never reviewed');
@@ -3453,7 +3453,7 @@ test('reviewDatesOverviewHtml rows are clickable and select that workstream', fu
   assertIncludes(reviewDatesOverviewHtml(), `onclick="setFilterWorkstream('${w.id}')"`);
 });
 
-test('renderReview shows the all-workstreams review-dates overview on Scope Item Review with no workstream selected', function () {
+test('renderReview shows the all-workstreams review-dates overview on Delivery Item Review with no workstream selected', function () {
   addReviewItem({});
   setFilterWorkstream(workstreams[0].id);
   setMode('review');
@@ -3468,7 +3468,7 @@ test('renderReview shows the all-workstreams review-dates overview on Scope Item
 // A cross-workstream, chronological feed of every change logged during a
 // review cycle (see logReviewChange()) — an explicit user request. This
 // introduces no new data of its own — it flattens the changeLog entries
-// already stored on each review cycle (see the "Scope Item Confirmed"
+// already stored on each review cycle (see the "Delivery Item Confirmed"
 // tests above, which already exercise how tagChange/statusChange/
 // dateChange entries get logged in the first place).
 

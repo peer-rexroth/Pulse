@@ -126,6 +126,22 @@
     --stat-amber: #c07f0a;       --stat-amber-bg: #fcf1da;
     --stat-red: #d13c3c;         --stat-red-bg: #fbe8e8;
     --stat-complete: #3457c9;    --stat-complete-bg: #e8edfc;
+    /* Deliberately defined once here, in the base :root block only — never
+       redeclared inside any html[data-scheme="..."]/[data-theme="dark"]
+       override — so it stays exactly this one color regardless of the
+       active color scheme or theme, the same "always the same value,
+       independent of the live page's own theming" stance EXCEL_RAG_COLORS
+       already takes for the Excel export (see "Export to Excel" in
+       CLAUDE.md). A user-reported fix ("in gantt view, amber timeline
+       looks brownish, can you change that to amber?"): --stat-amber itself
+       (#c07f0a) is deliberately a *darkened* gold, tuned for legible text
+       on its own light --stat-amber-bg background — perfectly readable as
+       a badge, but as a large solid Gantt bar fill with no such pairing it
+       reads as muddy brown instead of a real amber. --stat-green/
+       --stat-red have no such gap (both are already vivid enough to read
+       correctly as a solid fill), so only amber needed its own dedicated,
+       more saturated fill token — see ganttRowHtml()'s own use of it. */
+    --gantt-amber-fill: #e8960c;
   }
   html[data-theme="dark"] {
     --bg: #14161a;
@@ -426,8 +442,11 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   /* Dracula: a soft accent-colored glow on the brand icon — a small nod to
-     the palette's neon-on-dark character, same touch mytasks applies. */
-  html[data-scheme="dracula"] .brand i { text-shadow: 0 0 8px var(--accent); }
+     the palette's neon-on-dark character, same touch mytasks applies.
+     drop-shadow, not text-shadow — the brand icon is a plain inline <svg>
+     (see .brand's own CSS comment below for why), and text-shadow has no
+     effect on SVG shapes, only on rendered text/font glyphs. */
+  html[data-scheme="dracula"] .brand svg { filter: drop-shadow(0 0 8px var(--accent)); }
   /* GitHub / GitHub Dimmed: the primary button becomes GitHub's solid
      green — its single most recognizable UI element ("Merge pull
      request", "New", etc.) — same as mytasks' own GitHub scheme. */
@@ -522,7 +541,15 @@
   /* Matches mytasks' .topbar-brand sizing/weight/letter-spacing exactly, so
      the two sibling apps' headers read as one family. */
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 21px; letter-spacing: -0.02em; color: var(--text); }
-  .brand i { color: var(--accent); font-size: 19px; }
+  /* The brand mark is a plain inline <svg> tracing the same EKG-spike line
+     icons/icon.svg itself uses for the real app icon (see "The brand icon
+     and app icon are an actual heartbeat/EKG trace" in CLAUDE.md) — no
+     circle, no heart shape, just the line — so it can recolor with
+     currentColor/var(--accent) across every color scheme the way every
+     other small Font Awesome glyph in this topbar already does, the same
+     job fa-wave-square (and, briefly, Font Awesome's own fa-heart-pulse —
+     reverted once its own baked-in heart outline was noticed) used to do. */
+  .brand svg { color: var(--accent); width: 26px; height: 26px; }
   .programme-name {
     border: none; background: transparent; font-size: 14px; font-weight: 600; color: var(--text-dim);
     padding: 4px 8px; border-radius: 6px; min-width: 120px; max-width: 320px;
@@ -627,7 +654,7 @@
   .planning-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .planning-toolbar { flex: 0 0 auto; padding: 14px 24px 0; }
   .planning-main .main { padding-top: 16px; }
-  /* Planning's own scope-item search box (setPlanningSearch()) — an icon +
+  /* Planning's own delivery-item search box (setPlanningSearch()) — an icon +
      input + conditional clear button, the same "icon and control share one
      bordered box" composition .date-pill already uses elsewhere in this
      app, adapted for a plain text search rather than a date. */
@@ -670,6 +697,7 @@
 
   .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-faint); gap: 10px; text-align: center; }
   .empty-state i { font-size: 34px; opacity: .5; }
+  .empty-state svg { width: 34px; height: 34px; opacity: .5; }
 
   /* Status view */
   /* .ws-section itself is NOT the scroll container — overflow-x:auto lives
@@ -1065,7 +1093,7 @@
      .l1-milestone-row's own padding/chevron-width/gap ever change, this
      value needs to move with them to stay aligned — it's derived from,
      not independent of, that rule just above. Its own 5-column layout
-     (Workstream / Scope Item / Milestone / Due / Status) — split into two
+     (Workstream / Delivery Item / Milestone / Due / Status) — split into two
      separate columns rather than one combined "source" cell, an explicit
      user request — plus its own header row (.l1-linked-header, labeling
      all five), the same "label the columns once, right above the list
@@ -1076,13 +1104,13 @@
      blank 56px trailing cell (see below) purely to keep Status aligned
      with the other two levels. */
   .l1-linked-header, .l1-linked-row {
-    /* Workstream/Scope Item/Milestone widened — a later, explicit user
+    /* Workstream/Delivery Item/Milestone widened — a later, explicit user
        request ("give the columns Workstream, Scope Item and Milestone more
        space") — from their original 110px/140px/minmax(160px,1fr) to
-       150px/180px/minmax(220px,1fr), then Scope Item doubled on a direct
+       150px/180px/minmax(220px,1fr), then Delivery Item doubled on a direct
        follow-up ("double the space of scope item") to 360px, then widened
        a further 25% on one more follow-up ("give scope item even more
-       space. another 25%") to 450px. Scope Item is still capped at a fixed
+       space. another 25%") to 450px. Delivery Item is still capped at a fixed
        width, not its own equal-share
        minmax(...,1fr) — a user-reported "way too wide" (both it and
        Milestone were 1fr, so they always split the leftover space evenly
@@ -1099,7 +1127,7 @@
        x-position across all three nesting levels: this row,
        .l1-milestone-row one level up, and the L1 Plan row itself, two
        levels up. Actual (110px, matching Due) sits between Due and
-       Status — a later, explicit user addition (show the linked scope
+       Status — a later, explicit user addition (show the linked delivery
        item's own Actual date here, alongside Due). This is the linked
        workstream milestone's own real Actual date, a genuinely different
        value from the L1 milestone's own rolled-up Actual one level up
@@ -1224,14 +1252,14 @@
      picker's own original caller — kept as-is rather than renamed, since
      L1 Plans' own connect modal still relies on them unchanged. */
   .l1-connect-list { max-height: 50vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
-  /* A real 5-column table (Workstream / Scope Item / Milestone / Due /
+  /* A real 5-column table (Workstream / Delivery Item / Milestone / Due /
      Checkbox) — an explicit user request replacing the original grouped
-     layout (one heading per workstream, a bold sub-heading per scope item,
+     layout (one heading per workstream, a bold sub-heading per delivery item,
      then a plain name-only row per milestone, no Due shown at all). Widths
-     originally roughly mirrored l1LinkedRowHtml()'s own Workstream/Scope
+     originally roughly mirrored l1LinkedRowHtml()'s own Workstream/Delivery
      Item columns one page over, loosened slightly (130px/150px vs
      110px/140px) since this modal has real room to spare and no cross-row
-     alignment constraint with anything else to respect. Scope Item was
+     alignment constraint with anything else to respect. Delivery Item was
      later widened twice more, in quick succession — 150px → 375px (2.5x,
      "increase the width of this modal. scope item needs 2,5x the size"),
      then 375px → 450px ("increase scope item width to 450px") — with the
@@ -1240,9 +1268,9 @@
      delta as the column itself grew, so Milestone's own flexible track
      keeps the identical ~233px of comfortable room it already had rather
      than getting squeezed back down toward its bare 160px floor each time
-     Scope Item grows. Once real Workstream names started truncating too
+     Delivery Item grows. Once real Workstream names started truncating too
      ("Platform & Product Setup"), Workstream was widened 130px → 195px
-     (1.5x, "increase workstream size to 150%") — and, since Scope Item's
+     (1.5x, "increase workstream size to 150%") — and, since Delivery Item's
      own 450px had already turned out to be more room than it strictly
      needed once repeated-row collapsing + wrapping (see the Workstream
      filter dropdown's own comment above, "is this ui design good") meant
@@ -1268,15 +1296,15 @@
   /* Real programme data surfaced two problems no amount of column-widening
      alone was ever going to fix — a user-reported design review ("is this
      ui design good"), confirmed and acted on directly rather than bumping
-     the width a third time: (1) one scope item with several milestones
-     repeated its own, often long, Workstream/Scope Item text identically on
+     the width a third time: (1) one delivery item with several milestones
+     repeated its own, often long, Workstream/Delivery Item text identically on
      every one of those rows, which read as noisy and made it harder, not
      easier, to spot what actually differed row to row (the milestone name);
      (2) a genuinely long name (this app has no control over how a real
-     programme names its scope items) still truncated even at a generously
+     programme names its delivery items) still truncated even at a generously
      widened column, since ellipsis-truncation has no upper bound on how
      long a real name can be. renderL1ConnectList() now collapses the
-     Workstream/Scope Item text to blank on every row after the first in a
+     Workstream/Delivery Item text to blank on every row after the first in a
      run of consecutive rows sharing the same item (still real, present
      `.l1-connect-source` spans — the usual "never omit a grid cell, or
      later columns silently shift" discipline this app's other grids follow
@@ -1318,6 +1346,7 @@
   .help-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
   .help-row { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.6; color: var(--text-dim); }
   .help-row i { font-size: 14px; color: var(--text-faint); flex-shrink: 0; margin-top: 2px; width: 16px; text-align: center; }
+  .help-row svg { width: 14px; height: 14px; color: var(--text-faint); flex-shrink: 0; margin-top: 2px; }
   .help-divider { height: 1px; background: var(--border); }
   .help-tip { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-size: 12px; color: var(--text-dim); line-height: 1.6; }
   .help-tip strong { color: var(--text); font-weight: 700; }
@@ -1508,7 +1537,7 @@
   .review-list { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; }
   /* All-workstreams review-dates overview (see reviewDatesOverviewHtml()) —
      reuses .attention-row's layout, just clickable (jumps to that
-     workstream's own Scope Item Review) and color-coded by staleness. The
+     workstream's own Delivery Item Review) and color-coded by staleness. The
      "no color" tier (under 2 weeks, or nothing to review yet) is
      deliberately just the plain row — coloring every row would drown out
      the ones that actually need attention. */
@@ -1575,7 +1604,7 @@
      Action Item / Owner / Due Date / Source / Created / Closed / Delete /
      Confirm — NOT derived from --item-grid-cols at all. An earlier version
      reused --item-grid-cols' first 9 tracks (padded with 3 always-empty
-     filler columns) purely so this table lined up with Scope Item Review's
+     filler columns) purely so this table lined up with Delivery Item Review's
      checklist "directly above it" — but reviewTab is either 'scope' or
      'actionLog', never both at once (see setReviewTab()), so that alignment
      was never actually visible on screen simultaneously; it just made the
@@ -1956,7 +1985,7 @@
 <body>
 
 <div class="topbar">
-  <div class="brand"><i class="fa-solid fa-wave-square"></i> Pulse</div>
+  <div class="brand"><svg viewBox="0 0 120 120" width="26" height="26"><path d="M12 64 C24 64 24 40 34 40 C44 40 44 88 54 88 C64 88 64 20 74 20 C84 20 84 64 96 64 H108" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg> Pulse</div>
   <span id="programmeNameDisplay" class="programme-name" ondblclick="startRenameProgramme()" title="Double-click to rename"></span>
   <input id="programmeNameInput" class="programme-name" type="text" style="display:none"
     onblur="commitRenameProgramme()"
@@ -1980,7 +2009,7 @@
       </div>
       <div class="dropdown-item" onclick="exportToExcelReport();closeDataMenu()">
         <i class="fa-solid fa-file-excel dropdown-item-icon"></i>
-        <div><div class="dropdown-item-label">Export to Excel</div><div class="dropdown-item-desc">A formatted .xlsx report — Scope Items, Action Log, Decision Log</div></div>
+        <div><div class="dropdown-item-label">Export to Excel</div><div class="dropdown-item-desc">A formatted .xlsx report — Delivery Items, Action Log, Decision Log</div></div>
       </div>
       <div class="dropdown-item" id="dataMenuImportItem" onclick="triggerImport();closeDataMenu()">
         <i class="fa-solid fa-upload dropdown-item-icon"></i>
@@ -2032,7 +2061,7 @@
   </div>
   <div class="sidebar-resizer" onmousedown="startSidebarResize(event)" ondblclick="resetSidebarWidth()" title="Drag to resize — double-click to reset"></div>
   <div class="planning-main">
-    <!-- The scope-item search box, plus the quick-filter status chips just
+    <!-- The delivery-item search box, plus the quick-filter status chips just
          below it (see renderPlanningStatusChips()/setPlanningStatusFilter()).
          Only shown for mode==='planning'. Lives in this static toolbar, not
          inside #main, so a keystroke's own re-render of #main (renderMain())
@@ -2043,7 +2072,7 @@
     <div class="planning-toolbar" id="planningSearchToolbar" style="display:none">
       <div class="search-box">
         <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="text" id="planningSearchInput" placeholder="Search scope items by name..." oninput="setPlanningSearch(this.value)">
+        <input type="text" id="planningSearchInput" placeholder="Search delivery items by name..." oninput="setPlanningSearch(this.value)">
         <button type="button" class="search-clear-btn" id="planningSearchClearBtn" onclick="clearPlanningSearch()" title="Clear search" style="display:none"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="status-filter-chips" id="planningStatusFilterChips"></div>
@@ -2308,8 +2337,8 @@
   </div>
 </div>
 
-<!-- Assign scope category modal — pops up once a Pending item's "Scope item
-     confirmed" milestone is marked Complete (maybeOfferScopeAssign()), and
+<!-- Assign scope category modal — pops up once a Pending item's "Delivery
+     Item Confirmed" milestone is marked Complete (maybeOfferScopeAssign()), and
      stays reachable afterward from the item's own status badge
      (itemRowHtml()) in case the page was reloaded/closed before Apply was
      ever clicked. Mandatory once open — no "Later"/dismiss option at all
@@ -2349,7 +2378,7 @@
 <!-- L1 Plan milestone connect — candidates are workstream milestones, with
      a search box added given the large candidate volume (every milestone
      across every item, not just every item), listed as a flat 5-column
-     table (Workstream / Scope Item / Milestone / Due / Checkbox) — an
+     table (Workstream / Delivery Item / Milestone / Due / Checkbox) — an
      explicit user request replacing the original grouped layout. A
      workstream filter dropdown sits alongside the search box — a later,
      explicit user request ("provide a dropdown filter to select the
@@ -2362,7 +2391,7 @@
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <div class="search-box" style="max-width:none;flex:1;margin-bottom:0">
         <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="text" id="l1ConnectSearchInput" placeholder="Search by milestone or scope item name..." oninput="renderL1ConnectList()">
+        <input type="text" id="l1ConnectSearchInput" placeholder="Search by milestone or delivery item name..." oninput="renderL1ConnectList()">
       </div>
       <select id="l1ConnectWorkstreamFilter" class="l1-connect-ws-filter" onchange="renderL1ConnectList()"></select>
     </div>
@@ -2516,14 +2545,14 @@
 
       <div class="help-section">
         <div class="help-section-title">Overview</div>
-        <div class="help-row"><i class="fa-solid fa-wave-square"></i><span>Pulse is a local-first programme dashboard, organized into <strong style="color:var(--text)">Planning</strong>, <strong style="color:var(--text)">Review</strong>, <strong style="color:var(--text)">Dashboard</strong>, and <strong style="color:var(--text)">Settings</strong>. Everything runs in your browser — no account, no server.</span></div>
+        <div class="help-row"><svg viewBox="0 0 120 120" width="14" height="14"><path d="M12 64 C24 64 24 40 34 40 C44 40 44 88 54 88 C64 88 64 20 74 20 C84 20 84 64 96 64 H108" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Pulse is a local-first programme dashboard, organized into <strong style="color:var(--text)">Planning</strong>, <strong style="color:var(--text)">Review</strong>, <strong style="color:var(--text)">Dashboard</strong>, and <strong style="color:var(--text)">Settings</strong>. Everything runs in your browser — no account, no server.</span></div>
       </div>
 
       <div class="help-divider"></div>
 
       <div class="help-section">
         <div class="help-section-title">Planning</div>
-        <div class="help-row"><i class="fa-solid fa-diagram-project"></i><span>Organize work into <strong style="color:var(--text)">workstreams</strong>, each holding <strong style="color:var(--text)">scope items</strong> with a milestone checklist. Picking a <strong style="color:var(--text)">category</strong> seeds that checklist from a reusable template (Settings → Scope Item Categories).</span></div>
+        <div class="help-row"><i class="fa-solid fa-diagram-project"></i><span>Organize work into <strong style="color:var(--text)">workstreams</strong>, each holding <strong style="color:var(--text)">delivery items</strong> with a milestone checklist. Picking a <strong style="color:var(--text)">category</strong> seeds that checklist from a reusable template (Settings → Delivery Item Categories).</span></div>
         <div class="help-row"><i class="fa-solid fa-grip-lines"></i><span><strong style="color:var(--text)">Drag</strong> items (or whole workstreams, in the sidebar) to reorder them. A quick-added item lands in <strong style="color:var(--text)">Unassigned</strong> for later triage — mark its one milestone Complete to assign it a real workstream and category.</span></div>
         <div class="help-row"><i class="fa-solid fa-magnifying-glass"></i><span>Use the <strong style="color:var(--text)">search box</strong> and the <strong style="color:var(--text)">status/Dependencies pills</strong> above the board to narrow a long list down to what you're looking for.</span></div>
       </div>
@@ -2570,7 +2599,7 @@
 <div class="modal-bg" id="aboutModalBg">
   <div class="modal" style="width:360px;display:flex;flex-direction:column;gap:18px">
     <div style="display:flex;align-items:center;gap:10px">
-      <i class="fa-solid fa-wave-square" style="font-size:22px;color:var(--accent)"></i>
+      <svg viewBox="0 0 120 120" width="22" height="22" style="color:var(--accent)"><path d="M12 64 C24 64 24 40 34 40 C44 40 44 88 54 88 C64 88 64 20 74 20 C84 20 84 64 96 64 H108" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <div>
         <div style="font-size:16px;font-weight:600">Pulse</div>
         <div style="font-size:12px;color:var(--text-faint);margin-top:1px">A local-first programme dashboard</div>
@@ -2722,7 +2751,7 @@ const MAX_BACKUPS = 7;
 // same "guardrail, not a gate" stance RBAC and everything else in this app
 // already takes — there's no server here to actually push an update, so the
 // most this can ever do is tell a device it's behind, never force it current.
-const APP_VERSION = 12;
+const APP_VERSION = 13;
 // Hand-updated alongside APP_VERSION, same manual-discipline convention —
 // purely informational (the About modal's own "Version X · <date>" line),
 // never compared/merged/read by anything else, unlike APP_VERSION itself.
@@ -2730,7 +2759,7 @@ const APP_VERSION = 12;
 // wherever it's displayed — a build date is exactly the kind of value that
 // can be read long after the year it was set, so it should never rely on
 // "same year as now" being implied the way a plain fmtDate() call does.
-const APP_BUILD_DATE = '2026-08-22';
+const APP_BUILD_DATE = '2026-08-29';
 
 // 'pending' — an explicit user request — is a genuine 6th status value, not
 // a computed display override the way "Completed Late" is (see
@@ -2742,7 +2771,7 @@ const APP_BUILD_DATE = '2026-08-22';
 // and because milestonesForCategory() (see below) now seeds every freshly-
 // templated milestone at 'pending' rather than 'not-started'.
 // NOTE — naming collision, deliberate: this status shares its label with
-// the unrelated, pre-existing *Pending category* (see "Quick-add scope
+// the unrelated, pre-existing *Pending category* (see "Quick-add delivery
 // items, the Unassigned bucket, and the Pending category" in CLAUDE.md) —
 // the reserved category a quick-added item starts in before real triage.
 // The two are completely independent concepts that happen to reuse the
@@ -2841,7 +2870,7 @@ const MODES = ['planning', 'review', 'dashboard', 'admin', 'l1plans'];
 // dev tools (or direct access to the data file) can already see and change
 // everything regardless of the role shown here. This exists purely to guide
 // day-to-day workflow on a shared device/team (e.g. keep a Visitor from
-// accidentally editing scope items), not to keep anyone out on purpose.
+// accidentally editing delivery items), not to keep anyone out on purpose.
 // ROLES is an increasing ladder — each role can do everything the one before
 // it can, plus more (see hasRole()); it is never treated as a set of
 // independent, non-overlapping permissions.
@@ -2849,7 +2878,7 @@ const ROLES = ['visitor', 'reviewer', 'editor', 'admin'];
 const ROLE_META = {
   visitor: { label: 'Visitor', icon: 'fa-eye', desc: 'View Planning, Review, and Dashboard — no edits.' },
   reviewer: { label: 'Reviewer', icon: 'fa-clipboard-check', desc: 'Everything a Visitor can see, plus run review cycles, attach meeting minutes, manage the Action Log, and — while actually inside Review mode — correct a milestone\'s Due/Actual dates, its status, and an item\'s IT/Business/Budget tags.' },
-  editor: { label: 'Editor', icon: 'fa-pen', desc: 'Everything a Reviewer can do, plus create/edit/delete workstreams, scope items, milestones, and categories.' },
+  editor: { label: 'Editor', icon: 'fa-pen', desc: 'Everything a Reviewer can do, plus create/edit/delete workstreams, delivery items, milestones, and categories.' },
   admin: { label: 'Admin', icon: 'fa-user-shield', desc: 'Everything an Editor can do, plus import/restore data.' }
 };
 function roleLevel(r) { return ROLES.indexOf(r); }
@@ -3038,7 +3067,7 @@ let editingReportingLevels = [];
 let editingCategoryOriginalMilestones = [];
 // Which item rows currently show their nested milestones — UI-only, not persisted.
 let expandedItemIds = new Set();
-// Planning's own scope-item search box (#planningSearchInput) — UI-only,
+// Planning's own delivery-item search box (#planningSearchInput) — UI-only,
 // not persisted, reset on reload same as every other module-level UI flag
 // here. Lowercased/trimmed once on input (setPlanningSearch()) rather than
 // on every render, so matching stays a plain case-insensitive substring
@@ -3173,7 +3202,7 @@ let dashboardTab = 'overview';
 // deliberately not-workstream-scoped ones. A Gantt sub-tab briefly existed
 // here too (see dashboardTab's own comment above for that feature's full
 // history) before being removed again, and an 'unlinked' sub-tab (a real
-// 5-column Workstream/Scope Item/Milestone/Due/Link table listing every
+// 5-column Workstream/Delivery Item/Milestone/Due/Link table listing every
 // workstream milestone not yet linked to any L1 milestone, plus its own
 // reverse-direction "link to an L1 milestone" picker modal, l1PickModalBg)
 // existed for a while before being removed entirely on a later, explicit
@@ -3362,7 +3391,7 @@ function seedDefaults() {
   // so a brand-new item always has somewhere to land before its real
   // category is chosen (see applyScopeCategory()).
   categories = DEFAULT_CATEGORIES.map((c, i) => ({ id: genId(), name: c.name, milestones: c.milestones.slice(), order: i, dependency: !!c.dependency }));
-  categories.push({ id: genId(), name: 'Pending', milestones: ['Scope Item Confirmed'], pending: true, order: categories.length });
+  categories.push({ id: genId(), name: 'Pending', milestones: ['Delivery Item Confirmed'], pending: true, order: categories.length });
   reportingLevels = DEFAULT_REPORTING_LEVELS.slice();
   reviewCycles = [];
   deletedWorkstreamIds = [];
@@ -3522,7 +3551,33 @@ function normalizeData() {
   // (openInlineQuickAdd()) depends on exactly one category having
   // `pending: true` to seed a new item into.
   if (!categories.some(c => c.pending)) {
-    categories.push({ id: genId(), name: 'Pending', milestones: ['Scope Item Confirmed'], pending: true, order: categories.length });
+    categories.push({ id: genId(), name: 'Pending', milestones: ['Delivery Item Confirmed'], pending: true, order: categories.length });
+  }
+  // A Pending category created before this rename (or the earlier lowercase-
+  // to-Title-Case one before it) still has its own template milestone name
+  // stuck at whichever of the two old names it was originally seeded with —
+  // a user-reported gap in the "cosmetic text, no backfill" stance this
+  // rename otherwise takes (see "'Scope Item' renamed to 'Delivery Item'
+  // throughout the app" in CLAUDE.md): an already-existing category kept
+  // showing the old name in Admin, and every *new* item quick-added into it
+  // kept copying that same stale name straight out of the template
+  // (milestonesForCategory() just reads whatever's actually there). A
+  // one-time, in-place rename of the template fixes both symptoms at once,
+  // since every future item seeds from it. Any already-created item's own
+  // milestone (a separate, already-copied value) that still carries one of
+  // the two old names is renamed the same way — scoped to items still in
+  // this same Pending category, the one place this name is meaningful, so
+  // there's no risk of touching an unrelated milestone that happens to
+  // share the same words elsewhere. Idempotent — a no-op once every name is
+  // already current, same as every other self-healing pass in this function.
+  const pendingCatForRename = categories.find(c => c.pending);
+  if (pendingCatForRename) {
+    const oldPendingMilestoneNames = ['Scope Item Confirmed', 'Scope item confirmed'];
+    pendingCatForRename.milestones = pendingCatForRename.milestones.map(name => oldPendingMilestoneNames.includes(name) ? 'Delivery Item Confirmed' : name);
+    items.forEach(it => {
+      if (it.categoryId !== pendingCatForRename.id || !Array.isArray(it.milestones)) return;
+      it.milestones.forEach(m => { if (oldPendingMilestoneNames.includes(m.name)) m.name = 'Delivery Item Confirmed'; });
+    });
   }
 
   // reportingLevels — the fixed vocabulary an L1 milestone's own Reporting
@@ -3612,7 +3667,7 @@ function normalizeData() {
   reconcileDuplicateActiveCycles();
   // Migrate pre-nested-milestone data: a standalone item with type:'milestone'
   // used to be its own top-level row. Fold each one into its own single-milestone
-  // scope item rather than silently dropping it.
+  // delivery item rather than silently dropping it.
   const legacyMilestones = items.filter(it => it.type === 'milestone');
   if (legacyMilestones.length) {
     legacyMilestones.forEach(m => {
@@ -3631,7 +3686,7 @@ function normalizeData() {
     delete it.type;
     if (!isSafeId(it.id)) it.id = genId();
     // null is a legitimate, intentional value here — "Unassigned" (see
-    // "Quick-add scope items & the Pending category" in CLAUDE.md) — so it's
+    // "Quick-add delivery items & the Pending category" in CLAUDE.md) — so it's
     // left alone; only a genuinely stale/unknown id (e.g. a workstream that
     // was deleted out from under a merge, or a hand-edited import) gets
     // reset, and it resets to null/Unassigned too rather than an arbitrary
@@ -3640,7 +3695,7 @@ function normalizeData() {
     if (it.workstreamId != null && !wsIds.has(it.workstreamId)) it.workstreamId = null;
     if (it.workstreamId === undefined) it.workstreamId = null;
     // itemType distinguishes an L1 Plan (see "L1 Plans" below) from a plain
-    // scope item — any legacy/hand-edited/unrecognized value (including a
+    // delivery item — any legacy/hand-edited/unrecognized value (including a
     // pre-removal save's own 'journey'/'subjourney') falls back to 'scope',
     // same "unknown value resets to the safe default" treatment every other
     // enum-like field on an item gets here. Backfilled before the
@@ -3933,8 +3988,8 @@ function isDependencyCategory(categoryId) { const c = categoryById(categoryId); 
 // ---------- L1 Plans ----------
 // An L1 Plan is a second itemType alongside plain 'scope' items — not a
 // separate array, just an item with workstreamId/categoryId forced null.
-// Unlike an ordinary scope item, it keeps a real, hand-managed milestones
-// array — it's much closer to an ordinary scope item that simply never
+// Unlike an ordinary delivery item, it keeps a real, hand-managed milestones
+// array — it's much closer to an ordinary delivery item that simply never
 // gets a workstream/category. That single difference is what lets it ride
 // the *existing*, unmodified items/deletedItemIds/mergeMilestonesArray()
 // sync machinery with zero new plumbing — an L1 Plan and its own
@@ -4231,8 +4286,20 @@ function setDashboardTab(t) { dashboardTab = t; render(); }
 // same per-milestone check, so "this plan is shown" and "this plan's
 // milestone rows are the ones that matched" always agree — the identical
 // invariant the Reporting Level filter already established for itself.
+//
+// A further, later, explicit user request ("l1 search should also search
+// for linked delivery items") extended the match beyond the milestone's own
+// name: an L1 milestone now also matches once any of its linked workstream
+// milestones' own delivery item name does, via the exact same
+// linkedWorkstreamMilestones(m.id) lookup l1LinkIndicatorHtml()/the connect
+// modal's own candidate list already use to mean "what's linked to this
+// one" — so finding an L1 milestone by the name of the real delivery item
+// tracking it works, not just by the L1 milestone's own (often more
+// abstract/high-level) name.
 function matchesL1MilestoneSearch(m) {
-  return !l1PlansSearchQuery || m.name.toLowerCase().includes(l1PlansSearchQuery);
+  if (!l1PlansSearchQuery) return true;
+  if (m.name.toLowerCase().includes(l1PlansSearchQuery)) return true;
+  return linkedWorkstreamMilestones(m.id).some(({ item }) => item.name.toLowerCase().includes(l1PlansSearchQuery));
 }
 function matchesL1PlansSearch(plan) {
   if (!l1PlansSearchQuery) return true;
@@ -4368,7 +4435,7 @@ function renderMain() {
 }
 // A plain case-insensitive substring match against the item's own name —
 // deliberately not milestone names too, keeping this a quick "find one
-// scope item" tool rather than a general-purpose query. `planningSearchQuery`
+// delivery item" tool rather than a general-purpose query. `planningSearchQuery`
 // is already lowercased/trimmed once by setPlanningSearch(), so this is a
 // cheap check with no per-item normalizing work.
 function matchesPlanningSearch(it) {
@@ -4458,8 +4525,8 @@ function setPlanningDependencyFilter() {
   renderMain();
 }
 
-// The one place a brand-new scope item can be quick-added — see "Quick-add
-// scope items & the Pending category" in CLAUDE.md. Pinned above every real
+// The one place a brand-new delivery item can be quick-added — see "Quick-add
+// delivery items & the Pending category" in CLAUDE.md. Pinned above every real
 // workstream's own section and shown regardless of the current sidebar
 // filter (visibleWorkstreams() below only affects the real sections), since
 // an unassigned item doesn't belong to any one workstream yet and shouldn't
@@ -4469,7 +4536,7 @@ function setPlanningDependencyFilter() {
 // just be clutter.
 // An L1 Plan (itemType 'l1plan', always workstreamId:null by design — see
 // "L1 Plans" above) must never show up here either: this bucket is
-// specifically for scope items waiting to be triaged into a real
+// specifically for delivery items waiting to be triaged into a real
 // workstream, which isn't what "overarching, no workstream on purpose"
 // means — an L1 Plan has its own dedicated view instead (renderL1Plans()).
 function unassignedItemsSorted() {
@@ -4570,7 +4637,7 @@ function renderStatusView(main) {
       </div>`;
   }).join('');
   const noWorkstreamsHint = workstreams.length === 0
-    ? `<div class="empty-state"><i class="fa-solid fa-wave-square"></i>
+    ? `<div class="empty-state"><svg viewBox="0 0 120 120" width="34" height="34"><path d="M12 64 C24 64 24 40 34 40 C44 40 44 88 54 88 C64 88 64 20 74 20 C84 20 84 64 96 64 H108" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <div>No workstreams yet.</div>
         <button class="btn btn-primary" onclick="openWorkstreamModal()"><i class="fa-solid fa-plus"></i> Add a workstream</button>
       </div>`
@@ -4891,8 +4958,8 @@ function itemRowHtml(it, reviewCycle) {
   // rest of the row; the drop target is the whole row, so dropping anywhere
   // on it (not just precisely on its own handle) works.
   const dragAttrs = (reviewCycle && !reviewFieldsEditable) ? '' : ` ondragover="event.preventDefault()" ondrop="dropOnItem(event,'${it.id}')"`;
-  // A quick-added item (see openInlineQuickAdd()) whose sole "Scope item
-  // confirmed" milestone has been marked Complete still sits in the reserved
+  // A quick-added item (see openInlineQuickAdd()) whose sole "Delivery
+  // Item Confirmed" milestone has been marked Complete still sits in the reserved
   // Pending category until its real workstream/category is chosen — the
   // status badge itself becomes that entry point instead of the usual "open
   // the full edit modal" (still reachable via the pencil icon below), so
@@ -5164,7 +5231,7 @@ function milestoneRowsHtml(it, reviewCycle) {
     // icon, just not clickable below the gating role" convention
     // .review-confirm-toggle already uses. milestoneHeaderHtml()'s own
     // "Status"/"N/A" labels must keep matching this order and span.
-    // A still-Pending item's one "Scope Item Confirmed" milestone can never
+    // A still-Pending item's one "Delivery Item Confirmed" milestone can never
     // be marked Not Applicable — an explicit user request. Marking it N/A
     // would clear its Due/Actual dates and freeze its status badge (see
     // toggleMilestoneNotApplicable() above) while leaving it permanently
@@ -5382,7 +5449,7 @@ function toggleMilestoneNotApplicable(itemId, milestoneId) {
   // Defense-in-depth alongside milestoneRowsHtml()'s own inert (non-
   // clickable) toggle for a still-Pending item — same guard, so this can't
   // be reached any other way either. See milestoneRowsHtml()'s naEditable
-  // comment for why: marking the one "Scope Item Confirmed" milestone N/A
+  // comment for why: marking the one "Delivery Item Confirmed" milestone N/A
   // would strand the item in Pending forever.
   if (isPendingCategory(it.categoryId)) return;
   const m = it.milestones.find(m => m.id === milestoneId);
@@ -5575,7 +5642,7 @@ function dateInputHtml(value, attrs, pillClass, pickerArmFn) {
     </span>`;
 }
 
-// Plan date ranges (scope-item row and item modal) always include the year,
+// Plan date ranges (delivery-item row and item modal) always include the year,
 // since Start/Due can legitimately span across years.
 function fmtDateY(iso) {
   if (!iso) return '';
@@ -6102,13 +6169,13 @@ function resyncWorkstreamOrder() {
   save(); closeWorkstreamModal(); render();
   showToast(`Resynced order for ${wsItems.length} item${wsItems.length === 1 ? '' : 's'} in "${w.name}"`);
 }
-// Deleting a workstream no longer cascades to its scope items — an
+// Deleting a workstream no longer cascades to its delivery items — an
 // explicit user request ("if i remove a workstream that has scope items,
 // move them to unassigned"). An earlier version deleted them right along
 // with the workstream (tombstoned, undoable only as one bundled action);
 // now they simply survive with workstreamId set to null, the exact same
 // "Unassigned" bucket a stale/orphaned workstreamId already lands in via
-// normalizeData() (see "Quick-add scope items, the Unassigned bucket..." in
+// normalizeData() (see "Quick-add delivery items, the Unassigned bucket..." in
 // CLAUDE.md) — losing real work (milestones, tags, dates, review history)
 // just because the workstream containing it was removed was the actual
 // complaint, not the workstream deletion itself. A moved item keeps its own
@@ -6183,7 +6250,7 @@ function populateWorkstreamSelect(selectedId, elId, includeUnassigned) {
 // The reserved Pending category is never offered as a destination here —
 // same "one-way waypoint, never a destination" exclusion
 // openScopeAssignModal()'s own category select already applies (see "Quick-
-// add scope items, the Unassigned bucket, and the Pending category" in
+// add delivery items, the Unassigned bucket, and the Pending category" in
 // CLAUDE.md). Without this, a real item could be manually switched *into*
 // Pending through this ordinary select — bypassing the whole point of that
 // category being reachable only via applyScopeCategory() — and would end up
@@ -6253,7 +6320,7 @@ function onItemCategoryChange() {
 function onItemDependencyChange() {
   document.getElementById('itemDependencySpocField').style.display = document.getElementById('itemDependencyInput').checked ? '' : 'none';
 }
-// presetItemType ('l1plan', or omitted/anything else for a plain scope
+// presetItemType ('l1plan', or omitted/anything else for a plain delivery
 // item) only ever matters for a brand-new item — id, when given, always
 // wins, since an existing item's own itemType is never up for negotiation
 // here (see editingItemType's own comment).
@@ -6336,7 +6403,7 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   // modal, even at Editor+ — an explicit user request ("prevent change
   // category from unassigned scope items... they must remain pending").
   // Reassigning out of Pending is exclusively applyScopeCategory()'s job,
-  // reached only once this item's "Scope Item Confirmed" milestone is
+  // reached only once this item's "Delivery Item Confirmed" milestone is
   // marked Complete (see maybeOfferScopeAssign()/openScopeAssignModal()) —
   // letting this select bypass that here would let someone jump an item
   // straight into a real category without ever going through that flow, or
@@ -6346,7 +6413,7 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   // (stillPending itself is computed once, up top — see its own comment).
   const categorySelect = document.getElementById('itemCategorySelect');
   categorySelect.disabled = !editable || stillPending;
-  categorySelect.title = stillPending ? 'This item is still Pending — its category is set automatically once its "Scope Item Confirmed" milestone is marked Complete.' : '';
+  categorySelect.title = stillPending ? 'This item is still Pending — its category is set automatically once its "Delivery Item Confirmed" milestone is marked Complete.' : '';
   // Same lock, same reasoning, on Workstream — a still-Pending item stays
   // Unassigned until applyScopeCategory() moves it out of Pending; letting
   // this select assign a real workstream ahead of that would let someone
@@ -6354,7 +6421,7 @@ function openItemModal(id, presetWorkstreamId, presetItemType) {
   // category/checklist) outside the one flow meant to do both together.
   const workstreamSelect = document.getElementById('itemWorkstreamSelect');
   workstreamSelect.disabled = !editable || stillPending;
-  workstreamSelect.title = stillPending ? 'This item is still Pending — its workstream is set automatically once its "Scope Item Confirmed" milestone is marked Complete.' : '';
+  workstreamSelect.title = stillPending ? 'This item is still Pending — its workstream is set automatically once its "Delivery Item Confirmed" milestone is marked Complete.' : '';
   document.getElementById('itemSaveBtn').style.display = editable ? '' : 'none';
   document.getElementById('itemModalBg').classList.add('open');
   document.getElementById('itemNameInput').focus();
@@ -6374,7 +6441,7 @@ function closeItemModal() {
 // marked Not Applicable is still a normal edit. The toggle sits *after*
 // the status field (flipped, then flipped back again per user request),
 // matching milestoneRowsHtml()'s own column order on the status board.
-// A Pending item's one milestone ("Scope Item Confirmed") is what
+// A Pending item's one milestone ("Delivery Item Confirmed") is what
 // maybeOfferScopeAssign() watches to know when to prompt for a real
 // workstream/category — removing it here would leave the item stuck
 // Pending with nothing left to complete. Blocked the same way deleteItem()
@@ -6533,7 +6600,7 @@ function saveItem() {
   // linked to them. Renaming is the only thing this modal is for on an L1
   // Plan (see openItemModal()'s own comment) — everything else is managed
   // inline on the L1 Plans page itself — so this returns early with just
-  // that one field touched, before any of the scope-item-only reads below
+  // that one field touched, before any of the delivery-item-only reads below
   // ever run.
   if (savingType === 'l1plan') {
     const plan = editingItemId ? items.find(i => i.id === editingItemId) : null;
@@ -6724,14 +6791,14 @@ function saveItem() {
   maybeOfferScopeAssign(savedItem, prevStatus);
 }
 
-// ---------- Quick-add scope items & the Pending category ----------
+// ---------- Quick-add delivery items & the Pending category ----------
 // The Unassigned section's inline "+ Add item" (see unassignedSectionHtml())
 // — deliberately minimal, just a Name input, no modal. The new item is
 // seeded with no workstream at all (workstreamId: null — "Unassigned", the
 // same idea as the reserved Pending category below, just for workstream
 // instead of category) and straight into that Pending category (see
-// pendingCategory()/seedDefaults()) with its one milestone, "Scope item
-// confirmed". Both the real workstream and the real category are decided
+// pendingCategory()/seedDefaults()) with its one milestone, "Delivery
+// Item Confirmed". Both the real workstream and the real category are decided
 // together, later, once that milestone is marked Complete (see
 // maybeOfferScopeAssign()/openScopeAssignModal()).
 function openInlineQuickAdd() {
@@ -6771,7 +6838,7 @@ function saveInlineQuickAddItem() {
   if (!name) { render(); return; } // blurring/Enter with nothing typed just closes it, no error
   const cat = pendingCategory();
   const milestones = milestonesForCategory(cat.id, todayStr());
-  // The Pending category's own single "Scope Item Confirmed" milestone is
+  // The Pending category's own single "Delivery Item Confirmed" milestone is
   // always seeded Pending/dateless (see "Pending status" in CLAUDE.md), so
   // this range is null for literally every quick-added item — falling back
   // to today's date here (an earlier version of this function did) meant
@@ -6861,7 +6928,7 @@ function applyScopeAssign() {
 // A full swap, not a diff/sync like applyCategoryMilestoneSync() (that one
 // reconciles an existing category's own template changing over time — this
 // is a one-time jump from the placeholder Pending checklist to a real
-// category's). The discarded "Scope Item Confirmed" milestone is tombstoned
+// category's). The discarded "Delivery Item Confirmed" milestone is tombstoned
 // like any other removed milestone (see saveItem()).
 function applyScopeCategory(itemId, workstreamId, categoryId) {
   const it = items.find(i => i.id === itemId);
@@ -6878,7 +6945,7 @@ function applyScopeCategory(itemId, workstreamId, categoryId) {
   // assigned to an item, so it needs the identical, one-directional "picking
   // Dependency turns the flag on, never off" treatment. A still-Pending item
   // always starts with dependency:false (the field is hidden for one — see
-  // "Quick-add scope items..." in CLAUDE.md), so there's no existing true
+  // "Quick-add delivery items..." in CLAUDE.md), so there's no existing true
   // value this could ever clobber back to false.
   if (isDependencyCategory(categoryId)) it.dependency = true;
   it.milestones.forEach(m => tombstone(deletedMilestoneIds, m.id));
@@ -6901,7 +6968,7 @@ function applyScopeCategory(itemId, workstreamId, categoryId) {
 // A name-only inline capture — an L1 Plan has nothing else worth asking for
 // up front (no workstream/category, and its milestones are always
 // hand-added afterward — see "L1 Plans" above). Editor+ throughout, the
-// same "restructure the plan" tier workstreams/scope items/categories
+// same "restructure the plan" tier workstreams/delivery items/categories
 // already sit at.
 let l1PlanQuickAddOpen = false;
 function openL1PlanQuickAdd() {
@@ -7037,7 +7104,7 @@ function l1MilestoneHeaderHtml() {
     </div>`;
 }
 // A linked workstream milestone's own read-only row, once its parent L1
-// milestone is expanded — names the source Workstream and Scope Item in
+// milestone is expanded — names the source Workstream and Delivery Item in
 // their own separate columns (an L1 milestone's own linked list can span
 // several different workstreams and items at once, so this is the one
 // place that context is worth showing; split into two columns rather than
@@ -7056,7 +7123,7 @@ function l1MilestoneHeaderHtml() {
 // .l1-linked-header/.l1-linked-row's own CSS comment).
 function l1LinkedHeaderHtml() {
   return `<div class="l1-linked-header">
-      <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span>Actual</span><span>Status</span><span></span>
+      <span>Workstream</span><span>Delivery Item</span><span>Milestone</span><span>Due</span><span>Actual</span><span>Status</span><span></span>
     </div>`;
 }
 // l1DueDate is the *parent L1 milestone's own manually-set* dueDate (not
@@ -7611,7 +7678,7 @@ function removeL1Milestone(planId, milestoneId) {
 }
 
 // ---------- L1 Plan connect ----------
-// Candidates are individual milestones, not whole scope items, and (given
+// Candidates are individual milestones, not whole delivery items, and (given
 // the much larger candidate volume — every milestone across every item, not
 // just every item) with a plain text search added to narrow the list. This
 // writes straight to `items` the moment a checkbox changes — no detached
@@ -7656,16 +7723,16 @@ function closeL1ConnectModal() {
   l1ConnectPlanId = null;
   l1ConnectMilestoneId = null;
 }
-// A flat 5-column table (Workstream / Scope Item / Milestone / Due /
+// A flat 5-column table (Workstream / Delivery Item / Milestone / Due /
 // Checkbox) — an explicit user request replacing the original layout (one
-// heading per workstream, a bold sub-heading per scope item, then a plain
+// heading per workstream, a bold sub-heading per delivery item, then a plain
 // name-only row per milestone with no Due shown at all). Rows are sorted by
 // workstream display order (Unassigned last, matching every other
-// Unassigned-last convention in this app), then by scope item name within
+// Unassigned-last convention in this app), then by delivery item name within
 // each, so related milestones read together even without the old grouping's
 // visual headers — real programme data later showed that ordering alone
 // wasn't quite enough on its own (a busy multi-milestone item still
-// repeated its own long Workstream/Scope Item text on every one of its
+// repeated its own long Workstream/Delivery Item text on every one of its
 // rows), so renderL1ConnectList()/l1ConnectRowHtml() also collapse that
 // repeated text and merge those rows' own borders — see their own comments
 // for the fuller reasoning. Every workstream milestone is a real
@@ -7680,7 +7747,7 @@ function closeL1ConnectModal() {
 // milestone).
 function l1ConnectHeaderHtml() {
   return `<div class="l1-connect-header">
-      <span>Workstream</span><span>Scope Item</span><span>Milestone</span><span>Due</span><span></span>
+      <span>Workstream</span><span>Delivery Item</span><span>Milestone</span><span>Due</span><span></span>
     </div>`;
 }
 // showSource/isLastInGroup are computed by renderL1ConnectList() from the
@@ -7756,7 +7823,7 @@ function renderL1ConnectList() {
   // index" check enough to detect a run's own start/end, with no separate
   // grouping pass needed — see l1ConnectRowHtml()'s own comment for why
   // this matters (real programme data revealed the old "repeat the full
-  // Workstream/Scope Item text on every row" shape as genuinely hard to
+  // Workstream/Delivery Item text on every row" shape as genuinely hard to
   // scan once one item had several milestones).
   document.getElementById('l1ConnectList').innerHTML = l1ConnectHeaderHtml() +
     candidates.map(({ item, milestone }, i) => {
@@ -7786,7 +7853,7 @@ function toggleL1MilestoneLink(itemId, milestoneId, checked) {
   renderL1ConnectList();
 }
 
-// Drag-and-drop reordering of scope items within a workstream's status-board
+// Drag-and-drop reordering of delivery items within a workstream's status-board
 // list — Editor+ in Planning; also reachable at Reviewer+ while inside
 // Review mode (see itemRowHtml()'s own dragAttrs/reviewFieldsEditable
 // comment and reorderItem()'s own guard). draggedItemId is plain
@@ -7924,7 +7991,7 @@ function lastCompletedReview(wsId) {
   return done.length ? Math.max(...done.map(c => c.completedAt)) : null;
 }
 function isReviewOverdue(wsId) {
-  // A workstream with no scope items yet has nothing to review — every item
+  // A workstream with no delivery items yet has nothing to review — every item
   // is backfilled with a startDate/dueDate as soon as it's created (see
   // normalizeData()), so "no items" and "no items with any dates" are the
   // same condition here. Without this guard, a brand-new empty workstream
@@ -7980,7 +8047,7 @@ function startReviewCycle(wsId) {
 // of its milestones is confirmed (toggleMilestoneConfirm/
 // toggleConfirmAllMilestones, stored in cycle.milestoneConfirmations). This
 // mirrors the rest of the app's "computed vs manual" pattern (status, plan
-// dates) and is what makes "a scope item can only be confirmed once all its
+// dates) and is what makes "a delivery item can only be confirmed once all its
 // milestones are confirmed" an invariant rather than something that can
 // drift out of sync — there's no separate item-level flag to forget to
 // clear if a milestone gets unconfirmed again, or added mid-cycle.
@@ -8897,7 +8964,7 @@ function collapseChangeLogForCycle(changeLog) {
 // a chevron, same expand/collapse pattern as an item's milestone list.
 // Reorders a cycle's changeLog for display: entries are logged in whatever
 // order changes actually happened (chronological), but that's not
-// necessarily the order milestones appear in their scope item — a reviewer
+// necessarily the order milestones appear in their delivery item — a reviewer
 // might jump around a checklist rather than working straight down it. This
 // groups entries by itemId (preserving each item's first-appearance order,
 // so different items' changes never get interleaved) and, within one item's
@@ -8922,7 +8989,7 @@ function orderedChangeLog(changeLog) {
   });
 }
 // Same "<item> — <milestone>" convention Dashboard's attention feed uses,
-// so a milestone-level change is never ambiguous about which scope item it
+// so a milestone-level change is never ambiguous about which delivery item it
 // belongs to; an item-level change (tag, item date) has no milestoneName
 // and just shows the item name alone.
 function changeLogEntryLabel(e) {
@@ -9249,7 +9316,7 @@ function actionLogHtml(w) {
 // merged into one list, each row tagged with its source workstream (see
 // actionLogRowHtml()'s showWs param). Reachable from Review mode's Action
 // Log tab with "All Workstreams" selected in the sidebar (renderReview()):
-// unlike Scope Item Review, which is tied to one workstream's own active
+// unlike Delivery Item Review, which is tied to one workstream's own active
 // cycle, the Action Log has no such dependency, so it's the one part of
 // Review mode that can meaningfully show every workstream at once.
 function allWorkstreamsActionLogHtml() {
@@ -9668,8 +9735,8 @@ function removeDecisionLogForCycle(cycle) {
   w.decisionLog.forEach(d => { if (d.cycleId === cycle.id) tombstone(deletedDecisionLogIds, d.id); });
   w.decisionLog = w.decisionLog.filter(d => d.cycleId !== cycle.id);
 }
-// "All Workstreams" landing view for Scope Item Review — an explicit user
-// request. Scope Item Review is otherwise tied to one workstream's own
+// "All Workstreams" landing view for Delivery Item Review — an explicit user
+// request. Delivery Item Review is otherwise tied to one workstream's own
 // active cycle (unlike Action Log/Decision Log, which have no such
 // dependency — see allWorkstreamsActionLogHtml()), so with no workstream
 // selected there's nothing to show *within* a cycle — this instead shows,
@@ -9683,7 +9750,7 @@ function reviewDatesOverviewHtml() {
   const rows = workstreams.map(w => {
     const last = lastCompletedReview(w.id);
     const days = last === null ? null : Math.floor((Date.now() - last) / DAY_MS);
-    // A workstream with no scope items yet has nothing to review — same
+    // A workstream with no delivery items yet has nothing to review — same
     // guard isReviewOverdue() uses — so it never reads as stale here
     // either, regardless of technically being "never reviewed".
     const hasItems = items.some(it => it.workstreamId === w.id);
@@ -9705,7 +9772,7 @@ function reviewDatesOverviewHtml() {
 // Review has no workstream picker of its own any more — it reads the same
 // filterWorkstreamId the sidebar (shared with Planning/Dashboard) sets.
 // All three of Review's sub-tabs now render something sensible with no
-// workstream selected: Scope Item Review shows reviewDatesOverviewHtml(),
+// workstream selected: Delivery Item Review shows reviewDatesOverviewHtml(),
 // Action Log/Decision Log show their own "all workstreams" rollups — so
 // unlike earlier, nothing here needs to steer mode/reviewTab away from that
 // state at all; see setMode()/setFilterWorkstream() for the entry points
@@ -9875,46 +9942,40 @@ function ganttBarRect(startIso, endIso, range) {
   const width = Math.max(0.6, ganttPercent(endIso, range) - left);
   return { left, width };
 }
-// Picks the axis's own tick granularity from the range's total span — a
-// later, user-reported fix ("timeline does not look to nice. maybe scale
-// to quarters?"): a month tick for every single month of a genuinely
-// multi-year scope (the common shape once real, messy programme data is
-// in play — several workstreams' worth of items spanning a few years)
-// packed each of those labels into the same fixed axis width, overlapping
-// them into unreadable, garbled text. `months` is a plain average-days-
-// per-month approximation (365.25/12) — precise enough for picking a
-// granularity tier, not meant to be an exact calendar month count.
-// Thresholds: month ticks up to ~14 months (a short scope reads best at
-// full month detail, and 14 rather than a flat 12 gives a same-day-next-
-// year range a little slack before demoting); quarter ticks from there up
-// to 4 years; year ticks beyond that — the same "zoom out the label
-// granularity as the visible span grows" idiom every real timeline/chart
-// UI already uses, just with fixed tiers instead of continuous zoom, since
-// this chart has no interactive zoom control of its own.
+// Used to auto-pick the axis's own tick granularity from the range's total
+// span — a month tick for a short scope, quarter for a multi-year one,
+// year for a much longer one (a user-reported fix, "timeline does not
+// look to nice. maybe scale to quarters?", against the original always-
+// month-ticks design overlapping its own labels once a real, multi-year
+// "All Workstreams" scope was in play). A further, later, explicit user
+// request ("all gantt charts should have the quarter steps as timeline")
+// removed the auto-select entirely: every Gantt chart now always ticks by
+// quarter, regardless of its own visible span. `range` is kept as a
+// parameter purely for call-site/signature stability with ganttTicks()'s
+// own unchanged call — it's no longer read inside this function at all.
 function ganttTickGranularity(range) {
-  const months = (range.end - range.start) / (365.25 / 12);
-  if (months > 48) return 'year';
-  if (months > 14) return 'quarter';
-  return 'month';
+  return 'quarter';
 }
 // One tick per calendar boundary of the chosen granularity that the range
 // actually touches (never a boundary that falls before the range's own
-// visible start — a range starting mid-month/quarter correctly has no tick
-// for the one it's already partway through), each carrying its own left%
+// visible start — a range starting mid-quarter correctly has no tick for
+// the one it's already partway through), each carrying its own left%
 // (computed against the exact same range every bar/marker uses, so the
 // axis and the data always agree) and a granularity-appropriate label:
-// "Mon YYYY" for month (the same toLocaleDateString() approach fmtDate()/
-// fmtDateY() already use elsewhere in this app, just for a month+year
-// label instead of a day), "QN YYYY" for quarter, or a bare "YYYY" for
-// year. Quarter/year ticks are aligned to their own real calendar
-// boundaries (Jan/Apr/Jul/Oct for quarter, always Jan for year) rather
-// than whatever month the range happens to start mid-way through, so they
-// read as genuine "Q1 2026"/"2026" boundaries, not an arbitrary offset
+// "QN YYYY" for quarter — the only granularity ganttTickGranularity() ever
+// returns any more (see its own comment) — with "Mon YYYY"/bare "YYYY"
+// (month/year) left in as genuinely dead branches rather than deleted
+// outright, since this function was already written generically against
+// whatever granularity() returns and there's no correctness cost to
+// keeping the other two cases available if a future request ever
+// reintroduces auto-select or an explicit granularity picker. Quarter
+// ticks are aligned to their own real calendar boundaries (Jan/Apr/Jul/Oct)
+// rather than whatever month the range happens to start mid-way through,
+// so they read as genuine "Q1 2026" boundaries, not an arbitrary offset
 // grid. Capped at 240 iterations as a cheap safety net against an
-// unbounded loop — generous enough at every granularity (20 years of
-// month ticks, 60 years of quarter ticks, 240 years of year ticks) that a
-// real Gantt scope would already be a degenerate, useless chart long
-// before this cap is ever actually reached.
+// unbounded loop — generous enough (60 years of quarter ticks) that a real
+// Gantt scope would already be a degenerate, useless chart long before
+// this cap is ever actually reached.
 function ganttTicks(range) {
   const granularity = ganttTickGranularity(range);
   const step = granularity === 'year' ? 12 : granularity === 'quarter' ? 3 : 1;
@@ -9968,7 +10029,7 @@ function ganttRowDates(rows) {
   });
   return dates;
 }
-// One row per scope item currently in view — the shared sidebar filter
+// One row per delivery item currently in view — the shared sidebar filter
 // (visibleWorkstreams(), exactly like Overview/Dependencies already scope
 // themselves) decides which workstream(s) are in scope — grouped into a
 // section per workstream. A row needs a real Start+Due (its own manual
@@ -9994,6 +10055,19 @@ function ganttWorkstreamSections() {
     return { name: w.name, color: w.color, rows };
   }).filter(sec => sec.rows.length);
 }
+// The color a Gantt bar/marker actually paints with for a given status —
+// identical to the shared --stat-* palette for every status except amber,
+// which uses --gantt-amber-fill instead (see that variable's own comment):
+// a solid, unpaired fill at this size needs a more saturated amber than
+// the badge-tuned --stat-amber, which is deliberately darkened for text
+// contrast against its own --stat-amber-bg and reads as muddy brown once
+// stretched across a whole bar with no such pairing. Used by both the bar
+// and its own milestone markers, so a row's bar and its own diamonds never
+// disagree in shade the way they would if only one of the two switched to
+// the brighter fill.
+function ganttStatusColor(status) {
+  return status === 'amber' ? 'var(--gantt-amber-fill)' : `var(--stat-${status})`;
+}
 // One row's own markup — a fixed-width label column (clickable, opening
 // the same item modal every other Dashboard row already links to) plus a
 // flexible track column holding the bar (if any) and every milestone
@@ -10004,9 +10078,9 @@ function ganttRowHtml(row, range, todayPct) {
   const hasBar = !!(row.start && row.end);
   const bar = hasBar ? ganttBarRect(row.start, row.end, range) : null;
   const barHtml = hasBar
-    ? `<div class="gantt-bar" style="left:${bar.left}%;width:${bar.width}%;background:var(--stat-${row.status})" title="${esc(row.name)} — ${fmtDateY(row.start)} → ${fmtDateY(row.end)}"></div>`
+    ? `<div class="gantt-bar" style="left:${bar.left}%;width:${bar.width}%;background:${ganttStatusColor(row.status)}" title="${esc(row.name)} — ${fmtDateY(row.start)} → ${fmtDateY(row.end)}"></div>`
     : '';
-  const markersHtml = row.milestones.map(m => `<div class="gantt-marker" style="left:${ganttPercent(m.date, range)}%;background:var(--stat-${m.status})" title="${esc(m.name)} — ${esc(statusLabel(m.status))} — ${fmtDateY(m.date)}"></div>`).join('');
+  const markersHtml = row.milestones.map(m => `<div class="gantt-marker" style="left:${ganttPercent(m.date, range)}%;background:${ganttStatusColor(m.status)}" title="${esc(m.name)} — ${esc(statusLabel(m.status))} — ${fmtDateY(m.date)}"></div>`).join('');
   const todayHtml = todayPct === null ? '' : `<div class="gantt-today-line" style="left:${todayPct}%"></div>`;
   return `<div class="gantt-row">
       <div class="gantt-row-label attention-row-link" onclick="openItemModal('${row.id}')" title="${esc(row.name)}">${esc(row.name)}</div>
@@ -10339,7 +10413,7 @@ function renderDashboard() {
       <div class="dash-card">
         <div class="dash-card-title">Item Status</div>
         <div class="dash-big-stat">${totalItems}</div>
-        <div class="dash-sub-stat">total scope item${totalItems === 1 ? '' : 's'}</div>
+        <div class="dash-sub-stat">total delivery item${totalItems === 1 ? '' : 's'}</div>
         <div class="dash-bar" style="margin-top:12px">${bar}</div>
         <div class="dash-legend">${legend}</div>
       </div>
@@ -10373,10 +10447,10 @@ function renderAdmin() {
   const el = document.getElementById('adminBody');
   el.innerHTML = `
     <div class="admin-header">
-      <h2>Scope Item Categories</h2>
+      <h2>Delivery Item Categories</h2>
       ${hasRole('editor') ? `<button class="btn btn-primary" onclick="openCategoryModal()"><i class="fa-solid fa-plus"></i> Category</button>` : ''}
     </div>
-    <p style="margin-bottom:16px">Each category defines the standard milestone checklist a new scope item is seeded with when you pick it in Planning.</p>
+    <p style="margin-bottom:16px">Each category defines the standard milestone checklist a new delivery item is seeded with when you pick it in Planning.</p>
     <div class="category-list">
       ${categories.map(c => {
         const count = items.filter(it => it.categoryId === c.id).length;
@@ -10870,7 +10944,7 @@ function excelStyleHeaderRow(row) {
   row.height = 20;
 }
 // Converts a 1-based column index to its Excel letter (1→A, 26→Z, 27→AA,
-// ...) — needed because buildScopeItemsSheets() below builds a genuinely
+// ...) — needed because buildDeliveryItemsSheets() below builds a genuinely
 // dynamic column count per sheet (one column per distinct milestone name in
 // that category), so the sheet's own autoFilter range can no longer be a
 // single hardcoded letter the way every other sheet's own fixed column
@@ -10908,7 +10982,7 @@ function excelSafeSheetName(name, used) {
   return candidate;
 }
 // The ordered set of distinct milestone names that become this category's
-// own per-milestone pivot columns (see buildScopeItemsSheets() below) —
+// own per-milestone pivot columns (see buildDeliveryItemsSheets() below) —
 // the category's own milestone *template* (categories[].milestones, the
 // same ordered name list a brand-new item in this category gets seeded
 // from — see "Milestone checklist" in CLAUDE.md) supplies the primary
@@ -10947,7 +11021,7 @@ function categoryMilestoneColumnNames(cat, catItems) {
 }
 // One worksheet per category — a later, explicit user request ("create one
 // tab in the excel per category") reshaping what started as a single
-// "Scope Items" sheet. Category itself is dropped as a column (it's now
+// "Delivery Items" sheet. Category itself is dropped as a column (it's now
 // the tab), and — per the same request's own follow-up, after an initial,
 // different attempt at "move milestones into a column" didn't match what
 // was actually wanted — every distinct milestone name in a category
@@ -10958,12 +11032,12 @@ function categoryMilestoneColumnNames(cat, catItems) {
 // read the same way here, "nothing to show for this milestone on this
 // item", the same blank-cell convention every other "not applicable" field
 // in this export already uses.
-function buildScopeItemsSheets(wb) {
+function buildDeliveryItemsSheets(wb) {
   const usedSheetNames = new Set();
   const wsOrderIndex = new Map(workstreams.slice().sort((a, b) => a.order - b.order).map((w, i) => [w.id, i]));
   const cats = categories.slice().sort((a, b) => a.order - b.order);
   cats.forEach(cat => {
-    // Never a scope item — see "L1 Plans" in CLAUDE.md — though moot in
+    // Never a delivery item — see "L1 Plans" in CLAUDE.md — though moot in
     // practice, since an L1 Plan's own categoryId is always null and never
     // matches a real cat.id here regardless.
     const catItems = items.filter(it => it.categoryId === cat.id && it.itemType !== 'l1plan');
@@ -10973,7 +11047,7 @@ function buildScopeItemsSheets(wb) {
     const milestoneCols = milestoneNames.map((mName, i) => ({ header: mName, key: 'm' + i, width: 16 }));
     sheet.columns = [
       { header: 'Workstream', key: 'ws', width: 20 },
-      { header: 'Scope Item', key: 'name', width: 44 },
+      { header: 'Delivery Item', key: 'name', width: 44 },
       { header: 'Status', key: 'status', width: 13 },
       ...milestoneCols,
       { header: 'IT', key: 'it', width: 10 },
@@ -11060,7 +11134,7 @@ async function exportToExcelReport() {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Pulse';
   wb.created = new Date();
-  buildScopeItemsSheets(wb);
+  buildDeliveryItemsSheets(wb);
   buildActionLogSheet(wb);
   buildDecisionLogSheet(wb);
   const buffer = await wb.xlsx.writeBuffer();
@@ -11319,7 +11393,7 @@ function buildExecSummaryHtml() {
       <div style="flex:1;border:1px solid #e2e5ea;border-radius:8px;padding:14px;">
         ${cardTitle('Item Status')}
         <div style="font-size:24px;font-weight:700;">${totalItems}</div>
-        <div style="font-size:11px;color:#9aa3b0;margin-top:2px;">total scope item${totalItems === 1 ? '' : 's'}</div>
+        <div style="font-size:11px;color:#9aa3b0;margin-top:2px;">total delivery item${totalItems === 1 ? '' : 's'}</div>
         <div style="display:flex;width:100%;height:8px;border-radius:999px;overflow:hidden;background:#eceef1;margin-top:10px;">${bar}</div>
         <div style="display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:8px;font-size:10px;color:#5b6472;">${legend}</div>
       </div>
@@ -11448,7 +11522,7 @@ function drawExecSummaryCanvas(ctx, d) {
 
   const cardGap = 14, cardW = (contentW - cardGap * 2) / 3, cardH = 104;
   const cards = [
-    { title: 'Item Status', big: String(d.totalItems), sub: `total scope item${d.totalItems === 1 ? '' : 's'}` },
+    { title: 'Item Status', big: String(d.totalItems), sub: `total delivery item${d.totalItems === 1 ? '' : 's'}` },
     { title: 'Milestone Completion', big: d.msPct + '%', sub: `${d.msDone} of ${d.milestones.length} milestone${d.milestones.length === 1 ? '' : 's'} complete` },
     { title: 'Overdue for Review', big: String(d.overdueReviewWs.length), sub: d.overdueReviewWs.length ? d.overdueReviewWs.map(w => w.name).join(', ') : `of ${d.wss.length} workstream${d.wss.length === 1 ? '' : 's'}` }
   ];
@@ -11701,7 +11775,7 @@ function mergeMilestonesArray(existingList, incomingList, respectTombstones) {
 // The identical fix was extended to mergeMilestonesArray() (an item's own
 // milestones) and mergeData()'s own items pass right after this was
 // diagnosed — same purely-additive gap, same fix shape, once it turned out
-// to affect scope items too, not only Action Log/Decision Log.
+// to affect delivery items too, not only Action Log/Decision Log.
 function mergeKeyedRecords(existingList, incomingList, keyField, tombstones, respectTombstones) {
   let changed = false;
   let merged = existingList.map(r => ({ ...r }));
@@ -12129,7 +12203,7 @@ function slugify(name) {
 // "File System Access API sync" in CLAUDE.md).
 function wsFileName(id, name) { return `pulse-ws-${slugify(name)}-${id.slice(-6)}.json`; }
 // The index file: programme-wide/structural data plus anything that doesn't
-// belong to exactly one workstream — Unassigned scope items, since none of
+// belong to exactly one workstream — Unassigned delivery items, since none of
 // them are owned by a single workstream file. workstreams here is metadata
 // only (id/name/color/order/updatedAt) — actionLog/decisionLog live in each
 // workstream's own file instead (see buildWorkstreamPayload()), so a

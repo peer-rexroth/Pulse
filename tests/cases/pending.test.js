@@ -1,10 +1,10 @@
-// ---------- Quick-add scope items & the reserved Pending category ----------
-// See "Quick-add scope items & the Pending category" in pulse.html and
+// ---------- Quick-add delivery items & the reserved Pending category ----------
+// See "Quick-add delivery items & the Pending category" in pulse.html and
 // CLAUDE.md. The Unassigned section's inline "+ Add item" (see
 // unassignedSectionHtml()) is a deliberately minimal, name-only capture —
 // no modal, no workstream picker. The new item is seeded with no workstream
 // at all (workstreamId: null — "Unassigned") and straight into the reserved
-// Pending category with its one milestone, "Scope Item Confirmed". Marking
+// Pending category with its one milestone, "Delivery Item Confirmed". Marking
 // that milestone Complete pops up openScopeAssignModal() to pick the item's
 // real workstream/category together, which applyScopeCategory() then applies.
 
@@ -22,14 +22,59 @@ test('openInlineQuickAdd/saveInlineQuickAddItem creates an Unassigned item in th
   assertEqual(it.workstreamId, null);
   assertTrue(isPendingCategory(it.categoryId));
   assertEqual(it.milestones.length, 1);
-  assertEqual(it.milestones[0].name, 'Scope Item Confirmed');
+  assertEqual(it.milestones[0].name, 'Delivery Item Confirmed');
   assertEqual(it.milestones[0].status, 'pending');
   assertEqual(it.status, 'pending');
   assertFalse(unassignedQuickAddOpen, 'the input should have closed back to the button after saving');
 });
 
+// A user-reported gap in the "Scope Item" -> "Delivery Item" rename: an
+// already-existing Pending category (created before the rename shipped)
+// kept its own template milestone name stuck at the old "Scope Item
+// Confirmed" — visible in Admin, and copied onto every *new* item
+// quick-added into it, since milestonesForCategory() just reads whatever's
+// actually in the category's own template. normalizeData() now migrates
+// this in place, one time, self-healing on every load.
+test('normalizeData migrates an already-existing Pending category\'s own template milestone name from the old "Scope Item Confirmed" to "Delivery Item Confirmed"', function () {
+  const pendingCat = categories.find(c => c.pending);
+  pendingCat.milestones = ['Scope Item Confirmed'];
+  normalizeData();
+  assertDeepEqual(pendingCat.milestones, ['Delivery Item Confirmed']);
+});
+
+test('normalizeData also migrates the even older lowercase "Scope item confirmed" template name', function () {
+  const pendingCat = categories.find(c => c.pending);
+  pendingCat.milestones = ['Scope item confirmed'];
+  normalizeData();
+  assertDeepEqual(pendingCat.milestones, ['Delivery Item Confirmed']);
+});
+
+test('normalizeData migrates an already-created Pending item\'s own milestone name too, not just the category template', function () {
+  const pendingCat = categories.find(c => c.pending);
+  pendingCat.milestones = ['Scope Item Confirmed']; // simulate a stale template too
+  const it = addPendingItem('Old item');
+  it.milestones[0].name = 'Scope Item Confirmed'; // simulate an item created before the rename
+  normalizeData();
+  assertEqual(it.milestones[0].name, 'Delivery Item Confirmed');
+});
+
+test('normalizeData never touches a milestone with a matching name on an item outside the Pending category', function () {
+  const it = addItem({ name: 'Real item', milestones: [{ id: genId(), name: 'Scope Item Confirmed', dueDate: null, actualDate: null, status: 'not-started', notApplicable: false }] });
+  normalizeData();
+  assertEqual(it.milestones[0].name, 'Scope Item Confirmed', 'this name is only meaningful for the reserved Pending category — an unrelated item using the same words by coincidence must be left alone');
+});
+
+test('normalizeData is a no-op on an already-current Pending category/item (idempotent)', function () {
+  const pendingCat = categories.find(c => c.pending);
+  assertDeepEqual(pendingCat.milestones, ['Delivery Item Confirmed']);
+  const it = addPendingItem('Fresh item');
+  normalizeData();
+  assertDeepEqual(pendingCat.milestones, ['Delivery Item Confirmed']);
+  assertEqual(it.milestones[0].name, 'Delivery Item Confirmed');
+});
+
 // A user-reported bug: a freshly quick-added item's one milestone
-// ("Scope Item Confirmed") is always seeded Pending/dateless, so there is
+// ("Delivery Item Confirmed") is always seeded Pending/dateless, so there is
 // genuinely nothing planned yet — but this function used to fall back to
 // today's date for the item's own startDate/dueDate when it had nothing to
 // compute a range from, which meant every quick-added item silently got a
@@ -81,7 +126,7 @@ test('openInlineQuickAdd/saveInlineQuickAddItem are blocked below Editor', funct
   assertFalse(unassignedQuickAddOpen);
 });
 
-test('marking a Pending item\'s "Scope Item Confirmed" milestone Complete auto-opens the scope-assign modal', function () {
+test('marking a Pending item\'s "Delivery Item Confirmed" milestone Complete auto-opens the scope-assign modal', function () {
   const it = addPendingItem();
   const mId = it.milestones[0].id;
   scopeAssignItemId = null;

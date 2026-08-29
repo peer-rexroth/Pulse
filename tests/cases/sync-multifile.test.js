@@ -18,7 +18,7 @@ function byId(list) { const m = {}; list.forEach(x => m[x.id] = x); return m; }
 // Seeds a second real workstream (workstreams[0] already exists from
 // resetState()) plus one item/one review cycle/one actionLog entry/one
 // decisionLog entry on each of the two real workstreams, and one Unassigned
-// scope item — enough of a spread across "belongs to workstream A",
+// delivery item — enough of a spread across "belongs to workstream A",
 // "belongs to workstream B", and "belongs to neither" to exercise the
 // actual partitioning this feature exists to get right.
 function seedMultiFileFixture() {
@@ -100,7 +100,7 @@ test('buildIndexPayload() strips actionLog/decisionLog off each workstream, keep
   assertDeepEqual(Object.keys(w).sort(), ['color', 'id', 'name', 'order', 'updatedAt'].sort());
 });
 
-test('buildIndexPayload() includes only workstreamId:null items — Unassigned scope items', function () {
+test('buildIndexPayload() includes only workstreamId:null items — Unassigned delivery items', function () {
   const { itemA, itemB, itemUnassigned } = seedMultiFileFixture();
   const idx = buildIndexPayload();
   assertDeepEqual(idsOf(idx.items), idsOf([itemUnassigned]));

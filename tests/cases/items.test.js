@@ -81,7 +81,7 @@ test('saveItem still correctly assigns a real workstream when the user explicitl
   assertEqual(items[0].workstreamId, workstreams[0].id);
 });
 
-test('saveItem creates a scope item carrying the standard milestones through', function () {
+test('saveItem creates a delivery item carrying the standard milestones through', function () {
   openItemModal(null);
   fillItemForm({});
   saveItem();
@@ -896,7 +896,7 @@ test('normalizeData prefers an already-real dependency value over a legacy exter
   assertEqual(items[0].dependency, false, 'a real dependency value already present must win over a leftover legacy field');
 });
 
-// ---------- Scope item order: bottom-of-list creation + drag reordering ----------
+// ---------- Delivery item order: bottom-of-list creation + drag reordering ----------
 
 test('a new item is added at the bottom of its workstream\'s list, regardless of due date', function () {
   openItemModal(null);
@@ -912,7 +912,7 @@ test('a new item is added at the bottom of its workstream\'s list, regardless of
   assertTrue(html.indexOf('First') < html.indexOf('Second'), 'display order should follow creation order, not the earlier due date of "Second"');
 });
 
-test('renderReview shows scope items in the same order as Planning\'s status board, not its own date-based sort', function () {
+test('renderReview shows delivery items in the same order as Planning\'s status board, not its own date-based sort', function () {
   openItemModal(null); fillItemForm({ name: 'First', due: '2026-12-31' }); saveItem();
   openItemModal(null); fillItemForm({ name: 'Second', due: '2026-01-01' }); saveItem();
   setFilterWorkstream(workstreams[0].id);
