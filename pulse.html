@@ -1212,6 +1212,11 @@
   .field-row { display: flex; gap: 10px; }
   .field-row .field { flex: 1; }
   .modal-wide { width: 600px; }
+  /* l1ConnectModalBg's own workstream filter dropdown — sits next to the
+     search box, not inside a .field wrapper (no label needed, it's
+     self-explanatory next to the search icon), so it needs its own copy of
+     .field select's styling rather than inheriting it. */
+  .l1-connect-ws-filter { width: 180px; flex: none; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); color: var(--text); }
   /* L1 Plans' own "Connect workstream milestones" picker
      (renderL1ConnectList()) — one labeled group per workstream (plus
      Unassigned), each a plain list of checkbox rows. Class names predate
@@ -2343,15 +2348,21 @@
      a search box added given the large candidate volume (every milestone
      across every item, not just every item), listed as a flat 5-column
      table (Workstream / Scope Item / Milestone / Due / Checkbox) — an
-     explicit user request replacing the original grouped layout. See "L1
-     Plans" in CLAUDE.md. -->
+     explicit user request replacing the original grouped layout. A
+     workstream filter dropdown sits alongside the search box — a later,
+     explicit user request ("provide a dropdown filter to select the
+     workstream") — narrowing the same candidate list by a second,
+     independent axis. See "L1 Plans" in CLAUDE.md. -->
 <div class="modal-bg" id="l1ConnectModalBg">
   <div class="modal modal-wide" style="width:760px">
     <h3 id="l1ConnectModalTitle">Connect workstream milestones</h3>
     <p style="margin-top:0;color:var(--text-dim);font-size:13px">Pick which workstream milestones feed into this L1 milestone. Its Status rolls up from these once linked; the linked milestones' own Due/Actual are never changed by linking.</p>
-    <div class="search-box" style="max-width:none;margin-bottom:10px">
-      <i class="fa-solid fa-magnifying-glass"></i>
-      <input type="text" id="l1ConnectSearchInput" placeholder="Search by milestone or scope item name..." oninput="renderL1ConnectList()">
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <div class="search-box" style="max-width:none;flex:1;margin-bottom:0">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="l1ConnectSearchInput" placeholder="Search by milestone or scope item name..." oninput="renderL1ConnectList()">
+      </div>
+      <select id="l1ConnectWorkstreamFilter" class="l1-connect-ws-filter" onchange="renderL1ConnectList()"></select>
     </div>
     <div id="l1ConnectList" class="l1-connect-list"></div>
     <div class="modal-actions" style="justify-content:flex-end">
@@ -7847,8 +7858,29 @@ function openL1ConnectModal(planId, milestoneId) {
   l1ConnectMilestoneId = milestoneId;
   document.getElementById('l1ConnectModalTitle').textContent = `Connect workstream milestones to "${found.milestone.name}"`;
   document.getElementById('l1ConnectSearchInput').value = '';
+  populateL1ConnectWorkstreamFilter();
+  document.getElementById('l1ConnectWorkstreamFilter').value = '';
   renderL1ConnectList();
   document.getElementById('l1ConnectModalBg').classList.add('open');
+}
+// Rebuilt fresh on every open — a workstream added/renamed/deleted since
+// the last time this modal was open must never show a stale option list.
+// "All Workstreams" is the default (an empty value, matching every other
+// "no filter selected" convention in this app); "Unassigned" trails at the
+// end, the same "Unassigned sorts last" convention renderL1ConnectList()'s
+// own candidate sort already uses, since it isn't a real workstream. The
+// caller (openL1ConnectModal()) explicitly resets the select's own value
+// back to '' right after this rebuild, rather than relying on a freshly
+// rebuilt <select> naturally defaulting there on its own (true in a real
+// browser, since no option here ever carries `selected` — but explicit is
+// safer, and is what the JXA test harness's own simplified <select> mock
+// actually needs, since it doesn't re-derive `.value` from a rebuilt
+// innerHTML the way a real one does).
+function populateL1ConnectWorkstreamFilter() {
+  const el = document.getElementById('l1ConnectWorkstreamFilter');
+  el.innerHTML = '<option value="">All Workstreams</option>'
+    + workstreams.map(w => `<option value="${w.id}">${esc(w.name)}</option>`).join('')
+    + '<option value="unassigned">Unassigned</option>';
 }
 function closeL1ConnectModal() {
   document.getElementById('l1ConnectModalBg').classList.remove('open');
@@ -7892,9 +7924,16 @@ function renderL1ConnectList() {
   const milestoneId = l1ConnectMilestoneId;
   if (!milestoneId) return;
   const query = (document.getElementById('l1ConnectSearchInput').value || '').trim().toLowerCase();
+  // '' (default) = every workstream; 'unassigned' = only items with no
+  // workstream at all; any other value is a real workstream's own id.
+  // Composes with the search box as a plain AND, the same "narrows the
+  // list, never overrides the other filter" shape every other search-plus-
+  // chip/dropdown combo in this app already uses.
+  const wsFilter = document.getElementById('l1ConnectWorkstreamFilter').value;
   const candidates = [];
   items.forEach(it => {
     if (it.itemType === 'l1plan') return;
+    if (wsFilter === 'unassigned' ? it.workstreamId != null : (wsFilter && it.workstreamId !== wsFilter)) return;
     it.milestones.forEach(m => {
       if (query && !(m.name.toLowerCase().includes(query) || it.name.toLowerCase().includes(query))) return;
       candidates.push({ item: it, milestone: m });

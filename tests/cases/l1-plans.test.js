@@ -1673,6 +1673,84 @@ test('renderL1ConnectList\'s search box narrows candidates by milestone or scope
   assertNotIncludes(html, 'Unrelated step');
 });
 
+// ---------- The workstream filter dropdown — a later, explicit user ----------
+// request ("provide a dropdown filter to select the workstream"),
+// composing with the search box as a plain AND, the same "narrows the
+// list, never overrides the other filter" shape every other search-plus-
+// filter combo in this app already uses.
+
+test('openL1ConnectModal populates the workstream filter with "All Workstreams" first, one option per real workstream, and "Unassigned" last', function () {
+  const w2 = { id: genId(), name: 'Data Platform', color: 'teal', order: 1 };
+  workstreams.push(w2);
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  openL1ConnectModal(p.id, m.id);
+  const html = document.getElementById('l1ConnectWorkstreamFilter').innerHTML;
+  assertTrue(html.indexOf('All Workstreams') < html.indexOf('Data Platform'), '"All Workstreams" leads');
+  assertTrue(html.indexOf('Data Platform') < html.indexOf('Unassigned'), '"Unassigned" trails, matching the candidate list\'s own sort order');
+  assertIncludes(html, `value="${w2.id}"`);
+});
+
+test('openL1ConnectModal resets the workstream filter to "All Workstreams" (blank) every time it opens', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  openL1ConnectModal(p.id, m.id);
+  document.getElementById('l1ConnectWorkstreamFilter').value = 'unassigned';
+  closeL1ConnectModal();
+  openL1ConnectModal(p.id, m.id);
+  assertEqual(document.getElementById('l1ConnectWorkstreamFilter').value, '');
+});
+
+test('renderL1ConnectList\'s workstream filter narrows candidates to just that workstream\'s own items', function () {
+  const w2 = { id: genId(), name: 'Data Platform', color: 'teal', order: 1 };
+  workstreams.push(w2);
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item1 = addItem({ name: 'In first workstream' });
+  item1.milestones.push({ id: genId(), name: 'M1', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] });
+  const item2 = addItem({ name: 'In second workstream', workstreamId: w2.id });
+  item2.milestones.push({ id: genId(), name: 'M2', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] });
+  openL1ConnectModal(p.id, m.id);
+  document.getElementById('l1ConnectWorkstreamFilter').value = w2.id;
+  renderL1ConnectList();
+  const html = document.getElementById('l1ConnectList').innerHTML;
+  assertIncludes(html, 'In second workstream');
+  assertNotIncludes(html, 'In first workstream');
+});
+
+test('renderL1ConnectList\'s workstream filter has a dedicated "Unassigned" option for items with no workstream at all', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const assigned = addItem({ name: 'Assigned item' });
+  assigned.milestones.push({ id: genId(), name: 'M1', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] });
+  const unassigned = addItem({ name: 'Unassigned item', workstreamId: null });
+  unassigned.milestones.push({ id: genId(), name: 'M2', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] });
+  openL1ConnectModal(p.id, m.id);
+  document.getElementById('l1ConnectWorkstreamFilter').value = 'unassigned';
+  renderL1ConnectList();
+  const html = document.getElementById('l1ConnectList').innerHTML;
+  assertIncludes(html, 'Unassigned item');
+  assertNotIncludes(html, 'Assigned item');
+});
+
+test('renderL1ConnectList\'s workstream filter composes with the search box as an AND', function () {
+  const w2 = { id: genId(), name: 'Data Platform', color: 'teal', order: 1 };
+  workstreams.push(w2);
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id);
+  const item1 = addItem({ name: 'First' });
+  item1.milestones.push({ id: genId(), name: 'Cutover complete', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] });
+  const item2 = addItem({ name: 'Second', workstreamId: w2.id });
+  item2.milestones.push({ id: genId(), name: 'Cutover complete', dueDate: todayStr(), actualDate: null, status: 'not-started', notApplicable: false, updatedAt: 0, l1MilestoneIds: [] });
+  openL1ConnectModal(p.id, m.id);
+  document.getElementById('l1ConnectSearchInput').value = 'cutover';
+  document.getElementById('l1ConnectWorkstreamFilter').value = w2.id;
+  renderL1ConnectList();
+  const html = document.getElementById('l1ConnectList').innerHTML;
+  assertIncludes(html, 'Second');
+  assertNotIncludes(html, 'First');
+});
+
 // ---------- The connect list as a flat 5-column table — an explicit user ----------
 // request replacing the original grouped layout (one heading per
 // workstream, a bold sub-heading per scope item, a plain name-only row per
