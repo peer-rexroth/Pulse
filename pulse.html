@@ -1842,7 +1842,15 @@
      just below) — the same "give the header its own corner radius rather
      than relying on the parent's overflow:hidden to clip it" fix this app's
      .ws-section-header/.action-log-header already went through. */
-  .gantt-chart { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  /* Square edges throughout the Gantt card — an explicit user request,
+     following the same request for .gantt-bar's own corners just above.
+     .gantt-chart itself never had rounded corners of its own beyond this
+     one declaration; .gantt-axis-row/.gantt-section:last-child
+     .gantt-row:last-child (just below) only ever carried their own
+     top/bottom radius to *match* this card's rounding once .gantt-chart
+     lost its overflow:hidden (see that fix's own comment) — with the card
+     itself square, that matching radius is dropped from both too. */
+  .gantt-chart { background: var(--panel); border: 1px solid var(--border); }
   .gantt-axis-row, .gantt-row { display: grid; grid-template-columns: 220px 1fr; align-items: center; }
   /* top: -16px, not top: 0 — a user-reported follow-up ("scope items now
      appear between fixed and upper navigation bar if horizontal scroll").
@@ -1871,10 +1879,10 @@
      only affects where it engages "stuck", never its normal-flow position.
      This 16px must stay in sync with `.planning-main .main`'s own
      padding-top by hand if that value ever changes. */
-  .gantt-axis-row { border-bottom: 1px solid var(--border); background: var(--panel-2); position: sticky; top: -16px; z-index: 3; border-radius: var(--radius) var(--radius) 0 0; }
+  .gantt-axis-row { border-bottom: 1px solid var(--border); background: var(--panel-2); position: sticky; top: -16px; z-index: 3; }
   .gantt-axis-label-spacer { padding: 8px 14px; }
   .gantt-row { border-bottom: 1px solid var(--border); }
-  .gantt-section:last-child .gantt-row:last-child { border-bottom: none; border-radius: 0 0 var(--radius) var(--radius); }
+  .gantt-section:last-child .gantt-row:last-child { border-bottom: none; }
   .gantt-section-header { padding: 8px 14px; font-size: 12.5px; font-weight: 700; background: var(--panel-2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
   .gantt-row-label { padding: 9px 14px; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
   .gantt-row-label:hover { text-decoration: underline; }
@@ -10991,85 +10999,141 @@ function excelStyleHeaderRow(row) {
   });
   row.height = 20;
 }
-// One line of a scope item's own "Milestones" export cell (see
-// buildScopeItemsSheet() below) — a plain, standalone string function
-// (no ExcelJS dependency) specifically so it's directly unit-testable
-// despite the sheet-building function itself needing a real ExcelJS
-// instance the JXA test harness never loads (see "Export to Excel" in
-// CLAUDE.md). A Not Applicable milestone shows neither a date nor a real
-// status, mirroring the frozen "N/A" badge this app already uses for one
-// everywhere else. Otherwise the date shown prefers the milestone's own
-// actualDate over its dueDate — an explicit user request, matching the
-// same "prefer what's already happened over what's merely planned"
-// convention Dashboard's own Overdue/Upcoming feed already established
-// (see toEntry() under "Dashboard mode" in CLAUDE.md) — falling back to
-// an em dash when neither is set, the same placeholder this app already
-// uses everywhere else for "nothing recorded yet".
-function milestoneExcelSummaryLine(m) {
-  if (m.notApplicable) return `${m.name}: N/A`;
-  const dateIso = m.actualDate || m.dueDate;
-  const dateText = dateIso ? fmtDateY(dateIso) : '—';
-  const statusText = isCompletedLate(m.status, m.dueDate, m.actualDate, m.notApplicable) ? 'Completed Late' : statusLabel(m.status);
-  return `${m.name}: ${dateText} (${statusText})`;
+// Converts a 1-based column index to its Excel letter (1→A, 26→Z, 27→AA,
+// ...) — needed because buildScopeItemsSheets() below builds a genuinely
+// dynamic column count per sheet (one column per distinct milestone name in
+// that category), so the sheet's own autoFilter range can no longer be a
+// single hardcoded letter the way every other sheet's own fixed column
+// count still is. Plain, standalone arithmetic — no ExcelJS dependency, so
+// it's directly unit-tested.
+function excelColumnLetter(n) {
+  let s = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    s = String.fromCharCode(65 + rem) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
 }
-function buildScopeItemsSheet(wb) {
-  const sheet = wb.addWorksheet('Scope Items', { views: [{ state: 'frozen', ySplit: 1 }] });
-  // A later, explicit user request ("move the milestones of a scope item
-  // into column so that every scope item has only one line. remove start
-  // as a column") collapsed what used to be one bold item row followed by
-  // one indented, italic row per milestone into a single row per item —
-  // every milestone is now one line of its own inside a single "Milestones"
-  // cell (wrapText, one milestoneExcelSummaryLine() per line), and Start
-  // is gone outright (Due/Actual already cover the range that mattered).
-  sheet.columns = [
-    { header: 'Workstream', key: 'ws', width: 20 },
-    { header: 'Category', key: 'cat', width: 16 },
-    { header: 'Scope Item', key: 'name', width: 44 },
-    { header: 'Status', key: 'status', width: 13 },
-    { header: 'Due', key: 'due', width: 13 },
-    { header: 'Actual', key: 'actual', width: 13 },
-    { header: 'Milestones', key: 'milestones', width: 60 },
-    { header: 'IT', key: 'it', width: 10 },
-    { header: 'Business', key: 'biz', width: 10 },
-    { header: 'Budget', key: 'budget', width: 10 }
-  ];
-  excelStyleHeaderRow(sheet.getRow(1));
-  sheet.autoFilter = { from: 'A1', to: 'J1' };
-  // Unassigned first (mirroring renderMain()'s own section order), then real
-  // workstreams in their own displayed order — every item within each in its
-  // own manual order, same as the status board.
-  const sections = [{ id: null, name: 'Unassigned' }, ...workstreams.slice().sort((a, b) => a.order - b.order)];
-  sections.forEach(w => {
-    // An L1 Plan also has workstreamId:null (see "L1 Plans" above), but it's
-    // never a scope item — excluded here the same way unassignedItemsSorted()
-    // excludes it from the Unassigned bucket on Planning's own board. Since
-    // w.id is null for the synthetic "Unassigned" section itself, this one
-    // filter line covers both that case and every real workstream's own
-    // section.
-    const wItems = items.filter(it => it.workstreamId === w.id && it.itemType !== 'l1plan').sort((a, b) => a.order - b.order);
-    wItems.forEach(it => {
-      const cat = categoryById(it.categoryId);
-      const milestonesText = it.milestones.map(milestoneExcelSummaryLine).join('\n');
+// A category's own name, made safe as a real Excel sheet name (max 31
+// characters, none of \ / ? * [ ] :) and disambiguated against every sheet
+// name already used so far in this same export — two categories that
+// happen to collide after sanitizing (or share a name outright) still get
+// two distinct tabs, the same "never silently merge two different things
+// into one" instinct this app already applies to a colliding sync-conflict
+// filename (see strayMergedFileName() under "File System Access API sync"
+// in CLAUDE.md). Plain, standalone string logic — no ExcelJS dependency,
+// so it's directly unit-tested; `used` is a plain Set the caller owns and
+// mutates across calls, so each export starts a fresh one.
+function excelSafeSheetName(name, used) {
+  const base = (name || '').replace(/[\\/?*[\]:]/g, ' ').trim().slice(0, 31) || 'Category';
+  let candidate = base;
+  let n = 2;
+  while (used.has(candidate)) {
+    const suffix = ' ' + n;
+    candidate = base.slice(0, 31 - suffix.length) + suffix;
+    n++;
+  }
+  used.add(candidate);
+  return candidate;
+}
+// The ordered set of distinct milestone names that become this category's
+// own per-milestone pivot columns (see buildScopeItemsSheets() below) —
+// the category's own milestone *template* (categories[].milestones, the
+// same ordered name list a brand-new item in this category gets seeded
+// from — see "Milestone checklist" in CLAUDE.md) supplies the primary
+// order, since that's the sequence a reader already expects these to
+// appear in; any milestone name actually found on a real item that isn't
+// in the template (a hand-added one, a leftover from before the category's
+// own template was edited, one carried over from a different category
+// entirely via the destructive category-switch — see "Switching an
+// existing item's category" in CLAUDE.md) is appended after, in the order
+// it's first encountered, so nothing on a real item is ever silently
+// dropped from the export just because the template doesn't mention it.
+// Plain, standalone logic over already-loaded data — no ExcelJS dependency,
+// so it's directly unit-tested.
+function categoryMilestoneColumnNames(cat, catItems) {
+  const template = (cat && Array.isArray(cat.milestones)) ? cat.milestones : [];
+  const seen = new Set(template);
+  const names = template.slice();
+  catItems.forEach(it => {
+    it.milestones.forEach(m => {
+      if (!seen.has(m.name)) { seen.add(m.name); names.push(m.name); }
+    });
+  });
+  return names;
+}
+// One worksheet per category — a later, explicit user request ("create one
+// tab in the excel per category") reshaping what started as a single
+// "Scope Items" sheet. Category itself is dropped as a column (it's now
+// the tab), and — per the same request's own follow-up, after an initial,
+// different attempt at "move milestones into a column" didn't match what
+// was actually wanted — every distinct milestone name in a category
+// becomes its own real column, each cell holding that one item's own date
+// for it (a genuine Excel date, not text baked into a summary line the way
+// the reverted first attempt did), left blank for an item that either has
+// no milestone by that name at all or has one that's Not Applicable — both
+// read the same way here, "nothing to show for this milestone on this
+// item", the same blank-cell convention every other "not applicable" field
+// in this export already uses.
+function buildScopeItemsSheets(wb) {
+  const usedSheetNames = new Set();
+  const wsOrderIndex = new Map(workstreams.slice().sort((a, b) => a.order - b.order).map((w, i) => [w.id, i]));
+  const cats = categories.slice().sort((a, b) => a.order - b.order);
+  cats.forEach(cat => {
+    // Never a scope item — see "L1 Plans" in CLAUDE.md — though moot in
+    // practice, since an L1 Plan's own categoryId is always null and never
+    // matches a real cat.id here regardless.
+    const catItems = items.filter(it => it.categoryId === cat.id && it.itemType !== 'l1plan');
+    if (!catItems.length) return; // no empty tabs for a category nothing currently uses
+    const milestoneNames = categoryMilestoneColumnNames(cat, catItems);
+    const sheet = wb.addWorksheet(excelSafeSheetName(cat.name, usedSheetNames), { views: [{ state: 'frozen', ySplit: 1 }] });
+    const milestoneCols = milestoneNames.map((mName, i) => ({ header: mName, key: 'm' + i, width: 16 }));
+    sheet.columns = [
+      { header: 'Workstream', key: 'ws', width: 20 },
+      { header: 'Scope Item', key: 'name', width: 44 },
+      { header: 'Status', key: 'status', width: 13 },
+      { header: 'Due', key: 'due', width: 13 },
+      { header: 'Actual', key: 'actual', width: 13 },
+      ...milestoneCols,
+      { header: 'IT', key: 'it', width: 10 },
+      { header: 'Business', key: 'biz', width: 10 },
+      { header: 'Budget', key: 'budget', width: 10 }
+    ];
+    excelStyleHeaderRow(sheet.getRow(1));
+    sheet.autoFilter = { from: 'A1', to: `${excelColumnLetter(sheet.columns.length)}1` };
+    // Workstream display order (Unassigned last), then each item's own
+    // manual order within it — the same shape every other sheet/the status
+    // board itself already sorts by, just with the grouping axis (category,
+    // now the sheet itself) and the secondary axis (workstream) swapped.
+    const sortedItems = catItems.slice().sort((a, b) => {
+      const wa = a.workstreamId == null ? Infinity : (wsOrderIndex.has(a.workstreamId) ? wsOrderIndex.get(a.workstreamId) : Infinity);
+      const wb2 = b.workstreamId == null ? Infinity : (wsOrderIndex.has(b.workstreamId) ? wsOrderIndex.get(b.workstreamId) : Infinity);
+      if (wa !== wb2) return wa - wb2;
+      return a.order - b.order;
+    });
+    sortedItems.forEach(it => {
+      const w = it.workstreamId == null ? null : wsById(it.workstreamId);
       const row = sheet.addRow({
-        ws: w.name, cat: cat ? cat.name : '', name: it.name, status: itemIsCompletedLate(it) ? 'Completed Late' : statusLabel(it.status),
-        milestones: milestonesText, it: it.itStatus, biz: it.businessStatus, budget: it.budgetStatus
+        ws: w ? w.name : 'Unassigned', name: it.name, status: itemIsCompletedLate(it) ? 'Completed Late' : statusLabel(it.status),
+        it: it.itStatus, biz: it.businessStatus, budget: it.budgetStatus
       });
       row.font = { bold: true };
       excelDateCell(row, 'due', it.dueDate);
       excelDateCell(row, 'actual', it.actualDate);
       excelRagCellStyle(row.getCell('status'), it.status);
       [['it', it.itStatus], ['biz', it.businessStatus], ['budget', it.budgetStatus]].forEach(([key, val]) => excelRagCellStyle(row.getCell(key), val));
-      // The Milestones cell alone stays non-bold/italic/muted — the same
-      // treatment the old per-milestone sub-rows already had — so it still
-      // reads as detail on the item, not part of the item's own bold line.
-      const milestonesCell = row.getCell('milestones');
-      milestonesCell.alignment = { wrapText: true, vertical: 'top' };
-      milestonesCell.font = { italic: true, color: { argb: 'FF666666' } };
-      // Tall enough for every milestone's own line to actually show instead
-      // of clipping under Excel's default single-line row height — a floor
-      // matching the header row's own height for a zero/one-milestone item,
-      // ~15px per line (this font/size's own real line height) beyond that.
-      row.height = Math.max(20, it.milestones.length * 15);
+      // The date shown for each milestone prefers its own actualDate over
+      // dueDate — an explicit user request, matching the same "prefer
+      // what's already happened over what's merely planned" convention
+      // Dashboard's own Overdue/Upcoming feed already established (see
+      // toEntry() under "Dashboard mode" in CLAUDE.md).
+      milestoneNames.forEach((mName, i) => {
+        const m = it.milestones.find(mm => mm.name === mName);
+        if (!m || m.notApplicable) return; // leave the cell blank
+        const dateIso = m.actualDate || m.dueDate;
+        if (dateIso) excelDateCell(row, 'm' + i, dateIso);
+      });
     });
   });
 }
@@ -11118,7 +11182,7 @@ async function exportToExcelReport() {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Pulse';
   wb.created = new Date();
-  buildScopeItemsSheet(wb);
+  buildScopeItemsSheets(wb);
   buildActionLogSheet(wb);
   buildDecisionLogSheet(wb);
   const buffer = await wb.xlsx.writeBuffer();

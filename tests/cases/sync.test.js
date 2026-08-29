@@ -416,36 +416,64 @@ test('exportToExcelReport shows a clear toast instead of throwing when ExcelJS h
   assertIncludes(document.getElementById('toastMsg').textContent, 'Excel export needs an internet connection');
 });
 
-// milestoneExcelSummaryLine() — a later, explicit user request ("move the
-// milestones of a scope item into column so that every scope item has only
-// one line") collapsed the Scope Items sheet's old one-row-per-milestone
-// shape into a single "Milestones" cell, one line per milestone, built by
-// this function. Unlike buildScopeItemsSheet() itself, this is plain string
-// logic with no ExcelJS dependency, so it's directly testable.
+// buildScopeItemsSheets() — a later, explicit user request ("create one tab
+// in the excel per category") reshaped the Scope Items sheet into one
+// worksheet per category, each with a real, per-distinct-milestone-name
+// pivot column (an earlier, different "move milestones into a column"
+// attempt — one shared, wrapped text cell per item — was reverted once the
+// user clarified they meant this instead). The sheet-building function
+// itself still needs a real ExcelJS.Workbook the JXA harness never loads,
+// but its three supporting helpers are plain, standalone logic and are
+// directly testable.
 
-test('milestoneExcelSummaryLine prefers the milestone\'s own actual date over its due date', function () {
-  const m = { name: 'Design Defined', dueDate: '2026-05-12', actualDate: '2026-05-10', status: 'complete', notApplicable: false };
-  assertEqual(milestoneExcelSummaryLine(m), `Design Defined: ${fmtDateY('2026-05-10')} (Completed)`);
+test('excelColumnLetter converts a 1-based column index to its Excel letter, including past Z', function () {
+  assertEqual(excelColumnLetter(1), 'A');
+  assertEqual(excelColumnLetter(26), 'Z');
+  assertEqual(excelColumnLetter(27), 'AA');
+  assertEqual(excelColumnLetter(52), 'AZ');
 });
 
-test('milestoneExcelSummaryLine falls back to the due date when there is no actual date yet', function () {
-  const m = { name: 'Requirements Defined', dueDate: '2026-05-12', actualDate: null, status: 'not-started', notApplicable: false };
-  assertEqual(milestoneExcelSummaryLine(m), `Requirements Defined: ${fmtDateY('2026-05-12')} (Not Started)`);
+test('excelSafeSheetName strips characters Excel forbids in a sheet name and caps it at 31 characters', function () {
+  const used = new Set();
+  assertEqual(excelSafeSheetName('Dependency', used), 'Dependency');
+  assertEqual(excelSafeSheetName('A/B: Test [1]', used), 'A B  Test  1');
+  const long = 'A'.repeat(50);
+  assertEqual(excelSafeSheetName(long, used).length, 31);
 });
 
-test('milestoneExcelSummaryLine shows an em dash when neither date is set', function () {
-  const m = { name: 'Scope Item Confirmed', dueDate: null, actualDate: null, status: 'pending', notApplicable: false };
-  assertEqual(milestoneExcelSummaryLine(m), 'Scope Item Confirmed: — (Pending)');
+test('excelSafeSheetName disambiguates two categories that collide after sanitizing, rather than merging their tabs', function () {
+  const used = new Set();
+  const first = excelSafeSheetName('Same Name', used);
+  const second = excelSafeSheetName('Same Name', used);
+  assertEqual(first, 'Same Name');
+  assertTrue(second !== first, 'the second sheet name must not collide with the first');
+  assertIncludes(second, 'Same Name');
 });
 
-test('milestoneExcelSummaryLine shows a plain "N/A" line, no date, for a Not Applicable milestone', function () {
-  const m = { name: 'Skipped Step', dueDate: '2026-01-01', actualDate: '2026-01-05', status: 'green', notApplicable: true };
-  assertEqual(milestoneExcelSummaryLine(m), 'Skipped Step: N/A');
+test('excelSafeSheetName falls back to "Category" for a name with nothing sheet-safe left in it', function () {
+  const used = new Set();
+  assertEqual(excelSafeSheetName('///', used), 'Category');
 });
 
-test('milestoneExcelSummaryLine reads "Completed Late" the same way the live status board does', function () {
-  const m = { name: 'Late Finish', dueDate: '2026-01-01', actualDate: '2026-01-10', status: 'complete', notApplicable: false };
-  assertEqual(milestoneExcelSummaryLine(m), `Late Finish: ${fmtDateY('2026-01-10')} (Completed Late)`);
+test('categoryMilestoneColumnNames orders columns by the category\'s own milestone template first', function () {
+  const cat = { milestones: ['Requirements Defined', 'Design Defined', 'Cutover Complete'] };
+  const it = addItem({ name: 'It' });
+  it.milestones = [{ id: 'm1', name: 'Cutover Complete' }, { id: 'm2', name: 'Requirements Defined' }];
+  assertDeepEqual(categoryMilestoneColumnNames(cat, [it]), ['Requirements Defined', 'Design Defined', 'Cutover Complete']);
+});
+
+test('categoryMilestoneColumnNames appends a real milestone name not in the template, in first-seen order, rather than dropping it', function () {
+  const cat = { milestones: ['Requirements Defined'] };
+  const it1 = addItem({ name: 'It1' });
+  it1.milestones = [{ id: 'm1', name: 'Requirements Defined' }, { id: 'm2', name: 'Hand-added Step' }];
+  const it2 = addItem({ name: 'It2' });
+  it2.milestones = [{ id: 'm3', name: 'Another Extra' }];
+  assertDeepEqual(categoryMilestoneColumnNames(cat, [it1, it2]), ['Requirements Defined', 'Hand-added Step', 'Another Extra']);
+});
+
+test('categoryMilestoneColumnNames returns just the template, unchanged, when no item has anything outside it', function () {
+  const cat = { milestones: ['A', 'B'] };
+  assertDeepEqual(categoryMilestoneColumnNames(cat, []), ['A', 'B']);
 });
 
 test('applyImport merge mode adds new data and ignores tombstones (manual import intent)', function () {
