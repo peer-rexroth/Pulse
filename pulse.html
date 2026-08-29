@@ -1892,7 +1892,8 @@
      own right edge with nothing left to clip it. Mirrors every left-side
      property the base rule sets to its right-side equivalent. */
   .gantt-axis-tick-last { left: auto; padding-left: 0; padding-right: 6px; border-left: none; border-right: 1px solid var(--border); justify-content: flex-end; }
-  .gantt-bar { position: absolute; top: 50%; transform: translateY(-50%); height: 14px; border-radius: 4px; min-width: 3px; }
+  /* Square edges, not rounded — an explicit user request. */
+  .gantt-bar { position: absolute; top: 50%; transform: translateY(-50%); height: 14px; min-width: 3px; }
   .gantt-marker { position: absolute; top: 50%; width: 10px; height: 10px; transform: translate(-50%, -50%) rotate(45deg); border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--border); }
   /* z-index above the bar/ticks so a marker sitting on top of a bar (the
      common case — an item's own milestone due date, inside its own Start→
