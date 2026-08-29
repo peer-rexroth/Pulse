@@ -132,16 +132,21 @@
        active color scheme or theme, the same "always the same value,
        independent of the live page's own theming" stance EXCEL_RAG_COLORS
        already takes for the Excel export (see "Export to Excel" in
-       CLAUDE.md). A user-reported fix ("in gantt view, amber timeline
-       looks brownish, can you change that to amber?"): --stat-amber itself
-       (#c07f0a) is deliberately a *darkened* gold, tuned for legible text
-       on its own light --stat-amber-bg background — perfectly readable as
-       a badge, but as a large solid Gantt bar fill with no such pairing it
+       CLAUDE.md). A user-reported fix, first against the Gantt chart ("in
+       gantt view, amber timeline looks brownish, can you change that to
+       amber?"), then extended to Dashboard Overview's own Item Status bar
+       ("change the amber color also for the item status in overview"):
+       --stat-amber itself (#c07f0a) is deliberately a *darkened* gold,
+       tuned for legible text on its own light --stat-amber-bg background —
+       perfectly readable as a small badge/dot, but as a large solid color
+       swatch with no such pairing (a Gantt bar, a stacked-bar segment) it
        reads as muddy brown instead of a real amber. --stat-green/
        --stat-red have no such gap (both are already vivid enough to read
        correctly as a solid fill), so only amber needed its own dedicated,
-       more saturated fill token — see ganttRowHtml()'s own use of it. */
-    --gantt-amber-fill: #e8960c;
+       more saturated fill token — see statusFillColor()'s own use of it,
+       shared by both call sites rather than a Gantt-only name/helper now
+       that a second one exists. */
+    --stat-amber-fill: #e8960c;
   }
   html[data-theme="dark"] {
     --bg: #14161a;
@@ -10055,18 +10060,22 @@ function ganttWorkstreamSections() {
     return { name: w.name, color: w.color, rows };
   }).filter(sec => sec.rows.length);
 }
-// The color a Gantt bar/marker actually paints with for a given status —
-// identical to the shared --stat-* palette for every status except amber,
-// which uses --gantt-amber-fill instead (see that variable's own comment):
-// a solid, unpaired fill at this size needs a more saturated amber than
-// the badge-tuned --stat-amber, which is deliberately darkened for text
-// contrast against its own --stat-amber-bg and reads as muddy brown once
-// stretched across a whole bar with no such pairing. Used by both the bar
-// and its own milestone markers, so a row's bar and its own diamonds never
-// disagree in shade the way they would if only one of the two switched to
-// the brighter fill.
-function ganttStatusColor(status) {
-  return status === 'amber' ? 'var(--gantt-amber-fill)' : `var(--stat-${status})`;
+// The color a large, unpaired solid-fill status swatch actually paints
+// with — a Gantt bar/marker, or Dashboard Overview's own stacked Item
+// Status bar segment/legend dot — identical to the shared --stat-* palette
+// for every status except amber, which uses --stat-amber-fill instead (see
+// that variable's own comment): a solid fill at this size needs a more
+// saturated amber than the badge-tuned --stat-amber, which is deliberately
+// darkened for text contrast against its own --stat-amber-bg and reads as
+// muddy brown once stretched across a whole bar/segment with no such
+// pairing. Originally Gantt-only (ganttStatusColor()); generalized and
+// renamed once Dashboard Overview's own Item Status bar needed the
+// identical fix. Every ordinary small badge/dot/chip elsewhere in the app
+// (status pills, sidebar workstream badges, RAG tags, ...) is untouched —
+// this is only for the handful of places rendering status as a large,
+// unpaired solid shape.
+function statusFillColor(status) {
+  return status === 'amber' ? 'var(--stat-amber-fill)' : `var(--stat-${status})`;
 }
 // One row's own markup — a fixed-width label column (clickable, opening
 // the same item modal every other Dashboard row already links to) plus a
@@ -10078,9 +10087,9 @@ function ganttRowHtml(row, range, todayPct) {
   const hasBar = !!(row.start && row.end);
   const bar = hasBar ? ganttBarRect(row.start, row.end, range) : null;
   const barHtml = hasBar
-    ? `<div class="gantt-bar" style="left:${bar.left}%;width:${bar.width}%;background:${ganttStatusColor(row.status)}" title="${esc(row.name)} — ${fmtDateY(row.start)} → ${fmtDateY(row.end)}"></div>`
+    ? `<div class="gantt-bar" style="left:${bar.left}%;width:${bar.width}%;background:${statusFillColor(row.status)}" title="${esc(row.name)} — ${fmtDateY(row.start)} → ${fmtDateY(row.end)}"></div>`
     : '';
-  const markersHtml = row.milestones.map(m => `<div class="gantt-marker" style="left:${ganttPercent(m.date, range)}%;background:${ganttStatusColor(m.status)}" title="${esc(m.name)} — ${esc(statusLabel(m.status))} — ${fmtDateY(m.date)}"></div>`).join('');
+  const markersHtml = row.milestones.map(m => `<div class="gantt-marker" style="left:${ganttPercent(m.date, range)}%;background:${statusFillColor(m.status)}" title="${esc(m.name)} — ${esc(statusLabel(m.status))} — ${fmtDateY(m.date)}"></div>`).join('');
   const todayHtml = todayPct === null ? '' : `<div class="gantt-today-line" style="left:${todayPct}%"></div>`;
   return `<div class="gantt-row">
       <div class="gantt-row-label attention-row-link" onclick="openItemModal('${row.id}')" title="${esc(row.name)}">${esc(row.name)}</div>
@@ -10380,9 +10389,9 @@ function renderDashboard() {
 
   const bar = STATUSES.map(s => {
     const pct = totalItems ? (itemCounts[s.id] / totalItems * 100) : 0;
-    return pct > 0 ? `<div class="dash-bar-seg" style="width:${pct}%;background:var(--stat-${s.id})"></div>` : '';
+    return pct > 0 ? `<div class="dash-bar-seg" style="width:${pct}%;background:${statusFillColor(s.id)}"></div>` : '';
   }).join('');
-  const legend = STATUSES.map(s => `<div class="dash-legend-item"><span class="dash-legend-dot" style="background:var(--stat-${s.id})"></span>${itemCounts[s.id]} ${esc(s.label)}</div>`).join('');
+  const legend = STATUSES.map(s => `<div class="dash-legend-item"><span class="dash-legend-dot" style="background:${statusFillColor(s.id)}"></span>${itemCounts[s.id]} ${esc(s.label)}</div>`).join('');
 
   const wsRows = wsStats.map(r => `<div class="dash-ws-row">
         <span class="ws-dot" style="background:var(--ws-${r.w.color})"></span>

@@ -870,20 +870,24 @@ test('ganttWorkstreamSections excludes Unassigned items and, when filterWorkstre
 // shipped and was later removed again entirely on a further, later,
 // explicit user request ("remove gantt for l1").
 
-// ganttStatusColor() — a user-reported fix ("in gantt view, amber timeline
-// looks brownish, can you change that to amber?"): --stat-amber is
-// deliberately darkened for legible text on its own --stat-amber-bg
-// background, which reads as muddy brown once stretched across a large,
-// unpaired Gantt bar fill instead. Amber gets its own dedicated
-// --gantt-amber-fill token (defined once, theme-invariant, the same
-// EXCEL_RAG_COLORS-style stance) — every other status is untouched, since
-// green/red are already vivid enough to read correctly as a solid fill.
-test('ganttStatusColor uses the dedicated Gantt fill token for amber, and the plain shared token for every other status', function () {
-  assertEqual(ganttStatusColor('amber'), 'var(--gantt-amber-fill)');
-  assertEqual(ganttStatusColor('green'), 'var(--stat-green)');
-  assertEqual(ganttStatusColor('red'), 'var(--stat-red)');
-  assertEqual(ganttStatusColor('not-started'), 'var(--stat-not-started)');
-  assertEqual(ganttStatusColor('complete'), 'var(--stat-complete)');
+// statusFillColor() — a user-reported fix, first against the Gantt chart
+// ("in gantt view, amber timeline looks brownish, can you change that to
+// amber?"), then extended to Dashboard Overview's own Item Status bar
+// ("change the amber color also for the item status in overview"):
+// --stat-amber is deliberately darkened for legible text on its own
+// --stat-amber-bg background, which reads as muddy brown once stretched
+// across a large, unpaired solid fill instead (a Gantt bar, a stacked-bar
+// segment). Amber gets its own dedicated --stat-amber-fill token (defined
+// once, theme-invariant, the same EXCEL_RAG_COLORS-style stance) — every
+// other status is untouched, since green/red are already vivid enough to
+// read correctly as a solid fill. Originally named ganttStatusColor(),
+// generalized once a second, non-Gantt call site needed the identical fix.
+test('statusFillColor uses the dedicated fill token for amber, and the plain shared token for every other status', function () {
+  assertEqual(statusFillColor('amber'), 'var(--stat-amber-fill)');
+  assertEqual(statusFillColor('green'), 'var(--stat-green)');
+  assertEqual(statusFillColor('red'), 'var(--stat-red)');
+  assertEqual(statusFillColor('not-started'), 'var(--stat-not-started)');
+  assertEqual(statusFillColor('complete'), 'var(--stat-complete)');
 });
 
 test('ganttRowHtml uses the amber fill token for both the bar and its own milestone markers when amber', function () {
@@ -891,8 +895,16 @@ test('ganttRowHtml uses the amber fill token for both the bar and its own milest
   const row = { id: 'i1', name: 'Amber item', start: '2026-01-05', end: '2026-02-20', status: 'amber',
     milestones: [{ id: 'm1', name: 'M1', date: '2026-01-15', status: 'amber' }] };
   const html = ganttRowHtml(row, range, null);
-  assertIncludes(html, 'background:var(--gantt-amber-fill)');
-  assertNotIncludes(html, 'background:var(--stat-amber)', 'amber must never fall back to the muddy badge-tuned token in the Gantt view');
+  assertIncludes(html, 'background:var(--stat-amber-fill)');
+  assertNotIncludes(html, 'background:var(--stat-amber)"', 'amber must never fall back to the muddy badge-tuned token in the Gantt view');
+});
+
+test('renderDashboard\'s Overview Item Status bar/legend use the amber fill token, not the muddy badge-tuned one', function () {
+  addDashItem({ name: 'At risk item', status: 'amber', milestones: [] });
+  dashboardTab = 'overview';
+  renderDashboard();
+  const html = document.getElementById('main').innerHTML;
+  assertIncludes(html, 'background:var(--stat-amber-fill)');
 });
 
 test('renderDashboard\'s Gantt tab renders a bar for a dated item and a marker per milestone, with no scope toggle', function () {
