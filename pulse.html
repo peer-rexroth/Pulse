@@ -1844,68 +1844,34 @@
      .ws-section-header/.action-log-header already went through. */
   .gantt-chart { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
   .gantt-axis-row, .gantt-row { display: grid; grid-template-columns: 220px 1fr; align-items: center; }
-  .gantt-axis-row { border-bottom: 1px solid var(--border); background: var(--panel-2); position: sticky; top: 0; z-index: 3; border-radius: var(--radius) var(--radius) 0 0; }
-  /* .gantt-scroll-guard — a second, independent sticky element, invisible
-     (colored to match the page background, not the card) and sitting
-     *above* .gantt-axis-row in the DOM. This replaces an earlier attempt
-     at the same underlying bug that instead gave .gantt-axis-row itself a
-     negative `top` (pulling the visible card flush against #main's own
-     edge) — which fixed the leak but traded it for a second, user-reported
-     regression ("do not overlap timeline over the edge"): the card's own
-     rounded top corners now sat flush against #main's hard, unpadded edge
-     with zero breathing room, reading as the timeline overlapping/spilling
-     past the edge instead of looking like an inset card the way every
-     other card in this app does.
-
-     The root cause both attempts were chasing: Dashboard's own #main sits
-     inside .planning-main, which overrides #main's own padding-top from
-     20px down to 16px (see ".planning-main .main" above). Sticky's own
-     `top` offset resolves against the scrollport's PADDING edge, not its
-     border edge — so .gantt-axis-row's plain `top: 0` sticks it flush 16px
-     below #main's true top (its own border-box, which is also #main's own
-     overflow:auto clip boundary), leaving a genuine 16px strip that's
-     inside #main's clip boundary (so overflow:auto never hides anything
-     there) but above where the axis row's own opaque background starts
-     (so nothing covers it either) — a row scrolled far enough to normally
-     be fully hidden behind the sticky header can have its own marker/bar
-     land in exactly that strip and render visibly there. Confirmed via
-     getBoundingClientRect() and, since a scripted .scrollTop/.scrollLeft
-     assignment didn't reliably reproduce it, via real diagonal-scroll
-     wheel events plus a live screenshot showing a milestone diamond poking
-     out above the "stuck" tick row.
-
-     Rather than moving the visible card to close that strip, this element
-     *is* that strip, sized and stuck to cover exactly it: `top: -16px`
-     (cancelling the 16px padding offset, the same math the reverted
-     attempt used) and `height: 16px`. Because its own background matches
-     var(--bg) — the same color as the page behind #main, not the card's
-     own --panel/--panel-2 — it reads as plain empty space at every scroll
-     position, identical to how that gap always looked before any of this
-     shipped, while its own opaque fill blocks anything that would
-     otherwise render through it.
-
-     `margin-bottom: -16px` is what keeps this element from actually
-     widening the resting gap it's meant to blend into: position:sticky
-     still reserves its own box's real height (16px) in normal document
-     flow like any other block — without the negative margin, that 16px
-     would sit *in front of* .gantt-axis-row (as this element's first,
-     unverified cut of the fix confirmed live: the resting gap measured
-     ~33px instead of the original ~16px, one 16px stack on top of
-     another). The negative bottom margin collapses that reserved space
-     back to zero for layout purposes, so `.gantt-axis-row` (the next
-     sibling) ends up positioned exactly where it always was — margin
-     collapsing is a normal-flow calculation this element's own `top`
-     offset never touches, so it doesn't interfere with the sticky
-     positioning above. `.gantt-axis-row` itself is untouched (back to
-     `top: 0`, its original value), so the visible card keeps its own
-     comfortable inset from #main's edge in every state — verified live via
-     getBoundingClientRect() at rest (the axis row's own gap from #main's
-     top back to its original ~17px) and scrolled (this guard's own top
-     flush with #main's true top, its own bottom flush with the axis row's
-     own top, zero gap either side). This 16px must stay in sync with
-     `.planning-main .main`'s own padding-top by hand if that value ever
-     changes. */
-  .gantt-scroll-guard { position: sticky; top: -16px; height: 16px; margin-bottom: -16px; background: var(--bg); z-index: 3; border-radius: var(--radius) var(--radius) 0 0; }
+  /* top: -16px, not top: 0 — a user-reported follow-up ("scope items now
+     appear between fixed and upper navigation bar if horizontal scroll").
+     Dashboard's own #main sits inside .planning-main, which overrides
+     #main's own padding-top from 20px down to 16px (see ".planning-main
+     .main" above) — sticky's own `top` offset is resolved against the
+     scrollport's PADDING edge, not its border edge, so with `top: 0` the
+     "stuck" axis row sits flush 16px below #main's own true top (its own
+     border-box, which is also #main's own overflow:auto clip boundary) —
+     leaving a genuine 16px strip of #main's own content area that's inside
+     its clip boundary (so overflow:auto never hides anything there) but
+     above where the sticky row's own opaque background starts (so nothing
+     covers it either). A row scrolled far enough to normally be fully
+     hidden behind the sticky header can have its own marker/bar land in
+     exactly that uncovered strip and render visibly there — confirmed both
+     via getBoundingClientRect() (an offending row's own marker measured
+     inside that 16px band) and, once triggered with real diagonal-scroll
+     wheel events (not just a scripted .scrollTop/.scrollLeft assignment,
+     which didn't reliably reproduce it), via a live screenshot showing a
+     milestone diamond genuinely poking out above the "stuck" tick row.
+     `top: -16px` cancels exactly that 16px padding offset, so the stuck
+     axis row sits flush with #main's own true top (verified live:
+     getBoundingClientRect() puts the axis row's own top exactly at #main's
+     own top once scrolled) — closing the gap entirely, with no change to
+     the resting (unscrolled) layout, since a sticky element's own `top`
+     only affects where it engages "stuck", never its normal-flow position.
+     This 16px must stay in sync with `.planning-main .main`'s own
+     padding-top by hand if that value ever changes. */
+  .gantt-axis-row { border-bottom: 1px solid var(--border); background: var(--panel-2); position: sticky; top: -16px; z-index: 3; border-radius: var(--radius) var(--radius) 0 0; }
   .gantt-axis-label-spacer { padding: 8px 14px; }
   .gantt-row { border-bottom: 1px solid var(--border); }
   .gantt-section:last-child .gantt-row:last-child { border-bottom: none; border-radius: 0 0 var(--radius) var(--radius); }
@@ -10234,7 +10200,6 @@ function renderGanttChartHtml(sections, emptyMessage) {
     return `<div class="gantt-section">${header}${sec.rows.map(r => ganttRowHtml(r, range, todayPct)).join('')}</div>`;
   }).join('');
   return `<div class="gantt-chart" style="min-width:${ganttChartMinWidth(ticks.length)}px">
-      <div class="gantt-scroll-guard"></div>
       <div class="gantt-axis-row">
         <div class="gantt-axis-label-spacer"></div>
         <div class="gantt-row-track">${todayAxisHtml}${axisTicksHtml}</div>
