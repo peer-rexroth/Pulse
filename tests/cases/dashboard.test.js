@@ -696,6 +696,47 @@ test('renderGanttChartHtml pins the chart\'s own min-width from its actual tick 
   assertIncludes(html, `min-width:${expected}px`);
 });
 
+// A later, user-reported fix ("do not overlap timeline over the edge" —
+// clarified as the right edge, "Q1 2028 is going out of bounds"): the last
+// tick's own label has no neighbor to its right to grow into the way every
+// earlier tick does, so left-anchored like the rest, it could render past
+// .gantt-chart's own right edge entirely — confirmed live, a real "Q2 2028"
+// label rendered ~40px past the chart's own border, with nothing to clip
+// it now that .gantt-chart has no overflow:hidden of its own (needed for
+// the sticky axis row fix above it). The last tick now anchors from the
+// right instead, so its text grows leftward into already-reserved space.
+
+test('the last axis tick anchors from the right (not the left), so its own label grows into reserved space instead of past the chart\'s own edge', function () {
+  const rows = [{ id: 'i1', name: 'Long-running item', start: '2020-01-01', end: '2029-01-01', status: 'green', milestones: [] }];
+  const html = renderGanttChartHtml([{ name: null, color: null, rows }], 'empty');
+  const range = ganttDateRange(ganttRowDates(rows));
+  const ticks = ganttTicks(range);
+  assertTrue(ticks.length > 1, 'this range should produce several ticks');
+  const tickDivs = html.match(/<div class="gantt-axis-tick[^>]*>/g);
+  assertEqual(tickDivs.length, ticks.length);
+  // Every tick except the last is left-anchored, plain .gantt-axis-tick.
+  tickDivs.slice(0, -1).forEach(function (div) {
+    assertNotIncludes(div, 'gantt-axis-tick-last');
+    assertIncludes(div, 'left:');
+    assertNotIncludes(div, 'style="right:');
+  });
+  // The last tick is right-anchored instead, at the complementary percentage.
+  const lastDiv = tickDivs[tickDivs.length - 1];
+  assertIncludes(lastDiv, 'gantt-axis-tick-last');
+  assertIncludes(lastDiv, `right:${100 - ticks[ticks.length - 1].pct}%`);
+  assertNotIncludes(lastDiv, 'style="left:');
+});
+
+test('a chart with only one tick still anchors it from the right, as the (only, and therefore last) tick', function () {
+  const rows = [{ id: 'i1', name: 'Short item', start: '2026-01-01', end: '2026-01-15', status: 'green', milestones: [] }];
+  const html = renderGanttChartHtml([{ name: null, color: null, rows }], 'empty');
+  const range = ganttDateRange(ganttRowDates(rows));
+  const ticks = ganttTicks(range);
+  assertEqual(ticks.length, 1, 'a narrow enough range produces exactly one month tick');
+  assertIncludes(html, 'gantt-axis-tick-last');
+  assertIncludes(html, `right:${100 - ticks[0].pct}%`);
+});
+
 test('ganttRowDates flattens every row\'s own bar start/end and milestone dates into one array', function () {
   const rows = [
     { start: '2026-01-01', end: '2026-02-01', milestones: [{ date: '2026-01-15' }] },

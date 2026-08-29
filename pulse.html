@@ -1886,6 +1886,12 @@
   .gantt-row-track { position: relative; height: 34px; min-height: 20px; }
   .gantt-axis-row .gantt-row-track { height: 28px; }
   .gantt-axis-tick { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 6px; font-size: 10.5px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: .02em; border-left: 1px solid var(--border); white-space: nowrap; }
+  /* The last tick only — right-anchored (see renderGanttChartHtml()'s own
+     comment) so its label grows leftward, into space every earlier tick's
+     own slot already reserves, instead of overflowing past .gantt-chart's
+     own right edge with nothing left to clip it. Mirrors every left-side
+     property the base rule sets to its right-side equivalent. */
+  .gantt-axis-tick-last { left: auto; padding-left: 0; padding-right: 6px; border-left: none; border-right: 1px solid var(--border); justify-content: flex-end; }
   .gantt-bar { position: absolute; top: 50%; transform: translateY(-50%); height: 14px; border-radius: 4px; min-width: 3px; }
   .gantt-marker { position: absolute; top: 50%; width: 10px; height: 10px; transform: translate(-50%, -50%) rotate(45deg); border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--border); }
   /* z-index above the bar/ticks so a marker sitting on top of a bar (the
@@ -10193,7 +10199,26 @@ function renderGanttChartHtml(sections, emptyMessage) {
   const range = ganttDateRange(ganttRowDates(allRows));
   const ticks = ganttTicks(range);
   const todayPct = ganttPercentOrNull(todayStr(), range);
-  const axisTicksHtml = ticks.map(t => `<div class="gantt-axis-tick" style="left:${t.pct}%">${esc(t.label)}</div>`).join('');
+  const axisTicksHtml = ticks.map((t, i) => {
+    // The last tick's own text has no neighbor to its right to grow into
+    // the way every other tick does (see GANTT_MIN_PX_PER_TICK's own
+    // comment) — left-anchored like the rest, its label could render past
+    // .gantt-chart's own right edge entirely (confirmed live: a real
+    // "Q2 2028" label rendered ~40px past the chart's own border, with
+    // nothing to clip it now that .gantt-chart has no overflow:hidden of
+    // its own — see "Dashboard: Gantt chart" in CLAUDE.md). Anchoring the
+    // last tick from the right instead (`right:` in place of `left:`, its
+    // border/padding mirrored to the other side) keeps its own tick-mark
+    // line at the exact same true date position — `100 - t.pct` puts the
+    // div's own right edge (now hosting the border, in place of its left
+    // edge before) at the identical pixel position `left:${t.pct}%` would
+    // have — while letting its text grow leftward, into space every
+    // earlier tick's own slot already reserves, instead of past the edge.
+    const isLast = i === ticks.length - 1;
+    const posStyle = isLast ? `right:${100 - t.pct}%` : `left:${t.pct}%`;
+    const cls = isLast ? 'gantt-axis-tick gantt-axis-tick-last' : 'gantt-axis-tick';
+    return `<div class="${cls}" style="${posStyle}">${esc(t.label)}</div>`;
+  }).join('');
   const todayAxisHtml = todayPct === null ? '' : `<div class="gantt-today-line" style="left:${todayPct}%"></div>`;
   const sectionsHtml = sections.filter(sec => sec.rows.length).map(sec => {
     const header = sec.name ? `<div class="gantt-section-header"><span class="ws-dot" style="background:var(--ws-${sec.color})"></span> ${esc(sec.name)}</div>` : '';
