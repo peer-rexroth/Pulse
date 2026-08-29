@@ -416,6 +416,38 @@ test('exportToExcelReport shows a clear toast instead of throwing when ExcelJS h
   assertIncludes(document.getElementById('toastMsg').textContent, 'Excel export needs an internet connection');
 });
 
+// milestoneExcelSummaryLine() — a later, explicit user request ("move the
+// milestones of a scope item into column so that every scope item has only
+// one line") collapsed the Scope Items sheet's old one-row-per-milestone
+// shape into a single "Milestones" cell, one line per milestone, built by
+// this function. Unlike buildScopeItemsSheet() itself, this is plain string
+// logic with no ExcelJS dependency, so it's directly testable.
+
+test('milestoneExcelSummaryLine prefers the milestone\'s own actual date over its due date', function () {
+  const m = { name: 'Design Defined', dueDate: '2026-05-12', actualDate: '2026-05-10', status: 'complete', notApplicable: false };
+  assertEqual(milestoneExcelSummaryLine(m), `Design Defined: ${fmtDateY('2026-05-10')} (Completed)`);
+});
+
+test('milestoneExcelSummaryLine falls back to the due date when there is no actual date yet', function () {
+  const m = { name: 'Requirements Defined', dueDate: '2026-05-12', actualDate: null, status: 'not-started', notApplicable: false };
+  assertEqual(milestoneExcelSummaryLine(m), `Requirements Defined: ${fmtDateY('2026-05-12')} (Not Started)`);
+});
+
+test('milestoneExcelSummaryLine shows an em dash when neither date is set', function () {
+  const m = { name: 'Scope Item Confirmed', dueDate: null, actualDate: null, status: 'pending', notApplicable: false };
+  assertEqual(milestoneExcelSummaryLine(m), 'Scope Item Confirmed: — (Pending)');
+});
+
+test('milestoneExcelSummaryLine shows a plain "N/A" line, no date, for a Not Applicable milestone', function () {
+  const m = { name: 'Skipped Step', dueDate: '2026-01-01', actualDate: '2026-01-05', status: 'green', notApplicable: true };
+  assertEqual(milestoneExcelSummaryLine(m), 'Skipped Step: N/A');
+});
+
+test('milestoneExcelSummaryLine reads "Completed Late" the same way the live status board does', function () {
+  const m = { name: 'Late Finish', dueDate: '2026-01-01', actualDate: '2026-01-10', status: 'complete', notApplicable: false };
+  assertEqual(milestoneExcelSummaryLine(m), `Late Finish: ${fmtDateY('2026-01-10')} (Completed Late)`);
+});
+
 test('applyImport merge mode adds new data and ignores tombstones (manual import intent)', function () {
   tombstone(deletedItemIds, 'import-1');
   pendingImportData = {
