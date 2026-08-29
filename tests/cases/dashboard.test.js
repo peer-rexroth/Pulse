@@ -757,50 +757,10 @@ test('ganttWorkstreamSections excludes Unassigned items and, when filterWorkstre
   assertEqual(sections[0].name, workstreams[0].name);
 });
 
-test('ganttL1MilestoneSections builds one row per L1 milestone, grouped into a section per plan, using each milestone\'s own effective (rolled-up-or-manual) status', function () {
-  const p = addL1Plan('Digital Transformation');
-  const m = addL1Milestone(p.id, 'Kickoff');
-  m.dueDate = '2026-06-01';
-  m.status = 'not-started';
-  const wsItem = addItem({ name: 'Deliverable' });
-  const wm = { id: genId(), name: 'Ship it', dueDate: '2026-06-01', actualDate: null, status: 'red', notApplicable: false, updatedAt: 0, l1MilestoneIds: [m.id] };
-  wsItem.milestones.push(wm);
-  const sections = ganttL1MilestoneSections();
-  assertEqual(sections.length, 1);
-  assertEqual(sections[0].name, 'Digital Transformation');
-  assertEqual(sections[0].rows.length, 1);
-  const row = sections[0].rows[0];
-  assertEqual(row.name, 'Kickoff', 'the row is the milestone itself, not the plan');
-  assertEqual(row.status, 'red', 'must reflect the rolled-up status from the linked workstream milestone, not the L1 milestone\'s own stale manual status');
-  assertEqual(row.milestones[0].status, 'red');
-  assertEqual(row.start, null, 'a milestone row has no bar of its own — only a marker');
-  assertEqual(row.onclick, `openL1MilestoneFromDashboard('${p.id}','${m.id}')`);
-});
-
-test('ganttL1MilestoneSections drops a plan with no dateable milestones at all', function () {
-  addL1Plan('Empty plan');
-  const sections = ganttL1MilestoneSections();
-  assertEqual(sections.length, 0);
-});
-
-test('ganttL1MilestoneSections excludes a notApplicable or undated milestone, same as the workstream side', function () {
-  const p = addL1Plan('Digital Transformation');
-  const m1 = addL1Milestone(p.id, 'Real');
-  m1.dueDate = '2026-01-15';
-  const m2 = addL1Milestone(p.id, 'N/A');
-  m2.dueDate = '2026-01-20';
-  m2.notApplicable = true;
-  addL1Milestone(p.id, 'Undated'); // dueDate stays null
-  const sections = ganttL1MilestoneSections();
-  assertEqual(sections[0].rows.length, 1);
-  assertEqual(sections[0].rows[0].name, 'Real');
-});
-
-// Dashboard's own Gantt tab is Workstreams-only now — it originally also
-// had an internal scope toggle to switch to a flat L1 Plans timeline, moved
-// out to its own tab under L1 Plans instead on a later, explicit user
-// request ("move the l1 gant under L1 as a seperte tab" — see
-// tests/cases/l1-plans.test.js for renderL1GanttHtml()'s own coverage).
+// Dashboard's own Gantt tab is Workstreams-only. An L1 Plans version of it
+// (a scope toggle, then its own sub-tab, then a milestone-row redesign)
+// shipped and was later removed again entirely on a further, later,
+// explicit user request ("remove gantt for l1").
 
 test('renderDashboard\'s Gantt tab renders a bar for a dated item and a marker per milestone, with no scope toggle', function () {
   const it = addDashItem({ name: 'Migrate Database', startDate: '2026-01-01', dueDate: '2026-03-01', milestones: [
