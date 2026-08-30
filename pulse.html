@@ -531,6 +531,17 @@
      the first place) — its own flex-shrink:1 is exactly what should happen
      to an empty spacer once there's no room left to grow it. */
   .topbar > * { flex-shrink: 0; }
+  /* A thin vertical rule marking the boundary between the topbar's own
+     several logical clusters (workstream nav+L1 Plans / brand+sync status /
+     data+settings / personalization icons) — a usability improvement: with
+     nothing but the shared 14px gap between every single button, the whole
+     row read as one long undifferentiated strip with no visual grouping at
+     all, especially once the icon-only preferences cluster grew to six
+     buttons. This exact class name used to sit here completely unused
+     (defined but never actually applied to any element) — this pass is
+     what finally gives it a real job, at the four boundaries the topbar's
+     own static markup places it (see the .topbar div in the HTML shell). */
+  .topbar-divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
   /* See updateOutdatedVersionBanner() in the inline script — amber, the same
      --stat-amber/--stat-amber-bg pair every other "worth a look, not an
      emergency" indicator in this app already uses (the sync-conflicts badge,
@@ -1999,11 +2010,14 @@
     <button class="view-tab" id="tabDashboard" onclick="setMode('dashboard')"><i class="fa-solid fa-gauge-high"></i> Dashboard</button>
     <button class="view-tab" id="tabReview" onclick="setMode('review')"><i class="fa-solid fa-clipboard-check"></i> Review</button>
   </div>
+  <div class="topbar-divider"></div>
   <button class="btn btn-sm" id="tabL1plans" onclick="setMode('l1plans')" title="High-level plans, overarching across every workstream"><i class="fa-solid fa-bullseye"></i> L1 Plans</button>
   <div class="topbar-spacer"></div>
+  <div class="topbar-divider"></div>
   <span id="syncConflictIndicator"></span>
   <span id="fileSyncIndicator"></span>
   <span id="backupSyncIndicator"></span>
+  <div class="topbar-divider"></div>
   <div class="data-dropdown" id="dataDropdown">
     <button class="btn btn-sm" onclick="event.stopPropagation();toggleDataMenu()"><i class="fa-solid fa-database"></i> Data <i class="fa-solid fa-chevron-down" style="font-size:9px"></i></button>
     <div class="dropdown-menu" id="dataMenu">
@@ -2028,6 +2042,7 @@
   <button class="btn btn-sm" id="tabAdmin" onclick="setMode('admin')"><i class="fa-solid fa-sliders"></i> Settings</button>
   <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileImport(event)">
   <input type="file" id="l1PlanImportFileInput" accept=".xlsx" style="display:none" onchange="handleL1PlanImportFile(event)">
+  <div class="topbar-divider"></div>
   <button class="icon-btn" id="roleBtn" onclick="openRoleModal()" title="Switch role"><i class="fa-solid" id="roleBtnIcon"></i></button>
   <div class="data-dropdown" id="uiScaleDropdown">
     <button class="icon-btn" onclick="event.stopPropagation();toggleUiScaleMenu()" title="Text size"><i class="fa-solid fa-text-height"></i></button>
