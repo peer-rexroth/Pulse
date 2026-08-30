@@ -610,8 +610,17 @@
 
   /* Layout */
   .body-row { flex: 1; display: flex; min-height: 0; }
+  /* A usability improvement (see CLAUDE.md): the sidebar used to sit on the
+     exact same --panel white as .main's own content cards, distinguished
+     from the content area only by the 1px border-right below — the two
+     read as one continuous surface rather than a distinct nav rail. --bg
+     (the page's own base tone, a step darker than --panel) is reused here
+     rather than inventing a new color, so this reads correctly across
+     every color scheme/theme pair for free, the same "reuse an existing
+     token" reasoning the topbar dividers earlier in this stylesheet
+     already followed. */
   .sidebar {
-    width: var(--sidebar-width); flex: 0 0 auto; background: var(--panel); border-right: 1px solid var(--border);
+    width: var(--sidebar-width); flex: 0 0 auto; background: var(--bg); border-right: 1px solid var(--border);
     display: flex; flex-direction: column; padding: 10px; overflow-y: auto;
   }
   /* Drag-to-resize handle, sitting between .sidebar and .planning-main — a
@@ -631,12 +640,23 @@
     display: flex; align-items: center; justify-content: space-between;
   }
   .sidebar-label-add { background: none; border: none; cursor: pointer; color: var(--text-faint); font-size: 12px; padding: 3px 5px; border-radius: 5px; }
-  .sidebar-label-add:hover { background: var(--panel-2); color: var(--accent); }
+  /* --panel, not --panel-2, now that .sidebar's own base is --bg (see its
+     own CSS comment above) — checked numerically across all 5 schemes'
+     light+dark palettes: --bg-to-`--panel-2` is a real, visible step in
+     nine of the ten (channel-sum diff 27–118), but the Standard scheme's
+     own light palette — the default a fresh install actually sees — is a
+     genuine outlier at just 14, barely distinguishable as a hover. --panel
+     (a full tier up, diff 30–255+ everywhere) stays clearly visible in all
+     ten, so it's the one choice that's actually safe universally rather
+     than merely "usually fine". */
+  .sidebar-label-add:hover { background: var(--panel); color: var(--accent); }
   .ws-row {
     display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px; cursor: pointer;
     color: var(--text-dim); font-weight: 600; position: relative;
   }
-  .ws-row:hover { background: var(--panel-2); }
+  /* --panel, not --panel-2 — same reasoning, and the same verified numbers,
+     as .sidebar-label-add:hover's own comment just above. */
+  .ws-row:hover { background: var(--panel); }
   .ws-row.active { background: var(--accent-bg); color: var(--accent); }
   .ws-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
   .ws-row-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
