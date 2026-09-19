@@ -2452,6 +2452,10 @@
   <div class="modal">
     <h3 id="l1MilestoneModalTitle">Edit milestone</h3>
     <div class="field">
+      <label>Name</label>
+      <input type="text" id="l1MilestoneNameInput" onkeydown="if(event.key==='Enter') saveL1MilestoneModal()">
+    </div>
+    <div class="field">
       <label>Due date</label>
       <input type="date" id="l1MilestoneDueInput">
     </div>
@@ -7591,6 +7595,7 @@ function openL1MilestoneModal(planId, milestoneId) {
   editingL1MilestonePlanId = planId;
   editingL1MilestoneId = milestoneId;
   document.getElementById('l1MilestoneModalTitle').textContent = m.name;
+  document.getElementById('l1MilestoneNameInput').value = m.name;
   document.getElementById('l1MilestoneDueInput').value = m.dueDate || '';
   // A fixed <select>, not free text — an explicit later user request
   // ("Reporting Level should be a fixed selection... editable as admin in
@@ -7617,6 +7622,13 @@ function saveL1MilestoneModal() {
   const plan = items.find(i => i.id === editingL1MilestonePlanId && i.itemType === 'l1plan');
   const m = plan && plan.milestones.find(x => x.id === editingL1MilestoneId);
   if (!plan || !m) { closeL1MilestoneModal(); render(); return; }
+  // Name goes through updateL1MilestoneName() — the same function the row's
+  // own inline input uses (trims, and no-ops on a blank or unchanged value)
+  // — a later, explicit user request ("can i also edit the name?"): the
+  // inline input has no border at rest, so it doesn't read as editable, and
+  // this modal (the discoverable "real edit" surface) used to show the name
+  // only as a read-only title.
+  updateL1MilestoneName(plan.id, m.id, document.getElementById('l1MilestoneNameInput').value);
   // Due goes through the exact same update path the row's own inline pill
   // uses — one function, so a Due edit behaves identically (recomputes the
   // plan's own plan-date range, stamps updatedAt) regardless of which of

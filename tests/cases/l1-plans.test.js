@@ -929,6 +929,37 @@ test('saveL1MilestoneModal writes both Due and Reporting Level back onto the rea
   assertFalse(document.getElementById('l1MilestoneModalBg').classList.contains('open'));
 });
 
+// "can i also edit the name?" — the Edit modal now has its own Name field,
+// funneled through the same updateL1MilestoneName() the row's inline input uses.
+test('openL1MilestoneModal prefills the Name field with the milestone\'s current name', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  openL1MilestoneModal(p.id, m.id);
+  assertEqual(document.getElementById('l1MilestoneNameInput').value, 'Kickoff');
+});
+
+test('saveL1MilestoneModal renames the milestone (trimmed) and stamps updatedAt', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  m.updatedAt = 1;
+  openL1MilestoneModal(p.id, m.id);
+  document.getElementById('l1MilestoneNameInput').value = '  Go-Live  ';
+  saveL1MilestoneModal();
+  assertEqual(m.name, 'Go-Live');
+  assertTrue(m.updatedAt > 1);
+});
+
+test('saveL1MilestoneModal keeps the old name when the Name field is blanked, but still saves the other fields', function () {
+  const p = addL1Plan();
+  const m = addL1Milestone(p.id, 'Kickoff');
+  openL1MilestoneModal(p.id, m.id);
+  document.getElementById('l1MilestoneNameInput').value = '   ';
+  document.getElementById('l1MilestoneDueInput').value = '2027-06-15';
+  saveL1MilestoneModal();
+  assertEqual(m.name, 'Kickoff');
+  assertEqual(m.dueDate, '2027-06-15');
+});
+
 test('saveL1MilestoneModal stores the blank "—" selection as null, not an empty string', function () {
   const p = addL1Plan();
   const m = addL1Milestone(p.id, 'Kickoff');
