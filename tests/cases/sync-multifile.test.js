@@ -368,3 +368,42 @@ test('a file already renamed merged_... by a previous scan is left alone on the 
   assertFalse(mergedAny);
   assertTrue(alreadyMergedName in dir.files, 'must still be there, untouched — not re-read, not re-renamed');
 });
+
+// ---------- Folder-permission lapse & write-error reporting ----------
+// A user-reported gap ("can folder permission be silently lost while it still
+// shows connected?"): the indicator only re-checked permission at link/unlink/
+// startup/after a successful write, the background poll silently stopped on a
+// lapse, the next save dropped the link with no message, and every write
+// failure was one undifferentiated toast. notifyFileSyncLapse() and
+// describeFileSyncError() are the pure, testable halves of the fix — the
+// poll/write/init paths themselves need a real directory handle.
+
+test('describeFileSyncError routes NotAllowedError/SecurityError to the permission (Reconnect) path, not an error toast', function () {
+  assertEqual(describeFileSyncError({ name: 'NotAllowedError' }).kind, 'permission');
+  assertEqual(describeFileSyncError({ name: 'SecurityError' }).kind, 'permission');
+});
+
+test('describeFileSyncError gives a specific reason for not-found, disk-full and locked-file errors', function () {
+  assertIncludes(describeFileSyncError({ name: 'NotFoundError' }).text, 'moved, renamed or deleted');
+  assertIncludes(describeFileSyncError({ name: 'QuotaExceededError' }).text, 'disk is full');
+  assertIncludes(describeFileSyncError({ name: 'NoModificationAllowedError' }).text, 'locked');
+  assertIncludes(describeFileSyncError({ name: 'InvalidStateError' }).text, 'OneDrive');
+  assertEqual(describeFileSyncError({ name: 'NotFoundError' }).kind, 'error');
+});
+
+test('describeFileSyncError falls back to the real name and message for an unrecognized error, never a blank reason', function () {
+  assertEqual(describeFileSyncError({ name: 'WeirdError', message: 'boom' }).text, 'WeirdError: boom');
+  assertEqual(describeFileSyncError(null).text, 'unknown error');
+});
+
+test('notifyFileSyncLapse toasts once per lapse, not on every poll/save', function () {
+  notifyFileSyncLapse();
+  assertIncludes(document.getElementById('toastMsg').textContent, 'Reconnect');
+  assertTrue(fileSyncLapseNotified);
+  document.getElementById('toastMsg').textContent = '';
+  notifyFileSyncLapse();
+  assertEqual(document.getElementById('toastMsg').textContent, '', 'a second call in the same lapse must not toast again');
+  fileSyncLapseNotified = false;
+  notifyFileSyncLapse();
+  assertIncludes(document.getElementById('toastMsg').textContent, 'Reconnect');
+});

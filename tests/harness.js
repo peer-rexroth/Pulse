@@ -227,7 +227,7 @@ async function run(argv) {
   minutesModalCycleId = null; editingMinutesActionItems = []; reviewTab = 'scope'; dashboardTab = 'overview';
   renamingProgramme = false;
   pendingImportData = null; modalTarget = null; toastUndoAction = null;
-  fileHandle = null; lastSyncedSnapshot = null; lastSyncedAt = 0; syncConflictLog = [];
+  fileSyncLapseNotified = false; fileHandle = null; lastSyncedSnapshot = null; lastSyncedAt = 0; syncConflictLog = [];
   backupDirHandle = null; lastBackupWrittenDate = null;
   normalizeData();
 }

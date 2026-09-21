@@ -12533,6 +12533,39 @@ function restoreBackup(date) {
 // second, independent folder for dated archival copies, not the live sync
 // target.
 let syncDirHandle = null;
+// Whether the "folder access has expired" notice has already been shown for
+// the current lapse — so the 45s background poll (and every subsequent
+// save attempt) doesn't re-toast/re-render on every cycle. Reset once
+// permission is seen granted again. See notifyFileSyncLapse().
+let fileSyncLapseNotified = false;
+// A user-reported gap ("can folder permission be silently lost while it
+// still shows connected?"): the topbar indicator only re-checks permission
+// at link/unlink/startup/after-a-successful-write, so a lapse in between
+// (Chrome expiring the grant, a tab left open for days) left it showing
+// "connected" while the background poll quietly stopped doing anything, and
+// the next save used to drop the link with no message at all. This flips the
+// indicator to the amber Reconnect state (same handle, so Reconnect re-grants
+// without re-picking the folder) and says so — once per lapse.
+function notifyFileSyncLapse() {
+  if (fileSyncLapseNotified) return;
+  fileSyncLapseNotified = true;
+  updateFileSyncUI();
+  showToast("Access to the linked folder has expired — click Reconnect in the top bar to keep syncing. Your changes are safe in this browser meanwhile.", true);
+}
+// Turns an error thrown during real folder I/O into something actionable
+// instead of one undifferentiated "could not save" — a permission problem is
+// routed to the Reconnect flow, everything else gets a specific reason.
+// Pure (no DOM/IndexedDB), so it's directly unit-tested.
+function describeFileSyncError(e) {
+  const name = e && e.name;
+  if (name === 'NotAllowedError' || name === 'SecurityError') return { kind: 'permission', text: '' };
+  let text;
+  if (name === 'NotFoundError') text = "the folder or a file in it can't be found (moved, renamed or deleted?)";
+  else if (name === 'QuotaExceededError') text = 'the disk is full';
+  else if (name === 'NoModificationAllowedError' || name === 'InvalidStateError') text = 'a file in it is locked — often a sync client such as OneDrive mid-upload';
+  else text = (name ? name + ': ' : '') + ((e && e.message) || 'unknown error');
+  return { kind: 'error', text };
+}
 // A separate, independently-persisted folder handle for daily backups — see
 // writeBackupCopy()/chooseBackupFolder() below. Its lifecycle is deliberately
 // not tied to syncDirHandle's own: unlinking the main sync folder doesn't
@@ -12849,8 +12882,15 @@ function queueFileSyncWrite() {
 async function doFileSyncWrite() {
   if (!syncDirHandle) return;
   try {
-    const perm = await syncDirHandle.requestPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') { await _clearFileLink(); return; }
+    // No user gesture behind a background save can make requestPermission()
+    // throw rather than answer — treated the same as "not granted".
+    let perm;
+    try { perm = await syncDirHandle.requestPermission({ mode: 'readwrite' }); } catch (_) { perm = 'prompt'; }
+    // Used to drop the link outright here with no message at all (and lose
+    // the stored handle, forcing a re-pick) — now keeps the handle and shows
+    // the Reconnect state instead, which re-grants without re-choosing.
+    if (perm !== 'granted') { notifyFileSyncLapse(); return; }
+    fileSyncLapseNotified = false;
 
     const indexRead = await readJsonFile(syncDirHandle, SYNC_INDEX_FILE);
     if (indexRead) {
@@ -12928,7 +12968,10 @@ async function doFileSyncWrite() {
     // here means a change (like a rename) could look saved in the app while
     // never actually reaching the linked folder — surface it so that's
     // never a mystery.
-    showToast('Could not save to the linked folder — it will keep retrying on the next change', true);
+    console.warn('Pulse folder sync write failed:', e);
+    const d = describeFileSyncError(e);
+    if (d.kind === 'permission') { notifyFileSyncLapse(); return; }
+    showToast(`Could not save to the linked folder: ${d.text}. It will keep retrying on the next change.`, true);
   }
 }
 function backupFileName(dateStr) { return `pulse-backup-${dateStr}.json`; }
@@ -13072,7 +13115,8 @@ async function pollFileSync() {
     // permission prompt on its own; if permission was lost, the existing
     // "Reconnect" affordance (see updateFileSyncUI()) is what re-grants it.
     const perm = await syncDirHandle.queryPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') return;
+    if (perm !== 'granted') { notifyFileSyncLapse(); return; }
+    fileSyncLapseNotified = false;
     const indexRead = await readJsonFile(syncDirHandle, SYNC_INDEX_FILE);
     if (!indexRead) return;
     const knownIds = new Set(workstreams.map(w => w.id));
@@ -13403,9 +13447,23 @@ async function initFileSync() {
           const data = await readAndRecombineFolder(handle, indexRead);
           applyIncomingFolderData(data, 'Synced'); // return value unused — no toast on a quiet launch-time reconnect, matching prior behavior
           checkCurrentRolePasswordChallenge();
+        } else {
+          // readJsonFile() returns null for missing, unreadable AND unparseable
+          // alike, and this used to fall straight through to "connected" with
+          // no word — a previously-linked folder that's suddenly unreadable
+          // (OneDrive not synced for days, moved, drive offline) silently left
+          // this browser's older local copy on screen. Tell them.
+          let readable = true;
+          try { await handle.values().next(); } catch (_) { readable = false; }
+          showToast(readable
+            ? `No readable Pulse data found in the linked folder "${handle.name}" — showing this browser's saved copy. If it's still syncing, reload once it's ready.`
+            : `Could not read the linked folder "${handle.name}" — showing this browser's saved copy. Check it's available (e.g. OneDrive has finished syncing) and reload.`, true);
         }
         startFileSyncPolling();
-      } catch (_) { /* read failed — keep localStorage data */ }
+      } catch (e) {
+        console.warn('Pulse folder sync load failed:', e);
+        showToast('Could not read the linked folder — showing this browser\'s saved copy. Check it\'s available and reload.', true);
+      }
     } else if (!userRole) {
       pendingFileSyncPrompt = handle; // same race as the !handle branch above
     } else {
