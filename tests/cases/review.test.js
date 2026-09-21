@@ -175,16 +175,26 @@ test('confirmAllInReviewCycle skips a notApplicable milestone — nothing to con
   assertTrue(isItemConfirmedInCycle(cycle, it));
 });
 
+// Needs a second, still-unconfirmed item so this exercises the confirm-all
+// direction: once *everything* is already confirmed, the same call
+// un-confirms instead (see the next test) and legitimately re-stamps, so the
+// original single-item version of this test only passed when that re-stamp
+// happened to land in the same millisecond as the earlier one — a flaky
+// coincidence, not the behavior it claimed to check. The already-confirmed
+// record is also pinned to a sentinel updatedAt so "untouched" is
+// deterministic rather than dependent on Date.now() ticking.
 test('confirmAllInReviewCycle leaves an already-confirmed item/milestone\'s own updatedAt untouched — it must be a true no-op for anything not actually changed', function () {
-  const it = addReviewItem({});
+  const confirmed = addReviewItem({ name: 'Already confirmed' });
+  const pending = addReviewItem({ name: 'Still pending' });
   startReviewCycle(workstreams[0].id);
   const cycle = activeReviewCycle(workstreams[0].id);
-  toggleReviewConfirm(cycle.id, it.id);
-  const stampedAt = cycle.confirmations[0].updatedAt;
+  toggleReviewConfirm(cycle.id, confirmed.id);
+  cycle.confirmations[0].updatedAt = 1;
   confirmAllInReviewCycle(cycle.id);
   confirmModalAction();
-  assertEqual(cycle.confirmations.length, 1, 'must not push a second, redundant confirmation record');
-  assertEqual(cycle.confirmations[0].updatedAt, stampedAt, 'a value that was already true must not get re-stamped');
+  assertEqual(cycle.confirmations.length, 2, 'one record per item — must not push a second, redundant record for the already-confirmed one');
+  assertEqual(cycle.confirmations[0].updatedAt, 1, 'a value that was already true must not get re-stamped');
+  assertTrue(isItemConfirmedInCycle(cycle, pending), 'the still-pending item does get confirmed');
 });
 
 // A later, explicit user follow-up ("also allow to uncheck all") reversed
