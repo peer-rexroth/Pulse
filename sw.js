@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pulse-cache-v1';
+const CACHE_NAME = 'pulse-cache-v2';
 const APP_SHELL = [
   'pulse.html',
   'manifest.json',
@@ -41,7 +41,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, res.clone()));
+          if (res.ok) caches.open(CACHE_NAME).then((cache) => cache.put(req, res.clone()));   // an error page must not replace the good saved copy
           return res;
         })
         .catch(() => caches.match(req).then((cached) => cached || caches.match('pulse.html')))
@@ -53,7 +53,7 @@ self.addEventListener('fetch', (event) => {
     caches.match(req).then((cached) => {
       const fetchPromise = fetch(req)
         .then((res) => {
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, res.clone()));
+          if (res.ok) caches.open(CACHE_NAME).then((cache) => cache.put(req, res.clone()));   // an error page must not replace the good saved copy
           return res;
         })
         .catch(() => cached);
